@@ -154,6 +154,10 @@ package struct AccessibilityAttributes {
     package var rangeValue: (@MainActor () -> AccessibilityRangeValue?)?
     /// Outline rows with children: expanded or collapsed.
     package var isExpanded: Bool?
+    /// Buttons: the window's default button (Return) or cancel button
+    /// (Escape) (B5-OPENVIEWS; council rows 98, 130).
+    package var isDefaultButton: Bool?
+    package var isCancelButton: Bool?
 
     package init() {}
 
@@ -177,13 +181,16 @@ package struct AccessibilityAttributes {
         r.dynamicValue = inner.dynamicValue ?? dynamicValue
         r.rangeValue = inner.rangeValue ?? rangeValue
         r.isExpanded = inner.isExpanded ?? isExpanded
+        r.isDefaultButton = inner.isDefaultButton ?? isDefaultButton
+        r.isCancelButton = inner.isCancelButton ?? isCancelButton
         return r
     }
 
     var isEmpty: Bool {
         label == nil && value == nil && hint == nil && identifier == nil && addTraits.isEmpty && removeTraits.isEmpty
             && hidden == nil && children == nil && role == nil && sortPriority == nil && headingLevel == nil
-            && actions.isEmpty && adjust == nil && rangeValue == nil && isExpanded == nil
+            && actions.isEmpty && adjust == nil && rangeValue == nil && isExpanded == nil && isDefaultButton == nil
+            && isCancelButton == nil
     }
 }
 
@@ -282,8 +289,11 @@ extension View {
                               label: String? = nil, actions: [String: @MainActor () -> Void] = [:],
                               adjust: (@MainActor (AccessibilityAdjustmentDirection) -> Void)? = nil,
                               rangeValue: (@MainActor () -> AccessibilityRangeValue?)? = nil,
-                              children: AccessibilityChildBehavior = .combine) -> some View {
+                              children: AccessibilityChildBehavior = .combine,
+                              isDefault: Bool? = nil, isCancel: Bool? = nil) -> some View {
         accessibilityAttributes {
+            $0.isDefaultButton = isDefault
+            $0.isCancelButton = isCancel
             $0.rangeValue = rangeValue
             $0.role = role
             $0.children = children

@@ -435,14 +435,81 @@ window:
 
 ### 13.2 Alert buttons are accessibility elements (behavioural requirement)
 
-Ycode's alert is an accessibility sheet holding two static texts and no
-buttons; a hit test on a button finds nothing, and the capture had to
-press Return. The reference's alert buttons were pressed through
-accessibility. Requirement: every alert button is an accessibility
-element with the button role, its label as its title and a press
-action; the alert exposes its default button (Merge) and its cancel
-button (Cancel) as such; the title and message are static texts. The
-same holds for the merge sheet's Cancel and Merge.
+*Rewritten in council round 5 (2026-11-06); checklist rows 98 and 130.*
+
+**What happened.** In round 4 the capture found Ycode's alert as an
+accessibility sheet holding two static texts and no buttons, and pressed
+Return instead. B4-MERGE then made the buttons accessible and tested them
+by walking accessibility children **inside the app, starting at the
+window's frame view**. Round 5's script was not changed: it still pressed
+Return for Ycode and carried round 4's note, so **round 5 did not test
+Ycode's alert through accessibility at all**; the judges' finding repeats
+the note. Row 98 is therefore unverified, not failed. The requirement
+below is the path the capture's driver follows from outside the app;
+Ycode's own test must follow the same path.
+
+**The path the driver follows** (the capture tool's accessibility
+driver, used for the reference's Merge):
+
+1. It starts at the **application element** for the app's process (the
+   accessibility element created from the process ID), with a messaging
+   timeout of 3 seconds per request. For this press the script asks for
+   the whole app, not one window.
+2. It walks **breadth first through the children attribute only**
+   (`AXChildren`), to a depth of 40 and at most 30,000 elements. It does
+   not read the windows, main window, focused window or sheets
+   attributes during the search. So the alert must be reachable as
+   application → window → … → alert → button through children alone.
+3. At each element it reads the **role** and, for this match, the
+   **title** attribute (`AXTitle`) only. The match is exact, ignoring
+   case, with "..." read as "…". The description, value and help
+   attributes are not consulted for a title match. A button whose name is
+   only in its description or value is **not found**.
+4. The first match in breadth-first order (the shallowest) wins. The
+   driver performs the **press action** (`AXPress`) on it and requires the
+   call to return success. A press on the reference's alert returned
+   after about 0.53 seconds; the call must return within the 3-second
+   timeout.
+5. For a click (rather than a press) on a matched element, the driver
+   uses the element's position and size attributes for the centre, then,
+   in the foreground, checks that the system-wide hit test at that point
+   returns an element of the same process before it posts the click.
+
+**What the reference exposed** (round 5 press result): an element with
+role **button**, title **"Merge"**, an automatic identifier, the press
+action, and a frame **82 × 22** at window (809, 467) in the 1400 × 880
+window. The full tree of the reference's alert (sheet role and subrole,
+the static texts, the default and cancel button attributes) was **not
+recorded** in any round; capture it in round 6 (Open question 12). For
+AppKit sheets the public accessibility protocol defines default-button
+and cancel-button attributes on the sheet, and alerts expose their title
+and message as static texts (level 1).
+
+**Requirement (behavioural).**
+- From the application element, walking children only, the window that
+  owns the alert lists the alert (role sheet) among its children, and the
+  alert lists, in reading order, the title and message as static texts,
+  then the buttons. Depth from the application element: application →
+  window → sheet → button is enough; any extra levels must not be
+  ignored elements whose children are dropped.
+- Each button: role **button**, its label in the **title** attribute
+  (Cancel, Merge), enabled state, a frame in screen coordinates that
+  covers the drawn button, and the **press** action, which acts exactly
+  as a click and returns success.
+- The alert names Merge its **default button** and Cancel its **cancel
+  button** through the default-button and cancel-button attributes.
+- The system-wide hit test at a button's centre returns that button (or
+  an element of the app whose nearest button ancestor is it).
+- The same holds for the merge sheet's Cancel and Merge, and for the
+  sheet's own controls (§13.8).
+- **Test the path from outside the process**: with the alert up in a
+  running Ycode, the capture tool's `find` with scope app, role button
+  and title Merge must find exactly the drawn button, and its `press`
+  must open the merge sheet. An in-process walk that starts below the
+  window (for example at the frame view) does not prove the path,
+  because what the window serves to other processes as its children can
+  differ from its views' children. Round 6's script should press Ycode's
+  alert buttons through accessibility, as it does the reference's.
 
 ### 13.3 The sheet's height in an 880-point window (refines §2)
 
@@ -525,15 +592,115 @@ window heights stays Open question 1.
 | 102 | The Choose menu opens 6 points higher (`chooseMenuOrigin`). When it opens, a mouse-moved event at the pointer is queued so AppKit highlights the item under a resting pointer at once (not verified on screen: the tests do not move the pointer). Linux: hover highlighting is the toolkit's (unchanged). |
 | 103 | The jump bar starts with the workspace's project (`MergeSheetProject`: a project's or workspace's name and folder, a package's folder), then the folders below the project's folder. Both footers name the current branch (a rebase's right footer keeps the replayed branch). |
 
+## 14. Council round 5: the sheet below the window, Choose feedback, the ruler (2026-11-06)
+
+Round 5 repeated the conflict session in dark with Ycode `a1f82372`.
+**The window was placed 36 points below the display's top and the stills
+and recordings took a 60-point margin below it**, so the reference's
+sheet was captured whole for the first time. Values are in window points
+of the 1400 × 880 window (the window's top-left at display (56, 36));
+"display y" is the capture's own coordinate. Checklist rows 125–130 in
+`fidelity-council.md`. §13.3's content box (y 64–847) now matches in
+Ycode; what is left is below it.
+
+### 14.1 The sheet hangs below its window
+
+| | Reference | Ycode now |
+|---|---|---|
+| Window | stays where it is, the same size: frame y 0–880 in the stills before the alert, with the alert and with the sheet; it is **not** moved up or grown to hold the sheet | the same |
+| Sheet frame | x 24–1376, **top y 52** (the toolbar's bottom; a 1-point lighter top rim #2D2E2F at 52), **bottom y 908**: 856 tall, **28 below the window's bottom edge** | x 24–1376, top 51.5; drawn only to **y 880**: everything below the window's edge is missing |
+| The part below the window | the sheet's own frame continues past the window: its fill (#202020 there, over the black desktop) spans x 24–1376 from y 880 to 908, with the sheet's bottom corners rounded (radius about **16**: inset 5.5 at 4 above the bottom, 11 at 1 above). The window's own bottom corners show outside the sheet's sides (x 0–24 and 1376–1400, down to y 880) | nothing: the desktop shows from y 880 |
+| Content box | y 64–847 (hairline #171718 at 846–847) | y 64–847 (#171718): **matches** |
+| Button row | §9's places hold: Cancel x **1176.5–1260**, Merge x **1272–1356** (84 wide, its right edge on the box's right edge), 12 apart; Cancel y **866–886** (**20 tall**), Merge y 867.5–887.5 (1.5 lower); the sheet's bottom 22 below Cancel | the same x; the buttons start at y 868.5 and are cut at 880: only the top of their labels shows |
+
+**Rule (target).** The sheet is its own window attached to the parent
+below the toolbar, not a view inside the parent. Its height comes from
+its content (here: 12 above the box, the box, 19 between the box and the
+buttons, 20 of buttons, 22 below), not from the parent's height, and the
+part that does not fit above the parent's bottom edge is drawn **outside
+the parent's frame**, over whatever is below (another window or the
+desktop). The parent window is not moved or resized. Whether the
+reference shortens the sheet, or moves the parent, when the screen has
+no room below is not captured (Open question 1).
+
+### 14.2 The sheet's buttons
+
+| | Reference | Ycode now |
+|---|---|---|
+| Shape | rounded rectangles, corner radius about **6** (0.5 point lost 3.5 in from the end), not capsules | capsules (radius about 10: 3 points lost 3 in from the end) |
+| Cancel | fill **#2E2F30**, label #DFDFDF | fill #3A3A3A, label #E6E6E6 |
+| Merge, disabled (a conflict undecided) | fill **#252627**, label #5B5C5C | fill #2C2D2C, label #575858 |
+| Vertical place | Cancel's top 19 below the box's bottom edge (866), Merge's 1.5 lower | both 21.5 below (868.5) |
+
+The 1.5-point drop of the disabled Merge was seen in one still; keep
+both buttons on one baseline unless a later capture confirms it.
+
+### 14.3 Choose Right: what changes, and when
+
+Measured per frame from the recording `04-conflict-choose-right`, in ms
+from the posted click. The click on the gutter token came 1.25 s (the
+reference) and 1.19 s (Ycode) before the click on Choose Right.
+
+| Event | Reference | Ycode now |
+|---|---|---|
+| The file list's row (Greeting.swift), from the **click on the token** | at **148 ms** the row turns from the focused selection (accent #0058D2, white text) to the **unfocused selection, grey #464546**, and its conflict badge from a white square with a red letter to a **red square (#FF4245) with a white letter** | stays the focused selection (#0059CE) with the white badge for the rest of the step |
+| The Choose menu opens (from the token click) | 281 ms | 233 ms |
+| Choose Right's highlight, from the **click on the item** | not highlighted until **151 ms**, then the accent bar (#007AFF) | highlighted at **44 ms**, off at 69, on again at 144 |
+| Menu fade | starts about 180–200 ms, ends about **390** (the bar at #353435, the row behind it, by 392) | starts about 170–185, ends about **377**: the same |
+| Left pane's text changes | 467 ms | 444 ms |
+
+1. **The row and badge change because focus moves.** Clicking a token
+   makes the merge panes the focused view, so the file list draws its
+   selection unfocused. This happens on the token click, before any
+   choice. Target: clicking in either pane, in the gutter or on a token
+   moves keyboard focus into the panes; the file list then shows the
+   unfocused grey selection and its badges in their normal colours (red
+   square, white letter, as on an unselected row).
+2. **The menu's fade is not late.** The judges' "333 against 417 ms"
+   compares segments that start at different events (the tool's segment
+   for Ycode started at its 44 ms highlight). The fade itself is the same.
+3. **The highlight sequence differs.** In round 5 the pointer did not
+   rest on the item before the click (the driver puts the pointer back
+   after each click), so the reference showed no hover highlight; on the
+   click it showed the item **off, then on at about 150 ms**, then faded.
+   Ycode highlights at once, blinks off and on. Target: on a click on an
+   item, keep the item's current hover state for the first frame, turn
+   it off, then on at about 150 ms, then fade from about 190 ms over
+   about 200 ms (§7's timing). Round 4's hover rule (§13.6: an item under
+   a resting pointer is highlighted from the menu's first frame) stays.
+
+### 14.4 The right pane's overview ruler in dark (refines §4.4)
+
+| | Reference | Ycode now |
+|---|---|---|
+| Knob | a filled bar **11 wide (x 1339–1350)**, **#A2A2A2**, from y **105 to 815**: the whole track, because the whole file is visible | none |
+| Change marks | 1-point lines drawn over the knob, x 1340–1350: conflicts **#FDB9B5** at y 423 and 571, the clean change **#D4D4D4** at 719 | 1-point lines on the pane's background: #9B4B48 at 419.5 and 578.5, #5A5B5A at 737.5 |
+| Mark position | the change's first line's **centre** in proportion to the file's logical lines over the track: (line − 0.5) ÷ lines (lines 9, 13 and 17 of 19 give 0.447, 0.658, 0.868; measured 0.448, 0.656, 0.865) | (line − 1) ÷ (lines − 1) over the pane's height (0.444, 0.667, 0.889) |
+
+Lines wrapped onto two rows still count once. The judges' "full-height
+scroller with grey ticks" is this knob.
+
+### 14.5 Ycode implementation (B5-MERGE, 2026-11-07)
+
+| Row | What Ycode does now |
+|---|---|
+| 125 | macOS: the sheet is a window of its own (`MergeSheetWindow`, borderless, a child of the workspace window, never constrained to a screen), attached under the toolbar; its height comes from the content box (33 above the parent's bottom, §13.3) plus 19, the 20-point buttons and 22, so in the 880-point window it ends at y 908 over whatever lies below; the parent is not moved or resized. The window is 32 points taller than the sheet, transparent above it, so §10's slide is not cut. Linux: the toolkit has no child window that may extend past its parent, so the sheet is still drawn inside the window and cut at its bottom (a request to OpenViews). |
+| 126 | Both IDEs: `buttonHeight` 20, `buttonGap` 19, `bottomMargin` 22, `buttonCornerRadius` 6; dark Cancel #2E2F30 / #DFDFDF, disabled Merge #252627 / #5B5C5C. Both buttons on one baseline (§14.2's note). |
+| 127 | A click in either pane, the gutter or on a token makes the panes the focused view (macOS: the canvas becomes first responder; Linux: `ConflictEditorShellModel.panesFocused`); the file list then draws `MergeSheetPalette.fileRow(selected:listFocused:)`: the grey selection (#464546 dark; light #DCDCDC, Ycode's choice) and the red badge #FF4245 with a white letter. A click in the list brings the focus back. The sheet opens with the list focused. |
+| 128 | Not changed: the Choose menu is the system's menu on macOS and the toolkit's on Linux; their click feedback (the mouse-down highlight, then the blink) is theirs. |
+| 129 | Both IDEs: in dark an 11-point knob (#A2A2A2, x 1 in the strip) over the visible part of the track (3 inside the pane's top and bottom; the whole track when the file fits), marks #FDB9B5 / #D4D4D4 at (line − 0.5) ÷ lines of the right pane's logical lines (`rulerMarks`, `rulerMarkY`, `rulerKnob`). Light keeps §4.4's strip without a knob. |
+| 130 | The alert's and the sheet's `MergeButton`s and drawn controls answer the accessibility hit test (an `NSControl` without a cell answered nothing). `MergeSheetR5UITests` runs the capture driver's search (§13.2: application element, children only, role and title) and its press in a separate process (`xcrun swift`) against the test's own application, with the window ordered in off every display: Merge is found at application → window → sheet → button, enabled, with the press action, its frame covering the drawn button (AppKit adds a point on each side, as the reference's 82 × 22), the default and cancel attributes, and the press opens the sheet in 0.3 ms; the sheet's Cancel and Merge are found the same way. Off every display the window server's hit test finds no window, so the hit test is checked through AppKit's own (`accessibilityHitTest`). |
+
 ## Open questions
 
 Each has a Ycode answer in §12, marked "Ycode's choice, open question".
 
 
-1. The sheet's height rule and its bottom margin. In an 880-point window
-   the sheet runs past the window's bottom edge. Capture the sheet in a
-   taller window (1000+) to see the button row whole and whether the
-   sheet's height is fixed or follows the window.
+1. The sheet's height rule. Round 5 (§14.1) saw the whole sheet in an
+   880-point window: 856 tall, 28 past the window, its bottom margin 22
+   below the buttons. Still open: whether the height is fixed or follows
+   the window (capture it in a 1000+ window), and what happens when the
+   screen has no room below the window.
 2. The buttons' height; whether Merge becomes the default (accent) button
    once every conflict is decided.
 3. What the window shows after Merge (the commit, the navigator's state,
@@ -556,6 +723,10 @@ Each has a Ycode answer in §12, marked "Ycode's choice, open question".
     and 0.33 (toolbar glyphs) of the active value before the veil, from
     one alert and one sheet in dark; light appearance not captured with
     the new rule in mind.
+12. The reference alert's full accessibility tree (§13.2): the sheet's
+    role and subrole, the order of its children, and the values of its
+    default-button and cancel-button attributes. Capture it with the
+    capture tool's `tree` (scope app, depth 4) while the alert is up.
 
 ## Evidence
 
@@ -570,3 +741,7 @@ Each has a Ycode answer in §12, marked "Ycode's choice, open question".
 | §12 | — | Ycode's design and choices (B3-MERGE); the git side: git's documentation (level 1) |
 | git side of a merge | 1 | git documentation, as in `source-control.md` |
 | §13: modal state, alert accessibility, sheet height, dark colours, tokens, Choose menu hover, jump bar and footers | 3 | Council round 4 stills `01-scm-repositories`, `02-merge-start-alert`, `03-conflict-at-rest` and recording `04-conflict-choose-right` of both apps (dark); region colours, colour runs, per-frame highlight detection; the accessibility gap from the capture session's notes |
+| §13.2 (round 5): the driver's search path | — | The capture tool's own accessibility driver and session runner (our code, read in the dirty room): its search roots, breadth-first walk over the children attribute, match keys and press call |
+| §13.2: the reference's Merge button as found (role, title, frame, action, press time) | 3 | The round 5 conflict manifest's result for the accessibility press |
+| §13.2: default and cancel button attributes, static texts in alerts | 1 | AppKit accessibility documentation (`NSAccessibility` protocol) |
+| §14: the sheet below the window, the buttons, Choose Right's row, badge, highlight and fade timing, the ruler in dark | 3 | Council round 5 stills `02-merge-start-alert`, `03-conflict-at-rest`, `04-conflict-choose-right-after` (app mode with a 60-point margin) and recording `04-conflict-choose-right` (120 fps) of both apps, dark; vertical and horizontal colour runs, per-frame samples of the file row, its badge and the menu item, timed against the driver's posted clicks |

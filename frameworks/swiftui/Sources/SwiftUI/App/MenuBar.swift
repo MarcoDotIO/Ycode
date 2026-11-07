@@ -412,7 +412,10 @@ package final class MenuBarController {
                                     },
                                     onDismiss: {
                                         guard let me else { return }
-                                        if me.openIndex == i { me.openIndex = nil }
+                                        if me.openIndex == i {
+                                            me.openIndex = nil
+                                            me.lastMenuClosed()
+                                        }
                                     })
         handle = h
         if h == nil { openIndex = nil }
@@ -422,6 +425,14 @@ package final class MenuBarController {
         handle?.dismiss()
         handle = nil
         openIndex = nil
+    }
+
+    /// B5-OPENVIEWS: an on-demand menu bar hides when its last menu closes,
+    /// unless the pointer is over it.
+    func lastMenuClosed() {
+        guard let state = services?.windowChrome, state.menuBarOnDemand else { return }
+        if let p = state.lastPointer, p.y <= MenuBarMetrics.height { return }
+        state.menuBarRevealed = false
     }
 
     package func toggle(_ i: Int) {
@@ -441,6 +452,9 @@ package final class MenuBarController {
 struct MenuBarView: View {
     let model: CommandsModel
     let actions: AppCommandActions
+    /// B5-OPENVIEWS: an on-demand bar over the top of the window, shown
+    /// while `menuBarRevealed` or a menu is open.
+    var onDemand: WindowChromeState?
     @Environment(\._windowServices) private var services
     @Environment(\.colorScheme) private var scheme
     @State private var controller = MenuBarController()
@@ -454,7 +468,7 @@ struct MenuBarView: View {
         while c.refs.count < menus.count { c.refs.append(NodeRef()) }
         services?.menuBar = c
         let palette = ControlPalette(scheme)
-        return HStack(spacing: 0) {
+        let bar = HStack(spacing: 0) {
             ForEach(Array(menus.enumerated()), id: \.offset) { pair in
                 MenuBarTitle(title: pair.element.title, index: pair.offset, isAppMenu: pair.offset == 0, controller: c)
                     .modifier(NodeCaptureModifier(ref: c.refs[pair.offset]))
@@ -464,9 +478,21 @@ struct MenuBarView: View {
         .padding(.horizontal, 4)
         .frame(maxWidth: .infinity)
         .frame(height: MenuBarMetrics.height)
-        .background(palette.barBackground)
+        .background(onDemand == nil ? palette.barBackground : palette.barBackground.opacity(0.97))
         .overlay(alignment: .bottom) { Rectangle().fill(palette.separator).frame(height: 1 / 3).allowsHitTesting(false) }
         .accessibilityControl(.menuBar, children: .contain)
+        if let onDemand {
+            // On demand: laid out at the top so menus open under their
+            // titles, faded in and out, and taking no presses while hidden.
+            let shown = onDemand.menuBarRevealed || c.openIndex != nil
+            return AnyView(bar
+                .shadow(color: Color.black.opacity(shown ? 0.12 : 0), radius: 3, y: 1)
+                .opacity(shown ? 1 : 0)
+                .animation(.easeOut(duration: 0.15), value: shown)
+                .allowsHitTesting(shown)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top))
+        }
+        return AnyView(bar)
     }
 }
 

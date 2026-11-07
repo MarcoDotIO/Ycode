@@ -4,7 +4,7 @@ import Testing
 @testable import YcodeIDECore
 @testable import YcodeUI
 
-/// Settings ▸ Simulators ▸ Camera (specs/simulator/camera.md "Ycode
+/// The simulators' camera, set in the device window (specs/simulator/camera.md "Ycode
 /// implementation", specs/ide/run.md): off by default and not passed; once
 /// chosen, every run passes `--camera <mode>` (the device keeps the last value).
 @MainActor @Suite struct CameraSettingTests {
@@ -19,16 +19,19 @@ import Testing
         var s = RemoteSimulatorSettings.load(t.defaults)
         #expect(s.camera == "off" && !s.cameraChosen)
         #expect(!RemoteSimulator(settings: s).runCommand(app: app, bundleID: "dev.ycode.CameraProbe").contains("--camera"))
-        #expect(pane.rowTitles.contains("Camera"))
-        pane.choose("Host webcam", inRow: "Camera")
+        // The camera is a per-device setting: the device window's Settings
+        // inspector holds it (R5.5), not the simulator-host page.
+        #expect(!pane.rowTitles.contains("Camera"))
+        let camera = DevicesController.cameraSetting(t.defaults)
+        camera.set("on")
         s = RemoteSimulatorSettings.load(t.defaults)
         #expect(s.camera == "on" && s.cameraChosen)
         #expect(RemoteSimulator(settings: s).runCommand(app: app, bundleID: "dev.ycode.CameraProbe")
             .hasSuffix(" '--camera' 'on'"))
-        pane.choose("Synthetic pattern", inRow: "Camera")
+        camera.set("synthetic")
         #expect(RemoteSimulatorSettings.load(t.defaults).camera == "synthetic")
         // Turned off again: said explicitly, so the device forgets its camera.
-        pane.choose("Off", inRow: "Camera")
+        camera.set("off")
         s = RemoteSimulatorSettings.load(t.defaults)
         #expect(s.camera == "off" && s.cameraChosen)
         #expect(RemoteSimulator(settings: s).cameraArguments == ["--camera", "off"])
@@ -39,7 +42,7 @@ import Testing
 }
 
 /// Device Hub ▸ a Ycode simulator ▸ Settings ▸ Camera (specs/ide/devices.md
-/// §Camera): the same setting as Settings ▸ Simulators, on Ycode rows only.
+/// §Camera): the same setting as Settings ▸ Components ▸ Simulator Host, on Ycode rows only.
 @MainActor @Suite struct CameraDevicesTests {
     @Test func ycodeRowsShowTheSharedCameraSetting() {
         let t = TestDefaults("camera-devices")

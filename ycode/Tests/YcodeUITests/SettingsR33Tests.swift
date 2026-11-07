@@ -222,9 +222,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             pane.chooseAppearance(.dark)
             #expect(p.appearance == .dark && pane.appearanceButtons.map(\.state) == [.off, .off, .on])
             #expect(pane.preview.string.contains("struct Greeter"))
-            #expect(pane.rowTitles.first == "Theme")
-            #expect(Array(pane.rowTitles.dropFirst().prefix(9)) == ["Plain Text", "Comments", "Documentation Comments", "Strings", "Numbers",
-                                                                    "Keywords", "Preprocessor Statements", "Attributes", "Type Names"])
+            // R5.1: Theme and Name, then a colour row per element.
+            #expect(Array(pane.rowTitles.prefix(2)) == ["Theme", "Name"])
+            #expect(Array(pane.rowTitles.dropFirst(2).prefix(9)) == ["Foreground", "Comments", "Documentation Comments", "Strings", "Numbers",
+                                                                     "Keywords", "Preprocessor Statements", "Attributes", "Type Names"])
             pane.chooseTheme("Ycode Dusk")
             #expect(p.themeName == "Ycode Dusk")
             pane.duplicateClicked()

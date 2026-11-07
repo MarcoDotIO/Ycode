@@ -393,7 +393,8 @@ struct ScriptedEngine: BuildEngine {
         #expect(sections[0].rows[0].value == .field("Greeting.swift"))
         #expect(sections[0].rows[1].value == .popUp("Default - Swift Source"))
         #expect(sections[1].rows.map(\.key) == ["Text Encoding", "Line Endings", "Indent Using", "Widths"])
-        #expect(sections[1].rows[0].value == .popUp(WorkspaceChrome.textEncodingItems[0]))
+        // "No Explicit …" titles are grey, as on macOS (cross-platform-parity.md §5).
+        #expect(sections[1].rows[0].value == .popUp(WorkspaceChrome.textEncodingItems[0], dimmed: true))
     }
 
     @Test func findAndIssueRows() throws {

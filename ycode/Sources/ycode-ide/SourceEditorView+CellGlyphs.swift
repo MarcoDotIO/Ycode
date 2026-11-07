@@ -41,7 +41,7 @@ extension SourceEditorPainter {
 
     func drawRuns(_ ctx: inout GraphicsContext, _ runs: [EditorRun], at x: CGFloat, y: CGFloat, font f: Font) {
         guard runs.contains(where: { EditorCellCharacters.contains($0.text) }) else {
-            ctx.draw(text(runs).font(f), at: CGPoint(x: x, y: y), anchor: .topLeading)
+            ctx.draw(styled(text(runs)), at: CGPoint(x: x, y: y), anchor: .topLeading)
             return
         }
         let layout = controller.layout
@@ -59,7 +59,7 @@ extension SourceEditorPainter {
             for s in shapes { ctx.fill(Path(s.rect), with: .color(s.color)) }
             shapes = []
             guard !pending.isEmpty else { return }
-            ctx.draw(text(pending).font(f), at: CGPoint(x: pendingX, y: y), anchor: .topLeading)
+            ctx.draw(styled(text(pending)), at: CGPoint(x: pendingX, y: y), anchor: .topLeading)
             pending = []
         }
         for r in runs {

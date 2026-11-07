@@ -55,6 +55,10 @@ public struct PlatformSettings: Sendable, Equatable {
     public var contentSizeIndex = 3
     public var localeIdentifier = "en_US"
     public var timeZoneIdentifier: String?
+    /// Scroll bars appear while scrolling (true) or always (false)
+    /// (B5-OPENVIEWS; GNOME's overlay-scrolling, `scrollers = overlay |
+    /// always`, OV_SCROLLERS).
+    public var overlayScrollers = true
 
     public init() {}
 
@@ -92,6 +96,10 @@ public struct PlatformSettings: Sendable, Equatable {
             contentSizeIndex = Self.contentSizeIndex(forTextScale: s)
         case "locale":
             localeIdentifier = raw.trimmingCharacters(in: .whitespaces)
+        case "scrollers", "scroll-bars":
+            if ["always", "legacy", "visible"].contains(v) { overlayScrollers = false }
+            else if ["overlay", "automatic", "when-scrolling"].contains(v) { overlayScrollers = true }
+            else { return false }
         default:
             return false
         }
@@ -116,7 +124,7 @@ public struct PlatformSettings: Sendable, Equatable {
             ("OV_REDUCE_TRANSPARENCY", "reduce-transparency"),
             ("OV_DIFFERENTIATE_WITHOUT_COLOR", "differentiate-without-color"), ("OV_INVERT_COLORS", "invert-colors"),
             ("OV_BOLD_TEXT", "bold-text"), ("OV_BUTTON_SHAPES", "button-shapes"), ("OV_TEXT_SCALE", "text-scale"),
-            ("OV_CONTENT_SIZE", "content-size"), ("OV_LOCALE", "locale"),
+            ("OV_CONTENT_SIZE", "content-size"), ("OV_LOCALE", "locale"), ("OV_SCROLLERS", "scrollers"),
         ]
         for (name, key) in map { if let v = env[name], !v.isEmpty { apply(key: key, value: v) } }
     }
@@ -282,6 +290,7 @@ public final class DesktopSettingsReader {
             if portalValues["org.freedesktop.appearance contrast"] == "1" { s.increasedContrast = true }
             if portalValues["org.gnome.desktop.a11y.interface high-contrast"] == "true" { s.increasedContrast = true }
             if portalValues["org.gnome.desktop.interface enable-animations"] == "false" { s.reduceMotion = true }
+            if portalValues["org.gnome.desktop.interface overlay-scrolling"] == "false" { s.overlayScrollers = false }
             if let f = portalValues["org.gnome.desktop.interface text-scaling-factor"].flatMap(Double.init) {
                 s.contentSizeIndex = PlatformSettings.contentSizeIndex(forTextScale: f)
             }
@@ -324,6 +333,7 @@ package final class PortalSettings {
     static let keys: Set<String> = ["org.freedesktop.appearance color-scheme", "org.freedesktop.appearance contrast",
                                     "org.gnome.desktop.interface text-scaling-factor",
                                     "org.gnome.desktop.interface enable-animations",
+                                    "org.gnome.desktop.interface overlay-scrolling",
                                     "org.gnome.desktop.a11y.interface high-contrast"]
     let tool: String
     private var monitorProcess: Process?

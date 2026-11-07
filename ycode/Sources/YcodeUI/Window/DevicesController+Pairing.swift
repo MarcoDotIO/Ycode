@@ -344,11 +344,11 @@ extension DevicesController {
     @objc public func newVisionDeviceChosen(_ sender: Any?) { presentNewVisionDevice() }
 
     /// Whether Add Device can create Apple Vision Pros (a visionOS runtime
-    /// root is set up in Settings ▸ Simulators).
+    /// root is set up in Settings ▸ Components ▸ Simulator Host).
     public var canCreateVisionDevices: Bool { pairing.createDevice != nil && !(pairing.runtimeChoices?("visionOS") ?? []).isEmpty }
 
     /// Whether Add Device can create watches and paired phones (a watchOS
-    /// runtime root is set up in Settings ▸ Simulators).
+    /// runtime root is set up in Settings ▸ Components ▸ Simulator Host).
     public var canCreateWatches: Bool { pairing.createDevice != nil && !(pairing.runtimeChoices?("watchOS") ?? []).isEmpty }
 
     // MARK: Forms

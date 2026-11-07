@@ -301,6 +301,10 @@ if FileManager.default.fileExists(atPath: Context.packageDirectory + "/../framew
                                                           .product(name: "OVPlatform", package: "swiftui"),
                                                           .product(name: "OVDBus", package: "swiftui")]),
     ]
+    // The device window's toolbar and inspector are drawn by OpenViews (cross-platform-parity.md §13).
+    if let i = package.targets.firstIndex(where: { $0.name == "ycode-sim-viewer" }) {
+        package.targets[i].dependencies += ["YcodeRemoteViewer", .product(name: "SwiftUI", package: "swiftui"), .product(name: "OVRender", package: "swiftui")]
+    }
 }
 #else
 package.products += [.executable(name: "ycode-ide", targets: ["ycode-ide"])]

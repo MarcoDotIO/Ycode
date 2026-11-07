@@ -326,6 +326,7 @@ struct StepperControl: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\._formColumnWidth) private var columnWidth
+    @Environment(\._desktopChrome) private var desktop
     @State private var pressed: Int?
     @State private var isFocused = false
 
@@ -338,11 +339,12 @@ struct StepperControl: View {
         let on = enabled && isEnabled && action != nil
         let editing = onEditingChanged
         let compact = columnWidth != nil
-        return Image(systemName: compact ? (index == 0 ? "chevron.down" : "chevron.up") : symbol)
-            .font(compact ? .system(size: 7, weight: .bold) : nil)
+        let size = desktop && !compact ? DesktopControlMetrics.stepperSize : Self.compactSize
+        return Image(systemName: compact || desktop ? (index == 0 ? "chevron.down" : "chevron.up") : symbol)
+            .font(compact || desktop ? .system(size: 7, weight: .bold) : nil)
             .foregroundStyle(on ? AnyShapeStyle(Color.primary) : AnyShapeStyle(palette.placeholder))
-            .frame(width: compact ? Self.compactSize.width : StepperMetrics.size.width / 2,
-                   height: compact ? Self.compactSize.height / 2 : StepperMetrics.size.height)
+            .frame(width: compact || desktop ? size.width : StepperMetrics.size.width / 2,
+                   height: compact || desktop ? size.height / 2 : StepperMetrics.size.height)
             .background { if pressed == index { palette.subtleFill } }
             .contentShape(Rectangle())
             .gesture(ControlPressGesture(onPressed: { p in
@@ -355,7 +357,19 @@ struct StepperControl: View {
     var body: some View {
         let palette = ControlPalette(scheme)
         Group {
-            if columnWidth != nil {
+            if desktop && columnWidth == nil {
+                // B5-OPENVIEWS: the macOS IDE's stepper (17 × 20, up over
+                // down on a faint rounded fill; DesktopControls.swift).
+                let size = DesktopControlMetrics.stepperSize
+                VStack(spacing: 0) {
+                    half(1, symbol: "plus", enabled: canIncrement, action: onIncrement)
+                    half(0, symbol: "minus", enabled: canDecrement, action: onDecrement)
+                }
+                .frame(width: size.width, height: size.height)
+                .background(DesktopControlMetrics.stepperFill(scheme), in: RoundedRectangle(cornerRadius: 5))
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .focusRing(isFocused, RoundedRectangle(cornerRadius: 5))
+            } else if columnWidth != nil {
                 VStack(spacing: 0) {
                     half(1, symbol: "plus", enabled: canIncrement, action: onIncrement)
                     half(0, symbol: "minus", enabled: canDecrement, action: onDecrement)

@@ -133,7 +133,7 @@ func writeInfoPlist(_ app: URL, id: String, exe: String) throws {
         // Not configured: a clear message, nothing run.
         let s2 = WorkspaceSession(model: try WorkspaceModel(url: try WindowSnapshotTests().samplePackage()))
         await s2.runOnRemoteSimulator(app: app, remote: RemoteSimulator(settings: RemoteSimulatorSettings()))
-        #expect(s2.console.contains("Settings ▸ Simulators"))
+        #expect(s2.console.contains("Settings ▸ Components ▸ Simulator Host"))
     }
 
     @Test func settingsPaneAndDestination() throws {

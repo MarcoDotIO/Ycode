@@ -62,6 +62,8 @@ public enum SDLConst {
     public static let windowResizable: UInt64 = 0x20
     public static let windowHighPixelDensity: UInt64 = 0x2000
     public static let pixelFormatXRGB8888: UInt32 = 0x1616_1804
+    /// R, G, B, A bytes in memory order (SDL_PIXELFORMAT_ABGR8888 on little-endian hosts).
+    public static let pixelFormatABGR8888: UInt32 = 0x1676_2004
     public static let pixelFormatNV12: UInt32 = 0x3231_564E
     public static let textureStreaming: Int32 = 1
     public static let blendModeBlend: UInt32 = 1

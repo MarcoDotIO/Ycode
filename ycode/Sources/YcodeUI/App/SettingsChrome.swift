@@ -221,6 +221,9 @@ final class SettingsSidebarCellView: NSTableCellView {
         let selected = backgroundStyle == .emphasized
         symbol.contentTintColor = selected ? .white : .controlAccentColor
         label.textColor = selected ? .white : .labelColor
+        // The selected row's label is semibold (R5.3).
+        label.font = .systemFont(ofSize: SettingsMetrics.fontSize,
+                                 weight: selected && SettingsTitleR5.selectedSidebarLabelIsSemibold ? .semibold : .regular)
     }
 }
 

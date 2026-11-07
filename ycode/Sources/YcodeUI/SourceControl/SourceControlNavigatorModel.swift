@@ -19,7 +19,10 @@ public enum SourceControlNavigatorModel {
                                    integration: GitRepository.IntegrationState = .none) -> [OutlineItem] {
         let rows = changes.map { c -> OutlineItem in
             let name = URL(fileURLWithPath: c.path).deletingPathExtension().lastPathComponent
-            let item = OutlineItem(title: name, symbol: symbol(for: c.path))
+            // The project navigator's file glyph and colour (both IDEs;
+            // `cross-platform-parity.md` §7).
+            let item = OutlineItem(title: name, symbol: symbol(for: c.path),
+                                   tint: OutlineItem.color(WorkspaceChrome.iconTint(kind: .file, name: c.path)))
             item.badge = c.status.rawValue
             item.scmKey = "change:" + c.path
             return item
@@ -133,13 +136,9 @@ public enum SourceControlNavigatorModel {
         path.hasPrefix(root.path + "/") ? String(path.dropFirst(root.path.count + 1)) : path
     }
 
+    /// A changed file's glyph: the project navigator's for its type
+    /// (never a trademark-shaped symbol; `WorkspaceChrome.fileSymbol`).
     static func symbol(for path: String) -> String {
-        switch URL(fileURLWithPath: path).pathExtension {
-        case "swift": "swift"
-        case "xcodeproj", "xcworkspace": "hammer"
-        case "plist", "json", "xcscheme": "doc.text"
-        case "": "folder"
-        default: "doc"
-        }
+        URL(fileURLWithPath: path).pathExtension.isEmpty ? "folder" : WorkspaceChrome.fileSymbol(path)
     }
 }

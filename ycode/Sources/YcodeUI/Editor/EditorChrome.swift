@@ -376,49 +376,38 @@ extension MinimapView {
         var out: [[Run]] = []
         var lineStart = 0
         let length = ns.length
-        let cols = max(8, columns)
+        let tab = max(1, tabWidth)
         while lineStart <= length {
             var end = lineStart
             while end < length, ns.character(at: end) != 10 { end += 1 }
-            let line = ns.substring(with: NSRange(location: lineStart, length: end - lineStart))
-            let indent = EditorMetrics.wrappedIndent(of: Substring(line), tabWidth: tabWidth)
-            var row: [Run] = []
-            var col = 0
+            // The line with tabs expanded, each cell with its colour and
+            // whether white space there keeps a token's bar open.
+            var chars: [Character] = []
+            var keys: [NSColor] = []
+            var joins: [Bool] = []
             var i = lineStart
-            var leading = true
-            func flush() { out.append(row); row = [] }
             while i < end {
                 var range = NSRange()
                 let color = (storage.attribute(.foregroundColor, at: i, effectiveRange: &range) as? NSColor) ?? Theme.textColor
                 let runEnd = min(end, NSMaxRange(range))
-                var open = false
-                var runCol = 0
-                var inkEnd = 0
-                func closeRun() {
-                    if open, inkEnd > runCol { row.append(Run(column: runCol, length: inkEnd - runCol, color: color)) }
-                    open = false
-                }
                 while i < runEnd {
                     let c = ns.character(at: i)
-                    if wraps, col >= cols {
-                        closeRun()
-                        flush()
-                        col = min(indent, cols / 2)
-                    }
-                    if c == 32 || c == 9 {
-                        if leading || !tokens.contains(i) { closeRun() }
-                        col += c == 9 ? tabWidth - col % max(1, tabWidth) : 1
-                    } else {
-                        leading = false
-                        if !open { open = true; runCol = col }
-                        col += 1
-                        inkEnd = col
+                    let n = c == 9 ? tab - chars.count % tab : 1
+                    for _ in 0..<n {
+                        chars.append(c == 9 || c == 32 ? " " : (UnicodeScalar(c).map(Character.init) ?? "x"))
+                        keys.append(color)
+                        joins.append(tokens.contains(i))
                     }
                     i += 1
                 }
-                closeRun()
             }
-            flush()
+            // The text's own rows (`editor-area.md` F.1, G.3, row 116).
+            let line = ns.substring(with: NSRange(location: lineStart, length: end - lineStart))
+            let indent = EditorMetrics.wrappedIndent(of: Substring(line), tabWidth: tabWidth)
+            let w = wraps && chars.count > max(8, columns) ? MinimapRows.wrap(chars, columns: columns, indent: indent) : (starts: [], indent: 0)
+            for row in MinimapRows.rows(chars: chars, keys: keys, joins: joins, starts: w.starts, indent: w.indent) {
+                out.append(row.map { Run(column: $0.column, length: $0.length, color: $0.key) })
+            }
             lineStart = end + 1
         }
         return out

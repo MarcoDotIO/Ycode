@@ -83,7 +83,7 @@ public enum RuntimeOwner: Sendable, Equatable, Hashable, Codable {
     /// Copied or installed by Ycode into its own data folder (this folder).
     case ycode(folder: String)
     /// A runtime root on a host that Ycode did not copy (named in the host's
-    /// configuration or in Settings ▸ Simulators): listed, never removed.
+    /// configuration or in Settings ▸ Components ▸ Simulator Host): listed, never removed.
     case external
 }
 

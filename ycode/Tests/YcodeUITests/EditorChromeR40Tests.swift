@@ -53,7 +53,7 @@ import YcodeBuild
         #expect(glyph.symbol == "exclamationmark.triangle.fill" && glyph.title.isEmpty)   // no "Issues" text
         // Any error in the set: the error glyph.
         wc.session.packageIssues.append(Diagnostic(severity: .error, message: "missing return", location: .init(file: model, line: 3)))
-        #expect(wc.editor.jumpBarIssueGlyph?.symbol == "xmark.octagon.fill")
+        #expect(wc.editor.jumpBarIssueGlyph?.symbol == "xmark.circle.fill")   // G.8: a red circle with a white cross
         #expect(wc.editor.jumpBarIssueTitles == ["Value is never read", "Missing return"])   // capitalized (§5.2 item 3)
     }
 

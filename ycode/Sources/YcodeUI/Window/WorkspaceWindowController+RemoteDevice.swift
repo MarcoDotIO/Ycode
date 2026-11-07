@@ -40,14 +40,14 @@ extension WorkspaceWindowController {
         }
         // Start / Shut Down from the hub (device-hub.md "Ycode implementation").
         c.startDevice = { [weak self] row in
-            guard let remote = remoteFor(row) else { return (false, "Set the remote simulator in Settings ▸ Simulators first.") }
+            guard let remote = remoteFor(row) else { return (false, "Set the remote simulator in Settings ▸ Components ▸ Simulator Host first.") }
             if busy(remote) { return (false, "\(row.name) is running an app.") }
             RemoteDeviceSessions.shared.output = { [weak self] line in self?.session.appendConsole(line + "\n", kind: .debugger) }
             self?.session.appendConsole("Ycode: starting \(row.name) on \(remote.settings.destination)\n", kind: .debugger)
             return RemoteDeviceSessions.shared.start(remote) ? (true, "Started") : (false, "\(row.name) could not be started.")
         }
         c.shutDownDevice = { [weak self] row, force in
-            guard let remote = remoteFor(row) else { return (false, "Set the remote simulator in Settings ▸ Simulators first.") }
+            guard let remote = remoteFor(row) else { return (false, "Set the remote simulator in Settings ▸ Components ▸ Simulator Host first.") }
             if RemoteDeviceSessions.shared.isRunning(remote) {
                 await RemoteDeviceSessions.shared.shutDown(remote, force: force)
                 return (true, "Shut down")
@@ -74,7 +74,7 @@ extension WorkspaceWindowController {
             let fromViewer = c?.headsetSettings.simulatorHostFromViewer ?? ""
             return .sshSocket(destination: fromViewer.isEmpty ? remote.settings.destination : fromViewer, socket: remote.displaySocketPath)
         }
-        // The camera of Ycode's simulators (camera.md "Ycode implementation"): the same setting as Settings ▸ Simulators.
+        // The camera of Ycode's simulators (camera.md "Ycode implementation"): the same setting as Settings ▸ Components ▸ Simulator Host.
         c.cameraSetting = DevicesController.cameraSetting(defaults)
         // Pairs of phones and watches (device-pairing.md §13).
         configureRemotePairing(c, defaults: defaults, ssh: ssh)
@@ -85,7 +85,7 @@ extension WorkspaceWindowController {
             if let ssh { settings.ssh = ssh }
             let all = RemoteSimulator.hub(settings)
             guard let remote = all.first(where: { "\(settings.destination):\($0.remoteDevicePath)" == row.identifier }) ?? all.first else {
-                return (false, "Set the remote simulator in Settings ▸ Simulators first.")
+                return (false, "Set the remote simulator in Settings ▸ Components ▸ Simulator Host first.")
             }
             let result = await self.session.eraseRemoteSimulator(remote: remote)
             if result.0 { c?.updateYcodeRemote(DeviceRow.ycodeRemote(remote, running: false)) }
@@ -97,7 +97,7 @@ extension WorkspaceWindowController {
             var settings = RemoteSimulatorSettings.load(defaults)
             if let ssh { settings.ssh = ssh }
             guard let remote = RemoteSimulator.hub(settings).first(where: { "\(settings.destination):\($0.remoteDevicePath)" == row.identifier }) else {
-                return (false, "Set the remote simulator in Settings ▸ Simulators first.")
+                return (false, "Set the remote simulator in Settings ▸ Components ▸ Simulator Host first.")
             }
             return await self.session.controlRemoteSimulator(remote: remote, words)
         }
@@ -108,7 +108,7 @@ extension WorkspaceWindowController {
             var settings = RemoteSimulatorSettings.load(defaults)
             if let ssh { settings.ssh = ssh }
             guard let remote = RemoteSimulator.hub(settings).first(where: { "\(settings.destination):\($0.remoteDevicePath)" == row.identifier }) else {
-                return (false, "Set the remote simulator in Settings ▸ Simulators first.")
+                return (false, "Set the remote simulator in Settings ▸ Components ▸ Simulator Host first.")
             }
             return await self.session.controlRemoteSimulator(remote: remote, words)
         }

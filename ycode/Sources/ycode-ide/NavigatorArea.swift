@@ -61,7 +61,8 @@ struct NavigatorColumn: View {
 }
 
 /// The selector capsule: one icon per navigator, 30 points apart; the
-/// selected one in a 30 × 24 pill, in the accent color.
+/// selected one in a 30 × 24 grey pill. Every glyph is in the label colour,
+/// as the macOS IDE draws them (`cross-platform-parity.md` §3; no accent).
 struct SelectorBar: View {
     var selected: Int
     var select: (Int) -> Void
@@ -77,11 +78,11 @@ struct SelectorBar: View {
                 Button { select(pair.offset) } label: {
                     ZStack {
                         if on {
-                            Capsule(style: .continuous).fill(c.selectorPill).frame(width: CGFloat(pill.width), height: CGFloat(pill.height))
+                            Capsule(style: .continuous).fill(c.panePill).frame(width: CGFloat(pill.width), height: CGFloat(pill.height))
                         }
                         Image(systemName: pair.element)
                             .font(.system(size: 14))
-                            .foregroundStyle(on ? c.accent : c.toolbarIcon)
+                            .foregroundStyle(c.selectorGlyph)
                     }
                     .frame(width: 30, height: CGFloat(WorkspaceChrome.selectorHeight))
                     .contentShape(Rectangle())
@@ -95,7 +96,7 @@ struct SelectorBar: View {
         .padding(.horizontal, 4)
         .frame(maxWidth: .infinity)
         .frame(height: CGFloat(WorkspaceChrome.selectorHeight))
-        .background { GlassCapsule(height: CGFloat(WorkspaceChrome.selectorHeight)) }
+        .background { PaneCapsule(height: CGFloat(WorkspaceChrome.selectorHeight)) }   // PaneStyle.swift
     }
 }
 
@@ -119,7 +120,7 @@ struct NavigatorFilterBar: View {
                     Image(systemName: "plus").font(.system(size: 13))
                     .foregroundStyle(c.secondaryLabel)
                     .frame(width: CGFloat(WorkspaceChrome.plusCircleWidth), height: h)
-                    .background { Capsule(style: .continuous).stroke(c.capsuleStroke, lineWidth: 1) }
+                    .background { PaneCapsule(height: h) }
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
@@ -130,7 +131,7 @@ struct NavigatorFilterBar: View {
                 .foregroundStyle(c.tertiaryLabel)
                 .help(ShellText.notInBeta(spec.left == .more ? "More" : "Add"))
                 .frame(width: CGFloat(WorkspaceChrome.plusCircleWidth), height: h)
-                .background { Capsule(style: .continuous).stroke(c.capsuleStroke, lineWidth: 1) }
+                .background { PaneCapsule(height: h) }
             }
             HStack(spacing: 3.5) {
                 // The lines in a circle and a chevron 1.5 after it, in the
@@ -155,7 +156,7 @@ struct NavigatorFilterBar: View {
             .padding(.leading, 6.5)
             .padding(.trailing, 9)
             .frame(height: h)
-            .background { Capsule(style: .continuous).stroke(c.capsuleStroke, lineWidth: 1) }
+            .background { PaneCapsule(height: h) }
         }
         .padding(.leading, CGFloat(WorkspaceChrome.filterBarLeading))
         .padding(.trailing, CGFloat(WorkspaceChrome.filterBarTrailing))
@@ -187,7 +188,7 @@ struct EmptyNavigator: View {
 // MARK: - The outline
 
 /// Rows of a navigator, drawn as the AppKit outline draws them
-/// (`WorkspaceChrome`): 22 points tall (taller for wrapped titles), 12
+/// (`WorkspaceChrome`): 22 points tall (taller for wrapped titles), 14
 /// points of indentation per level, the disclosure triangle at x 12, a
 /// 16-point icon at x 25 and the label at x 45. Up and Down move the
 /// selection; Right and Left expand and collapse.
@@ -286,8 +287,10 @@ struct OutlineRowView: View {
         }
         .opacity(row.isDimmed ? 0.55 : 1)
         .background {
+            // 22 tall, inset 10 on both sides, corners 8 (NavigatorRowView
+            // on macOS; `metrics.md` §12.1).
             if isSelected {
-                RoundedRectangle(cornerRadius: 5, style: .continuous).fill(isFocused ? colors.accent : c.rowSelection).padding(.horizontal, 6)
+                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(isFocused ? colors.accent : c.navigatorBand).padding(.horizontal, 10)
             }
         }
     }
@@ -298,14 +301,14 @@ struct OutlineRowView: View {
             // The line as the AppKit Find navigator shows it: one weight
             // (the match is the row's subject, not set apart).
             Text(verbatim: m.before + m.match + m.after)
-                .font(ShellFonts.row).foregroundStyle(c.label).lineLimit(row.lineLimit)
+                .font(ShellFonts.row).foregroundStyle(c.navigatorLabel).lineLimit(row.lineLimit)
         } else if let detail = row.detail {
             HStack(spacing: 6) {
-                Text(verbatim: row.title).font(row.isBold ? ShellFonts.rowBold : ShellFonts.row).foregroundStyle(c.label).lineLimit(1)
-                Text(verbatim: detail).font(ShellFonts.row).foregroundStyle(row.detailIsSecondary ? c.secondaryLabel : c.label).lineLimit(1)
+                Text(verbatim: row.title).font(row.isBold ? ShellFonts.rowBold : ShellFonts.row).foregroundStyle(c.navigatorLabel).lineLimit(1)
+                Text(verbatim: detail).font(ShellFonts.row).foregroundStyle(row.detailIsSecondary ? c.secondaryLabel : c.navigatorLabel).lineLimit(1)
             }
         } else {
-            Text(verbatim: row.title).font(row.isBold ? ShellFonts.rowBold : ShellFonts.row).foregroundStyle(c.label).lineLimit(row.lineLimit)
+            Text(verbatim: row.title).font(row.isBold ? ShellFonts.rowBold : ShellFonts.row).foregroundStyle(c.navigatorLabel).lineLimit(row.lineLimit)
         }
     }
 }
@@ -314,14 +317,15 @@ struct OutlineRowView: View {
 
 /// The Project navigator: the container row, its groups and files, with
 /// the core's initial expansion (`NavigatorTree.initiallyExpanded`).
-/// Selecting a file opens it.
+/// Selecting a file opens it; the open file's row is selected however it
+/// was opened (`WorkspaceShellModel.projectSelection`).
 struct ProjectNavigator: View {
     @Bindable var model: WorkspaceShellModel
 
     var body: some View {
         // Settings ▸ General ▸ File extensions applies at once.
         let _ = ShellPreferences.shared.revision
-        NavigatorOutline(rows: model.projectRows, selection: model.selection, select: { model.selection = $0 },
+        NavigatorOutline(rows: model.projectRows, selection: model.projectSelection, select: { model.selection = $0 },
                          toggle: { model.setExpanded($0, $1) }, target: "project navigator")
     }
 }

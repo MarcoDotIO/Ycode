@@ -265,23 +265,23 @@ import Testing
         let rep = try render(w)
         #expect(close(hex(rep, 11, 68), 0x007AFF, 3) && close(hex(rep, 169.5, 68), 0x007AFF, 3), "band \(String(hex(rep, 169.5, 68), radix: 16))")
         #expect(!close(hex(rep, 170.5, 68), 0x007AFF, 30) && !close(hex(rep, 9.5, 68), 0x007AFF, 30))
-        // Simulators: Components' navigation row opens it, with Components
-        // selected in the sidebar and as the title; its way back returns.
+        // Simulators: the Simulator Host row at the end of Components'
+        // "Other Components" opens it (R5.5), with Components selected in
+        // the sidebar and as the title; its way back returns.
         let components = try #require(SettingsWindowController.paneTitles.firstIndex(of: "Components"))
         wc.select(components)
         let pane = try #require(wc.pane(ComponentsSettingsPane.self))
         layout(w)
-        let row = try #require(pane.cards.first?.rowViews.first as? SettingsRowView)
-        #expect(row.label.stringValue == ComponentsSettingsPane.simulatorsRowTitle && (row.iconView as? SettingsRowIconView)?.icon == .simulator)
-        _ = row.accessibilityPerformPress()
+        let row = try #require(pane.rows.other.last)
+        #expect(row.title == SimulatorHostPage.title && row.kind == .simulatorHost)
+        pane.showInfo(row)
         #expect(wc.selectedPane == "Simulators" && wc.sidebar.selectedRow == components && wc.titleLabel.stringValue == "Components")
         let sims = try #require(wc.pane(SimulatorsSettingsPane.self))
         #expect(sims.rowTitles.contains("Lean boot"))
         wc.goBack()
         #expect(wc.selectedPane == "Components")
-        wc.show(pane: "Simulators")
+        wc.show(page: "Simulators")
         #expect(wc.selectedPane == "Simulators" && wc.sidebar.selectedRow == components)
-        wc.window?.orderOut(nil)
         w.close()
     }
 
@@ -292,8 +292,9 @@ import Testing
         defer { t.remove() }
         let (wc, w) = try makeWindow(t)
         let font = try #require(wc.titleLabel.font)
-        #expect(font.pointSize == 17)
-        #expect(NSFontManager.shared.weight(of: font) == NSFontManager.shared.weight(of: .systemFont(ofSize: 17, weight: .semibold)))
+        // 15 points since round 5 (R5.3), the same weight.
+        #expect(font.pointSize == 15)
+        #expect(NSFontManager.shared.weight(of: font) == NSFontManager.shared.weight(of: .systemFont(ofSize: 15, weight: .semibold)))
         #expect(dark(SettingsColors.title) == 0xE8E8E8)
         // R4.3.
         #expect(dark(SettingsColors.detail) == 0x1F1F1F && dark(SettingsColors.card) == 0x262626)

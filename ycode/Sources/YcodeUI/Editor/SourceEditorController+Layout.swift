@@ -36,7 +36,15 @@ extension SourceEditorController {
             }
         }
         let lane = scrollerLaneWidth
-        if minimapTrailing.constant != -lane { minimapTrailing.constant = -lane }
+        // The minimap covers the scroller's first 3 points and meets its
+        // 11-point lane: no darker strip between them (G.2, row 116).
+        let overlap = minimapWidthValue > 0 && lane >= CGFloat(EditorMetrics.minimapStrip) ? CGFloat(EditorMetrics.minimapStrip) : 0
+        if overlap != minimapOverlap {
+            let base = minimapWidthValue
+            minimapOverlap = overlap
+            minimapWidth.constant = base > 0 ? base + overlap : 0
+        }
+        if minimapTrailing.constant != -(lane - overlap) { minimapTrailing.constant = -(lane - overlap) }
         let header = -(lane + minimapWidthValue)
         if stickyHeaderTrailing.constant != header { stickyHeaderTrailing.constant = header }
         updateTextContainerWidth()
@@ -58,11 +66,12 @@ extension SourceEditorController {
         let visibleEnd = textView.convert(NSPoint(x: clip.bounds.maxX, y: 0), from: clip).x
         let end: CGFloat
         if minimapWidthValue > 0, !minimap.isHidden {
-            end = textView.convert(NSPoint(x: view.bounds.maxX - scrollerLaneWidth - minimapWidthValue, y: 0), from: view).x - CGFloat(EditorMetrics.textToMinimap)
+            end = textView.convert(NSPoint(x: minimapLeftEdge, y: 0), from: view).x - CGFloat(EditorMetrics.textToMinimap)
         } else {
             end = visibleEnd
         }
-        let width = max(40, min(end, visibleEnd) - textView.textContainerOrigin.x)
+        // A row's last cell may end a point past the edge (row 115).
+        let width = max(40, min(end, visibleEnd) - textView.textContainerOrigin.x) + CGFloat(EditorMetrics.wrapTolerance)
         tc.widthTracksTextView = false
         if abs(tc.size.width - width) > 0.5 { tc.size = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude) }
         let docWidth = clip.bounds.width + min(0, clip.bounds.minX)

@@ -181,7 +181,22 @@ extension AppHost {
         addWindow(w)
         w.setPhase(appPhase)
         w.update()
+        hoverFromFirstFrame(w, owner: owner, origin: origin, size: size)
         return handle
+    }
+
+    /// Council row 102 (B5-OPENVIEWS): the item under the pointer is
+    /// highlighted from the pop-up's first frame. The window system sends
+    /// the new window no pointer event until the pointer moves, so the
+    /// pointer's last place in the owner is given to the pop-up as a move.
+    private func hoverFromFirstFrame(_ w: WindowHost, owner: WindowHost, origin: CGPoint, size: CGSize) {
+        guard let p = owner.services.windowChrome.lastPointer else { return }
+        let local = CGPoint(x: p.x - origin.x, y: p.y - origin.y)
+        guard CGRect(origin: .zero, size: size).contains(local) else { return }
+        w.services.windowChrome.lastPointer = local
+        w.gestures.pointer(PointerSample(pointer: 0, phase: .moved, location: local, time: backend.now, isTouch: false),
+                           isPressed: false)
+        w.update()
     }
 
     /// Closes a pop-up window and the pop-ups it presented.

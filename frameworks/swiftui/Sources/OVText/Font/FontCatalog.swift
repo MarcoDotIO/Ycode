@@ -74,6 +74,8 @@ public final class FontCatalog: @unchecked Sendable {
     }
     private let state = Mutex(State())
     private let familyTable: Mutex<[FontDesignClass: [String]]>
+    /// Tracking adjustments per family (FontTracking.swift).
+    let trackingTable = Mutex<[String: FontTracking]>([:])
     /// Family names tried per design (see `defaultFamilies`).
     public var families: [FontDesignClass: [String]] { familyTable.withLock { $0 } }
 

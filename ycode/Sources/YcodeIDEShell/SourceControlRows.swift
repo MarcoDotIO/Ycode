@@ -46,31 +46,37 @@ public enum SourceControlRows {
     /// with the count, one row per change with its status letter.
     public static func changes(_ s: SourceControlSnapshot, collapsed: Set<String>) -> [OutlineRow] {
         guard s.repository != nil else { return [] }
-        var out = [header(s, collapsed: collapsed)]
+        var out = [header(s, collapsed: collapsed, repositories: false)]
         guard !collapsed.contains("repository") else { return out }
         let gid = "group:Uncommitted Changes"
         let open = !collapsed.contains(gid)
-        out.append(OutlineRow(id: gid, level: 1, title: "Uncommitted Changes", symbol: "square.and.pencil", tint: .secondary,
-                              isExpandable: !s.changes.isEmpty, isExpanded: open, trailing: String(s.changes.count)))
+        // The count right after the title, as the macOS navigator shows it
+        // (`cross-platform-parity.md` §7).
+        out.append(OutlineRow(id: gid, level: 1, title: "Uncommitted Changes", detail: String(s.changes.count), symbol: "square.and.pencil",
+                              tint: .accent, isExpandable: !s.changes.isEmpty, isExpanded: open, detailIsSecondary: true))
         guard open else { return out }
         for c in s.changes {
             out.append(OutlineRow(id: "change:" + c.path, level: 2, title: changeTitle(c.path, root: s.repository?.root),
-                                  symbol: WorkspaceChrome.fileSymbol(c.path), tint: .accent, opens: true, badge: c.status.rawValue))
+                                  symbol: WorkspaceChrome.fileSymbol(c.path), tint: .icon(WorkspaceChrome.iconTint(kind: .file, name: c.path)),
+                                  opens: true, badge: c.status.rawValue))
         }
         return out
     }
 
-    static func header(_ s: SourceControlSnapshot, collapsed: Set<String>) -> OutlineRow {
+    /// The repository row, regular weight as on macOS: an outline drive in
+    /// the accent colour over Changes, the grey filled drive over the
+    /// Repositories groups (navigators.md round 3 §2).
+    static func header(_ s: SourceControlSnapshot, collapsed: Set<String>, repositories: Bool) -> OutlineRow {
         OutlineRow(id: "repository", level: 0, title: repositoryName(s), detail: (s.currentBranch ?? "HEAD") + integrationSuffix(s.integration),
-                   symbol: RepositoriesViewStyle.repositorySymbol, tint: .secondary, isBold: true, isExpandable: true, isExpanded: !collapsed.contains("repository"),
-                   detailIsSecondary: true)
+                   symbol: repositories ? RepositoriesViewStyle.repositorySymbol : "externaldrive", tint: repositories ? .icon(.grey) : .accent,
+                   isExpandable: true, isExpanded: !collapsed.contains("repository"), detailIsSecondary: true)
     }
 
     /// The Repositories tree: Branches, Recents, Tags, Stashes, Remotes. A
     /// name with `/` sits in a folder per prefix component.
     public static func repositories(_ s: SourceControlSnapshot, collapsed: Set<String>) -> [OutlineRow] {
         guard s.repository != nil else { return [] }
-        var out = [header(s, collapsed: collapsed)]
+        var out = [header(s, collapsed: collapsed, repositories: true)]
         guard !collapsed.contains("repository") else { return out }
         // navigators.md round 3 §2: each group its own grey filled symbol,
         // a disclosure triangle even when empty.
@@ -78,19 +84,19 @@ public enum SourceControlRows {
             let id = "group:" + title
             let open = !collapsed.contains(id)
             out.append(OutlineRow(id: id, level: 1, title: title, symbol: RepositoriesViewStyle.groupSymbols[title] ?? "folder.fill",
-                                  tint: .secondary, isExpandable: true, isExpanded: open))
+                                  tint: .icon(.grey), isExpandable: true, isExpanded: open))
             if open { out += children(2) }
         }
         group("Branches", { foldered(s.branches.map(\.name), current: s.currentBranch, key: "branch:", symbol: "arrow.triangle.branch",
                                      level: $0, collapsed: collapsed) }, empty: s.branches.isEmpty)
-        group("Recents", { level in s.recentBranches.map { OutlineRow(id: "recent:" + $0, level: level, title: $0, symbol: "clock.arrow.circlepath", tint: .secondary) } },
+        group("Recents", { level in s.recentBranches.map { OutlineRow(id: "recent:" + $0, level: level, title: $0, symbol: "clock.arrow.circlepath", tint: .accent) } },
               empty: s.recentBranches.isEmpty)
         group("Tags", { foldered(s.tags.map(\.name), current: nil, key: "tag:", symbol: "tag", level: $0, collapsed: collapsed) }, empty: s.tags.isEmpty)
         group("Stashes", { level in
             s.stashes.map { line in
                 let ref = line.components(separatedBy: ": ").first ?? line
                 let rest = String(line.dropFirst(min(line.count, ref.count + 2)))
-                return OutlineRow(id: "stash:" + ref, level: level, title: rest.isEmpty ? ref : rest, symbol: "tray", tint: .secondary)
+                return OutlineRow(id: "stash:" + ref, level: level, title: rest.isEmpty ? ref : rest, symbol: "tray", tint: .accent)
             }
         }, empty: s.stashes.isEmpty)
         group("Remotes", { level in
@@ -99,7 +105,7 @@ public enum SourceControlRows {
                 let id = "remote:" + r.name
                 let names = s.remoteBranches.filter { $0.name.hasPrefix(r.name + "/") }.map { String($0.name.dropFirst(r.name.count + 1)) }
                 let open = !collapsed.contains(id)
-                rows.append(OutlineRow(id: id, level: level, title: r.name, detail: r.url, symbol: "cloud", tint: .secondary,
+                rows.append(OutlineRow(id: id, level: level, title: r.name, detail: r.url, symbol: "cloud", tint: .accent,
                                        isExpandable: !names.isEmpty, isExpanded: open, detailIsSecondary: true))
                 if open { rows += foldered(names, current: nil, key: "remoteBranch:\(r.name)/", symbol: "arrow.triangle.branch", level: level + 1, collapsed: collapsed) }
             }
@@ -122,7 +128,8 @@ public enum SourceControlRows {
             } else {
                 // No "(current)" and no marking: the repository row names
                 // the current branch (navigators.md round 3 §2).
-                leaves.append(OutlineRow(id: key + n, level: level, title: n, symbol: symbol, tint: .secondary, detailIsSecondary: true))
+                // The accent colour, as the macOS navigator's branch glyphs.
+                leaves.append(OutlineRow(id: key + n, level: level, title: n, symbol: symbol, tint: .accent, detailIsSecondary: true))
             }
         }
         var out: [OutlineRow] = []

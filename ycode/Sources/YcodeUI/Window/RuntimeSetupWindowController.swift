@@ -122,6 +122,11 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
             f.delegate = self
             f.identifier = .init(id)
             f.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+            // Drawn by `SetupFieldBox`, as the Linux IDE draws its fields (parity §11).
+            f.isBordered = false
+            f.drawsBackground = false
+            f.focusRingType = .none
+            f.cell?.isScrollable = true
         }
     }
 
@@ -281,19 +286,25 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
 
     @objc func targetChanged(_ sender: NSButton) { session.setUseHost(sender.tag == 1) }
 
+    /// Right-aligned labels, fields 320 wide (Ports 120) in the drawn field
+    /// style, the note under them: the same form as the Linux IDE's
+    /// (`RuntimeSetupLayout`, parity §11).
     private func hostChoices() -> NSView {
-        let grid = NSGridView(views: [[label("Host:"), hostField], [label("Data folder:"), dataField], [label("Link name:"), linkField],
-                                      [label("Ports (TCP/UDP):"), portsField],
-                                      [NSGridCell.emptyContentView, note("Ycode logs in with an ssh key only and never asks for a password. The data folder holds runtimes and devices; choose a volume with room for them (about 16 GB per iOS runtime).")]])
+        let L = RuntimeSetupLayout.self
+        let boxes = [(hostField, L.fieldWidth), (dataField, L.fieldWidth), (linkField, L.fieldWidth), (portsField, L.portsWidth)]
+            .map { SetupFieldBox(field: $0.0, width: $0.1) }
+        let grid = NSGridView(views: [[label("Host:"), boxes[0]], [label("Data folder:"), boxes[1]], [label("Link name:"), boxes[2]],
+                                      [label("Ports (TCP/UDP):"), boxes[3]],
+                                      [NSGridCell.emptyContentView, note(L.hostNote)]])
         grid.column(at: 0).xPlacement = .trailing
-        grid.rowAlignment = .firstBaseline
+        grid.rowAlignment = .none
+        for i in 0..<4 { grid.row(at: i).yPlacement = .center }
+        grid.row(at: 4).yPlacement = .top
         grid.rowSpacing = 8
         grid.identifier = .init("runtime-host-form")
-        for f in [hostField, dataField, linkField] { f.widthAnchor.constraint(equalToConstant: 320).isActive = true }
-        portsField.widthAnchor.constraint(equalToConstant: 120).isActive = true
         if let n = grid.cell(atColumnIndex: 1, rowIndex: 4).contentView as? NSTextField {
-            n.preferredMaxLayoutWidth = 320
-            n.widthAnchor.constraint(lessThanOrEqualToConstant: 320).isActive = true
+            n.preferredMaxLayoutWidth = L.fieldWidth
+            n.widthAnchor.constraint(lessThanOrEqualToConstant: L.fieldWidth).isActive = true
         }
         return SetupCentered(grid)
     }
@@ -697,5 +708,42 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         field.identifier = .init("runtime-confirm-command")
         a.accessoryView = field
         return a
+    }
+}
+
+/// A wizard field in the drawn style shared with the Linux IDE: 22 tall,
+/// radius 6, a 1-point border (`RuntimeSetupLayout`, `SimulatorHostPage`).
+final class SetupFieldBox: NSView {
+    let field: NSTextField
+
+    init(field: NSTextField, width: CGFloat) {
+        self.field = field
+        super.init(frame: .zero)
+        field.removeFromSuperview()
+        field.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(field)
+        let L = RuntimeSetupLayout.self
+        translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: width), heightAnchor.constraint(equalToConstant: L.fieldHeight),
+            field.leadingAnchor.constraint(equalTo: leadingAnchor, constant: L.fieldPadding),
+            field.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -L.fieldPadding),
+            field.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let p = NSBezierPath(roundedRect: r, xRadius: RuntimeSetupLayout.fieldRadius, yRadius: RuntimeSetupLayout.fieldRadius)
+        SettingsColors.dynamic(SimulatorHostPage.fieldFill).setFill()
+        p.fill()
+        SettingsColors.dynamic(SimulatorHostPage.fieldBorder).setStroke()
+        p.lineWidth = 1
+        p.stroke()
     }
 }

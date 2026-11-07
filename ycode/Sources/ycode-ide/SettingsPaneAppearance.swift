@@ -7,26 +7,23 @@ import YcodeIDECore
 import YcodeIDEShell
 import YcodeSyntax
 
-/// Settings ▸ Appearance: System, Light or Dark; the editor theme with a
-/// live preview; the selected user theme's colors and font sizes;
-/// Duplicate, Delete, Import… and Export… (`specs/ide/settings.md`
-/// §Appearance). Built-in themes are read-only.
+/// Settings ▸ Appearance, as the macOS IDE's (`specs/ide/settings.md`
+/// §Appearance, R5.1): a fixed top part (the Appearance card with the three
+/// window-on-wallpaper thumbnails, the bordered preview with line numbers
+/// and no wrapping, Theme / Fonts / Editor centred between two full-width
+/// separators) over a list that scrolls on its own: Theme (a Choose…
+/// push button) and Name, one 56-point colour row per element (a strength
+/// slider and a colour well), the theme file's buttons. Built-in themes are
+/// read-only.
 struct AppearanceSettingsPane: View {
+    @State private var segment = 0
     @State private var importing = false
     @State private var exporting = false
+    @State private var choosing = false
     @State private var failure: String?
     @Environment(\.colorScheme) private var scheme
 
-    /// The color rows: a title and the theme entry it edits (token kinds by
-    /// raw name; "foreground", "background", "selection", "currentLine"
-    /// are the theme's own colors).
-    static let colorRows: [(title: String, key: String)] = [
-        ("Plain Text", "foreground"), ("Comments", "comment"), ("Documentation Comments", "docComment"), ("Strings", "string"),
-        ("Numbers", "number"), ("Keywords", "keyword"), ("Preprocessor Statements", "preprocessor"), ("Attributes", "attribute"),
-        ("Type Names", "typeName"), ("Background", "background"), ("Selection", "selection"), ("Current Line", "currentLine"),
-    ]
-
-    /// The preview's code (Ycode's own sample).
+    /// The preview's code (Ycode's own sample, the macOS IDE's).
     static let previewCode = """
     /// A greeting, said once.
     struct Greeter {
@@ -42,55 +39,50 @@ struct AppearanceSettingsPane: View {
         let _ = ShellPreferences.shared.revision
         let prefs = Preferences.shared
         let theme = prefs.theme
-        let builtIn = EditorTheme.builtIns.contains { $0.name == theme.name }
         let palette = SourcePalette.forAppearance(dark: scheme == .dark, theme: theme)
-        SettingsForm {
-            SettingsSection {
-                SettingsContentRow { AppearanceChooser() }
+        let p = SettingsPalette(scheme)
+        let L = SettingsAppearanceLayout.self
+        let top = SettingsLayout.titleAreaHeight
+        VStack(spacing: 0) {
+            // The fixed part.
+            VStack(alignment: .leading, spacing: 0) {
+                AppearanceCard()
+                    .padding(.top, L.cardTop - top)
+                    .padding(.horizontal, SettingsLayout.cardInset)
+                ThemePreview(palette: palette, fontSize: ShellPreferences.fontSize)
+                    .padding(.top, L.previewTop - L.cardTop - L.cardHeight)
+                    .padding(.horizontal, SettingsLayout.cardInset)
+                SettingsPaneSeparator(height: L.separator1Height)
+                    .padding(.top, L.separator1Y - L.previewTop - L.previewHeight)
+                SettingsSegments(titles: L.segmentTitles, selection: $segment, target: "settings appearance segment")
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, L.segmentsTop - L.separator1Y - L.separator1Height)
+                SettingsPaneSeparator(height: L.separator2Height)
+                    .padding(.top, L.separator2Y - L.segmentsTop - L.segmentsSize.height)
             }
-            SettingsSection("Theme") {
-                PickerRow(title: "Theme", selection: setting(\.themeName), options: prefs.themes.map { ($0.name, $0.name) }, target: "settings theme")
-                SettingsContentRow { ThemePreview(palette: palette, fontSize: ShellPreferences.fontSize) }
-                SettingsRow("Theme file") {
-                    HStack(spacing: 6) {
-                        Button("Duplicate") { run { try prefs.duplicate(theme) } }.shellTarget("settings theme duplicate")
-                        Button("Delete") { prefs.deleteTheme(named: theme.name) }.disabled(builtIn).shellTarget("settings theme delete")
-                        Button("Import…") { importing = true }.shellTarget("settings theme import")
-                        Button("Export…") { exporting = true }.shellTarget("settings theme export")
+            .frame(height: L.listTop - top, alignment: .top)
+            // The list, scrolling on its own.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    switch segment {
+                    case 0: themeList(prefs, theme: theme, palette: palette, p)
+                    case 1: fontsList(prefs, theme: theme)
+                    default:
+                        SettingsSection(nil) {
+                            PickerRow(title: "Cursor style", selection: .constant("Vertical Bar"), options: [("Vertical Bar", "Vertical Bar")],
+                                      target: "settings cursor style")
+                        }
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    if let failure { SettingsNote(text: failure) }
                 }
+                .padding(.horizontal, SettingsLayout.cardInset)
+                .padding(.bottom, SettingsLayout.cardInset)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            SettingsSection("Colors", content: {
-                ForEach(Self.colorRows, id: \.key) { row in
-                    ThemeColorRow(title: row.title, key: row.key, theme: theme, shown: Self.shownColor(row.key, palette), editable: !builtIn)
-                        .id("\(theme.name)/\(row.key)")
-                }
-            }, footer: {
-                FootNote(text: builtIn ? "Built-in themes cannot be changed; duplicate one to edit it."
-                    : "Colors are #RRGGBB; an empty field uses the system color.")
-            })
-            SettingsSection("Fonts", content: {
-                DoubleStepperRow(title: "Editor font size", value: Binding(get: { ShellPreferences.fontSize }, set: { prefs.sourceFontSize = $0 }),
-                                 range: Preferences.fontSizeRange, format: { "\(Int($0)) pt" }, target: "settings font size")
-                DoubleStepperRow(title: "Theme font size", value: Binding(get: { theme.fontSize }, set: { v in
-                    prefs.editSelectedTheme { $0.fontSize = v }
-                }), range: Preferences.fontSizeRange, format: { "\(Int($0)) pt" }, target: "settings theme font size")
-                    .disabled(builtIn)
-                DoubleStepperRow(title: "Console font size", value: Binding(get: { theme.consoleFontSize }, set: { v in
-                    prefs.editSelectedTheme { $0.consoleFontSize = v }
-                }), range: Preferences.fontSizeRange, format: { "\(Int($0)) pt" }, target: "settings console font size")
-                    .disabled(builtIn)
-            }, footer: {
-                if prefs.sourceFontSize != nil {
-                    Button("Use the Theme\u{2019}s Size") { prefs.sourceFontSize = nil }.shellTarget("settings font size reset")
-                } else {
-                    FootNote(text: "The editor font size applies to every theme (View \u{25B8} Editor \u{25B8} Font Size changes it too).")
-                }
-            })
-            if let failure { SettingsNote(text: failure) }
+            .shellTarget("settings appearance list")
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(p.detail)
         .fileImporter(isPresented: $importing, allowedContentTypes: ThemeDocument.readableContentTypes) { result in
             guard case .success(let url) = result else { return }
             run { try prefs.importTheme(from: url) }
@@ -98,6 +90,86 @@ struct AppearanceSettingsPane: View {
         .fileExporter(isPresented: $exporting, document: exporting ? ThemeDocument(theme: theme) : nil, contentType: ThemeDocument.themeType,
                       defaultFilename: theme.fileName) { result in
             if case .failure(let e) = result { failure = "Could not export \u{201C}\(theme.name)\u{201D}: \(e.localizedDescription)" }
+        }
+    }
+
+    /// Theme (Choose…) and Name; the colour rows; the theme file.
+    @ViewBuilder
+    func themeList(_ prefs: Preferences, theme: EditorTheme, palette: SourcePalette, _ p: SettingsPalette) -> some View {
+        let builtIn = EditorTheme.builtIns.contains { $0.name == theme.name }
+        let L = SettingsAppearanceLayout.self
+        SettingsSection(nil, cardFollows: true) {
+            SettingsFixedRow(title: "Theme", height: L.themeRowHeight) {
+                SettingsPushButton(title: "Choose\u{2026}", target: "settings theme choose") { choosing = true }
+                    .popover(isPresented: $choosing) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(prefs.themes.map(\.name), id: \.self) { name in
+                                Button { prefs.themeName = name; choosing = false } label: {
+                                    HStack(spacing: 6) {
+                                        Text(verbatim: name == prefs.themeName ? "\u{2713}" : " ").frame(width: 12)
+                                        Text(verbatim: name)
+                                    }
+                                    .font(SettingsFonts.label)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 3)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .shellTarget("settings theme \(name)")
+                            }
+                        }
+                        .padding(8)
+                        .frame(minWidth: 180)
+                    }
+            }
+            SettingsFixedRow(title: "Name", height: L.nameRowHeight) {
+                Text(verbatim: theme.name).font(SettingsFonts.label).foregroundStyle(p.label).lineLimit(1).shellTarget("settings theme name")
+            }
+        }
+        SettingsSection(nil, content: {
+            ForEach(ThemeColorRows.all, id: \.key) { row in
+                ThemeColorRowView(title: row.title, key: row.key, theme: theme, shown: Self.shownColor(row.key, palette),
+                                  background: palette.background, editable: !builtIn)
+                    .id("\(theme.name)/\(row.key)")
+            }
+        }, footer: {
+            if builtIn { FootNote(text: "Built-in themes cannot be changed; duplicate one to edit it.") }
+        })
+        SettingsSection("Theme File") {
+            SettingsRow("") {
+                HStack(spacing: 8) {
+                    SettingsPushButton(title: "Duplicate", target: "settings theme duplicate") { run { try prefs.duplicate(theme) } }
+                    SettingsPushButton(title: "Delete", target: "settings theme delete") { prefs.deleteTheme(named: theme.name) }.disabled(builtIn)
+                    SettingsPushButton(title: "Import\u{2026}", target: "settings theme import") { importing = true }
+                    SettingsPushButton(title: "Export\u{2026}", target: "settings theme export") { exporting = true }
+                }
+            }
+        }
+    }
+
+    /// Font sizes (the editor's, the theme's and the console's).
+    @ViewBuilder
+    func fontsList(_ prefs: Preferences, theme: EditorTheme) -> some View {
+        let builtIn = EditorTheme.builtIns.contains { $0.name == theme.name }
+        SettingsSection(nil, content: {
+            DoubleStepperRow(title: "Editor font size", value: Binding(get: { ShellPreferences.fontSize }, set: { prefs.sourceFontSize = $0 }),
+                             range: Preferences.fontSizeRange, format: { "\(Int($0)) pt" }, target: "settings font size")
+            DoubleStepperRow(title: "Theme font size", value: Binding(get: { theme.fontSize }, set: { v in
+                prefs.editSelectedTheme { $0.fontSize = v }
+            }), range: Preferences.fontSizeRange, format: { "\(Int($0)) pt" }, target: "settings theme font size")
+                .disabled(builtIn)
+        }, footer: {
+            if prefs.sourceFontSize != nil {
+                Button("Use the Theme\u{2019}s Size") { prefs.sourceFontSize = nil }.shellTarget("settings font size reset")
+            } else {
+                FootNote(text: "The editor font size applies to every theme (View \u{25B8} Editor \u{25B8} Font Size changes it too).")
+            }
+        })
+        SettingsSection("Console") {
+            DoubleStepperRow(title: "Font size", value: Binding(get: { theme.consoleFontSize }, set: { v in
+                prefs.editSelectedTheme { $0.consoleFontSize = v }
+            }), range: Preferences.fontSizeRange, format: { "\(Int($0)) pt" }, target: "settings console font size")
+                .disabled(builtIn)
         }
     }
 
@@ -111,7 +183,7 @@ struct AppearanceSettingsPane: View {
         }
     }
 
-    /// The color a row's swatch shows: the theme's, else the palette's.
+    /// The color a row shows: the theme's, else the palette's.
     static func shownColor(_ key: String, _ p: SourcePalette) -> ThemeColor {
         switch key {
         case "foreground": p.foreground
@@ -123,156 +195,172 @@ struct AppearanceSettingsPane: View {
     }
 }
 
-/// System / Light / Dark as three small window pictures.
-struct AppearanceChooser: View {
+/// The Appearance card (R5.1): the label at the left; System, Light and
+/// Dark as window-on-wallpaper thumbnails right-aligned, the chosen one
+/// ringed, its caption bold and dark.
+struct AppearanceCard: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let c = ShellColors(scheme)
+        let p = SettingsPalette(scheme)
+        let L = SettingsAppearanceLayout.self
         let current = Preferences.shared.appearance
-        HStack(spacing: 22) {
-            Text("Appearance").font(SettingsFonts.label).foregroundStyle(c.label)
-            Spacer(minLength: 0)
-            ForEach(Preferences.Appearance.allCases, id: \.self) { a in
-                Button { Preferences.shared.appearance = a } label: {
-                    VStack(spacing: 5) {
-                        Self.thumbnail(a)
-                            .frame(width: 66, height: 42)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .stroke(a == current ? c.accent : c.fieldStroke, lineWidth: a == current ? 3 : 1)
-                            }
-                        Text(verbatim: a.rawValue).font(ShellFonts.small).foregroundStyle(a == current ? c.label : c.secondaryLabel)
+        let m = AppearanceThumbnail.margin
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: SettingsLayout.cardRadius, style: .continuous).fill(p.card)
+            // The label's ink at x 210.5 (10.5 inside the card), cap top 85.5.
+            Text(verbatim: "Appearance").font(SettingsFonts.label).foregroundStyle(p.label)
+                .padding(.leading, 10.5)
+                .padding(.top, L.labelCapTop - L.cardTop - 3)
+            HStack(alignment: .top, spacing: L.thumbnailGap - 2 * m) {
+                ForEach(Preferences.Appearance.allCases, id: \.self) { a in
+                    let on = a == current
+                    Button { Preferences.shared.appearance = a } label: {
+                        VStack(spacing: 0) {
+                            AppearanceThumbnail(appearance: a, chosen: on)
+                            // The caption's cap top 10 under the thumbnail (an 11-point
+                            // text's cap top is about 2.5 under its frame's top).
+                            Text(verbatim: a.rawValue)
+                                .font(.system(size: L.captionFontSize, weight: on ? .bold : .regular))
+                                .foregroundStyle(on ? p.captionSelected : p.caption)
+                                .padding(.top, L.captionCapTop - L.thumbnailTop - L.thumbnailSize.height - m - 2.5)
+                        }
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(a.rawValue)
+                    .shellTarget("settings appearance \(a.rawValue.lowercased())")
                 }
-                .buttonStyle(.plain)
-                .shellTarget("settings appearance \(a.rawValue.lowercased())")
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.trailing, L.thumbnailTrailingInset - m)
+            .padding(.top, L.thumbnailTop - L.cardTop - m)
         }
-    }
-
-    /// A window drawn light, dark or split (System).
-    @ViewBuilder static func thumbnail(_ a: Preferences.Appearance) -> some View {
-        let light = Color(.sRGB, red: 0.93, green: 0.93, blue: 0.94)
-        let dark = Color(.sRGB, red: 0.18, green: 0.18, blue: 0.2)
-        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
-        switch a {
-        case .light: shape.fill(light)
-        case .dark: shape.fill(dark)
-        case .system:
-            HStack(spacing: 0) {
-                Rectangle().fill(light)
-                Rectangle().fill(dark)
-            }
-            .clipShape(shape)
-        }
+        .frame(height: L.cardHeight)
+        .shellTarget("settings appearance card")
     }
 }
 
-/// The sample code in a palette.
+/// The sample code in a palette (R5.1): a bordered box (1 point, radius 5),
+/// line numbers right-aligned ending 28 inside it, the code from 43 inside
+/// on an 18-point pitch, not wrapped; the box scrolls both ways.
 struct ThemePreview: View {
     var palette: SourcePalette
     var fontSize: Double
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let size = CGFloat(min(fontSize, 16))
-        let lineHeight = (size * 1.45).rounded()
+        let p = SettingsPalette(scheme)
+        let L = SettingsAppearanceLayout.self
         let lines = AppearanceSettingsPane.previewLines
-        // Drawn run by run at character columns (monospaced), as the
-        // editor draws: separate texts would lose their spaces.
-        Canvas { ctx, _ in
-            let font = ShellFonts.editor(size)
-            let advance = ctx.resolve(Text(verbatim: "MMMMMMMMMM").font(font)).measure(in: CGSize(width: 10_000, height: 100)).width / 10
-            for (i, line) in lines.enumerated() {
-                var column = 0
-                for run in line.runs {
-                    let lead = run.text.prefix { $0 == " " }.count
-                    let shown = run.text.dropFirst(lead)
-                    if !shown.isEmpty {
-                        let text = Text(verbatim: String(shown)).font(font).foregroundStyle(palette.color(run.role).color)
-                        ctx.draw(text, at: CGPoint(x: CGFloat(column + lead) * advance, y: CGFloat(i) * lineHeight), anchor: .topLeading)
-                    }
-                    column += run.text.count
+        let size = CGFloat(min(fontSize, 16))
+        let shape = RoundedRectangle(cornerRadius: L.previewRadius, style: .continuous)
+        HStack(alignment: .top, spacing: 0) {
+            // The numbers, ending 28 inside the box.
+            VStack(alignment: .trailing, spacing: 0) {
+                ForEach(lines.indices, id: \.self) { i in
+                    Text(verbatim: "\(i + 1)").font(ShellFonts.editor(max(9, size - 1))).foregroundStyle(p.lineNumber)
+                        .frame(height: L.linePitch)
                 }
             }
+            .frame(width: L.lineNumberEnd, alignment: .trailing)
+            .padding(.top, L.firstLineTop)
+            .frame(width: L.codeInset, alignment: .leading)
+            ScrollView([.horizontal, .vertical]) {
+                // Drawn run by run at character columns (monospaced), as the
+                // editor draws: separate texts would lose their spaces.
+                Canvas { ctx, _ in
+                    let font = ShellFonts.editor(size)
+                    let advance = ctx.resolve(Text(verbatim: "MMMMMMMMMM").font(font)).measure(in: CGSize(width: 10_000, height: 100)).width / 10
+                    for (i, line) in lines.enumerated() {
+                        var column = 0
+                        for run in line.runs {
+                            let lead = run.text.prefix { $0 == " " }.count
+                            let shown = run.text.dropFirst(lead)
+                            if !shown.isEmpty {
+                                let text = Text(verbatim: String(shown)).font(font).foregroundStyle(palette.color(run.role).color)
+                                ctx.draw(text, at: CGPoint(x: CGFloat(column + lead) * advance, y: CGFloat(i) * L.linePitch + L.linePitch / 2),
+                                         anchor: .leading)
+                            }
+                            column += run.text.count
+                        }
+                    }
+                }
+                .frame(width: 720, height: CGFloat(lines.count) * L.linePitch)
+                .padding(.top, L.firstLineTop)
+            }
         }
-        .frame(height: CGFloat(lines.count) * lineHeight)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .frame(height: L.previewHeight, alignment: .top)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background { RoundedRectangle(cornerRadius: 8, style: .continuous).fill(palette.background.color) }
+        .background { shape.fill(palette.background.color) }
+        .clipShape(shape)
+        .overlay { shape.stroke(p.previewBorder, lineWidth: 1) }
         .shellTarget("settings theme preview")
     }
 }
 
-/// One color of the selected theme: a swatch and its #RRGGBB text,
-/// editable for user themes (a valid value is saved as typed).
-struct ThemeColorRow: View {
+/// A card row of a given height: the label at the left, the control at the
+/// right (10 inside), both centred.
+struct SettingsFixedRow<Control: View>: View {
+    var title: String
+    var height: CGFloat
+    @ViewBuilder var control: Control
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let p = SettingsPalette(scheme)
+        HStack(spacing: 12) {
+            Text(verbatim: title).font(SettingsFonts.label).foregroundStyle(p.label).lineLimit(1)
+            Spacer(minLength: 0)
+            control
+        }
+        .padding(.horizontal, SettingsLayout.labelInset)
+        .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
+        .background(p.card)
+    }
+}
+
+/// One colour of the selected theme (R5.1's Foreground row): 56 tall, the
+/// label at the top-left, the strength slider and the colour well centred.
+struct ThemeColorRowView: View {
     var title: String
     var key: String
     var theme: EditorTheme
     var shown: ThemeColor
+    var background: ThemeColor
     var editable: Bool
-    @State private var text: String
+    @State private var strength = 1.0
     @Environment(\.colorScheme) private var scheme
 
-    init(title: String, key: String, theme: EditorTheme, shown: ThemeColor, editable: Bool) {
-        self.title = title
-        self.key = key
-        self.theme = theme
-        self.shown = shown
-        self.editable = editable
-        _text = State(initialValue: Self.value(key, in: theme) ?? "")
-    }
-
     var body: some View {
-        let c = ShellColors(scheme)
-        let valid = text.isEmpty || ThemeColor(hex: text) != nil
-        SettingsRow(title) {
+        let p = SettingsPalette(scheme)
+        let L = SettingsAppearanceLayout.self
+        let base = (shown.redFraction, shown.greenFraction, shown.blueFraction)
+        let bg = (background.redFraction, background.greenFraction, background.blueFraction)
+        let current = ThemeColorRows.tint(base, over: bg, strength: strength)
+        ZStack(alignment: .topLeading) {
+            Text(verbatim: title).font(SettingsFonts.label).foregroundStyle(p.label).lineLimit(1)
+                .padding(.leading, SettingsLayout.labelInset)
+                .padding(.top, L.colorLabelCapTop - 3)
+            // The slider x 421.5–624, the well 632–680 (8 apart, 10 inside the card).
             HStack(spacing: 8) {
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill((ThemeColor(hex: text) ?? shown).color)
-                    .frame(width: 30, height: 16)
-                    .overlay { RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(c.fieldStroke, lineWidth: 1) }
-                TextField(title, text: $text, prompt: Text("System"))
-                    .labelsHidden()
-                    .font(.system(size: 12, design: .monospaced))
-                    .frame(width: 92)
-                    .disabled(!editable)
-                    .foregroundStyle(valid ? c.label : c.error)
-                    .shellTarget("settings color \(key)")
+                Spacer(minLength: 0)
+                ThemeColorSlider(base: base, background: bg, value: Binding(get: { strength }, set: { v in
+                    strength = v
+                    let c = ThemeColorRows.tint(base, over: bg, strength: v)
+                    Preferences.shared.editSelectedTheme { ThemeColorRows.set(key, ThemeColorRows.hex(c.r, c.g, c.b), in: &$0) }
+                }), target: "settings color slider \(key)")
+                ThemeColorWell(color: settingsColor(current), hex: ThemeColorRows.value(key, in: theme) ?? "", target: "settings color \(key)") { hex in
+                    Preferences.shared.editSelectedTheme { ThemeColorRows.set(key, hex, in: &$0) }
+                    strength = 1
+                }
             }
+            .padding(.trailing, SettingsLayout.controlInset)
+            .frame(height: L.colorRowHeight)
         }
-        .onChange(of: text) { _, v in
-            guard editable else { return }
-            let t = v.trimmingCharacters(in: .whitespaces)
-            if t.isEmpty {
-                Preferences.shared.editSelectedTheme { Self.set(key, nil, in: &$0) }
-            } else if let color = ThemeColor(hex: t) {
-                Preferences.shared.editSelectedTheme { Self.set(key, color.hex, in: &$0) }
-            }
-        }
-    }
-
-    static func value(_ key: String, in t: EditorTheme) -> String? {
-        switch key {
-        case "foreground": t.foreground
-        case "background": t.background
-        case "selection": t.selection
-        case "currentLine": t.currentLine
-        default: t.tokens[key]
-        }
-    }
-
-    static func set(_ key: String, _ hex: String?, in t: inout EditorTheme) {
-        switch key {
-        case "foreground": t.foreground = hex
-        case "background": t.background = hex
-        case "selection": t.selection = hex
-        case "currentLine": t.currentLine = hex
-        default: t.tokens[key] = hex
-        }
+        .frame(maxWidth: .infinity, minHeight: L.colorRowHeight, maxHeight: L.colorRowHeight, alignment: .topLeading)
+        .background(p.card)
+        .disabled(!editable)
     }
 }
 

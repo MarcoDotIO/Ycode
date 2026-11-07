@@ -196,6 +196,12 @@ public struct DeviceFrameSpec: Equatable, Sendable {
 
     public static func named(typeID: String) -> DeviceFrameSpec? { all.first { $0.typeID == typeID } }
 
+    /// The type whose display name is `name` (a simctl device type's name,
+    /// such as "iPhone Duo"), ignoring case.
+    public static func named(name: String) -> DeviceFrameSpec? {
+        all.first { $0.name.compare(name, options: .caseInsensitive) == .orderedSame }
+    }
+
     /// The picture for a device of a family whose type Ycode does not know
     /// (the hub's other simulators): a device of that family's usual size.
     public static func placeholder(for family: DeviceFamily) -> DeviceFrameSpec {

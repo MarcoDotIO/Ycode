@@ -53,8 +53,7 @@ final class ShellPreferences {
 
 /// The panes of the Settings window, in the reference's order
 /// (`specs/ide/settings.md` R3.2, `SettingsPaneOrder.linux`): the macOS
-/// IDE's twelve (its Simulators page, under Components, is macOS only).
-/// Components shows its empty state.
+/// IDE's twelve; Components leads to the simulator-host page (R5.5).
 enum ShellSettingsPane: String, CaseIterable, Identifiable {
     case general, appearance, accounts, codingAssistant, behaviors, navigation, notifications, editing, shortcuts, sourceControl, components, locations
 
@@ -111,6 +110,16 @@ final class ShellSettingsModel {
     var behaviorEvent: Preferences.Event?
     /// Accounts' sheet (+ shows it).
     var isAccountsSheetShown = false
+    /// Components shows the simulator-host page (R5.5).
+    private(set) var isHostPageShown = false
+
+    /// Components ▸ Simulator Host (its row's info button).
+    func showHostPage() {
+        select(.components)
+        isHostPageShown = true
+    }
+
+    func hideHostPage() { isHostPageShown = false }
 
     /// Shows a pane (recorded for back/forward).
     func select(_ p: ShellSettingsPane) {
@@ -118,18 +127,21 @@ final class ShellSettingsModel {
         back.append(pane)
         forward = []
         pane = p
+        isHostPageShown = false
     }
 
     func goBack() {
         guard let p = back.popLast() else { return }
         forward.append(pane)
         pane = p
+        isHostPageShown = false
     }
 
     func goForward() {
         guard let p = forward.popLast() else { return }
         back.append(pane)
         pane = p
+        isHostPageShown = false
     }
 }
 
@@ -151,11 +163,13 @@ struct ShellSettingsView: View {
     var body: some View {
         let p = SettingsPalette(scheme)
         HStack(spacing: 0) {
+            // The divider is the sidebar's trailing half point (R3.2, R4.3),
+            // drawn over its edge so that it shows at any scale.
             sidebar(p)
-                .frame(width: SettingsLayout.sidebarWidth)
+                .frame(width: SettingsLayout.sidebarWidth + SettingsLayout.dividerWidth)
                 .frame(maxHeight: .infinity, alignment: .top)
                 .background(p.sidebar)
-            Rectangle().fill(p.divider).frame(width: SettingsLayout.dividerWidth)
+                .overlay(alignment: .trailing) { Rectangle().fill(p.divider).frame(width: 1).shellTarget("settings divider") }
             VStack(spacing: 0) {
                 titleRow(p)
                 pane
@@ -186,8 +200,9 @@ struct ShellSettingsView: View {
                         // The symbol centred on x 29, the label at x 47 on every row.
                         SettingsSidebarSymbol(pane: pane, color: on ? Color.white : p.symbol)
                             .frame(width: 2 * SettingsLayout.symbolCenterX, alignment: .center)
+                        // The selected row's label is semibold (R5.3).
                         Text(verbatim: pane.title)
-                            .font(SettingsFonts.label)
+                            .font(on && SettingsTitleR5.selectedSidebarLabelIsSemibold ? SettingsFonts.selectedSidebarLabel : SettingsFonts.label)
                             .foregroundStyle(on ? Color.white : p.label)
                             .lineLimit(1)
                             .padding(.leading, SettingsLayout.sidebarLabelX)
@@ -238,7 +253,8 @@ struct ShellSettingsView: View {
         case .editing: EditingSettingsPane(model: model)
         case .shortcuts: ShortcutsSettingsPane()
         case .sourceControl: SourceControlSettingsPane()
-        case .components: ComponentsSettingsPane()
+        case .components:
+            if model.isHostPageShown { SimulatorHostSettingsPane(model: model) } else { ComponentsSettingsPane(model: model) }
         case .locations: LocationsSettingsPane()
         }
     }

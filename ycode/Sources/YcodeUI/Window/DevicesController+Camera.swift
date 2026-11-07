@@ -5,7 +5,7 @@ import YcodeIDECore
 /// §Camera; `specs/simulator/camera.md` "Ycode implementation"). A Ycode
 /// simulator's Settings tab shows, under FEAT-IMPL's boxes, a Camera box
 /// with a pop-up (Off, Host webcam, Synthetic pattern). It is the same
-/// setting as Settings ▸ Simulators ▸ Camera, shared by Ycode's simulators,
+/// setting as the device window's Settings inspector, shared by Ycode's simulators,
 /// and it applies when a device boots: the next run or start passes
 /// `--camera <mode>` (and boots cold once, since the warm-boot fingerprint
 /// includes it). It is shown whether or not the device runs.

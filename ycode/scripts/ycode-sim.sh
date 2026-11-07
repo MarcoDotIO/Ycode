@@ -1,7 +1,7 @@
 #!/bin/bash
 # ycode-sim: the host-side launcher behind Ycode's "Ycode Simulator (Linux)"
 # run destination (specs/ide/run.md §Warm boot). Install it on the simulator
-# host as the "ycode-simd path" of Settings ▸ Simulators. Ycode runs it over ssh:
+# host as the "ycode-simd path" of Settings ▸ Components ▸ Simulator Host. Ycode runs it over ssh:
 #
 #   echo YCODE-REMOTE-PID $$; exec env YCODE_WARM_BOOT=1|0 [YCODE_LEAN_BOOT=…] \
 #       ycode-sim --device DEV --runtime-root RR [--install-app APP --launch ID] [extra options]

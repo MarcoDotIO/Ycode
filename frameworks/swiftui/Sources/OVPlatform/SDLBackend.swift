@@ -214,8 +214,72 @@ public final class SDLWindow: PlatformWindow {
         guard !isClosed else { return }
         isClosed = true
         stopTextInput()
+        if hitTest != nil { _ = sdl.SetWindowHitTest(handle, nil, nil) }
+        hitTest = nil
         sdl.DestroyWindow(handle)
         backend?.windowClosed(self)
+    }
+
+    // MARK: Client-side decorations (B5-OPENVIEWS)
+
+    public internal(set) var isDecorated = true
+    /// The app's hit test (points); SDL asks it through `sdlHitTest`.
+    private(set) var hitTest: (@MainActor (CGPoint) -> WindowHitRegion)?
+}
+
+extension SDLWindow: PlatformWindowDecorations {
+    public func setHitTest(_ test: (@MainActor (CGPoint) -> WindowHitRegion)?) {
+        guard !isClosed else { return }
+        hitTest = test
+        if test == nil {
+            _ = sdl.SetWindowHitTest(handle, nil, nil)
+        } else {
+            // SDL calls the test on the main thread while it pumps events;
+            // the window is found again from the handle.
+            _ = sdl.SetWindowHitTest(handle, sdlHitTest, Unmanaged.passUnretained(self).toOpaque())
+        }
+    }
+
+    private var flags: UInt64 { isClosed ? 0 : sdl.GetWindowFlags(handle) }
+    public var isMaximized: Bool { flags & OV_SDL_WINDOW_MAXIMIZED != 0 }
+    public var isFullscreen: Bool { flags & OV_SDL_WINDOW_FULLSCREEN != 0 }
+
+    public func setMaximized(_ maximized: Bool) {
+        guard !isClosed else { return }
+        _ = maximized ? sdl.MaximizeWindow(handle) : sdl.RestoreWindow(handle)
+    }
+
+    public func setFullscreen(_ fullscreen: Bool) {
+        guard !isClosed else { return }
+        _ = sdl.SetWindowFullscreen(handle, fullscreen)
+    }
+
+    /// The region at an SDL window coordinate.
+    func hitRegion(x: Int32, y: Int32) -> WindowHitRegion {
+        guard let hitTest, !isClosed else { return .normal }
+        return hitTest(toPoints(x: Float(x), y: Float(y)))
+    }
+}
+
+/// SDL's hit-test callback: forwards to the window's test.
+private let sdlHitTest: SDL_HitTest = { _, area, data in
+    guard let area, let data else { return SDL_HITTEST_NORMAL }
+    let x = area.pointee.x, y = area.pointee.y, bits = UInt(bitPattern: data)
+    let region: WindowHitRegion = MainActor.assumeIsolated {
+        guard let p = UnsafeMutableRawPointer(bitPattern: bits) else { return .normal }
+        return Unmanaged<SDLWindow>.fromOpaque(p).takeUnretainedValue().hitRegion(x: x, y: y)
+    }
+    switch region {
+    case .normal: return SDL_HITTEST_NORMAL
+    case .draggable: return SDL_HITTEST_DRAGGABLE
+    case .resizeTopLeft: return SDL_HITTEST_RESIZE_TOPLEFT
+    case .resizeTop: return SDL_HITTEST_RESIZE_TOP
+    case .resizeTopRight: return SDL_HITTEST_RESIZE_TOPRIGHT
+    case .resizeRight: return SDL_HITTEST_RESIZE_RIGHT
+    case .resizeBottomRight: return SDL_HITTEST_RESIZE_BOTTOMRIGHT
+    case .resizeBottom: return SDL_HITTEST_RESIZE_BOTTOM
+    case .resizeBottomLeft: return SDL_HITTEST_RESIZE_BOTTOMLEFT
+    case .resizeLeft: return SDL_HITTEST_RESIZE_LEFT
     }
 }
 
@@ -396,6 +460,7 @@ public final class SDLBackend: PlatformBackend {
         }
         var flags: UInt64 = 0
         if configuration.resizable { flags |= OV_SDL_WINDOW_RESIZABLE }
+        if !configuration.decorated { flags |= OV_SDL_WINDOW_BORDERLESS }
         if configuration.highPixelDensity { flags |= OV_SDL_WINDOW_HIGH_PIXEL_DENSITY }
         if configuration.vulkan { flags |= OV_SDL_WINDOW_VULKAN }
         guard let h = sdl.CreateWindow(configuration.title, Int32(configuration.size.width),
@@ -404,6 +469,7 @@ public final class SDLBackend: PlatformBackend {
         }
         let w = SDLWindow(sdl: sdl, handle: h, vulkan: configuration.vulkan, backend: self)
         w.rememberTitle(configuration.title)
+        w.isDecorated = configuration.decorated
         // Window systems that measure windows in pixels (X11) get the size in
         // points scaled to the display.
         if abs(w.pointsPerCoordinate - 1) > 0.01 { w.setSize(configuration.size) }

@@ -195,7 +195,7 @@ public struct RemoteSimulatorTarget: Equatable, Sendable {
 }
 
 extension RemoteSimulatorSettings {
-    /// Settings ▸ Simulators help for "Other runtime roots".
+    /// Settings ▸ Components ▸ Simulator Host help for "Other runtime roots".
     public static let runtimesHelp = "More simulator runtimes on the host, separated by commas. Each runtime adds a run destination for every device type it supports (for example iOS 27.0 with iPads and its full app set). Every runtime and device type has its own device, so data and saved state are kept apart."
 
     /// The primary runtime root, then the other ones (duplicates and empty

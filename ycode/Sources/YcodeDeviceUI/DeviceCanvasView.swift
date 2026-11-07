@@ -263,8 +263,10 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
                                      enabled: s.isLive, showsRotate: s.spec.rotates, showsHome: s.spec.family != .watch,
                                      spatial: s.isSpatial || s.spec.family == .vision))
         } else if showsDisabledControls, let spec = stoppedSpec {
-            controls.configure(.init(foldable: spec.isFoldable, enabled: false, showsRotate: spec.rotates, showsHome: spec.family != .watch,
-                                     spatial: spec.family == .vision))
+            // A foldable keeps Rotate │ the three postures, closed current
+            // (§13.1), every control disabled.
+            controls.configure(.init(foldable: spec.isFoldable, posture: spec.isFoldable ? .closed : nil, enabled: false,
+                                     showsRotate: spec.rotates, showsHome: spec.family != .watch, spatial: spec.family == .vision))
         }
         statsLabel.isHidden = !showsStatistics || session == nil
         updateStatistics()

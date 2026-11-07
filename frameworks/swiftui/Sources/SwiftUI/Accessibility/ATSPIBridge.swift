@@ -108,6 +108,8 @@ package enum ATSPIMapping {
             s.insert(x ? .expanded : .collapsed)
         }
         if e.traits.contains(.isModal) { s.insert(.modal) }
+        // B5-OPENVIEWS: the window's default button (Return).
+        if e.isDefaultButton { s.insert(.isDefault) }
         if [.menuBarItem, .menuButton, .picker].contains(e.role) { s.insert(.hasPopup) }
         if e.role == .slider { s.insert(.horizontal) }
         if e.traits.contains(.updatesFrequently) { s.insert(.animated) }
@@ -260,6 +262,9 @@ package final class AccessibilityExport: ATSPIProvider {
                               frame: pixels(isRoot ? windowRect : e.frame), actions: ATSPIMapping.actions(e),
                               children: childKeys)
             if let level = e.headingLevel, level != .unspecified { n.attributes["level"] = "\(level.rawValue)" }
+            // AT-SPI has no cancel state: an object attribute says it.
+            if e.isCancelButton { n.attributes["button-role"] = "cancel" }
+            if e.isDefaultButton { n.attributes["button-role"] = "default" }
             if let state {
                 n.text = Self.text(of: state, editable: e.isEnabled)
             } else if e.role == .staticText, let l = e.label {

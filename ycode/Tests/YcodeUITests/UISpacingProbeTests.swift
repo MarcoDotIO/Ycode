@@ -124,6 +124,13 @@ import YcodeProject
         try? p.run()
         p.waitUntilExit()
         if !wasVisible { win.orderOut(nil) }
+        // A window kept off every display cannot be captured by the window
+        // server: the window's own drawing instead (materials drawn flat).
+        if !FileManager.default.fileExists(atPath: url.path), let frame = win.contentView?.superview,
+           let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) {
+            frame.cacheDisplay(in: frame.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: url)
+        }
     }
 
     /// One line per view: depth, class, frame (x, y from the top left, w, h).

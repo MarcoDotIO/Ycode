@@ -357,6 +357,9 @@ extension MachIPC {
             }
             if !ok { return (MachMsgReturn.sendInvalidOptions, m, "") }
         }
+        if LookupHold.enabled, lookupHoldIntercept(m, destination: p) {
+            return (MachMsgReturn.success, nil, " [failed look-up reply held]")
+        }
         if p.isKernelObject {
             let note = serveKernelObject(m, port: p)
             return (MachMsgReturn.success, nil, note)

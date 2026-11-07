@@ -13,9 +13,10 @@ pane as grouped cards under its title and the back/forward capsule
 (R3.1–R3.3 below give the measured layout). Panes, in order: General,
 Appearance, Accounts, Coding Assistant, Behaviors, Navigation,
 Notifications, Editing, Shortcuts, Source Control, Components, Locations
-(the reference's twelve, in its order). Simulators (Ycode's own) is a page
-reached from a navigation row at the top of Components (council round 4,
-"Ycode implementation (round 4)"). Accounts is
+(the reference's twelve, in its order). Simulators (Ycode's own
+simulator-host page) is reached from the Simulator Host row at the end of
+Components' "Other Components" (R5.5, "Ycode implementation (round 5)").
+Accounts is
 informational only. Coding Assistant (the reference's Intelligence
 position, in Ycode's own words) holds the assistant's back ends, the
 OpenAI sign-in or API key, agent-tool paths, context options and the
@@ -134,10 +135,12 @@ global configuration (`git config --global --get user.name|user.email`),
 read-only.
 
 ## Components
-Read-only list: the SDKs of the active developer directory (each SDK's
-`SDKSettings.json`) and simulator runtimes from `xcrun simctl list
-runtimes -j` (`name`, `version`, `isAvailable`). Nothing is downloaded or
-deleted.
+Read-only: "Platform Support" (this computer and one row per simulator
+platform, from the SDKs of the active developer directory, each SDK's
+`SDKSettings.json`, and the runtime wizard's runtime records of this
+computer and the simulator host), then "Other Components" (R5.2, R5.5).
+Nothing is downloaded or deleted here; Simulator Runtimes… opens the
+runtime wizard.
 
 ## Debugger (variables view)
 The Registers toggle in the debug bar (saved as a setting) adds the
@@ -191,10 +194,10 @@ and `SettingsPaletteHex` colours (YcodeIDECore). Panes, in the
 reference's order: General, Appearance, Accounts, Coding Assistant,
 Behaviors, Navigation, Notifications, Editing (with its Display,
 Completion and Indentation pages), Shortcuts, Source Control, Components,
-Locations. Components shows its empty state ("No Components", a note that
-Linux builds with the Swift toolchain on the PATH, and Simulator
-Runtimes…, which opens the runtime wizard). Simulators is not offered on
-Linux.
+Locations. Components and its simulator-host page are the macOS IDE's
+(round 5): "Linux" is the built-in platform. The runtime wizard opens in a
+window of its own, as on macOS (a hidden title bar with only the close
+button, the content's size).
 
 - The cards are Ycode's own views (not OpenViews' `Form`): a card is a
   stack of rows one point apart over a separator-coloured strip inset 10,
@@ -496,8 +499,223 @@ Both IDEs implement R4.1–R4.3 from the shared `SettingsLayout`,
   #363636, the switch off #3B3B3B, the disclosure #5C5C5C. The light
   disclosure (#B0B0B0) and the Simulator icon's green are Ycode's own.
 
+## Council round 5: Appearance, Components, the title and the selection (2026-11-06)
+
+New panes, both appearances. Each app's **own** Appearance setting was set
+to Light from its Appearance pane while the system stayed dark (step 23),
+then General, Editing and Components were captured in light (24–26);
+Components also in dark (22). One Retina still each, the 710 × 452 window,
+active; values in points from the window's top-left corner, half-point
+precision. Ycode `a1f82372`. Checklist rows 117–124 in
+`fidelity-council.md`. R3–R4 stay valid; the cards, rows and controls
+below use R3.3's anatomy unless a value says otherwise.
+
+**Owner's design rules for this round:** where the reference has the
+element, match it; where Ycode has an element the reference lacks (the
+Linux simulator host), design it to the platform's human interface
+guidelines in the OS 26+ glass language; and Ycode's macOS and Linux IDEs
+look one to one.
+
+### R5.1 Appearance (light; the Theme segment)
+
+The pane has a **fixed top part** and a **separately scrolling list**
+below a full-width separator. Top to bottom:
+
+| Part | Reference |
+|---|---|
+| Card 1 | x 200–690, **y 72–160** (88 tall), R3.3's card |
+| Its label | "Appearance" at **x 210.5**, cap top **85.5** (13.5 inside the card, level with the thumbnails' tops), the row-label style (#262626, regular, about 13 points) |
+| Thumbnails | three, each **67 × 44**, corner radius about 4–5, **right-aligned**: System x 463–530, Light 538–605, Dark 613–680 (8 apart; the last 10 inside the card); y **85–129** |
+| What they show (in words; Ycode draws its own) | each a miniature of a window over a wallpaper: **Light** a light window with a light title area and three small window-button dots (red, yellow, green) over a blue wave wallpaper; **Dark** the same in dark over a deep blue wallpaper; **System** split down the middle (x 496.5): the left half is the Light picture, the right half the Dark one |
+| Selection | a **ring 3 points wide, #0088FF**, 1 point outside the thumbnail (outer box x 534–609, y 81–133, corner radius about 8) |
+| Captions | centred under each thumbnail, cap top **139** (10 below it), about 11 points; unselected **#7C7C7C regular**, the selected one **#262626 bold**; the card ends 11 below them |
+| Preview box | x 200–690, **y 170–239.5** (10 below card 1), white, a **1-point border #E6E6E6**, small corner radius (about 5); a code sample in the current theme's colours and the editor's font (about 7.9 points per character, **18-point line pitch**) |
+| Its line numbers | right-aligned, ending x 228, light grey **#B8B3B4**; the code starts at **x 243** |
+| Wrapping | **none**: long lines run past the box and a horizontal scroller shows along its bottom (knob y 225.5–236.5, #7A7A7A on a #F3F3F3 track to x 670), with a vertical one inside its right edge (x 676.5–686.5). Their style follows the system's scroll-bar setting (this Mac showed them always) |
+| Separator | the full width of the detail pane (x 180–710), 1 point **#E5E5E5**, y **251.5–252.5** (12 below the box) |
+| Segmented control | "Theme", "Fonts", "Editor"; **x 340–550 (210 × 28), centred on the detail pane** (centre x 445), y **264.5–292.5** (12 below the separator); track #ECECEC, fully rounded; segments 70 wide each; the selected one a full-height accent capsule (#0077F9) with a white label; a 1-point divider **#B5B5B5** (y 269.5–287.5) between two unselected segments only; labels about 13 points, #242424, centred |
+| Separator | x 180–710, 0.5 point #E5E5E5, **y 304.5–305** (12 below the control) |
+| The list | everything below scrolls on its own (its scroller x 696–707 starts at y 307.5); the top part stays |
+| List card A | from the list's top (y 305): **Theme** (37.5 tall): label at x 210.5; a **push button "Choose…"** x 599.5–680 (80.5 × 24, y 310.5–334.5), fill #E4E4E4, label #232323 centred, no chevron. Separator 344.5–345.5 #EBEBEB. **Name** (36 tall): label; the theme's name right-aligned, ending x 678.5, #242424 |
+| List card B | from **y 391.5** (10 below): **Foreground** (56 tall): label (cap top 404.5); a **slider** x 421.5–624 whose 14-point track (y 412.5–426.5) shows a gradient from a pale to a full tint of the row's colour, with a round knob about 27 across (white rim, the colour inside); then a **colour well**: a capsule x 632–680, y 405.5–433.5 (48 × 28), a 3-point grey rim #E2E2E2 around the colour. Further rows continue below the window |
+
+**Ycode now** (light):
+
+| Part | Ycode now | Change |
+|---|---|---|
+| Card 1 | y 72–154; **no label**; three flat swatches 66 × 42 **left-aligned** at x 211.5, 297.5, 383 (y 83–125): System half #EDEDED and half #2F2E2E, Light #EDEEED, Dark #292929; grey captions (#7A7B7A), **none bold**, **no ring** | the label; window-and-wallpaper thumbnails 67 × 44, right-aligned; the 3-point ring; the selected caption bold and dark |
+| Preview | no box, no line numbers; text x 214–668, y 174–281.5, **wraps** long lines to the left edge, 16-point pitch | the bordered box, line numbers, no wrap, the 18-point pitch, the box's scrollers |
+| Segmented control | x 200–371.5 (171.5 × 24), **left-aligned**, no separators | 210 × 28, centred, between the two full-width separators |
+| Below | one scroll for the whole pane; Theme row with the theme's name in bold and a "Choose…" **pop-up with a chevron** (104 × 24); then a row per syntax element (Plain Text, Comments, …) each with a colour well | the fixed top part and a separately scrolling list; Theme with a push button, Name with the name, then the reference's rows (Foreground's slider and well, and the rows below, not captured) |
+
+Fonts and Editor were not opened, and Appearance was not captured in
+dark (R5.5).
+
+### R5.2 Components (light and dark)
+
+| Part | Reference (light / dark) |
+|---|---|
+| First header | "Platform Support", R3.3's header (bold, x 211), cap top **y 59**, #272727 / #DDDDDD; there is no row above it |
+| Card | x 200–690, **y 82–343.5**, five rows |
+| Row | **51.5 tall + a 1-point separator (52.5 pitch)**; separators x **210–680** (from the card's inner edge, under the icon), #EBEBEB / #303030 |
+| Icon | a monochrome platform symbol in the **accent colour #007AFF** (both appearances), centred on x **226** and on the row; sizes from 13 × 18.5 to 25 × 14. In words: macOS a laptop; iOS a tablet with a phone in front of it; watchOS a watch; tvOS a display on a stand; visionOS a headset seen from the front; Predictive Code Completion a cluster of sparkles. Ycode draws its own |
+| Title | x **251**, cap top **13.5 below the row's top**, about 13 points, #262626 / #DEDEDE, regular |
+| Subtitle | under the title, **baselines 15 apart**, about 11 points, #7C7C7C / #9D9D9D: "Built-in" for the Mac's own platform, else the installed size ("15.94 GB"); a size starts 3.5 points right of the title's edge |
+| "Last used …" | only on a platform used recently (iOS here: the label followed by a relative time): right-aligned, ending **x 655.5**, vertically centred on the row, the subtitle's colour, about 13 points |
+| Info button | a **13 × 13** circle outline with a small "i", the subtitle's colour, x **665.5–678.5** (11.5 inside the card), centred on the row |
+| Second header | "Other Components", cap top **376.5** (33 below the card, R3.3's rhythm); its card from **y 399.5**; first row Predictive Code Completion, 2.25 GB, with the same anatomy |
+| Scrolling | the pane scrolls (knob x 696–707, about 30 % of the track) |
+
+The rows are platforms and installed runtimes; their names and sizes are
+data, not text to copy. **Ycode now:** a "Ycode Simulator" navigation row
+(44 tall, green icon, chevron) in its own card at y 72–116; a header
+"Installed (read-only)" (cap top 149) and from y 171.5 one row per SDK:
+"SDK" at x 210.5 and the SDK's name and version in grey right-aligned
+(ending 679), **37.5 + 1** pitch, no icon, no subtitle, no info button.
+Target: the reference's two sections and row anatomy, with one row per
+platform Ycode supports (its icon, name and version as the title, "Built-in"
+or the size as the subtitle, "Last used" when known, the info button
+showing the platform's SDKs and runtimes).
+
+### R5.3 The pane title and the selected sidebar row
+
+| | Reference | Ycode now |
+|---|---|---|
+| Title size | cap height **12** (about 17 points) in both appearances; ink widths "General" **54.5**, "Editing" 48, "Components" 90.5, "Appearance" 85.5; from x 273.5, cap top 20 | cap height 13.5 (about 19 points); "General" 60, "Editing" 54, "Components" 101, "Appearance" 95.5: **10–12.5 % larger**; from x 272.5, cap top 19 |
+| Title weight | the same in light and dark: the "l" stem **2.0–2.1** | 2.25–2.36: the same weight scaled with the size (not bolder) |
+| Title colour | #E8E8E8 dark, **#4D4D4D** light | the same |
+| Selected sidebar row's label | **heavier than the unselected rows** (semibold): "Components" selected is 3.5 points wider (ink x 46.5–126 against 46.5–122.5) and carries about 1.3–1.4 times the ink of the same word unselected | the same weight as unselected (ink 46.5–122.5, about 1.15 times, from the white-on-accent rendering alone) |
+
+Target: draw the title at 17 points (cap 12) and the selected row's label
+in the semibold weight.
+
+### R5.4 Scroll bars (a judge's claim, checked)
+
+Both apps draw the same Settings scroll bars: light, knob **#7A7A7A** on a
+**#F3F3F3** track; dark, #9F9F9F on #2A2A2A; x 696–707. The reference's
+General pane scrolls too (knob y 55.5–176), so Ycode's General scroller is
+not spurious. The knob lengths differ a little because the panes' content
+heights differ (General: 120.5 against 138; Editing: 284 against 269.5).
+
+### R5.5 Where Ycode's simulator-host settings belong
+
+The reference has **no simulator settings in Settings**: its sidebar has
+twelve panes, Components lists platform support, other components and the
+installed simulator runtimes, and General has only test parallelisation.
+Per-device settings (appearance, accessibility switches, location, sound)
+are in **Device Hub's Settings inspector** for the selected device
+(`device-hub.md` §6, §11.3); Device Hub has no settings window. Ycode's
+remote simulator **host** (the Linux machine that runs the simulators,
+its connection, boot and camera options) has no counterpart.
+
+Under the owner's rules:
+1. **Per-device settings** go to the hub's Settings inspector, as the
+   reference keeps them (match).
+2. **The host's settings** are Ycode's own element: design that page to
+   the human interface guidelines in the glass language, with the same
+   card, row and control anatomy as the rest of Settings, so it reads as
+   part of the window.
+3. **Its entry point** must not change the reference's structure:
+   Components must start with "Platform Support" (R5.2), not with a
+   navigation row. A fitting place is a row with Components' own anatomy
+   (icon, title, subtitle such as the host's name and state, info button
+   that opens the host page) at the end of "Other Components", or a
+   section of its own after it. Round 4's twelve-row sidebar rule stays.
+   The choice is the implementer's; the macOS and Linux IDEs make the
+   same one.
+
+### R5.6 Not settled by round 5
+
+- Appearance in dark; the Fonts and Editor segments; the list's rows
+  below Foreground; what Choose… opens.
+- Components below the first "Other Components" row; what the info
+  button opens; the pane with no recently used platform.
+- Whether "Last used" ever shows on more than one row.
+
+### Ycode implementation (round 5)
+
+Both IDEs draw rows 117–124 from the shared `SettingsAppearanceLayout`,
+`SettingsComponentsLayout`, `SettingsR5Palette`, `AppearanceThumbnailArt`,
+`ComponentGlyph`, `ComponentsPage` and `SimulatorHostPage` (YcodeIDECore
+`SettingsRound5.swift`); YcodeUI `SettingsAppearancePane.swift`,
+`SettingsComponentsPane.swift`, `SettingsR5Views.swift`; ycode-ide
+`SettingsPaneAppearance.swift`, `SettingsPaneComponents.swift`,
+`SettingsR5Controls.swift`.
+
+- **Appearance (rows 117–120).** The fixed top part and the list below it
+  as R5.1 measures them: card 1 at y 72–160 with the "Appearance" label;
+  the thumbnails at x 463, 538, 613 (67 × 44, radius 4.5), each a window
+  with a title area and three dots over a wallpaper gradient and a wave
+  band (light: a light window over blue; dark: a dark window over deep
+  blue; System split at the middle), drawn by Ycode from the words; the
+  ring 3 points wide, 1 outside; captions 11 points, cap top 139, the
+  chosen one bold #262626. The preview box (x 200–690, y 170–239.5, 1-point
+  #E6E6E6 border, radius 5, the theme's background) shows the sample with
+  line numbers (#B8B3B4, ink ending at x 228, on the code's baselines) and
+  the code from x 243 on an 18-point pitch, not wrapped; it scrolls both
+  ways. The separators run x 180–710 at y 251.5 (1 point) and 304.5 (0.5);
+  Theme / Fonts / Editor is Ycode's own drawing of R5.1's control (210 × 28
+  centred, the divider only between two unselected segments). The list
+  starts flush at y 305: Theme (39.5 tall) with a Choose… push button
+  (80.5 × 24, fully rounded, #E4E4E4; it lists the themes in a menu) and
+  Name (36) with the theme's name; 10 below, one 56-point row per colour
+  (Foreground, the token kinds, Background, Selection, Current Line):
+  the label's cap top 13 under the row's top, a slider x 421.5–624 and a
+  48 × 28 well ending 10 inside the card. The slider is Ycode's meaning
+  of the gradient: the colour's strength over the editor's background
+  (15 % at the left end, the colour itself at the right, where the knob
+  starts); the well opens a popover with the colour as #RRGGBB (empty: the
+  system's), the same on both IDEs. Built-in themes show both disabled.
+  Theme File (Duplicate, Delete, Import…, Export…) follows in push buttons.
+  Fonts and Editor keep their rows under the same control (not captured).
+- **Components (rows 121, 124).** "Platform Support" first (cap top 59,
+  card from y 82): this computer ("macOS" or "Linux" with the macOS SDK's
+  version, "Built-in"), then iOS, watchOS, tvOS and visionOS, each titled
+  with its newest runtime's version, the runtime's size in decimal units
+  ("15.94 GB") or "Not installed", and "Last used …" when the runtime
+  records a use (Ycode's words: today, yesterday, n days, weeks, months or
+  years ago). Rows are 51.5 + 1; the symbol (Ycode's drawings of a laptop,
+  a tablet with a phone, a watch, a display on a stand, a headset, a
+  cluster of sparkles, two stacked machines) in #007AFF centred on x 226;
+  the title at x 251; the subtitle's baseline 15 under it; the 13-point
+  info button at x 665.5. "Other Components": Predictive Code Completion
+  (subtitle "Off" or the back end and model; its info button opens Editing
+  ▸ Completion) and, **last, Simulator Host** (subtitle the host or "Not set
+  up"; its info button opens the host page). A platform's info button
+  shows its SDKs and runtimes with Simulator Runtimes….
+- **The simulator-host page (row 124).** Titled Components (the sidebar
+  keeps Components selected), with "‹ Components" above it. A header card
+  in the system settings' style: a 40-point icon (the Simulator row icon's
+  green gradient, the host symbol in white), "Simulator Host" bold with
+  "Experimental", the host or "Not set up", and what the host is. Then
+  Host (Host, Data folder, Link name, Ports), Runtimes (Runtime root,
+  Other runtime roots, Simulator Runtimes…), Boot (Lean boot, Warm boot)
+  and Advanced (ycode-simd path, Device name, Additional arguments, Keep
+  services), in the card anatomy, with 220 × 22 text fields drawn by Ycode
+  (radius 6, a 1-point border). Host and Data folder are the runtime
+  wizard's host and the macOS run settings at once. The **camera** is a
+  per-device setting and stays in the device window's Settings inspector
+  (`devices.md` §Camera); the page no longer has it. On Linux the run
+  settings are stored for when the Linux run path reads them (it pairs
+  over Ycode's link).
+- **Title and selection (rows 122, 123).** The title is **15 points**
+  semibold: the reference's "General" ink is 54.5 wide with the same stem
+  as Ycode's 17-point title scaled down, and a 15-point face gives that
+  ink (53.7–55 wide, 12 tall from the "l" to the "G"'s overshoot, which is
+  what the council's "cap height 12" measured). The selected sidebar row's
+  label is semibold.
+- **Back rows.** "‹ <pane>" in the accent colour, 13 points, 10 inside the
+  cards' edge, on both IDEs.
+- Dark values not captured are Ycode's own (`SettingsR5Palette`).
+
 ## Evidence
 
+- Round 5 implementation: the thumbnails' drawing, the slider's meaning,
+  the colour popover, the push button's padding, the platform symbols, the
+  "Last used" and size wording, the info buttons' targets, the host row's
+  place and anatomy, the host page's sections and header card, the field
+  style, the 15-point title and the dark colours not captured are Ycode's
+  own (from R5.1–R5.5 and the owner's rules).
 - Correction 2026-10-19: General, Navigation and Editing ▸ Display rows and
   defaults per `reference-ui-5.md` §9 (level 3); the File extensions factory
   default (Hide All) per `reference-ui-5.md` §5.1 (level 3).
@@ -535,3 +753,12 @@ Both IDEs implement R4.1–R4.3 from the shared `SettingsLayout`,
   and Ycode's matching stills; colour runs, ink boxes, the icons' boxes
   from saturated pixels, stem widths from intensity profiles; measured
   in the dirty room (level 3). Symbols are described in words only.
+- Council round 5 measurements (R5.1–R5.4): one Retina still each of the
+  reference's Settings window on Appearance (light, the app's own
+  setting), General, Editing and Components (light) and Components
+  (dark), and Ycode's matching stills; colour runs, ink boxes, stem
+  widths and ink areas from intensity profiles; measured in the dirty
+  room (level 3). Thumbnails and symbols are described in words only.
+- R5.5: where the reference keeps simulator settings is from the same
+  stills and the capture's notes on the reference's menus (level 3); the
+  placement of Ycode's host page is the owner's rule and Ycode's choice.

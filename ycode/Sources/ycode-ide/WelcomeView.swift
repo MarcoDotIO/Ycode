@@ -3,12 +3,14 @@ import SwiftUI
 import YcodeIDECore
 import YcodeIDEShell
 
-/// The Welcome screen (`reference-ui-6.md` §1.4, `metrics.md` §8): the
-/// AppKit IDE's Welcome window, 480 × 632, as a panel centered in the
-/// shell's window: the icon, "Ycode", the version, Open… | Clone… | New
-/// Project (107, 107 and 130 wide, 36 tall, 8 apart, top at 242), then the
-/// recent projects in a rounded box (x 60–420, y 295–572) with 48-point
-/// rows.
+/// The Welcome screen (`reference-ui-6.md` §1.4, `metrics.md` §8, §13.4,
+/// §16.3): the AppKit IDE's Welcome window, 480 × 632, in a plain window of
+/// its own (`WelcomeWindowRoot`; `cross-platform-parity.md` §9), laid out with the
+/// AppKit window's numbers (`WelcomeMetrics`): the 98-point icon 15.5
+/// above the name's capitals, "Ycode" bold with 13-point capitals, the
+/// version, Open… | Clone… | New Project (107, 107 and 130 wide, 36 tall,
+/// 8 apart, top at 242), then the recent projects in a rounded box (x
+/// 60–420, y 295–572) with 47-point rows.
 struct WelcomeView: View {
     @Bindable var app: ShellAppModel
     @State private var selected = 0
@@ -17,51 +19,52 @@ struct WelcomeView: View {
 
     var body: some View {
         let c = ShellColors(scheme)
-        ZStack(alignment: .topLeading) {
-            c.content
-            // The round close button (W5), 36 points at (20, 20).
-            Button { dismissWindow() } label: {
-                Image(systemName: "xmark").font(.system(size: 13, weight: .semibold)).foregroundStyle(c.secondaryLabel)
-                    .frame(width: 36, height: 36)
-                    .contentShape(Circle())
+        let m = WelcomeMetrics.self
+        ZStack(alignment: .top) {
+            gray(255, 29)   // the AppKit window's background, #FFFFFF / #1D1D1E
+            YcodeMark(size: m.iconFrameSide)
+                .frame(width: m.iconFrameSide, height: m.iconFrameSide)
+                .padding(.top, m.iconFrameTop)
+            Text("Ycode").font(.system(size: m.nameSize, weight: .bold)).foregroundStyle(c.label)
+                .fixedSize()
+                .padding(.top, m.textTop(baseline: m.nameBaseline, size: m.nameSize))
+            Text(verbatim: ProductIdentity.versionText).font(.system(size: 13)).foregroundStyle(gray(128, 153))
+                .fixedSize()
+                .padding(.top, m.textTop(baseline: m.versionBaseline, size: 13))
+            HStack(spacing: 8) {
+                welcomeButton("Open…", width: 107, c) { app.showOpenSheet() }
+                    .shellTarget("welcome open")
+                welcomeButton("Clone…", width: 107, c) { app.showClone() }
+                    .shellTarget("welcome clone")
+                welcomeButton("New Project", width: 130, chevron: true, c) { app.showNewProject() }
+                    .shellTarget("welcome new project")
             }
-            .buttonStyle(.plain)
-            .help("Close")
-            .accessibilityLabel("Close")
-            .shellTarget("welcome close")
-            .padding(20)
-            VStack(spacing: 0) {
-                YcodeMark(size: 112)
-                    .frame(width: 104, height: 84)
-                    .padding(.top, 63)
-                Text("Ycode").font(.system(size: 34, weight: .bold)).foregroundStyle(c.label)
-                    .frame(height: 41)
-                    .padding(.top, 25)
-                Text(verbatim: ProductIdentity.versionText).font(.system(size: 13)).foregroundStyle(c.secondaryLabel)
-                    .frame(height: 16)
-                HStack(spacing: 8) {
-                    welcomeButton("Open…", width: 107, c) { app.showOpenSheet() }
-                        .shellTarget("welcome open")
-                    welcomeButton("Clone…", width: 107, c) { app.showClone() }
-                        .shellTarget("welcome clone")
-                    welcomeButton("New Project", width: 130, chevron: true, c) { app.showNewProject() }
-                        .shellTarget("welcome new project")
+            .padding(.top, m.buttonsTop)
+            recents(c)
+                .frame(width: 360, height: 277)
+                .padding(.top, 295)
+            // The round close button (W5): a 36-point filled circle at (20, 20).
+            HStack(spacing: 0) {
+                Button { dismissWindow() } label: {
+                    Image(systemName: "xmark").font(.system(size: 13, weight: .semibold)).foregroundStyle(gray(159, 100))
+                        .frame(width: 36, height: 36)
+                        .background { Circle().fill(welcomeButtonFill) }
+                        .contentShape(Circle())
                 }
-                .padding(.top, 242 - 63 - 84 - 25 - 41 - 16)
-                recents(c)
-                    .frame(width: 360, height: 277)
-                    .padding(.top, 295 - 278)
+                .buttonStyle(.plain)
+                .help("Close")
+                .accessibilityLabel("Close")
+                .shellTarget("welcome close")
                 Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity)
+            .padding(.top, 20)
+            .padding(.leading, 20)
         }
         .frame(width: 480, height: 632)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(c.capsuleStroke, lineWidth: 1) }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(c.sidebar)
-        .navigationTitle("Welcome to Ycode")
+        .navigationTitle(Self.windowTitle)
     }
+
+    static let windowTitle = "Welcome to Ycode"
 
     func welcomeButton(_ title: String, width: CGFloat, chevron: Bool = false, _ c: ShellColors, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -78,6 +81,12 @@ struct WelcomeView: View {
             .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+
+    /// A grey for each appearance (the AppKit Welcome window's, parity §9).
+    func gray(_ light: Double, _ dark: Double) -> Color {
+        let v = (scheme == .dark ? dark : light) / 255
+        return Color(.sRGB, red: v, green: v, blue: v)
     }
 
     var welcomeButtonFill: Color {
@@ -98,23 +107,28 @@ struct WelcomeView: View {
                     VStack(spacing: 0) {
                         ForEach(Array(app.recent.enumerated()), id: \.offset) { pair in
                             let url = pair.element
-                            HStack(spacing: 10) {
+                            // The AppKit rows: the glyph 16 in, the text at 56;
+                            // the name 13 points semibold, the folder 11 points,
+                            // cut at its head ("…/project") to fit the row.
+                            HStack(spacing: 8) {
                                 Image(systemName: url.pathExtension.isEmpty ? "shippingbox" : "folder.badge.gearshape")
                                     .font(.system(size: 20)).foregroundStyle(c.secondaryLabel)
                                     .frame(width: 32)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(verbatim: RecentProjects.displayName(url)).font(.system(size: 13, weight: .bold)).foregroundStyle(c.label)
+                                    Text(verbatim: RecentProjects.displayName(url)).font(.system(size: 13, weight: .semibold)).foregroundStyle(c.label)
                                         .lineLimit(1)
                                     Text(verbatim: RecentProjects.folderText(url)).font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.secondaryLabel)
-                                        .lineLimit(1).truncationMode(.middle)
+                                        .lineLimit(1).truncationMode(.head)
                                 }
-                                Spacer(minLength: 0)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .padding(.horizontal, 8)
-                            .frame(height: 48)
+                            .padding(.leading, 16)
+                            .padding(.trailing, 16)
+                            .frame(height: CGFloat(WelcomeMetrics.recentRowPitch))
                             .background {
                                 if pair.offset == selected {
                                     RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color(.sRGB, red: sel, green: sel, blue: sel))
+                                        .padding(.horizontal, 8)
                                 }
                             }
                             .contentShape(Rectangle())
@@ -123,10 +137,37 @@ struct WelcomeView: View {
                             .shellTarget("recent \(RecentProjects.displayName(url))")
                         }
                     }
-                    .padding(8)
+                    .padding(.vertical, 4)
                 }
                 .scrollIndicators(.hidden)
             }
         }
+    }
+}
+
+/// The AppKit Welcome window's numbers (`WelcomeWindowController`,
+/// `metrics.md` §13.4, §16.3), with the text placed for OpenViews' UI font
+/// (Inter: capitals 0.727 em, ascender 0.969 em).
+enum WelcomeMetrics {
+    static let buttonsTop: CGFloat = 242
+    static let nameCapHeight: CGFloat = 13
+    static let nameBaseline: CGFloat = buttonsTop - 38
+    static let versionBaseline: CGFloat = buttonsTop - 19
+    static let iconVisibleSide: CGFloat = 98
+    static let iconGapAboveName: CGFloat = 15.5
+    static let recentRowPitch: CGFloat = 47
+    static let capHeightPerEm: CGFloat = 0.727
+    static let ascenderPerEm: CGFloat = 0.969
+    /// The name's size: capitals `nameCapHeight` tall.
+    static var nameSize: CGFloat { (nameCapHeight / capHeightPerEm * 2).rounded() / 2 }
+    /// The top of a text line of `size` points whose baseline is at `baseline`.
+    static func textTop(baseline: CGFloat, size: CGFloat) -> CGFloat { baseline - size * ascenderPerEm }
+    static var iconFrameSide: CGFloat {
+        iconVisibleSide / CGFloat((ProductIconGeometry.fieldMax - ProductIconGeometry.fieldMin) / ProductIconGeometry.side)
+    }
+    /// The icon's frame top: its drawn square ends 15.5 above the name's capitals.
+    static var iconFrameTop: CGFloat {
+        let capTop = nameBaseline - nameCapHeight
+        return capTop - iconGapAboveName + iconFrameSide * CGFloat(ProductIconGeometry.fieldMin / ProductIconGeometry.side) - iconFrameSide
     }
 }

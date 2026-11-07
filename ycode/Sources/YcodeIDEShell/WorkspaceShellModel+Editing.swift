@@ -50,6 +50,8 @@ extension WorkspaceShellModel {
 
     /// Shows `path`: its open document, else a new one from disk.
     func showFile(_ path: String) {
+        defer { syncFocusedPane() }   // +Panes.swift
+        if showImage(path) { previewCanvasFocusChanged(); return }
         if showStructured(path) { previewCanvasFocusChanged(); return }
         if let d = openDocuments[path] {
             editor = d
@@ -257,11 +259,15 @@ extension WorkspaceShellModel {
             return
         }
         if editor?.isDirty == true { recovery.discard(path: path) }
-        editedPaths.remove(path)
-        recoveredPaths.remove(path)
-        openDocuments[path] = nil
-        languageUpdates.removeValue(forKey: path)?.cancel()
-        session.language?.close(URL(fileURLWithPath: path))
+        // Another editor pane still shows it: the document stays open.
+        if !otherPaneShows(path) {
+            editedPaths.remove(path)
+            recoveredPaths.remove(path)
+            openDocuments[path] = nil
+            languageUpdates.removeValue(forKey: path)?.cancel()
+            session.language?.close(URL(fileURLWithPath: path))
+        }
+        defer { syncFocusedPane() }
         editor = nil
         document = nil
         structuredEditor = nil

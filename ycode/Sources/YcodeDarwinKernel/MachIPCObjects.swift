@@ -85,6 +85,8 @@ final class IPCPort {
     var workInterval: KernelWorkInterval?
     /// The timer of an mk_timer port (`MachTimer.swift`).
     var mkTimer: MachTimer?
+    /// A look-up of a held name was sent with this reply port (`LookupHold.swift`).
+    var lookupHoldPending = false
     /// False once the port died.
     var active = true
     /// The space that holds the receive right (nil: in transit, dead, or a

@@ -325,7 +325,7 @@ extension WorkspaceWindowController {
     /// What the canvas says when previews need a Ycode simulator and none is set up.
     static func needsSimulatorMessage(platform: PreviewPlatform, uikit: Bool) -> String {
         let what = uikit ? "UIKit previews" : "Previews for \(platform.rawValue)"
-        return "\(what) run on a Ycode Simulator. Set one up in Settings ▸ Simulators (a simulator host and a runtime), then choose Check Again."
+        return "\(what) run on a Ycode Simulator. Set one up in Settings ▸ Components ▸ Simulator Host (a simulator host and a runtime), then choose Check Again."
     }
 
     static func describe(_ d: PreviewUpdate) -> String {

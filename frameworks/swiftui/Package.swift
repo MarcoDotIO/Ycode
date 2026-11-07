@@ -39,6 +39,7 @@ let package = Package(
         .executable(name: "ov-settings", targets: ["OVSettingsSample"]),
         .executable(name: "ov-mini-ide", targets: ["OVMiniIDE"]),
         .executable(name: "ov-editor-bench", targets: ["OVEditorBench"]),
+        .executable(name: "ov-chrome", targets: ["OVChromeDemo"]),
     ],
     targets: [
         // Fonts, shaping, line breaking, bidi and paragraph layout (round R4).
@@ -102,6 +103,10 @@ let package = Package(
         // R13: the scrolling benchmark of an EditorKit-style text surface.
         .executableTarget(name: "OVEditorBench", dependencies: [.target(name: uiModule), "OVPlatform"],
                           path: "Sources/OVEditorBench", swiftSettings: renamed),
+        // B5-OPENVIEWS: the desktop chrome demo (window buttons, the menu bar
+        // on demand, materials, scrollers, control looks, separate windows).
+        .executableTarget(name: "OVChromeDemo", dependencies: [.target(name: uiModule), "OVPlatform", "OVText"],
+                          path: "Sources/OVChromeDemo", swiftSettings: renamed),
         .testTarget(name: "OpenViewsTests",
                     dependencies: [.target(name: coreModule), .target(name: uiModule), "OVText", "OVRender",
                                    "OVPlatform", "OVDBus", "OVAccessibilityATSPI"],

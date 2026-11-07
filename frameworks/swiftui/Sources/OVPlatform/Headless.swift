@@ -45,6 +45,7 @@ public final class HeadlessWindow: PlatformWindow {
         self.refreshRate = refreshRate
         popupParent = configuration.popupParent
         popupOrigin = configuration.popupOrigin
+        isDecorated = configuration.decorated
         self.backend = backend
     }
 
@@ -82,6 +83,20 @@ public final class HeadlessWindow: PlatformWindow {
         backend?.post(.window(id, .minimized))
     }
     public func close() { isClosed = true }
+
+    // Client-side decorations (B5-OPENVIEWS): recorded for tests.
+    public let isDecorated: Bool
+    public private(set) var hitTest: (@MainActor (CGPoint) -> WindowHitRegion)?
+    public private(set) var isMaximized = false
+    public private(set) var isFullscreen = false
+}
+
+extension HeadlessWindow: PlatformWindowDecorations {
+    public func setHitTest(_ test: (@MainActor (CGPoint) -> WindowHitRegion)?) { hitTest = test }
+    public func setMaximized(_ maximized: Bool) { isMaximized = maximized }
+    public func setFullscreen(_ fullscreen: Bool) { isFullscreen = fullscreen }
+    /// The region the app's hit test gives at a point (tests).
+    public func hitRegion(at p: CGPoint) -> WindowHitRegion { hitTest?(p) ?? .normal }
 }
 
 /// The test back end.

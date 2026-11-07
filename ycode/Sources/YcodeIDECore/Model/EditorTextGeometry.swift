@@ -56,19 +56,41 @@ public enum EditorTextGeometry {
         return out
     }
 
-    /// `rowStarts` over characters, breaking only after white space (the
-    /// opportunities of UAX #14 that matter for source text; a toolkit
-    /// with the full rules passes its own).
+    /// `rowStarts` over characters, with the opportunities of UAX #14 that
+    /// matter for source text, as the macOS text system finds them
+    /// (`isBreakOpportunity`); a toolkit with the full rules passes its own.
     public static func rowStarts(of line: [Character], firstColumns: Int, continuationColumns: Int) -> [Int] {
         func space(_ i: Int) -> Bool { line[i] == " " || line[i] == "\t" }
         return rowStarts(length: line.count, firstColumns: firstColumns, continuationColumns: continuationColumns, isSpace: space) { start, limit in
             var b = min(limit, line.count - 1)
             while b > start {
-                if !space(b), space(b - 1) { return b }
+                if isBreakOpportunity(before: b, in: line) { return b }
                 b -= 1
             }
             return nil
         }
+    }
+
+    /// Whether a line may break before `b` (UAX #14, the rules source text
+    /// meets; `cross-platform-parity.md` §4: the Linux editor wraps where
+    /// the macOS one does):
+    /// - after white space (LB18), but never before closing punctuation, an
+    ///   exclamation or question mark, an infix separator or a slash
+    ///   (LB13: `}` `)` `]` `!` `?` `,` `.` `:` `;` `/` stay on the row);
+    /// - after a hyphen before a letter or digit (LB21);
+    /// - between a backslash and an opening bracket (a prefix before an
+    ///   opening punctuation that does not start a number, LB25/LB31: the
+    ///   `\(` of a string interpolation).
+    public static func isBreakOpportunity(before b: Int, in line: [Character]) -> Bool {
+        guard b > 0, b < line.count else { return false }
+        let prev = line[b - 1], next = line[b]
+        func isSpace(_ c: Character) -> Bool { c == " " || c == "\t" }
+        if isSpace(next) { return false }
+        if "}])!?,.:;/".contains(next) { return false }
+        if isSpace(prev) { return true }
+        if prev == "-", next.isLetter || next.isNumber { return b >= 2 && !isSpace(line[b - 2]) }
+        if prev == "\\", "([{".contains(next) { return true }
+        return false
     }
 
     // MARK: Block elements (F.1, F.4; row 87)

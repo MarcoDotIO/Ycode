@@ -119,6 +119,11 @@ const OVSDLAPI *ov_sdl_load(const char *path, char *error, size_t error_len) {
     OV_RESOLVE(GetSystemTheme);
     OV_RESOLVE(MinimizeWindow);
     OV_RESOLVE(GetWindowPosition);
+    OV_RESOLVE(SetWindowHitTest);
+    OV_RESOLVE(GetWindowFlags);
+    OV_RESOLVE(MaximizeWindow);
+    OV_RESOLVE(RestoreWindow);
+    OV_RESOLVE(SetWindowFullscreen);
     ov_loaded = 1;
     return &ov_api;
 }

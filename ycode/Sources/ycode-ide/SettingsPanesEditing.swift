@@ -12,11 +12,9 @@ struct EditingSettingsPane: View {
 
     enum Page: String { case main = "Editing", display = "Display", completion = "Completion", indentation = "Indentation" }
 
-    #if os(Linux)
-    static let lineEndings = "Unix (LF)"
-    #else
+    /// The macOS IDE's words on both IDEs (the reference's wording, true on
+    /// Linux too).
     static let lineEndings = "macOS / Unix (LF)"
-    #endif
     static let textEncoding = "Unicode (UTF-8)"
 
     var body: some View {
@@ -53,7 +51,7 @@ struct EditingSettingsPane: View {
             }
             SettingsSection("When Editing") {
                 CheckRow(title: "Automatically trim trailing whitespace", isOn: setting(\.trimTrailingWhitespace), target: "settings trim whitespace")
-                CheckRow(title: "Including whitespace-only lines", isOn: setting(\.trimWhitespaceOnlyLines), target: "settings trim whitespace lines")
+                CheckRow(title: "Trim whitespace-only lines", isOn: setting(\.trimWhitespaceOnlyLines), target: "settings trim whitespace lines")
                     .disabled(!Preferences.shared.trimTrailingWhitespace)
                 CheckRow(title: "Predictive code completion", isOn: setting(\.predictiveCompletion.enabled), target: "settings prediction main")
             }

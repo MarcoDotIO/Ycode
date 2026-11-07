@@ -22,14 +22,24 @@ struct ShellColors {
         return Color(.sRGB, red: v, green: v, blue: v)
     }
 
-    /// The navigator and inspector areas (the sidebars' material).
-    var sidebar: Color { gray(251, 28) }
-    /// The editor area and the toolbar band over it.
-    var content: Color { gray(255, 30) }
+    /// The navigator and inspector areas: the sidebar material as the macOS
+    /// IDE draws it, #F2F2F3 / #252627 (`cross-platform-parity.md` §3, §5;
+    /// more pane colours in PaneStyle.swift).
+    var sidebar: Color {
+        dark ? Color(.sRGB, red: 37 / 255, green: 38 / 255, blue: 39 / 255) : Color(.sRGB, red: 242 / 255, green: 242 / 255, blue: 243 / 255)
+    }
+    /// The editor area and the toolbar band over it (the AppKit window's
+    /// #FFFFFF / #262626, `cross-platform-parity.md` §2, §6).
+    var content: Color { gray(255, 38) }
     /// Glass capsules' outlines.
     var capsuleStroke: Color { gray(225, 20) }
-    /// A toolbar segment that is on (Navigators, Canvas).
-    var segmentPill: Color { gray(204, 70) }
+    /// A disabled toolbar glyph's opacity over its capsule.
+    static let disabledGlyphOpacity = 0.6
+    /// Glass capsules' fill (the AppKit toolbar's #ECECEC / #3A3A3A, §2).
+    var capsuleFill: Color { gray(236, 58) }
+    /// A toolbar segment that is on (Navigators, Canvas): the AppKit
+    /// toolbar's pill, #D2D2D3 / #4D4E4F (`cross-platform-parity.md` §2).
+    var segmentPill: Color { gray(210, 78) }
     /// The selected navigator's and inspector's pill.
     var selectorPill: Color { gray(226, 59) }
     /// Lines in the editor area (jump bar, debug bar, minimap).
@@ -61,6 +71,7 @@ struct ShellColors {
         case .error: error
         case .warning: warning
         case .success: success
+        case .icon(let t): icon(t)   // PaneStyle.swift
         }
     }
 }
@@ -80,25 +91,29 @@ enum ShellFonts {
     /// the AppKit IDE uses spaces its small sizes wider than Inter does
     /// (measured on the paired windows: 11-point labels 7 % wider); none
     /// with Apple's SwiftUI, whose system font has it built in.
-    #if os(Linux)
-    static let smallTracking: CGFloat = 0.35
-    #else
+    /// Since OpenViews tracks Inter itself (`ShellLook.apply`, OV-4), none.
     static let smallTracking: CGFloat = 0
-    #endif
     static let activityName = Font.system(size: 13, weight: .bold)
     static let toolbarTitle = Font.system(size: 13, weight: .semibold)
+    /// The scheme capsule's titles: 13 points regular, as the AppKit
+    /// toolbar's pop-ups (`cross-platform-parity.md` §2).
+    static let toolbarItem = Font.system(size: 13)
     static let symbol = Font.system(size: 15)
     static func editor(_ size: CGFloat) -> Font { .system(size: size, design: .monospaced) }
 }
 
-/// A flat stand-in for a glass capsule: the area's color with a hairline.
+/// A flat stand-in for a glass capsule: a fill with a hairline rim. The
+/// toolbar's capsules are filled as the AppKit toolbar's are
+/// (`ShellColors.capsuleFill`, `cross-platform-parity.md` §2).
 struct GlassCapsule: View {
     var height = CGFloat(WorkspaceChrome.toolbarItemHeight)
+    /// The fill; nil for none (the rim alone).
+    var fill: Color?
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let c = ShellColors(scheme)
-        Capsule(style: .continuous).fill(Color.clear)
+        Capsule(style: .continuous).fill(fill ?? Color.clear)
             .overlay { Capsule(style: .continuous).stroke(c.capsuleStroke, lineWidth: 1) }
             .frame(height: height)
     }
@@ -135,8 +150,11 @@ struct GlassSegments: View {
                         if s.isOn { Capsule(style: .continuous).fill(c.segmentPill).frame(width: segmentWidth + 6, height: 28) }
                         Image(systemName: s.symbol)
                             .font(.system(size: symbolSize))
-                            .foregroundStyle(s.isOn ? c.label : c.toolbarIcon)
-                            .opacity(s.isEnabled ? 1 : 0.35)
+                            // The AppKit toolbar keeps a segment's glyph grey when
+                            // it is on; a disabled glyph reads #606060 on the dark
+                            // capsule, #ACACAC on the light one (parity §2).
+                            .foregroundStyle(c.toolbarIcon)
+                            .opacity(s.isEnabled ? 1 : ShellColors.disabledGlyphOpacity)
                     }
                     .frame(width: segmentWidth + 6, height: CGFloat(WorkspaceChrome.toolbarItemHeight))
                     .contentShape(Rectangle())
@@ -149,7 +167,7 @@ struct GlassSegments: View {
             }
         }
         .padding(.horizontal, 4)
-        .background { GlassCapsule() }
+        .background { GlassCapsule(fill: c.capsuleFill) }
     }
 }
 
@@ -170,9 +188,9 @@ struct GlassCircleButton: View {
             Image(systemName: symbol)
                 .font(.system(size: 15))
                 .foregroundStyle(c.toolbarIcon)
-                .opacity(isEnabled ? 1 : 0.35)
+                .opacity(isEnabled ? 1 : ShellColors.disabledGlyphOpacity)
                 .frame(width: diameter, height: diameter)
-                .background { Circle().stroke(c.capsuleStroke, lineWidth: 1) }
+                .background { Circle().fill(c.capsuleFill).overlay { Circle().stroke(c.capsuleStroke, lineWidth: 1) } }
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)

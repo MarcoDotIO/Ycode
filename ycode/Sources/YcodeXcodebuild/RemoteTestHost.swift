@@ -15,7 +15,7 @@ import YcodeSubprocess
 /// See `specs/xcodebuild/test-actions.md`, "Ycode implementation".
 public struct RemoteTestHost {
     /// Where the simulator runs. From the environment (the IDE sets these
-    /// from Settings ▸ Simulators; machine names never go into files):
+    /// from Settings ▸ Components ▸ Simulator Host; machine names never go into files):
     ///
     /// | Variable | Meaning |
     /// |---|---|

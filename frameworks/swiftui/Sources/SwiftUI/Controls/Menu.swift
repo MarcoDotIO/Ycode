@@ -295,7 +295,9 @@ public struct ButtonMenuStyle: MenuStyle {
 
 public struct BorderlessButtonMenuStyle: MenuStyle {
     public init() {}
-    public var _ovStyleKind: Int { 0 }
+    /// 2: borderless, asked for (a desktop pop-up picker draws the macOS
+    /// IDE's inspector pop-up; menus draw as 0).
+    public var _ovStyleKind: Int { 2 }
 }
 
 extension MenuStyle where Self == DefaultMenuStyle {

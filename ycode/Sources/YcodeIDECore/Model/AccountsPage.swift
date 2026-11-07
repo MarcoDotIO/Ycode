@@ -94,11 +94,12 @@ public enum SettingsPaneOrder {
     public static let all = ["General", "Appearance", "Accounts", "Coding Assistant", "Behaviors", "Navigation", "Notifications",
                              "Editing", "Shortcuts", "Source Control", "Components", "Locations"]
     /// Pages with no sidebar row, and the pane that leads to each: Ycode's
-    /// own Simulators page (macOS only) is a navigation row of Components,
-    /// next to the simulator runtimes it runs (R4.2).
+    /// own simulator-host page ("Simulators") opens from the Simulator Host
+    /// row at the end of Components' "Other Components" (R5.5).
     public static let subPages = ["Simulators": "Components"]
-    /// The pages the Linux IDE does not offer.
-    public static let notOnLinux: Set = ["Simulators"]
+    /// The pages the Linux IDE does not offer: none since round 5 (the
+    /// host page is on both IDEs).
+    public static let notOnLinux: Set<String> = []
     /// The Linux IDE's panes: the same order.
     public static var linux: [String] { all.filter { !notOnLinux.contains($0) } }
 }

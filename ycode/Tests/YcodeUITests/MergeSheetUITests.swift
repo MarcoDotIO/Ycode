@@ -104,19 +104,46 @@ import Testing
         }
     }
 
+    /// The window's pixels, with the merge sheet's own window (§14.1) drawn
+    /// over them at its place; the image is tall enough for the part of the
+    /// sheet below the window.
     func snapshot(_ wc: WorkspaceWindowController) throws -> Snapshot {
-        let frame = try #require(wc.window?.contentView?.superview)
+        let win = try #require(wc.window)
+        let frame = try #require(win.contentView?.superview)
         frame.layoutSubtreeIfNeeded()
         let rep = try #require(frame.bitmapImageRepForCachingDisplay(in: frame.bounds))
         frame.cacheDisplay(in: frame.bounds, to: rep)
-        return Snapshot(rep: rep, height: frame.bounds.height, scale: CGFloat(rep.pixelsWide) / frame.bounds.width)
+        let scale = CGFloat(rep.pixelsWide) / frame.bounds.width
+        guard let sw = wc.sourceControl.mergeOverlay?.sheetWindow, let content = sw.contentView else {
+            return Snapshot(rep: rep, height: frame.bounds.height, scale: scale)
+        }
+        content.layoutSubtreeIfNeeded()
+        let sheetRep = try #require(content.bitmapImageRepForCachingDisplay(in: content.bounds))
+        content.cacheDisplay(in: content.bounds, to: sheetRep)
+        // The sheet window's top-left in the parent's top-left space.
+        let origin = NSPoint(x: sw.frame.minX - win.frame.minX, y: win.frame.maxY - sw.frame.maxY)
+        let height = max(frame.bounds.height, origin.y + content.bounds.height)
+        let out = try #require(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: rep.pixelsWide, pixelsHigh: Int((height * scale).rounded(.up)),
+                                                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                                bytesPerRow: 0, bitsPerPixel: 0)?.retagging(with: .sRGB))
+        out.size = NSSize(width: frame.bounds.width, height: height)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: out)
+        NSColor.black.setFill()
+        NSRect(x: 0, y: 0, width: frame.bounds.width, height: height).fill()
+        rep.draw(in: NSRect(x: 0, y: height - frame.bounds.height, width: frame.bounds.width, height: frame.bounds.height))
+        sheetRep.draw(in: NSRect(x: origin.x, y: height - origin.y - content.bounds.height, width: content.bounds.width, height: content.bounds.height),
+                      from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+        NSGraphicsContext.restoreGraphicsState()
+        return Snapshot(rep: out, height: height, scale: scale)
     }
 
-    /// A view rectangle in window coordinates, origin top-left.
+    /// A view rectangle in the workspace window's coordinates, origin
+    /// top-left (views in the sheet's own window too).
     func windowRect(_ v: NSView, _ r: NSRect, _ wc: WorkspaceWindowController) -> NSRect {
-        let h = wc.window?.contentView?.superview?.bounds.height ?? 0
-        let w = v.convert(r, to: nil)
-        return NSRect(x: w.minX, y: h - w.maxY, width: w.width, height: w.height)
+        guard let win = wc.window, let vw = v.window else { return .zero }
+        let screen = vw.convertToScreen(v.convert(r, to: nil))
+        return NSRect(x: screen.minX - win.frame.minX, y: win.frame.maxY - screen.maxY, width: screen.width, height: screen.height)
     }
 
     func same(_ c: NSColor?, _ hex: UInt32, tolerance: CGFloat = 0.02) -> Bool {
@@ -219,9 +246,12 @@ import Testing
             let overlay = try #require(wc.sourceControl.mergeOverlay)
             let look = dark ? "dark" : "light"
 
-            // The frame: 24 in, the top at the toolbar's bottom, radius 16.
+            // The frame: 24 in, the top at the toolbar's bottom, radius 16
+            // (in the sheet's own window, §14.1).
             let f = MergeSheetMetrics.sheetFrame(window: (overlay.bounds.width, overlay.bounds.height), toolbarBottom: Double(overlay.toolbarBottom))
-            #expect(sheet.view.frame == NSRect(x: 24, y: f.y, width: overlay.bounds.width - 48, height: f.height))
+            let sw = try #require(overlay.sheetWindow)
+            #expect(sw.sheetFrame(in: try #require(wc.window)) == NSRect(x: 24, y: f.y, width: overlay.bounds.width - 48, height: f.height))
+            #expect(sheet.view.frame.size == NSSize(width: f.width, height: f.height))
             #expect(overlay.toolbarBottom > 40 && overlay.toolbarBottom < 60)
             #expect(sheet.view.layer?.cornerRadius == 16)
             // 11.5, rounded to whole pixels at 1x.
@@ -232,7 +262,7 @@ import Testing
             #expect(sheet.footer.frame.height == 28 && sheet.jumpBar.frame.height == 37)
             #expect(sheet.mergeButton.frame.width == 84 && sheet.cancelButton.frame.width == 84)
             #expect(sheet.mergeButton.frame.minX - sheet.cancelButton.frame.maxX == 12)
-            #expect(abs(sheet.mergeButton.frame.minY - sheet.sheetView.box.frame.maxY - 21.5) <= 0.5)
+            #expect(abs(sheet.mergeButton.frame.minY - sheet.sheetView.box.frame.maxY - 19) <= 0.5)
             #expect(sheet.mergeButton.frame.maxX == sheet.sheetView.box.frame.maxX)
             #expect(!sheet.mergeButton.isEnabled)
 
@@ -328,9 +358,9 @@ import Testing
         slide.timingFunction?.getControlPoint(at: 2, values: &c2)
         let curve = MergeSheetMotion.slideCurve
         #expect(c1 == [Float(curve.x1), Float(curve.y1)] && c2 == [Float(curve.x2), Float(curve.y2)])
-        // The slide starts above the resting place: the overlay's layer
-        // tree is flipped (y grows downward), so the start is −32.
-        #expect(layer.superlayer?.isGeometryFlipped == true && slide.fromValue as? Double == -32)
+        // The slide starts above the resting place: the sheet window's
+        // content is flipped (y grows downward), so the start is −32.
+        #expect(sheet.view.superview?.isFlipped == true && slide.fromValue as? Double == -32)
 
         // Closing reverses it.
         overlay.animateSheet(in: false)

@@ -200,6 +200,9 @@ extension WorkspaceWindowController {
 
     func apply(_ f: ToolbarFit) {
         setSchemeGlyphsOnly(f.schemeGlyphsOnly)
+        // The issue capsule shows its symbols only with the scheme's glyphs
+        // (editor-area.md G.4, G.8).
+        issueCapsule.symbolsOnly = f.schemeGlyphsOnly
         activityView.maximumWidth = f.activityWidth ?? .greatestFiniteMagnitude
     }
 

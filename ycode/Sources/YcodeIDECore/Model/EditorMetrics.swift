@@ -21,6 +21,18 @@ public enum EditorMetrics {
     public static let firstLineInset = 7.0
     /// The text container ends this far before the minimap's separator.
     public static let textToMinimap = 10.0
+    /// A row's last cell may end this far past the container's edge (its
+    /// glyph's ink still ends before it): with it, equal split panes a point
+    /// apart wrap at the same column count, 17 at a 274-point pane
+    /// (`editor-area.md` G.2, checklist row 115; the reference's 17th cell
+    /// ends 9.4 before the minimap, its 80th in a full pane 10.6 before).
+    public static let wrapTolerance = 1.0
+    /// The cells a row holds when `room` points lie between the code column
+    /// and the container's end.
+    public static func wrapColumns(room: Double, advance: Double) -> Int {
+        guard advance > 0 else { return 0 }
+        return Int(((room + wrapTolerance) / advance).rounded(.down))
+    }
     /// Wrapped lines continue this many columns past the line's own
     /// indentation.
     public static let wrappedIndentColumns = 4
@@ -92,6 +104,13 @@ public enum EditorMetrics {
         return min(minimapWidthRange.upperBound, max(minimapWidthRange.lowerBound, (editorWidth * 0.15).rounded(.down)))
     }
     public static let minimapSeparator = 1.0
+    /// The scroller's lane at the editor's right edge as the macOS editor
+    /// drew it in round 5 (`editor-area.md` G.2: a 3-point strip, then the
+    /// 11-point lane); the minimap covers the strip and meets the lane
+    /// (row 116: no darker strip between them). The Linux editor, which
+    /// draws no scroller, keeps this lane so its text column is as wide.
+    public static let scrollerLane = 14.0
+    public static let minimapStrip = 3.0
     /// Text at 1/6 scale: a 2-point bar on a 3-point pitch per visual line.
     public static let minimapScale = 1.0 / 6
     public static let minimapBarHeight = 2.0
@@ -127,12 +146,14 @@ public enum EditorMetrics {
     // Round 2 (`editor-area.md` §D.5, key window, Long.swift open): this
     // supersedes the duration and curve above.
 
-    /// From the press to the first motion: hide 43 ms, show 118 ms.
-    public static func inspectorSlideDelay(show: Bool) -> Double { show ? 0.118 : 0.043 }
-    /// The motion: round 4's ease-in-out fits (`editor-area.md` F.5),
-    /// hide 226 ms, show 217 ms (round 2's fitted ends were 248 and 240;
-    /// round 2's hide table fits 226 as well).
-    public static func inspectorSlideMotion(show: Bool) -> Double { show ? 0.217 : 0.226 }
+    /// From the press to the first motion: hide 50 ms, show 145 ms
+    /// (`editor-area.md` G.1, checklist row 133: hide within about 60, show
+    /// within about 120–170; rounds 4 and 5 measured 48 and 60, 116–129 and
+    /// 170).
+    public static func inspectorSlideDelay(show: Bool) -> Double { show ? 0.145 : 0.050 }
+    /// The motion: about 200 ms of ease-in-out both ways (G.1; round 4's fits
+    /// were 226 and 217, round 5 measured 198 and 188 of edge motion).
+    public static func inspectorSlideMotion(show: Bool) -> Double { 0.200 }
     /// Ease-in-out, the working curve for both.
     public static let inspectorSlideEaseInOut = (x1: 0.42, y1: 0.0, x2: 0.58, y2: 1.0)
 

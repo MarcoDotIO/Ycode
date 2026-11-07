@@ -4,10 +4,11 @@ import YcodeIDECore
 
 /// One visible row of a navigator outline, flattened: the shell draws the
 /// rows itself so their metrics are the AppKit outline's
-/// (`WorkspaceChrome`: 22-point rows, 12 points of indentation per level,
+/// (`WorkspaceChrome`: 22-point rows, 14 points of indentation per level,
 /// the disclosure triangle, a 16-point icon and the label 4 after it).
 public struct OutlineRow: Identifiable, Equatable, Sendable {
-    public enum Tint: Equatable, Sendable { case accent, secondary, error, warning, success }
+    /// `icon`: the project navigator's colour families (`WorkspaceChrome.iconTint`).
+    public enum Tint: Equatable, Sendable { case accent, secondary, error, warning, success, icon(WorkspaceChrome.IconTint) }
 
     public var id: String
     public var level: Int
@@ -63,7 +64,8 @@ public enum OutlineRows {
             let open = expanded.contains(item.id)
             let title = item.isFile ? WorkspaceChrome.jumpBarFileTitle(item.name, hideExtension: hideExtensions) : item.name
             out.append(OutlineRow(id: item.id, level: level, title: title, detail: nil,
-                                  symbol: WorkspaceChrome.symbol(kind: item.kind, name: item.name, path: item.path), tint: .accent,
+                                  symbol: WorkspaceChrome.symbol(kind: item.kind, name: item.name, path: item.path),
+                                  tint: .icon(WorkspaceChrome.iconTint(kind: item.kind, name: item.name)),
                                   isExpandable: item.children != nil, isExpanded: open, opens: item.isFile,
                                   isEdited: item.path.map(edited.contains) ?? false,
                                   badge: item.isFile ? item.path.flatMap { badges[$0] } : nil))

@@ -88,39 +88,6 @@ struct LocationsSettingsPane: View {
     }
 }
 
-/// Settings ▸ Components: the reference's pane, shown with its empty state
-/// (the Linux IDE lists no SDKs; the simulator runtimes are the runtime
-/// wizard's, which the button opens).
-struct ComponentsSettingsPane: View {
-    @Environment(\.colorScheme) private var scheme
-
-    static let emptyTitle = "No Components"
-    static let emptyText = "Ycode on Linux builds with the Swift toolchain on the PATH (Settings \u{25B8} Locations). Simulator runtimes are added with the runtime wizard."
-
-    var body: some View {
-        let p = SettingsPalette(scheme)
-        SettingsForm {
-            SettingsSection("Installed") {
-                SettingsContentRow(inset: 0) {
-                    VStack(spacing: 6) {
-                        Text(verbatim: Self.emptyTitle).font(SettingsFonts.header).foregroundStyle(p.help)
-                            .shellTarget("settings components empty")
-                        SettingsHelpText(text: Self.emptyText).multilineTextAlignment(.center)
-                    }
-                    .padding(.horizontal, 30)
-                    .frame(maxWidth: .infinity, minHeight: 140)
-                }
-                SettingsRow("Simulator runtimes") {
-                    Button("Simulator Runtimes\u{2026}") { ShellApp.model.showRuntimeSetup(step: .runtimes) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .shellTarget("settings components runtimes")
-                }
-            }
-        }
-    }
-}
-
 /// A path in the small monospaced style, or "Not found".
 struct PathText: View {
     var path: String?

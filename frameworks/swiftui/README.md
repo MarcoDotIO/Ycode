@@ -58,6 +58,7 @@ PNG.
 | `ov-sample` (executable `OVSampleApp`) | same | (R7) The sample app: a button, a draggable box and a text field |
 | `ov-settings` (executable `OVSettingsSample`) | same | (R8) A settings form with every control; `OV_SAMPLE_SCRIPT=1` drives it, `OV_SCREENSHOT_PREFIX` writes light, dark, menu and spinner screenshots, `OV_PRINT_TARGETS=1` prints control frames for external drivers (header of `SettingsSample.swift`) |
 | `ov-editor-bench` (executable `OVEditorBench`) | same | (R13) The scrolling benchmark of an EditorKit-style text surface: 10 000 lines drawn as `Canvas` text runs, headless, with the window's real presenter; prints milliseconds per frame (header of `EditorBench.swift`) |
+| `ov-chrome` (executable `OVChromeDemo`) | same | (B5) The desktop chrome demo: a window laid out like the macOS IDE's with a hidden title bar, OpenViews' window buttons, the menu bar on demand, the sidebar material, always-visible scrollers and the desktop control looks; Welcome and a setup wizard as windows of their own; `OV_SAMPLE_SCRIPT`, `OV_SCREENSHOT_PREFIX`, `OV_FONT_METRICS` (header of `ChromeDemo.swift`) |
 | `ov-mini-ide` (executable `OVMiniIDE`) | same | (R9, R11) A mini IDE: a `NavigationSplitView` with a file outline, a text editor over a scrolling console in a `VSplitView`, a sheet and an alert; since R11 a menu bar (File, Edit, View, Project, Window, Help) with shortcuts, a window toolbar with Build and Run, a context menu on the outline rows and a Settings window (`@AppStorage`); the same switches (`OV_SAMPLE_SCRIPT`, `OV_SCREENSHOT_PREFIX`, `OV_PRINT_TARGETS`, `OV_QUIT_AFTER`; header of `MiniIDE.swift`) |
 
 `SwiftUI` and `SwiftUICore` are interop identifiers: on Linux the modules
@@ -1195,6 +1196,111 @@ What the Linux IDE's polish pass needed (`Tests/OpenViewsTests/R13/DesktopPolish
   secondary text. `.grouped` (and `.automatic`) keep the grouped look.
 - **Symbol.** `list.bullet.indent`: a type's badge with two members under
   a tree line (the Linux IDE's Symbol navigator).
+
+### Desktop chrome after the macOS IDE (Ycode beta 3, B5-OPENVIEWS)
+
+What `specs/ide/cross-platform-parity.md` §15 (OV-1 … OV-7) asks of the
+toolkit so that the Linux IDE can look one to one with the macOS IDE
+(`Tests/OpenViewsTests/B5/`; the demo `ov-chrome`, `Sources/OVChromeDemo`,
+walks every state with `OV_SAMPLE_SCRIPT=1 OV_SCREENSHOT_PREFIX=<p>`).
+The reference is Ycode's own macOS IDE as the window server drew it (the
+B5-PARITY shots and view dumps); nothing here is Apple artwork.
+
+- **Window buttons (OV-1).** `windowStyle(.hiddenTitleBar)` on a scene
+  (SwiftUI API; `App/WindowStyle.swift`): the window has no title bar or
+  frame from the window system (`WindowConfiguration.decorated = false`,
+  SDL's borderless window), its content runs to the top edge, and OpenViews
+  draws close, minimize and zoom (`App/WindowButtons.swift`): 14-point
+  circles at x 19, 42, 65, centred on half the title bar (y 19 for the
+  52-point band), red / yellow / green with a half-point darker rim; grey
+  (#E7E8E9 rim #C1C1C4, dark #4A4A4B) when the window is not the key window
+  or a button is disabled; the pointer over the group shows a cross, a bar
+  and the full-screen arrows (with Alt, a plus); pressed, a fifth darker.
+  Close asks to close the window (the app's unsaved-changes question on the
+  last one), minimize minimises, zoom toggles full screen (Alt: maximise).
+  While a sheet or alert is up, close is disabled and minimize and zoom stay
+  usable, drawn above the veil. The buttons are accessibility buttons
+  ("Close", "Minimize", "Zoom", identifiers `_ov.window.close` …), first in
+  the window's reading order. `.hiddenTitleBar(titleBarHeight:)` (OpenViews)
+  sets another band height. `.plain` draws no buttons (Welcome). Moving and
+  resizing: SDL asks the window's hit test (`PlatformWindowDecorations`):
+  5 points at an edge (12 at a corner) resize unless maximised or full
+  screen; on the title-bar band a point where no view takes presses or
+  hovers moves the window (the toolbar's background and title do; its
+  buttons and fields do not). Not done: a double click on the band (SDL
+  takes the press on X11 and Wayland, so the app never sees it), rounded
+  window corners and the window's shadow (they need a transparent window,
+  left out).
+- **Window behaviours.** `windowDismissBehavior(_:)`,
+  `windowMinimizeBehavior(_:)`, `windowFullScreenBehavior(_:)`,
+  `windowResizeBehavior(_:)` (SwiftUI API, macOS 15) disable the matching
+  button and action; `windowButtonsShown(_:)` (OpenViews) hides buttons
+  while keeping their places (the setup wizard shows close only).
+- **Active state.** `@Environment(\.controlActiveState)` and
+  `appearsActive` (SwiftUI API): `.key` for the window with keyboard focus,
+  `.inactive` for the others (all `.key` until the window system says).
+- **Menu bar on demand (OV-1).** `menuBarPresentation(_:)` (OpenViews):
+  `.inWindow` is R11's bar; `.onDemand` keeps the window's macOS layout
+  (no bar under the toolbar): the bar fades in over the top of the window
+  when the pointer rests at the top edge for 0.35 s, on F10 (which opens
+  the first menu) or a tap of Alt alone, and hides when the pointer moves
+  below it, on Escape, or when its last menu closes; shortcuts work as
+  always. `.automatic` is `.onDemand` for hidden-title-bar and plain
+  windows. `OV_MENU_BAR=inline|on-demand` overrides it. Why not a global
+  menu: GNOME has none, and KDE's needs its Wayland app-menu protocol or an
+  X11 window id, neither of which SDL gives; why not a menu button in the
+  toolbar: the macOS IDE's toolbar has no place for one, and the macOS menu
+  bar over a full-screen window is the Apple precedent for a bar that shows
+  on demand.
+- **Separate windows (OV-7).** `defaultLaunchBehavior(.presented |
+  .suppressed)` (SwiftUI API) picks the windows that open at launch;
+  `windowResizability(.contentSize)` sizes a window to its content; a
+  `Window` scene with `.windowStyle(.plain)` is Welcome's window,
+  `openWindow(id:)` / `dismissWindow` open and close it.
+- **Materials (OV-2).** `Material` (`.ultraThinMaterial` … `.bar`; SwiftUI
+  API) and `Material.sidebar` / `.sidebarMaterial` (OpenViews): drawn as
+  the macOS IDE's colours (sidebar #F2F2F3 / #252627, bar #FFFFFF /
+  #262626); no behind-window blur (Linux desktops offer no portable one).
+  `List` with `.listStyle(.sidebar)` draws on the sidebar material on a
+  desktop.
+- **Scrollers (OV-3).** On a desktop, scroll views follow the desktop's
+  scroll-bar setting (GNOME's `overlay-scrolling`, the settings file's
+  `scrollers = overlay | always`, `OV_SCROLLERS`): overlay, a 7-point knob
+  while scrolling; always, the macOS IDE's 17-point lane with an 11-point
+  slot and knob (#7A7A7A, dark #9E9F9F), shown at rest, the content
+  narrowed by the lane. `.scrollIndicators(.visible)` and
+  `scrollerStyle(.legacy)` (OpenViews) ask for the lane.
+- **Control looks (OV-5).** On a desktop (`Controls/DesktopControls.swift`
+  has the table): `.bordered` buttons are the macOS push button (24 tall,
+  #E4E4E4 / #363636, radius 6, label in the text colour); `.roundedBorder`
+  fields are 23 tall with a hairline; a `.menu` picker is the value and a
+  round well with chevrons; with `.menuStyle(.borderlessButton)` it is the
+  inspector's pop-up (the column's width, the value then chevrons at the
+  end, 16 tall); segmented pickers have a grey track and a darker selected
+  segment with labels in the text colour (16 / 20 / 24 / 28 tall by control
+  size); steppers are 17 × 20 up-over-down. `.columns` forms keep their
+  looks.
+- **Font metrics (OV-4).** `FontCatalog.setTracking(_:forFamily:)` and
+  `FontTracking` (OVText): extra tracking per size and weight for system
+  text in a family. `FontTracking.desktopUI` makes the bundled Inter take
+  the macOS IDE's UI font widths (measured with Core Text on 47 IDE
+  strings; within 1 % on the test strings, where plain Inter is 4–6 %
+  narrower at 11 points); `FontTracking.desktopMonospaced` makes Noto Sans
+  Mono advance as the macOS IDE's monospaced font (0.6182 em). An app
+  calls `FontCatalog.shared.setTracking(.desktopUI, forFamily:
+  FontTracking.desktopUIFamily)` at launch; `OV_FONT_METRICS=desktop` does
+  both for drivers.
+- **Default buttons and first-frame hover (council rows 98, 102, 130).** A
+  button with `.keyboardShortcut(.defaultAction)` is the default button in
+  the accessibility tree (`isDefaultButton`, AT-SPI state `is-default`,
+  object attribute `button-role=default`); one with role `.cancel` or
+  `.cancelAction` is the cancel button (`button-role=cancel`). A pop-up
+  that opens under the pointer hovers the item there from its first frame.
+- **Automation.** `OpenViewsAutomation.windowSceneIDs`,
+  `windowIndex(sceneID:)`, `hitRegion(at:window:)`,
+  `isMenuBarRevealed(_:)`, `setMenuBarRevealed(_:window:)`,
+  `activeState(_:)`, `setActiveState(_:window:)`,
+  `accessibilityDump(_:)`.
 
 ### Engine design (R3)
 

@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// The device's camera setting (`ycode-simd --camera`, Settings ▸ Simulators).
+/// The device's camera setting (`ycode-simd --camera`, the device window's Settings inspector).
 public struct CameraOptIn: Equatable, Sendable, CustomStringConvertible {
     public enum Mode: Equatable, Sendable {
         /// No camera: the reference behavior (camera.md §7.1).

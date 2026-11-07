@@ -44,6 +44,7 @@ package enum PlatformEnvironment {
         set(&env, \.accessibilityDifferentiateWithoutColor, s.differentiateWithoutColor)
         set(&env, \.accessibilityInvertColors, s.invertColors)
         set(&env, \.accessibilityShowButtonShapes, s.showButtonShapes)
+        set(&env, \._prefersOverlayScrollers, s.overlayScrollers)
         if env.locale.identifier != s.localeIdentifier {
             let locale = Locale(identifier: s.localeIdentifier)
             env.locale = locale

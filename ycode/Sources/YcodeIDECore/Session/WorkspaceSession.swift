@@ -56,6 +56,9 @@ public final class WorkspaceSession {
     var repetitionCancelled = false
     /// The language service, once started.
     public internal(set) var language: LanguageService?
+    /// The language service is starting (the toolbar's activity subtitle
+    /// says so while the workspace is otherwise idle, council row 141).
+    public var isPreparingEditorServices = false { didSet { if isPreparingEditorServices != oldValue { notify(.activity) } } }
     /// The build context the language server serves, and its restarts.
     let languageRestart = LanguageRestartState()
 
@@ -161,7 +164,7 @@ public final class WorkspaceSession {
     public internal(set) var testResults: [DiscoveredTest: TestOutcome.Status] = [:]
     public var testRunner = TestRunner()
     /// The remote simulator of a Ycode simulator destination (the window
-    /// reads Settings ▸ Simulators), for tests run on it.
+    /// reads Settings ▸ Components ▸ Simulator Host), for tests run on it.
     public var remoteSimulatorForTests: (@MainActor (Destination) -> RemoteSimulator?)?
     /// The chosen build system; swift-build runs project tests through
     /// ycodebuild (TestRunnerSelection).

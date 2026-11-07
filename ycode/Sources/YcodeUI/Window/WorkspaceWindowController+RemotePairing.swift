@@ -42,7 +42,7 @@ extension WorkspaceWindowController {
             return RemoteSimulator.hub(s).first { $0.deviceDirectoryName == created.directoryName }.map { DeviceRow.ycodeRemote($0, running: false) }
         }
         p.pairDevices = { [weak self] phoneRow, watchRow in
-            guard let phone = remote(phoneRow), let watch = remote(watchRow) else { return (false, "Set the remote simulator in Settings ▸ Simulators first.") }
+            guard let phone = remote(phoneRow), let watch = remote(watchRow) else { return (false, "Set the remote simulator in Settings ▸ Components ▸ Simulator Host first.") }
             self?.session.appendConsole("Ycode: pairing \(watchRow.name) with \(phoneRow.name)\n", kind: .debugger)
             let (status, out) = await Task.detached { phone.runPairing(phone.pairCommand(watch: watch)) }.value
             let text = out.trimmingCharacters(in: .whitespacesAndNewlines)

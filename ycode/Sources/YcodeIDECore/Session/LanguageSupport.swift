@@ -131,6 +131,8 @@ extension WorkspaceSession {
 
     /// Starts sourcekit-lsp (or `transport`) for this workspace.
     public func startLanguageService(transport: DAPTransport? = nil) async {
+        isPreparingEditorServices = true
+        defer { isPreparingEditorServices = false }
         let t: DAPTransport
         var root = languageRoot
         languageRestart.context = nil

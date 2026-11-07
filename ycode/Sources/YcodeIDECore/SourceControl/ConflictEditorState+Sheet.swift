@@ -103,11 +103,20 @@ extension ConflictEditorState {
                      isSelected: h == currentHunk, isConflict: kind == .conflict)
     }
 
-    /// The overview ruler's marks (§4.4): each change's share of the
-    /// right pane's height (its first row's place among all rows).
+    /// The overview ruler's marks (§4.4, §14.4): each change at the centre
+    /// of its first line among the right pane's logical lines, (line − 0.5)
+    /// ÷ lines, a share of the ruler's track (`MergeSheetMetrics.rulerMarkY`).
+    /// Wrapped lines count once; a change with no right lines takes the
+    /// place of the right line that follows it.
     public func rulerMarks(rows: [MergeSheetRow]) -> [(position: Double, isConflict: Bool)] {
-        guard !rows.isEmpty else { return [] }
-        return rows.enumerated().compactMap { i, r in r.isFirstOfHunk ? (Double(i) / Double(rows.count), r.kind == .conflict) : nil }
+        let lines = rows.compactMap(\.right).count
+        guard lines > 0 else { return [] }
+        var out: [(position: Double, isConflict: Bool)] = []
+        for (i, r) in rows.enumerated() where r.isFirstOfHunk {
+            let line = r.right?.number ?? rows[i...].lazy.compactMap(\.right).first?.number ?? lines + 1
+            out.append((min(1, (Double(line) - 0.5) / Double(lines)), r.kind == .conflict))
+        }
+        return out
     }
 
     // MARK: File list (§3)

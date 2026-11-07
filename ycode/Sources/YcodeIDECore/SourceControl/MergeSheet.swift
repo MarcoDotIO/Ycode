@@ -32,6 +32,11 @@ public enum MergeSheetMetrics {
     public static let rulerWidth = 17.0
     public static let rulerMarkX = 2.0
     public static let rulerMarkWidth = 10.0
+    /// The ruler's knob (§14.4, dark): 11 wide from 1 inside the strip,
+    /// over the track, which runs 3 inside the pane's top and bottom.
+    public static let rulerKnobX = 1.0
+    public static let rulerKnobWidth = 11.0
+    public static let rulerTrackInset = 3.0
     /// Line numbers end here, right-aligned, from the pane's left edge.
     public static let lineNumberRight = 27.0
     /// Column 0 of the code, from the pane's left edge.
@@ -56,14 +61,17 @@ public enum MergeSheetMetrics {
     // §8 Footer
     public static let footerTextX = 9.5
     public static let stepperWidth = 60.0
-    // §9 Buttons
+    // §9, §14.1–§14.2 Buttons
     public static let buttonWidth = 84.0
     public static let buttonSpacing = 12.0
-    public static let buttonGap = 21.5
-    /// Ycode's choice (open question 2): the buttons' height.
-    public static let buttonHeight = 24.0
-    /// Ycode's choice (open question 1): the margin below the buttons.
-    public static let bottomMargin = 18.0
+    /// Cancel's top below the box (§14.2, measured: 866 under 847).
+    public static let buttonGap = 19.0
+    /// 20 tall (§14.1: Cancel y 866–886).
+    public static let buttonHeight = 20.0
+    /// Rounded rectangles, not capsules (§14.2).
+    public static let buttonCornerRadius = 6.0
+    /// The sheet's bottom below the buttons (§14.1: 22).
+    public static let bottomMargin = 22.0
     /// The content box ends this far above the window's bottom edge
     /// (§13.3: y 847 in the 880-point window); the button row below it then
     /// runs past the window, as the reference's does. Ycode's choice for
@@ -90,8 +98,11 @@ public enum MergeSheetMetrics {
     /// The sheet's frame in a window of `size` (origin top-left) whose
     /// toolbar ends at `toolbarBottom`: 24 from each side, the top at the
     /// toolbar's bottom, and tall enough that its content box ends 33 above
-    /// the window's bottom (§13.3), so the button row and the sheet's bottom
-    /// margin lie below the window's edge (the window cuts them).
+    /// the window's bottom (§13.3); the buttons and the sheet's bottom margin
+    /// follow (§14.1: in the 880-point window the sheet ends at 908). The
+    /// sheet is a window of its own, so the part below the parent's bottom
+    /// edge is drawn over whatever lies below it; the parent is neither
+    /// moved nor resized.
     public static func sheetFrame(window size: (width: Double, height: Double), toolbarBottom: Double) -> Rect {
         let boxBottom = size.height - boxBottomInset - toolbarBottom
         let h = max(240, boxBottom + buttonGap + buttonHeight + bottomMargin)
@@ -136,6 +147,25 @@ public enum MergeSheetMetrics {
         let rightText = Range1(rightStart, right.length - rulerWidth)
         return Columns(fileList: fileList, left: left, gutter: gutter, right: right, rightText: rightText,
                        ruler: Range1(rightText.end, rulerWidth))
+    }
+
+    /// A ruler mark's top in a ruler `height` tall: its share of the track,
+    /// which runs `rulerTrackInset` inside the ruler's top and bottom
+    /// (§14.4: y 105–815 in the pane 102–818).
+    public static func rulerMarkY(share: Double, height: Double) -> Double {
+        (rulerTrackInset + share * max(0, height - 2 * rulerTrackInset)).rounded(.down)
+    }
+
+    /// The ruler's knob in a ruler `height` tall: the visible part of the
+    /// content (`visibleTop`, `visibleHeight` of `contentHeight`) on the
+    /// track; the whole track when everything is visible (§14.4).
+    public static func rulerKnob(visibleTop: Double, visibleHeight: Double, contentHeight: Double, height: Double) -> (y: Double, height: Double) {
+        let track = max(0, height - 2 * rulerTrackInset)
+        guard contentHeight > visibleHeight, contentHeight > 0 else { return (rulerTrackInset, track) }
+        let h = max(18, track * visibleHeight / contentHeight)
+        let travel = max(0, contentHeight - visibleHeight)
+        let y = rulerTrackInset + (track - h) * min(1, max(0, visibleTop / travel))
+        return (y, h)
     }
 
     /// The number of cells a pane `width` wide shows before wrapping.
@@ -208,6 +238,16 @@ public struct MergeSheetPalette: Equatable, Sendable {
     public var selectedChevronCircle: UInt32
     public var rulerConflict: UInt32
     public var rulerClean: UInt32
+    /// The ruler's knob (§14.4: #A2A2A2 in dark; nil: none, as the light
+    /// capture of §4.4 showed none).
+    public var rulerKnob: UInt32?
+    /// The file list's selection while the panes have the focus (§14.3:
+    /// #464546 in dark; Ycode's choice in light: AppKit's unemphasized grey).
+    public var unfocusedSelection: UInt32
+    /// A conflict badge on a row that is not the focused selection (§14.3:
+    /// a red square #FF4245 with a white letter).
+    public var rowBadge: UInt32
+    public var rowBadgeLetter: UInt32
     public var button: UInt32
     public var buttonLabel: UInt32
     public var disabledButton: UInt32
@@ -224,6 +264,7 @@ public struct MergeSheetPalette: Equatable, Sendable {
         conflictRow: 0xFFDCDD, conflictWord: 0xFF9A9D, cleanRow: 0xD6EBFE, selectedRule: 0xDA5559, decidedRule: 0xFF656A,
         token: 0x575757, tokenRim: 0x575757, selectedToken: 0x6D2A2D, selectedTokenRim: 0xDA5559, tokenInk: 0xFFFFFF,
         chevronCircle: 0x6B6C6B, selectedChevronCircle: 0xFF6569, rulerConflict: 0xFDB9B5, rulerClean: 0xD4D4D4,
+        rulerKnob: nil, unfocusedSelection: 0xDCDCDC, rowBadge: 0xFF4245, rowBadgeLetter: 0xFFFFFF,
         button: 0xEDEDED, buttonLabel: 0x252525, disabledButton: 0xF5F5F5, disabledButtonLabel: 0xB6B6B6, folder: 0x3A9AF5)
 
     /// The dark appearance (council round 4, `merge-sheet.md` §13.3–§13.5,
@@ -231,8 +272,9 @@ public struct MergeSheetPalette: Equatable, Sendable {
     /// gutter #313131 between #484848 rules, the box's dark hairline,
     /// conflict and clean shading, word fills, the selected rules, tokens
     /// #575757 with a lighter rim, and the veil that takes the window to
-    /// about 0.70 of its value. Roles the round did not measure keep Ycode's
-    /// earlier choices.
+    /// about 0.70 of its value; round 5 (§14.2–§14.4): the buttons, the
+    /// ruler's knob and marks, the unfocused selection and the row badge.
+    /// Roles the rounds did not measure keep Ycode's earlier choices.
     public static let dark = MergeSheetPalette(
         sheet: 0x1D1E1F, sheetRim: 0x2D2E2F, pane: 0x262627, veilOpacity: 0.30, boxBorder: 0x171718, columnRule: 0x383838,
         bandRule: 0x333333, footerRule: 0x333333,
@@ -242,10 +284,29 @@ public struct MergeSheetPalette: Equatable, Sendable {
         gutter: 0x313131, gutterRule: 0x484848, gutterConflict: 0x613D3F, gutterClean: 0x394C61,
         conflictRow: 0x583436, conflictWord: 0x9B3A3C, cleanRow: 0x2F4457, selectedRule: 0xDA5559, decidedRule: 0xFF656A,
         token: 0x575757, tokenRim: 0x6A6A6A, selectedToken: 0x6D2A2D, selectedTokenRim: 0xDA5559, tokenInk: 0xFFFFFF,
-        chevronCircle: 0x6B6C6B, selectedChevronCircle: 0xFF6569, rulerConflict: 0x9B4B48, rulerClean: 0x5A5A5A,
-        button: 0x3A3A3A, buttonLabel: 0xE6E6E6, disabledButton: 0x2C2C2C, disabledButtonLabel: 0x666666, folder: 0x3A9AF5)
+        chevronCircle: 0x6B6C6B, selectedChevronCircle: 0xFF6569, rulerConflict: 0xFDB9B5, rulerClean: 0xD4D4D4,
+        rulerKnob: 0xA2A2A2, unfocusedSelection: 0x464546, rowBadge: 0xFF4245, rowBadgeLetter: 0xFFFFFF,
+        button: 0x2E2F30, buttonLabel: 0xDFDFDF, disabledButton: 0x252627, disabledButtonLabel: 0x5B5C5C, folder: 0x3A9AF5)
 
     public static func forDark(_ dark: Bool) -> MergeSheetPalette { dark ? .dark : .light }
+
+    /// A file row's colours (§3, §14.3): the selected row is accent-filled
+    /// with white text and a white badge holding a red letter while the
+    /// file list has the focus; once the panes have it (a click in either
+    /// pane, the gutter or a token), the selection turns grey and the badge
+    /// red with a white letter, as on any other row.
+    public struct FileRowColors: Equatable, Sendable {
+        public var fill: UInt32?
+        /// White on the focused selection; nil: the label colour.
+        public var ink: UInt32?
+        public var badge: UInt32
+        public var badgeLetter: UInt32
+    }
+
+    public func fileRow(selected: Bool, listFocused: Bool) -> FileRowColors {
+        if selected && listFocused { return FileRowColors(fill: selection, ink: 0xFFFFFF, badge: badge, badgeLetter: badgeLetter) }
+        return FileRowColors(fill: selected ? unfocusedSelection : nil, ink: nil, badge: rowBadge, badgeLetter: rowBadgeLetter)
+    }
 
     /// A colour's red, green and blue in 0…1.
     public static func components(_ hex: UInt32) -> (r: Double, g: Double, b: Double) {
@@ -258,6 +319,10 @@ public struct MergeSheetPalette: Equatable, Sendable {
 /// toolbar glyphs at about 0.33.
 public enum MergeModalTone {
     public static let text = 0.63
+    /// What the dimmed window is drawn over: the window's own background
+    /// (macOS draws the faded content over it; the Linux window must not
+    /// show black through, cross-platform-parity.md §12).
+    public static func backdrop(dark: Bool) -> UInt32 { dark ? 0x1E1E1E : 0xECECEC }
     public static let glyph = 0.33
 }
 

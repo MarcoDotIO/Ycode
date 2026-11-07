@@ -19,6 +19,10 @@ public final class ConflictEditorShellModel {
     public var isFlat = false
     /// The file list's Filter field.
     public var filterText = ""
+    /// The keyboard focus is in the panes (a click in either pane, the
+    /// gutter or on a token), not in the file list: the list then shows its
+    /// selection unfocused (`merge-sheet.md` §14.3).
+    public var panesFocused = false
     /// Counts the stepper's and the conflict navigator's moves: the panes
     /// scroll the selected change into view (a click on a change does not).
     public private(set) var revealCount = 0

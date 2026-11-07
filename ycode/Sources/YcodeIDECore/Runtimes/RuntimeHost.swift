@@ -74,7 +74,7 @@ public struct RuntimeHostChecker: Sendable {
     public var runner: any HeadsetCommandRunner
     /// The hosts paired over Ycode's link on this machine (their names).
     public var pairedHosts: [String]
-    /// Runtime roots configured by hand for this host (Settings ▸ Simulators).
+    /// Runtime roots configured by hand for this host (Settings ▸ Components ▸ Simulator Host).
     public var configuredRoots: [String]
     public var localVersion: String
 

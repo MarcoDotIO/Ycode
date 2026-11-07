@@ -176,6 +176,9 @@ package protocol TextMeasurer: Sendable {
 /// Maps resolved fonts to faces.
 package protocol TextFontProvider: Sendable {
     func face(for font: TextFont) -> any FontFace
+    /// Extra tracking for text in `font` rendered by `face` (B5-OPENVIEWS:
+    /// a family's metric adjustment, FontTracking.swift).
+    func trackingAdjustment(for font: TextFont, face: any FontFace) -> Double
     /// Where glyphs missing from a face are looked up.
     var fallbackCatalog: FontCatalog? { get }
     func spacing(for font: TextFont) -> TextSpacing
@@ -183,6 +186,7 @@ package protocol TextFontProvider: Sendable {
 
 extension TextFontProvider {
     package var fallbackCatalog: FontCatalog? { nil }
+    package func trackingAdjustment(for font: TextFont, face: any FontFace) -> Double { 0 }
 
     /// Spacing from the face's metrics, with the reference body values (04
     /// §4.1: 10.643 below a text toward a standard view, 6.433 above, 2
@@ -207,6 +211,12 @@ package struct CatalogFontProvider: TextFontProvider {
     package init(catalog: FontCatalog = .shared) { self.catalog = catalog }
 
     package var fallbackCatalog: FontCatalog? { catalog }
+
+    /// System-font text only: an explicit family is drawn as asked.
+    package func trackingAdjustment(for font: TextFont, face: any FontFace) -> Double {
+        guard font.family == nil, catalog.hasTrackingAdjustments else { return 0 }
+        return catalog.trackingAdjustment(family: face.familyName, size: Double(font.size), weight: font.weight.weightClass)
+    }
 
     package func face(for font: TextFont) -> any FontFace {
         let design: FontDesignClass
@@ -284,8 +294,10 @@ package final class TypesetTextMeasurer: TextMeasurer, @unchecked Sendable {
     /// The typeset lines of `text` for a width and height (nil: unlimited).
     package func layout(_ text: ResolvedText, width: CGFloat?, height: CGFloat?) -> TextLayout {
         let runs = text.runs.map { r in
-            AttributedRun(r.string, style: RunStyle(face: fonts.face(for: r.font), size: Double(r.font.size),
-                                                    tracking: Double(r.tracking), kerning: Double(r.kerning),
+            let face = fonts.face(for: r.font)
+            let adjust = fonts.trackingAdjustment(for: r.font, face: face)
+            return AttributedRun(r.string, style: RunStyle(face: face, size: Double(r.font.size),
+                                                    tracking: Double(r.tracking) + adjust, kerning: Double(r.kerning),
                                                     baselineOffset: Double(r.baselineOffset),
                                                     fallback: fonts.fallbackCatalog))
         }

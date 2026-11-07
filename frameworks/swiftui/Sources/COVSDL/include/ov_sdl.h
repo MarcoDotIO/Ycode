@@ -92,6 +92,13 @@ typedef struct OVSDLAPI {
     OV_SDL_FN(MinimizeWindow);
     /* AT-SPI export */
     OV_SDL_FN(GetWindowPosition);
+    /* Client-side window decorations (B5): hit testing for moves and
+       resizes, the zoom button's maximise and full screen. */
+    OV_SDL_FN(SetWindowHitTest);
+    OV_SDL_FN(GetWindowFlags);
+    OV_SDL_FN(MaximizeWindow);
+    OV_SDL_FN(RestoreWindow);
+    OV_SDL_FN(SetWindowFullscreen);
 } OVSDLAPI;
 
 #undef OV_SDL_FN
@@ -103,6 +110,9 @@ static const uint64_t OV_SDL_WINDOW_VULKAN = SDL_WINDOW_VULKAN;
 static const uint64_t OV_SDL_WINDOW_HIDDEN = SDL_WINDOW_HIDDEN;
 static const uint64_t OV_SDL_WINDOW_POPUP_MENU = SDL_WINDOW_POPUP_MENU;
 static const uint64_t OV_SDL_WINDOW_NOT_FOCUSABLE = SDL_WINDOW_NOT_FOCUSABLE;
+static const uint64_t OV_SDL_WINDOW_BORDERLESS = SDL_WINDOW_BORDERLESS;
+static const uint64_t OV_SDL_WINDOW_MAXIMIZED = SDL_WINDOW_MAXIMIZED;
+static const uint64_t OV_SDL_WINDOW_FULLSCREEN = SDL_WINDOW_FULLSCREEN;
 
 /*
  * Loads libSDL3 and resolves the table. `path` may be NULL: then the

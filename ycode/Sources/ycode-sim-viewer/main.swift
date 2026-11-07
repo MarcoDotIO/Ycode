@@ -127,5 +127,8 @@ import YcodeRelease
 import YcodeRemoteViewerSDL
 
 YcodeRelease.handleVersionFlag(tool: "ycode-sim-viewer")
+#if canImport(SwiftUI) && canImport(OVRender)
+LinuxViewer.chromeRenderer = { request, part in MainActor.assumeIsolated { DeviceChromeRenderer.render(request, part) } }
+#endif
 exit(LinuxViewer.main(Array(CommandLine.arguments.dropFirst())))
 #endif

@@ -25,30 +25,38 @@ struct SourceEditorView: View {
     let palette: SourcePalette
     /// `ShellPreferences.revision`: new settings measure the font again.
     let preferences: Int
+    /// Whether this editor is the focused pane's (EditorPanes.swift): only
+    /// it draws the find matches, issues and test marks of the window's
+    /// document and takes the keyboard on reveals.
+    var isFocusedPane = true
     @FocusState private var focused: Bool
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         let c = controller
         let bar = model.findBar
+        let mine = isFocusedPane
         // Read here so a change of the find matches or of the issues draws
         // again (they change rarely; typing does not change them).
-        let matches = bar.isShown ? bar.matches : []
+        let matches = mine && bar.isShown ? bar.matches : []
         let currentMatch = bar.current
-        let issues = model.editorIssues
+        let issues = mine ? model.editorIssues : [:]
         let debugMarks = model.debug.marks(for: c.document.path)
         let scm = model.sourceControl
-        let changes = scm.changeRegionsPath != nil && scm.changeRegionsPath == model.editor?.path ? scm.changeRegions : []
-        let diamonds = model.testDiamonds
+        let changes = scm.changeRegionsPath != nil && scm.changeRegionsPath == c.document.path ? scm.changeRegions : []
+        let diamonds = mine ? model.testDiamonds : [:]
         // The rename's occurrences (they change rarely, as the matches).
-        let highlights = model.languageFeatures.highlights
+        let highlights = mine ? model.languageFeatures.highlights : []
         let colors = ShellColors(scheme)
         let palette = palette
         let preferences = preferences
+        let scale = displayScale
         let canvas = Canvas { ctx, size in
             c.applyPreferences(revision: preferences)
+            c.setDisplayScale(scale)
             c.viewportChanged(size)
-            var painter = SourceEditorPainter(controller: c, palette: palette, colors: colors,
+            var painter = SourceEditorPainter(controller: c, palette: palette, colors: colors, isFocusedPane: mine,
                                               matches: matches, currentMatch: currentMatch, issues: issues, debug: debugMarks,
                                               changes: changes, diamonds: diamonds, highlights: highlights)
             painter.draw(&ctx, size: size)
@@ -61,6 +69,7 @@ struct SourceEditorView: View {
                 switch e {
                 case .down(let p, let t):
                     focused = true
+                    c.onPointerDown?()   // the pane takes focus (EditorPanes.swift)
                     // ⌥-click: Quick Help; ⌘- or Ctrl-click: Jump to Definition
                     // (on a breakpoint: its editor).
                     if let m = c.connection?.pointerModifiers, DebugGutter.commandClick(p, modifiers: m, controller: c, model: model)
@@ -83,11 +92,11 @@ struct SourceEditorView: View {
             .onKeyPress(phases: [.down, .repeat]) { c.handle($0) }
             #endif
             .onChange(of: model.revealCount) { _, _ in
-                if model.markedLine != nil { c.centerCaret() }
+                if mine, model.markedLine != nil { c.centerCaret() }
             }
-            .onChange(of: model.editorFocusCount) { _, _ in focused = true }
+            .onChange(of: model.editorFocusCount) { _, _ in if mine { focused = true } }
             .onAppear {
-                if !ShellFocus.outlineHasKeyboard { focused = true }
+                if mine, !ShellFocus.outlineHasKeyboard { focused = true }
                 c.onGutterDiamondClick = { [weak model] line in
                     guard let model, model.testDiamonds[line] != nil else { return false }
                     model.runTests(atLine: line)
@@ -170,6 +179,7 @@ struct SourceEditorView: View {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { v in
                 focused = true
+                c.onPointerDown?()
                 let shift = NSEvent.modifierFlags.contains(.shift)
                 c.pointerChanged(start: v.startLocation, location: v.location, time: v.time.timeIntervalSinceReferenceDate, shift: shift)
             }
@@ -196,6 +206,8 @@ struct SourceEditorPainter {
     let controller: SourceEditorController
     let palette: SourcePalette
     let colors: ShellColors
+    /// The focused pane's band, or the fainter one (F.3).
+    var isFocusedPane = true
     var caretOn: Bool { controller.caretOn }
     let matches: [NSRange]
     let currentMatch: Int?
@@ -220,7 +232,10 @@ struct SourceEditorPainter {
         // Hit testing and carets between frames measure other characters
         // with the context of the last frame.
         let measuring = ctx
-        c.characterMeasure = { ch in measuring.resolve(Text(verbatim: String(ch)).font(f)).measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width }
+        let tracking = c.cellTracking
+        c.characterMeasure = { ch in
+            measuring.resolve(Text(verbatim: String(ch)).font(f)).measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width + tracking
+        }
         #endif
         let lines = c.visibleLines(height: size.height)
         let lh = c.lineHeight
@@ -231,8 +246,9 @@ struct SourceEditorPainter {
 
         // Whole-line bands.
         let currentLine = b.caretLine
-        if b.selection.isEmpty, c.isFocused || true {
-            ctx.fill(Path(CGRect(x: 0, y: top(currentLine), width: size.width, height: lh)), with: .color(palette.currentLine.color))
+        let band = currentLineBand(top: top(currentLine), size: size)
+        if b.selection.isEmpty {
+            ctx.fill(band, with: .color(bandColor))
         }
         for n in lines {
             if let i = issues[n + 1] {
@@ -338,9 +354,12 @@ struct SourceEditorPainter {
         // The gutter stays put while the text scrolls under it.
         ctx.fill(Path(CGRect(x: 0, y: 0, width: c.gutterWidth, height: size.height)), with: .color(palette.background.color))
         if b.selection.isEmpty {
-            ctx.fill(Path(CGRect(x: 0, y: top(currentLine), width: c.gutterWidth, height: lh)), with: .color(palette.currentLine.color))
+            ctx.drawLayer { layer in
+                layer.clip(to: Path(CGRect(x: 0, y: 0, width: c.gutterWidth, height: size.height)))
+                layer.fill(band, with: .color(bandColor))
+            }
         }
-        let numberFont = Font.system(size: 10).monospacedDigit()
+        let numberFont = Font.system(size: CGFloat(EditorMetrics.lineNumberFontSize(sourceSize: Double(c.fontSize)))).monospacedDigit()
         for n in lines {
             let isCurrent = n == currentLine
             let hasBreakpoint = DebugGutter.drawBreakpoint(&ctx, debug, line: n + 1, top: top(n), lineHeight: lh, numberRight: c.numberRight)
@@ -349,8 +368,10 @@ struct SourceEditorPainter {
                 drawDiamond(&ctx, status: d, center: CGPoint(x: c.numberRight - 6, y: top(n) + lh / 2))
             } else {
                 let numberColor = hasBreakpoint ? Color.white : (isCurrent ? palette.foreground.color : palette.lineNumber.color)
-                let t = Text(verbatim: "\(n + 1)").font(numberFont).foregroundStyle(numberColor)
-                ctx.draw(t, at: CGPoint(x: c.numberRight, y: top(n) + lh / 2), anchor: .trailing)
+                // On the macOS gutter's baseline (EditorCell.numberBaseline).
+                let t = ctx.resolve(Text(verbatim: "\(n + 1)").font(numberFont).foregroundStyle(numberColor))
+                let base = t.firstBaseline(in: CGSize(width: 200, height: 100))
+                ctx.draw(t, at: CGPoint(x: c.numberRight, y: top(n) + EditorCell.numberBaseline(lineHeight: lh) - base), anchor: .topTrailing)
             }
             if let i = issues[n + 1] {
                 let dot = CGRect(x: c.gutterWidth - 14, y: top(n) + lh / 2 - 3.5, width: 7, height: 7)
@@ -360,6 +381,19 @@ struct SourceEditorPainter {
         drawChangeBars(&ctx, lines: lines)
 
         drawCompletion(&ctx, size: size)
+    }
+
+    var bandColor: Color { (isFocusedPane ? palette.currentLine : palette.unfocusedCurrentLine).color }
+
+    /// The current line's band (`editor-area.md` §C.2, as the macOS editor
+    /// draws it): from 14 after the editor's edge to the text container's
+    /// end, one line tall, with corners of 4.
+    func currentLineBand(top y: CGFloat, size: CGSize) -> Path {
+        let c = controller
+        let start = CGFloat(EditorMetrics.currentLineBandStart)
+        let end = c.wrapColumns != nil ? size.width - CGFloat(EditorMetrics.textToMinimap) : size.width
+        let r = CGFloat(EditorMetrics.currentLineBandRadius)
+        return Path(roundedRect: CGRect(x: start, y: y, width: max(0, end - start), height: c.lineHeight), cornerRadius: r)
     }
 
     /// A test's diamond: outlined before a run, green with a check when it
@@ -441,6 +475,9 @@ struct SourceEditorPainter {
         }
     }
 
+    /// Text in the source font, on the cell (`EditorCell`).
+    func styled(_ t: Text) -> Text { EditorCell.text(t, font: font(controller), tracking: controller.cellTracking) }
+
     func text(_ runs: [EditorRun]) -> Text {
         runs.reduce(Text(verbatim: "")) { t, r in
             let piece = Text(verbatim: r.text).foregroundStyle(palette.color(r.role).color)
@@ -484,14 +521,14 @@ struct SourceEditorPainter {
         let caretX = c.layout.x(ofOffset: b.caret, line: b.caretLine, in: b)
         let split = c.layout.displayColumn(ofOffset: b.caret, line: b.caretLine, in: b)
         let (before, after) = line.split(atColumn: split - line.firstColumn)
-        if !before.isEmpty { ctx.draw(text(before).font(f), at: CGPoint(x: x, y: y), anchor: .topLeading) }
-        let marked = Text(verbatim: b.markedText).font(f).foregroundStyle(palette.foreground.color)
+        if !before.isEmpty { ctx.draw(styled(text(before)), at: CGPoint(x: x, y: y), anchor: .topLeading) }
+        let marked = styled(Text(verbatim: b.markedText)).foregroundStyle(palette.foreground.color)
         let r = ctx.resolve(marked)
         let w = r.measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width
         let mx = c.textOrigin - c.left + caretX
         ctx.draw(r, at: CGPoint(x: mx, y: y), anchor: .topLeading)
         ctx.fill(Path(CGRect(x: mx, y: y + c.lineHeight - 2, width: w, height: 1)), with: .color(palette.foreground.color))
-        if !after.isEmpty { ctx.draw(text(after).font(f), at: CGPoint(x: mx + w, y: y), anchor: .topLeading) }
+        if !after.isEmpty { ctx.draw(styled(text(after)), at: CGPoint(x: mx + w, y: y), anchor: .topLeading) }
     }
 
     /// The width of the marked text before its cursor.

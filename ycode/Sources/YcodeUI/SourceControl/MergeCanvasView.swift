@@ -128,6 +128,14 @@ public final class MergeCanvasView: NSView {
         return out
     }
 
+    // A token's button under the point (§13.2: the hit test finds it).
+    public override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        drawnControl(at: point, in: { [unowned self] in
+            _ = accessibilityChildren()
+            return Array(tokenElements.values)
+        }) ?? super.accessibilityHitTest(point)
+    }
+
     // MARK: Drawing
 
     public override func draw(_ dirtyRect: NSRect) {
@@ -320,28 +328,52 @@ public final class MergeCanvasView: NSView {
     }
 }
 
-/// The 17-point overview ruler at the right pane's end (§4.4): the whole
-/// file on the pane's height, a 10-wide mark per change.
+/// The 17-point overview ruler at the right pane's end (§4.4, §14.4): the
+/// track runs 3 inside the pane's top and bottom; in dark an 11-wide knob
+/// (#A2A2A2) covers its visible part (the whole track when the file fits);
+/// each change is a 1-point mark 10 wide at the centre of its first line.
 @MainActor
 public final class MergeRulerView: NSView {
     public var marks: [(position: Double, isConflict: Bool)] = [] { didSet { needsDisplay = true } }
     var onClick: ((Double) -> Void)?
+    /// The panes' scroll view (the knob follows it).
+    weak var scrollView: NSScrollView?
 
     public override var isFlipped: Bool { true }
+
+    /// The knob's rectangle (nil: none in this appearance).
+    public var knobRect: NSRect? {
+        guard MergeSheetPalette.forDark(effectiveAppearance.isDarkMerge).rulerKnob != nil else { return nil }
+        let clip = scrollView?.contentView.bounds ?? bounds
+        let content = scrollView?.documentView?.bounds.height ?? clip.height
+        let k = MergeSheetMetrics.rulerKnob(visibleTop: Double(clip.minY), visibleHeight: Double(clip.height),
+                                            contentHeight: Double(content), height: Double(bounds.height))
+        return NSRect(x: MergeSheetMetrics.rulerKnobX, y: k.y, width: MergeSheetMetrics.rulerKnobWidth, height: k.height)
+    }
+
+    /// A mark's rectangle.
+    public func markRect(_ position: Double) -> NSRect {
+        NSRect(x: CGFloat(MergeSheetMetrics.rulerMarkX), y: CGFloat(MergeSheetMetrics.rulerMarkY(share: position, height: Double(bounds.height))),
+               width: CGFloat(MergeSheetMetrics.rulerMarkWidth), height: 1)
+    }
 
     public override func draw(_ dirtyRect: NSRect) {
         let p = MergeSheetPalette.forDark(effectiveAppearance.isDarkMerge)
         NSColor(mergeHex: p.pane).setFill()
         bounds.fill()
+        if let knob = knobRect, let colour = p.rulerKnob {
+            NSColor(mergeHex: colour).setFill()
+            NSBezierPath(roundedRect: knob, xRadius: knob.width / 2, yRadius: knob.width / 2).fill()
+        }
         for m in marks {
             NSColor(mergeHex: m.isConflict ? p.rulerConflict : p.rulerClean).setFill()
-            NSRect(x: CGFloat(MergeSheetMetrics.rulerMarkX), y: (CGFloat(m.position) * bounds.height).rounded(.down),
-                   width: CGFloat(MergeSheetMetrics.rulerMarkWidth), height: 1).fill()
+            markRect(m.position).fill()
         }
     }
 
     public override func mouseDown(with event: NSEvent) {
-        let y = convert(event.locationInWindow, from: nil).y
-        onClick?(Double(max(0, min(1, y / max(1, bounds.height)))))
+        let y = Double(convert(event.locationInWindow, from: nil).y)
+        let inset = MergeSheetMetrics.rulerTrackInset
+        onClick?(max(0, min(1, (y - inset) / max(1, Double(bounds.height) - 2 * inset))))
     }
 }

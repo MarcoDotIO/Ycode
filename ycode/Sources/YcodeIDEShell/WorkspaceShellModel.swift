@@ -67,6 +67,8 @@ public final class WorkspaceShellModel {
     /// Starting sourcekit-lsp, and the pending text updates by file.
     @ObservationIgnored var languageStart: Task<Void, Never>?
     @ObservationIgnored var languageUpdates: [String: Task<Void, Never>] = [:]
+    /// The editor panes; the focused one shows `document` (+Panes.swift).
+    public let panes = ShellEditorPanes()
     /// Find and Replace in the open file.
     public let findBar = EditorFindBar()
     /// Navigate ▸ Jump to Line…: the sheet is up.
@@ -108,12 +110,17 @@ public final class WorkspaceShellModel {
     // MARK: Issues, activity, logs
 
     public private(set) var issueGroups: [IssueGroupRow] = []
-    public private(set) var issueCounts: (errors: Int, warnings: Int) = (0, 0)
+    /// The issues by kind: the toolbar's issue capsule and the jump bar's
+    /// stepper (`IssueSummary`, shared with the AppKit IDE).
+    public private(set) var issueSummary = IssueSummary()
+    public var issueCounts: (errors: Int, warnings: Int) { (issueSummary.errors, issueSummary.warnings) }
     public var issueSelection: String? {
         didSet { if issueSelection != oldValue, let id = issueSelection { openIssue(id) } }
     }
     public private(set) var activity: WorkspaceSession.Activity = .idle
     public private(set) var activityFinishedAt: Date?
+    /// The language service is starting (the activity subtitle, row 141).
+    public private(set) var isPreparingEditorServices = false
     public private(set) var buildLog: [String] = []
     public private(set) var console = ""
     public private(set) var buildCount = 0
@@ -215,6 +222,7 @@ public final class WorkspaceShellModel {
         case .activity:
             activity = session.activity
             if case .finished = activity { activityFinishedAt = Date() }
+            isPreparingEditorServices = session.isPreparingEditorServices
             noteActivityForNotifications()
             buildLog = session.buildLog
         case .issues:
@@ -233,7 +241,7 @@ public final class WorkspaceShellModel {
     private func syncIssues() {
         let shown = session.displayedIssues
         issueGroups = IssueRows.tree(shown, grouping: session.issueGrouping)
-        issueCounts = IssueNavigatorModel().capsuleCounts(fresh: shown)
+        issueSummary = IssueNavigatorModel().summary(fresh: shown, failedTests: session.failedTestCount)
         syncEditorIssues()
     }
 
@@ -244,7 +252,7 @@ public final class WorkspaceShellModel {
     /// (`WorkspaceChrome.activityFinishedText`, as the AppKit IDE shows it).
     public var activityText: String {
         switch activity {
-        case .idle: return ""
+        case .idle: return WorkspaceChrome.idleActivityText(preparingEditorServices: isPreparingEditorServices)
         case .building(let s), .running(let s), .paused(let s): return s
         case .finished(let s):
             guard let at = activityFinishedAt else { return s }
@@ -583,6 +591,7 @@ public final class WorkspaceShellModel {
         case .jumpToDefinition, .jumpToOriginalSource, .renameSymbol, .showQuickHelp, .findSelectedSymbol, .showCallHierarchy,
              .showFileInspector, .showQuickHelpInspector:
             performLanguage(c)
+        case .splitEditor, .splitEditorBelow: splitEditor(sideBySide: c == .splitEditor)   // +Panes.swift
         case .toggleNavigator: isNavigatorShown.toggle()
         case .toggleInspector: isInspectorShown.toggle()
         case .toggleDebugArea: isDebugAreaShown.toggle()

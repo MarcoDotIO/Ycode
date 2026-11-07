@@ -10,6 +10,8 @@ import YcodeIDEShell
 struct ConsoleRowsView: View {
     var model: WorkspaceShellModel
     let colors: ShellColors
+    /// The console bar's filter: only rows containing it.
+    var search = ""
 
     var body: some View {
         let d = model.debug
@@ -19,7 +21,7 @@ struct ConsoleRowsView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(rows.enumerated()), id: \.offset) { pair in
+                    ForEach(Array(rows.enumerated()).filter { search.isEmpty || $0.element.text.localizedCaseInsensitiveContains(search) }, id: \.offset) { pair in
                         let text = pair.element.text.replacingOccurrences(of: "\r", with: "")
                         Text(verbatim: text.isEmpty ? " " : text)
                             .font(.system(size: 11, design: .monospaced))

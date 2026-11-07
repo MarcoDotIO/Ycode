@@ -27,7 +27,12 @@ package final class SidebarController {
 /// What a window's chrome shows.
 @MainActor
 struct WindowChromeConfiguration {
+    /// The menu bar in the window's layout, above the toolbar.
     var menuBar: Bool
     let commands: CommandsModel
     let actions: AppCommandActions
+    /// The menu bar on demand, over the top of the window (B5-OPENVIEWS).
+    var menuBarOnDemand = false
+    /// OpenViews draws the window buttons (a hidden title bar).
+    var drawsWindowButtons = false
 }

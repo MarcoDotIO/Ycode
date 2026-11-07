@@ -23,7 +23,9 @@ struct MergeSheetTests {
         // Round 4 (§13.3): the box from y 64 to 847, 33 above the window's
         // bottom; the button row runs past the window.
         #expect(sheet.y + box.y == 64 && sheet.y + box.maxY == 847)
-        #expect(sheet.maxY > 880 && sheet.y + box.maxY + M.buttonGap == 868.5)
+        // Round 5 (§14.1): Cancel 19 below the box (y 866), the sheet's
+        // bottom 22 below the 20-point buttons, at y 908.
+        #expect(sheet.maxY == 908 && sheet.y + box.maxY + M.buttonGap == 866)
         for h in [700.0, 1000, 1200] {
             let f = M.sheetFrame(window: (1400, h), toolbarBottom: 52)
             #expect(f.y + M.contentBox(sheet: (f.width, f.height)).maxY == h - 33)

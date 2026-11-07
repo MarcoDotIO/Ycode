@@ -598,6 +598,197 @@ bars and the selector capsule; no judge raised them this round).
 | The Editing pane below "When Editing" | the window's bottom | scroll the pane |
 | The cause of Ycode's inspector frame drops | a Ycode-side question | a profile of Ycode during the toggle (clean room) |
 
+## Round 5 (2026-11-06)
+
+**Owner's design rules** (they decide every row below):
+1. Where the reference has the element, **match it**.
+2. Where Ycode has an element the reference lacks (the Linux simulator
+   host and its page), **design it to the platform's human interface
+   guidelines in the OS 26+ glass language**, with the same anatomy as
+   its neighbours.
+3. Ycode's **macOS and Linux IDEs look one to one**: a row's target
+   holds for both.
+
+Both apps were captured as in round 4 (Retina, 120 fps, foreground, key
+window, dark) with Ycode `a1f82372`. New this round: the conflict window
+sat 36 points below the display's top and app-mode stills and recordings
+took a **60-point margin**, so the reference's merge sheet showed whole;
+Settings ▸ Components in dark, and Appearance, General, Editing and
+Components in light (each app's own Appearance setting set to Light).
+Ycode's main session started while the 1-minute load fell from about 265
+(steps 03–08 ran at about 150–260, the reference's at about 70), so small
+timing differences in 03, 04 and 08 are weighed lightly; later sessions
+ran at 20–40. The device window again showed a simctl device that Ycode
+does not operate; Ycode now draws its capsules for it, disabled.
+
+### Scores
+
+| Step | Opus | Sol | Gemini | Mean | Round 4 | Round 3 |
+|---|---|---|---|---|---|---|
+| 01 select Long.swift | 8 | 7.4 | 9.2 | 8.2 | 8.2 | 7.6 |
+| 02 editor at rest | 7.5 | 8.7 | 9.2 | 8.5 | 7.6 | 7.1 |
+| 03 linear scroll 600 pt | 8 | 8.2 | 9.0 | 8.4 | 7.7 | 7.2 |
+| 04 momentum flick | 7.5 | 7.8 | 9.2 | 8.2 | 6.9 | 6.6 |
+| 05 select Stripes.png | 7.5 | 6.6 | 8.8 | 7.6 | 7.4 | 6.7 |
+| 06 open Stripes.png (open document) | 9 | 9.2 | 9.5 | 9.2 | 9.3 | 4.3 |
+| 07 select Bands.swift | 8 | 7.2 | 9.2 | **8.1** | 4.8 | 6.3 |
+| 08 bands under the bars | 7.5 | 8.3 | 9.0 | **8.3** | 5.2 | 6.6 |
+| 10 hide inspector | 7 | 7.8 | 9.0 | 7.9 | 6.6 | 8.5 |
+| 11 show inspector | 7 | 7.5 | 8.8 | 7.8 | 6.5 | 8.7 |
+| 12 inspector scroll | 7.5 | 8.2 | 9.5 | 8.4 | 7.5 | 7.3 |
+| 13 plain group | 8.5 | 6.1 | 9.2 | 7.9 | 7.7 | 7.4 |
+| 14 expand folder | 8.5 | 8.8 | 9.2 | 8.8 | 7.7 | 6.7 |
+| 15 navigator scroll | 8.5 | 9.0 | 9.5 | 9.0 | 8.2 | 6.4 |
+| 16 split editor | 7.5 | 7.0 | 8.8 | 7.8 | 8.1 | 5.6 |
+| 17 narrower window | 6.5 | 8.6 | 7.2 | 7.4 | 6.5 | 6.3 |
+| 18 Welcome window | 8.5 | 8.4 | 9.2 | 8.7 | 8.2 | 7.3 |
+| 20 Settings ▸ General (dark) | 8 | 8.7 | 8.8 | 8.5 | 7.6 | 3.7 |
+| 21 Settings ▸ Editing (dark) | 8 | 9.0 | 9.0 | **8.7** | 5.6 | — |
+| 22 Settings ▸ Components (dark, new) | 4.5 | 6.7 | 7.6 | 6.3 | — | — |
+| 23 Settings ▸ Appearance (light, new) | 4 | 5.1 | 6.5 | **5.2** | — | — |
+| 24 Settings ▸ General (light, new) | 8 | 8.8 | 7.5 | 8.1 | — | — |
+| 25 Settings ▸ Editing (light, new) | 8 | 9.1 | 8.0 | 8.4 | — | — |
+| 26 Settings ▸ Components (light, new) | 4.5 | 6.8 | 7.2 | 6.2 | — | — |
+| Conflict 01 Repositories view | 8 | 8.2 | 9.2 | 8.5 | 7.7 | 6.2 |
+| Conflict 02 starting the merge | 7 | 7.4 | 7.8 | 7.4 | 7.3 | 1.7 |
+| Conflict 03 conflict at rest | 5.5 | 7.0 | 6.2 | **6.2** | 6.8 | 3.0 |
+| Conflict 04 Choose Right | 5.5 | 6.8 | 6.5 | **6.3** | 7.3 | 3.3 |
+| Device 01 Home at rest | 7 | 6.4 | 8.8 | 7.4 | 6.1 | 5.3 |
+| **Main steps 01–18 (mean of 17)** | **7.79** | **7.93** | **9.03** | **8.25** | 7.31 | 6.87 |
+| **Area: conflict editor** | **6.3** | **7.3** | **7.4** | **7.0** | 7.2 | 3.4 |
+| **Area: Settings** | **6.5** | **7.7** | **7.8** | **7.3** | 6.5 | 3.7 |
+| **Area: device window** | **7.0** | **6.4** | **8.8** | **7.4** | 6.1 | 5.3 |
+| **Overall** | **7.3** | **7.7** | **8.5** | **7.8** | 7.0 | 6.1 |
+
+Biggest gains: 07 and 08 (+3.3, +3.1, the whole-run wrap and the dark
+theme), Editing (+3.1), the flick (+1.3), the inspector (+1.3), the
+device window (+1.3). Only the conflict editor fell (03, 04: the sheet is
+clipped at the window's edge now that it is as tall as the reference's).
+Settings 20–21 like for like: 6.6 → 8.6. Weakest: 23 Appearance (5.2) and
+Components (6.3, 6.2).
+
+### Disputed values, settled by measurement
+
+| Item | Judges | Measured (reference) | Ycode |
+|---|---|---|---|
+| Merge sheet "hangs about 28–30 below the window" | all | **28**: the sheet's frame y 52–908 in the 880 window; the window does not move or grow; content box to 847 (`merge-sheet.md` §14.1) | box to 847 (matches); drawn only to 880 |
+| Choose menu "fades 100 ms late (417 against 333 ms)" | Opus, Sol | the fade itself is the **same**: from about 180–200 to about 390 ms after the click in both; the tool's segments began at different events. The difference is the item's highlight: the reference's is off until 151 ms, Ycode's on at 44, off at 69, on at 144 (§14.3) | — |
+| "After the choice the row turns grey with a red C" | Opus, summary | the row turns grey **148 ms after the click on the token**, before the menu opens: focus moves into the panes; the badge turns red (#FF4245) with a white letter (§14.3) | keeps the focused selection; its badge is white with a red letter, not blue |
+| Alert "buttons still missing from accessibility" | all | round 5's script still pressed Return for Ycode (its note copied from round 4): **round 5 did not test it** (§13.2) | unverified |
+| Light scroll bars "dark charcoal in Ycode"; General's scroller "spurious" | Gemini | both apps: knob #7A7A7A on #F3F3F3 (light), #9F9F9F on #2A2A2A (dark); the reference's General scrolls too (`settings.md` R5.4) | the same |
+| Pane title "bolder" / "Medium against Semibold" | Opus, Gemini, summary | **same weight, larger**: cap height 12 against 13.5, "General" 54.5 against 60 wide, the stem scaled with the size; colours equal (R5.3) | 10–12.5 % larger |
+| Appearance thumbnails "about 60 × 40", "2 pt ring" | Opus, Gemini | **67 × 44**; ring **3** points #0088FF, 1 point outside (R5.1) | 66 × 42 flat swatches, no ring |
+| Components rows "about 47" / "about 52" apart | Opus, Sol | **51.5 + 1 = 52.5** (R5.2) | 37.5 + 1 |
+| Split at 1100: "unequal panes", "330 against 220" | Opus, Gemini | pane frames equal within 1.5 in both apps; Ycode's **right pane wraps 2 columns narrower** (widest row 737 against 753) (`editor-area.md` G.2) | — |
+| Minimap "about 14 % smaller" | Opus | a comment band line spans 9 points in the reference, 6 in Ycode; the 12-band group repeats every 246 against 210 (G.3) | — |
+| Inspector "hide 325 against 250, show 287 against 383" | all | edge motion: hide 198 ms from 60 ms against 119 ms from 132; show 188 ms from 170 against 226 ms from 108, ending in 33–48 ms holds (G.1) | — |
+| File switch "blank about 75 ms" | Opus, Sol | the empty editor for **two frames (about 29 ms)**, new text at 202 ms (G.6) | new text at 267 in one frame |
+| Split "a 438 ms transition" | Sol, Gemini | the Add Editor button's highlight; the split is one frame in both (G.7) | highlight 110 ms plus a 400 ms fade |
+| Device picture "125 points further right" | Sol | both centred; the capsule pair's centre x 410 in both (`device-hub.md` §13) | — |
+| "Ycode omits Inner" (step 13); "Xcode fills image properties" (step 05) | Sol | Inner shows in both; it is the reference that shows "--" (summary's corrections) | — |
+
+### Round 5 rows
+
+Grouped for four implementers so that no two groups edit the same files.
+
+**A. Editor text and theme** (`editor-area.md` G.2, G.3; the source
+editor's text layout and minimap code)
+
+| # | Area | Target (reference) | Ycode now | Spec | Level | Raised by | Impact |
+|---|---|---|---|---|---|---|---|
+| 115 | Wrap width in each split pane | each pane's text container runs from its text start to about 10.5 before **its own** minimap, from the pane's final frame after a resize; at 1100 both panes fit **17 columns** (right pane: "material for" and "import Foundation" on one row each; widest row ends 753) | right pane **15 columns** (widest row 737): "material" / "for the", "import" / "Foundation"; left pane right | G.2 | 3 | Opus, Gemini, meas. | M |
+| 116 | Minimap rows | one **3-point row per visual row**, with the text's own line breaking (F.1): a Bands.swift comment band line spans **9** points, the 12-band group repeats every **246**; minimap 62 wide, meeting the scroll lane | 6 points per comment band line, group every 210 (14 % short); minimap 59 wide plus a 3-point darker strip | G.3, E.6 | 3 | Opus, meas. | M |
+
+Row 88 (the space after a word) was seen again on the same line; it
+stays open.
+
+**B. Settings** (`settings.md` R5.1–R5.5; the Settings window code)
+
+| # | Area | Target (reference) | Ycode now | Spec | Level | Raised by | Impact |
+|---|---|---|---|---|---|---|---|
+| 117 | Appearance: top card | card y 72–160; label "Appearance" at x 210.5 (cap top 85.5); three **window-on-wallpaper thumbnails 67 × 44, right-aligned** (x 463, 538, 613; last 10 inside the card), System split down the middle; selection a **3-point #0088FF ring** 1 point outside; captions 10 below, unselected #7C7C7C regular, **selected #262626 bold** | no label; flat swatches 66 × 42 left-aligned; no ring; no bold caption | R5.1 | 3 | Opus, Sol, Gemini | H |
+| 118 | Appearance: preview | a **bordered box** x 200–690, y 170–239.5 (1-point #E6E6E6), **line numbers** (#B8B3B4, ending x 228), code from x 243 at an 18-point pitch, **no wrapping**, its own scrollers | no box, no numbers, wraps, 16-point pitch | R5.1 | 3 | Opus, Sol, Gemini | H |
+| 119 | Appearance: segments and layout | full-width separators at y 251.5 and 304.5; Theme/Fonts/Editor **210 × 28, centred** (x 340–550), segments 70, divider only between unselected segments; the list **below the second separator scrolls on its own**, the top part stays | 171.5 × 24 at x 200, no separators, one scroll | R5.1 | 3 | Opus, Sol, Gemini | M |
+| 120 | Appearance: the list | Theme row with a **push button "Choose…"** (80.5 × 24, no chevron); a **Name** row with the theme's name right-aligned; a Foreground card (56-point row) with a **gradient slider** and a **colour well capsule** 48 × 28; further rows as the reference (not yet captured) | theme name in bold beside a "Choose…" pop-up with a chevron; one colour-well row per syntax element | R5.1 | 3 | Opus, Sol | M |
+| 121 | Components | first header "Platform Support" (no row above it); **two-line platform rows 51.5 + 1**: accent icon centred on x 226, title at x 251, subtitle ("Built-in" or the size) 15 below, "Last used …" right-aligned to x 655.5 when known, a **13-point info button** 11.5 inside the card; then "Other Components" | a "Ycode Simulator" navigation row first; "Installed (read-only)"; one-line SDK rows 37.5 + 1, no icons, no info buttons | R5.2 | 3 | Opus, Sol, Gemini | H |
+| 122 | Pane title size | cap height **12** (17 points), "General" 54.5 wide, in both appearances, the same weight | cap 13.5, 60 wide (10–12.5 % larger) | R5.3 | 3 | Opus, Gemini, owner's question | L |
+| 123 | Selected sidebar label | **semibold** on the selected row (about 3.5 points wider for "Components") | regular | R5.3 | 3 | Sol, meas. | L |
+| 124 | Simulator-host settings | per-device settings in the hub's Settings inspector (match); the host's own page designed to the guidelines in the glass language; its entry must not displace "Platform Support": a Components-style row at the end of "Other Components", or a section after it (implementer's choice, both IDEs alike) | a navigation row at the top of Components | R5.5 | 3 | owner's question | M |
+
+**C. Merge and device windows** (`merge-sheet.md` §13.2, §14,
+`device-hub.md` §13; the merge sheet, alert and device-window code)
+
+| # | Area | Target (reference) | Ycode now | Spec | Level | Raised by | Impact |
+|---|---|---|---|---|---|---|---|
+| 125 | Sheet below its window | the sheet is its **own window**: frame y 52–**908** in the 880-point window (28 below it), drawn outside the parent over the desktop, bottom corners radius about 16; the parent is not moved or resized; buttons y 866–886, sheet bottom 22 below | drawn inside the parent's frame and **cut at y 880**: Cancel and Merge invisible | §14.1 | 3 | Opus, Sol, Gemini | H |
+| 126 | Sheet buttons | rounded rectangles radius about 6, **20 tall**; Cancel #2E2F30 with #DFDFDF label, disabled Merge #252627 with #5B5C5C; tops 19 below the box | capsules (radius about 10), #3A3A3A, tops 21.5 below | §14.2 | 3 | meas. | L |
+| 127 | Focus after a token click | clicking a token (or in the panes) moves focus into the panes: within about 150 ms the file list shows the **unfocused grey selection (#464546)** and the badge **red #FF4245 with a white letter** | the file list keeps focus: blue selection, white badge | §14.3 | 3 | Opus, meas. | M |
+| 128 | Choose item flash (replaces row 102's "late fade") | on the click, the item's highlight **off, then on at about 150 ms**, the fade from about 190 to 390 ms, the text change at about 450–470 (round 4's hover-from-the-first-frame rule stays) | on at 44, off at 69, on at 144; fade and text change already match | §14.3 | 3 | Opus, Sol, meas. | L |
+| 129 | Overview ruler in dark | a knob 11 wide (x 1339–1350), #A2A2A2, over the whole track (y 105–815) when the file fits; 1-point marks over it, #FDB9B5 conflicts, #D4D4D4 clean change, at (line − 0.5) ÷ lines of the track | no knob; marks #9B4B48 / #5A5B5A at (line − 1) ÷ (lines − 1) of the pane | §14.4 | 3 | Opus | L |
+| 130 | Alert accessibility (restates row 98) | reachable from the **application element through children only** (application → window → sheet → button); each button role **button**, name in the **title** attribute, press action returning success; Merge the default and Cancel the cancel button; the hit test at a button's centre finds it; **verified from outside the process** with the capture tool's find and press | in-process test from the window's frame view only; round 5 did not test it | §13.2 | 3, 1 | Opus, Sol, Gemini | H |
+| 131 | Second capsule for a foldable | **Rotate │ three posture buttons** (closed, current, in the accent colour; half open; flat), **146 × 36**, centres 415.5, then 452.75, 486.5, 520.5 (34 apart), divider at 434; shown disabled for a foldable Ycode does not operate | Rotate alone, 40 × 36 | `device-hub.md` §13.1 | 3 | Opus, Sol | M |
+| 132 | Rotate glyph | a square with curved arrows at **two opposite corners** (19 × 21.5) | a square with one arrow at its top-right | §13.1 | 3 | meas. | L |
+
+**D. Main-window chrome and motion** (`editor-area.md` G.1, G.4–G.9;
+inspector, window, toolbar, jump bar, navigator and image-editor code)
+
+| # | Area | Target (reference) | Ycode now | Spec | Level | Raised by | Impact |
+|---|---|---|---|---|---|---|---|
+| 133 | Inspector hide/show (updates row 106) | hide starts within about **60 ms**, show within about **120–170**; **about 200 ms ease-in-out** both ways (keyframe tables); a new position at least every 25 ms, no holds in the last third | hide starts at 132 and moves in 119 ms (5 positions); show starts at 108, ease-out, 226 ms with **33–48 ms holds** at the end | G.1 | 3 | Opus, Sol, Gemini | M |
+| 134 | Narrowing (updates row 107) | content relayout in one frame within about **200 ms** (219 this round, 105 in round 4) without blocking the caller; the overflow "»" at full size from its first frame, the capsule settled within about **170 ms**; no merged capsules | content at 415 (the call waits for it); "»" grows from small; capsule from 115 wide, settled at 607; scheme capsule merged with the next group for three frames | G.4 | 3 | Sol, Opus | M |
+| 135 | Image inspector spacing | header ink **8.5** below a separator; content **13–18** below the header; next separator **12–16.5** below the content; property rows **18** apart (Image Properties rows at 359, 377, 395.5, 413.5; Target Membership header 513.5) | 12.5, 4–6, 5.5–9.5, 20: everything from the Tags field down 8–32 points high | G.5 | 3 | Opus, meas. | L |
+| 136 | File switch | the new text within about **200 ms** of the click; up to two frames (about 30 ms) of the empty editor before it; never the old text under the new jump bar | new text at 267 ms in one frame | G.6 | 3 | Opus, Sol | L |
+| 137 | Add Editor button | the bright press highlight is a **single frame** when the menu opens, then the menu-open state | bright for 110 ms, then a 400 ms fade | G.7 | 3 | Opus, meas. | L |
+| 138 | Issue capsule in the toolbar | a capsule **36 tall** right after the scheme capsule (x 811–872 for one warning): per issue kind, its symbol and count (errors first: red circle with a white cross; warnings: yellow triangle with a white mark); symbol only in a narrow window; hidden with no issues | none | G.8 | 3 | Opus | M |
+| 139 | Jump-bar issue stepper | at the right end of **every editor's jump bar**: back chevron, the most severe kind's symbol, forward chevron (x 1084.5–1124.5 in the 1400 window); steps through the issues | none (only in the merge sheet) | G.8 | 3 | Opus | M |
+| 140 | Split latency (to confirm) | the split one frame, **858 ms** after the menu item's press | not within 1.2 s of the press (seen at 2.2 s) | G.7 | 3 | meas. | L (confirm) |
+| 141 | Activity subtitle | while the workspace prepares its editor services, a second line under the window title naming the activity (Ycode's own words) | none | G.9 | 3 | Opus | L |
+
+**Top 10 rows by impact:** 125 (the sheet below the window); 130 (alert
+accessibility, verified from outside); 117–118 (Appearance's card and
+preview); 121 (Components' platform rows); 115 (right-pane wrap width);
+127 (focus after a token click); 138–139 (issue capsule and stepper);
+131 (the foldable's posture buttons); 133 (inspector motion); 124 (where
+the host page goes).
+
+### Round 4 rows now met
+
+From the stills of this round:
+- **Met:** 83 (whole-run wrap), 85 (declaration colours), 87 (block
+  joins), 89–93 (Editing's cards, icons, pop-ups, switch, sidebar fit),
+  103 (jump bar and footers), 105 (compact-window button), 110 (bottom
+  bars: "+" about 28, filter capsule about 240 × 28), 114 (Changes │
+  Repositories).
+- **Met, not raised:** 84, 86 (editor background #262626), 94 (selection
+  #007AFF, measured), 96 (cards #262626 on #1F1F1F), 97, 100 (panes
+  #262627, conflict rows #583336), 101, 111. 99's content box (to 847)
+  is met.
+- **Met as specified:** 109: Ycode draws the image in one frame when it
+  is ready, which is F.8's target.
+- **Partly:** 95 (weight now right; size row 122); 99 (the sheet now cut
+  at the window: row 125); 102 (hover not testable this round; the fade
+  matches; row 128); 104 (capsules shown, disabled; the posture group
+  missing: row 131); 106 (row 133); 107 (row 134); 108 (flick settle 792
+  against 685 ms, at higher load); 112 (path not resolved, G.9).
+- **Open:** 88 (seen again), 98 (untested: row 130), 113 (Plain still
+  collapsed).
+
+### Not settled by round 5
+
+| Item | Why not | Capture needed |
+|---|---|---|
+| The reference alert's accessibility tree (sheet role and subrole, children order, default and cancel attributes) | never recorded | the capture tool's `tree` (scope app, depth 4) with the alert up; press Ycode's alert through accessibility too |
+| The merge sheet's height rule; the sheet when the screen has no room below the window | one window height, room below | the sheet in a 1000+ window, and with the window's bottom at the screen's bottom |
+| Whether the disabled Merge sits 1.5 lower than Cancel | one still | the sheet with Merge enabled and disabled |
+| Hover on the Choose menu when the pointer rests on an item | the driver restores the pointer after each click | a hover to the item before the click |
+| Ycode's split latency (row 140) | the recording ended 1.2 s after the press | a 3-second post-roll |
+| Whether the reference fills "--" image properties later | the after still is 1.2 s after the step | a still 5 s after the step |
+| The issue capsule and stepper with no issues, and the stepper's order | the project always had an issue | a clean project; step through two issues |
+| Appearance in dark; Fonts and Editor segments; the list below Foreground; Components below the first "Other Components" row | not captured | scroll and switch segments in both appearances |
+| The second capsule for a classic iPhone, an iPad, a watch | only the foldable | the hub with those devices |
+| The overflow capsule's start width (120 in round 4, about 40 in round 5) | two rounds disagree | the narrowing step again, and a slow live resize |
+| Row 88's "space must fit" rule | the same line twice | a line ending exactly at the container edge, with and without a following word |
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -607,6 +798,8 @@ bars and the selector capsule; no judge raised them this round).
 | Round 2 reference values | 3 | The round 2 1x stills and recordings (foreground, key window), measured with `research/tools/council-r2/measure_r2.py`; method in `research/notes/council-r2-2026-11-04.md` |
 | Round 3 reference values | 3 | The round 3 Retina stills and 120 fps recordings of the reference and Ycode (foreground, key window; the merge session, Settings and Device Hub added), measured in the dirty room with colour runs, ink boxes, per-frame column profiles and the capture tool's timing segments; full descriptions in the cited spec sections |
 | Round 4 reference values | 3 | The round 4 Retina stills and 120 fps recordings of the reference and Ycode (foreground, key window, dark appearance; Settings ▸ Editing added), measured in the dirty room with glyph-core colour samples, colour runs, ink boxes, per-frame edge tracking and the capture tool's timing segments; full descriptions in the cited spec sections |
+| Round 5 reference values | 3 | The round 5 Retina stills and 120 fps recordings of the reference and Ycode (foreground, key window, dark; Settings in light and dark; the conflict session with a 60-point margin below the window), measured in the dirty room with colour runs, ink boxes, per-row ink ends, stem widths and ink areas, per-frame edge positions, region samples and changed regions timed against the session manifests; full descriptions in the cited spec sections |
+| Round 5 accessibility path (row 130) | — | The capture tool's own accessibility driver and session runner (our code), and the round 5 conflict manifests' action results |
 | Ycode values | — | The same session's captures of Ycode; `otool -l` of the captured executable |
 | EditorConfig lookup | 1 | The EditorConfig specification (editorconfig.org) |
 | Scroller style API | 1 | AppKit documentation (`NSScroller.preferredScrollerStyle`, `NSScroller.preferredScrollerStyleDidChangeNotification`) |

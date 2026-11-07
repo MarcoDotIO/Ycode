@@ -17,7 +17,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
     func window(_ name: String) throws -> (WorkspaceWindowController, URL) {
         let dir = try fc.project("g4-\(name)")
         let wc = try fc.window(dir)
-        wc.window?.setFrame(NSRect(x: 0, y: 0, width: 1400, height: 880), display: false)
+        wc.window?.setFrame(NSRect(x: -6000, y: -6000, width: 1400, height: 880), display: false)   // off every display
         wc.window?.contentView?.layoutSubtreeIfNeeded()
         return (wc, dir)
     }
@@ -107,6 +107,9 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         wc.open(path: dir.appendingPathComponent("GlassScroll/Long.swift").path, line: nil)
         let scroll = try #require(wc.editor.scrollView as? EditorScrollView)
         let clip = scroll.contentView
+        // Ordered in, it must stay off every display (AppKit would move it on).
+        MergeSheetR5UITests.Offscreen.on()
+        defer { MergeSheetR5UITests.Offscreen.off(); wc.window?.orderOut(nil) }
         wc.window?.orderBack(nil)
         RunLoop.main.run(until: Date().addingTimeInterval(0.3))
         clip.scroll(to: NSPoint(x: 0, y: EditorTopBounce.top(of: scroll) + 600))
@@ -218,7 +221,8 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         e.view.layoutSubtreeIfNeeded()
         let tc = try #require(e.textView.textContainer)
         let end = e.view.convert(NSPoint(x: e.textView.textContainerOrigin.x + tc.size.width, y: 0), from: e.textView).x
-        #expect(abs(e.minimap.frame.minX - end - 10) < 0.5, "end \(end), minimap \(e.minimap.frame)")
+        // Round 5 (row 115): a row's last cell may end a point past it.
+        #expect(abs(e.minimap.frame.minX - end - 10 + EditorMetrics.wrapTolerance) < 0.5, "end \(end), minimap \(e.minimap.frame)")
         #expect(e.scrollerLaneWidth > 0)
     }
 
@@ -271,7 +275,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         try FileManager.default.copyItem(at: built, to: dir)
         defer { try? FileManager.default.removeItem(at: dir) }
         let wc = try fc.window(dir)
-        wc.window?.setFrame(NSRect(x: 0, y: 0, width: 1400, height: 880), display: false)
+        wc.window?.setFrame(NSRect(x: -6000, y: -6000, width: 1400, height: 880), display: false)   // off every display
         defer { wc.window?.close() }
         wc.open(path: dir.appendingPathComponent("GlassScroll/Long.swift").path, line: nil)
         wc.window?.contentView?.layoutSubtreeIfNeeded()

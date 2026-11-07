@@ -172,7 +172,7 @@ struct BarIcon: View {
     var body: some View {
         let c = ShellColors(scheme)
         Image(systemName: name).font(.system(size: size))
-            .foregroundStyle(color ?? (isEnabled ? c.secondaryLabel : c.tertiaryLabel))
+            .foregroundStyle(color ?? (isEnabled ? c.barIcon : c.tertiaryLabel))
             .frame(width: 20, height: 20)
             .contentShape(Rectangle())
     }
@@ -188,12 +188,8 @@ struct DebugBarItems: View {
     var body: some View {
         let c = ShellColors(scheme)
         let d = model.debug
-        let active = d.breakpoints.isActive
         HStack(spacing: 6) {
-            button(active ? "tag.fill" : "tag", color: active ? DebugColors.breakpoint : nil,
-                   help: active ? "Deactivate breakpoints" : "Activate breakpoints", target: "bar breakpoints") {
-                model.perform(.toggleBreakpointsActive)
-            }
+            BreakpointsToggle(model: model)   // DebugChrome.swift: the filled tag (F.9)
             if d.isDebugging {
                 button(d.isPaused ? "play" : "pause", help: d.isPaused ? "Continue program execution" : "Pause program execution",
                        target: "bar continue") { model.perform(.pauseOrContinue) }
@@ -264,18 +260,21 @@ struct VariablesPane: View {
                         Button(s.title) { d.variableScope = s }
                     }
                 } label: {
-                    HStack(spacing: 3) {
-                        Text(verbatim: d.variableScope.title).font(ShellFonts.small).foregroundStyle(c.label).lineLimit(1)
-                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 8)).foregroundStyle(c.label)
-                    }
-                    .fixedSize()
+                    BarPopUpLook(title: d.variableScope.title)   // DebugChrome.swift: 76 × 20 with a bezel (parity §6)
                 }
                 .menuStyle(.borderlessButton)
+                .fixedSize()
                 .help("Variables scope")
                 .shellTarget("variables scope")
-                Spacer(minLength: 4)
+                // Quick Look and Print Description, as the AppKit bar (parity §6).
+                QuickLookButton(text: { d.selectedVariable.flatMap { id in d.variableRows.first { $0.id == id } }.map { "\($0.name) = \($0.value)" } },
+                                target: "variables quick look")
+                Button { if let id = d.selectedVariable, let r = d.variableRows.first(where: { $0.id == id }) { d.printDescription(r) } } label: {
+                    BarIcon("info.circle", size: 13, isEnabled: d.isPaused)
+                }
+                .buttonStyle(.plain).help("Print Description").accessibilityLabel("Print Description").shellTarget("variables print description")
                 FilterField(text: Binding(get: { d.variableFilter }, set: { d.variableFilter = $0 }), colors: c)
-                    .frame(maxWidth: 180)
+                    .frame(maxWidth: .infinity)
                     .shellTarget("variables filter")
                 // With the console hidden its bar's toggles come here.
                 if !d.showsConsole { DebugHalvesToggles(model: model) }
@@ -445,13 +444,18 @@ struct FilterField: View {
     var colors: ShellColors
 
     var body: some View {
+        // The AppKit search field: a magnifying glass, a filled capsule
+        // (#FFFFFF / #171717) with a hairline rim (parity §6).
         HStack(spacing: 4) {
-            Image(systemName: "line.3.horizontal.decrease").font(.system(size: 10)).foregroundStyle(colors.tertiaryLabel)
+            Image(systemName: "magnifyingglass").font(.system(size: 10)).foregroundStyle(colors.barIcon)
             TextField("Filter", text: $text).textFieldStyle(.plain).font(ShellFonts.small)
         }
         .padding(.horizontal, 7)
         .frame(height: 20)
-        .background { Capsule(style: .continuous).stroke(colors.capsuleStroke, lineWidth: 1) }
+        .background {
+            Capsule(style: .continuous).fill(colors.searchFieldFill)
+                .overlay { Capsule(style: .continuous).stroke(colors.searchFieldRim, lineWidth: 1) }
+        }
     }
 }
 
@@ -481,34 +485,8 @@ struct ConsolePrompt: View {
     }
 }
 
-/// The console bar's items before the trash (`reference-ui-2.md` §9.2):
-/// the output filter (All, Debugger, Target Output).
-struct ConsoleFilterMenu: View {
-    var model: WorkspaceShellModel
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        let c = ShellColors(scheme)
-        let d = model.debug
-        Menu {
-            ForEach(ConsoleEntry.Filter.allCases, id: \.rawValue) { f in
-                Button(f.rawValue) { d.consoleFilter = f }
-            }
-        } label: {
-            HStack(spacing: 3) {
-                Text(verbatim: d.consoleFilter.rawValue).font(ShellFonts.small).foregroundStyle(c.label).lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 8)).foregroundStyle(c.label)
-            }
-            .fixedSize()
-        }
-        .menuStyle(.borderlessButton)
-        .help("Console output")
-        .shellTarget("console filter")
-    }
-}
-
 /// The two toggles at the console bar's end: show or hide the variables
-/// view and the console.
+/// view and the console; grey, as the AppKit bar's (parity §6).
 struct DebugHalvesToggles: View {
     var model: WorkspaceShellModel
 
@@ -516,11 +494,11 @@ struct DebugHalvesToggles: View {
         let d = model.debug
         HStack(spacing: 4) {
             Button { if d.showsConsole || !d.showsVariables { d.showsVariables.toggle() } } label: {
-                BarIcon("rectangle.lefthalf.inset.filled", size: 12, color: d.showsVariables ? DebugColors.breakpoint : nil)
+                BarIcon("rectangle.lefthalf.inset.filled", size: 12)
             }
             .buttonStyle(.plain).help("Show or hide the variables view").shellTarget("toggle variables")
             Button { if d.showsVariables || !d.showsConsole { d.showsConsole.toggle() } } label: {
-                BarIcon("rectangle.righthalf.inset.filled", size: 12, color: d.showsConsole ? DebugColors.breakpoint : nil)
+                BarIcon("rectangle.righthalf.inset.filled", size: 12)
             }
             .buttonStyle(.plain).help("Show or hide the console").shellTarget("toggle console")
         }

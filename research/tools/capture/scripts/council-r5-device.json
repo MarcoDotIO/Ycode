@@ -1,0 +1,96 @@
+{
+  "name": "council-r5-device",
+  "issue": 81,
+  "title": "Council round 5 (#81): the simulator device window. Reference: Device Hub 27.1 (Xcode 27 has no Simulator app) showing ycode-test-council-iphone. Ycode: its Device Hub showing the same simctl device. Ycode opens the GlassScroll test project first: its Device Hub item needs a workspace window. Round 5: Ycode cannot show a booted simulator here (its simulators run on a Linux host); it shows its control capsules disabled for this device.",
+  "targets": [
+    "devicehub",
+    "ycode"
+  ],
+  "compare_order": [
+    "devicehub",
+    "ycode"
+  ],
+  "project": {
+    "generator": "make-test-project.py",
+    "path": "GlassScroll/GlassScroll.xcodeproj"
+  },
+  "project_targets": [
+    "ycode"
+  ],
+  "window": {
+    "size": [
+      1100,
+      800
+    ],
+    "display": "builtin",
+    "title": "ycode-test-council-iphone",
+    "wait_title": null,
+    "first_window_wait": 6.0,
+    "timeout": 90
+  },
+  "focus": "foreground",
+  "launch_settle": 1.0,
+  "setup_settle": 2.0,
+  "record": {
+    "fps": 120,
+    "codec": "prores4444",
+    "pre": 0.4,
+    "post": 1.5
+  },
+  "per_target_setup": {
+    "devicehub": [
+      {
+        "select": {
+          "role": "AXRow",
+          "text~": "ycode-test-council",
+          "scope": "app"
+        }
+      },
+      {
+        "wait": 2.0
+      },
+      {
+        "menu": "View > Hide Sidebar"
+      },
+      {
+        "wait": 1.0
+      }
+    ],
+    "ycode": [
+      {
+        "menu": "Ycode > Open Developer Tool > Device Hub"
+      },
+      {
+        "wait": 3.0
+      },
+      {
+        "select": {
+          "role": "AXRow",
+          "text~": "ycode-test-council",
+          "scope": "app"
+        }
+      },
+      {
+        "wait": 1.5
+      },
+      {
+        "press": {
+          "role": "AXButton",
+          "description": "Sidebar",
+          "scope": "app"
+        }
+      },
+      {
+        "wait": 1.0
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "device-home-at-rest",
+      "note": "The device window with ycode-test-council-iphone (iPhone Duo, iOS 27.1) selected, sidebar hidden (the sidebar lists every device on this Mac). Reference: the running device's Home screen. Ycode: what it shows for a simctl device it does not run (its simulators run on a Linux host).",
+      "record": false,
+      "still": "after"
+    }
+  ]
+}

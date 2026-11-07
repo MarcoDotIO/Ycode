@@ -10,6 +10,8 @@ import YcodeIDEShell
 struct DebugArea: View {
     @Bindable var model: WorkspaceShellModel
     @Environment(\.colorScheme) private var scheme
+    /// The console bar's filter field's text.
+    @State private var consoleSearch = ""
 
     var body: some View {
         let c = ShellColors(scheme)
@@ -21,16 +23,21 @@ struct DebugArea: View {
             if model.debug.showsConsole {
                 VStack(spacing: 0) {
                     if showsRunOutput {
-                        ConsoleRowsView(model: model, colors: c)   // DebugConsoleRows.swift
+                        ConsoleRowsView(model: model, colors: c, search: consoleSearch)   // DebugConsoleRows.swift
                     } else {
-                        LogView(lines: shownLines, colors: c)
+                        LogView(lines: shownLines.filter { consoleSearch.isEmpty || $0.localizedCaseInsensitiveContains(consoleSearch) }, colors: c)
                     }
                     if model.debug.isDebugging { ConsolePrompt(model: model) }
+                    // Quick Look, the output options, the filter, Clear and
+                    // the halves' toggles, as the AppKit bar (parity §6).
                     bar(c) {
-                        ConsoleFilterMenu(model: model)
-                        Spacer(minLength: 0)
+                        QuickLookButton(text: { model.debug.selectedConsoleRowValue?.text ?? shownLines.last { !$0.isEmpty } }, target: "console quick look")
+                        ConsoleOptionsMenu(model: model)   // DebugChrome.swift
+                        FilterField(text: $consoleSearch, colors: c)
+                            .frame(maxWidth: .infinity)
+                            .shellTarget("console search")
                         Button { model.clearConsole() } label: {
-                            Image(systemName: "trash").font(.system(size: 12)).foregroundStyle(c.secondaryLabel)
+                            Image(systemName: "trash").font(.system(size: 15)).foregroundStyle(c.barIcon)
                         }
                         .buttonStyle(.plain)
                         .help("Clear Console")
@@ -43,7 +50,7 @@ struct DebugArea: View {
                 .shellTarget("debug pane")
             }
         }
-        .background(c.content)
+        .background(c.debugPane)
         .shellTarget("debug area")
     }
 

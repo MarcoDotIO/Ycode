@@ -33,8 +33,10 @@ public enum WorkspaceChrome {
     public static let rowHeight: Double = 22
     public static let firstRowGap: Double = 7
     /// Outline indentation per level and the level-0 disclosure triangle's
-    /// x (source-list layout; `metrics.md` §11 item 1).
-    public static let indentationPerLevel: Double = 12
+    /// x (source-list layout; `metrics.md` §11 item 1). 14 per level, both
+    /// IDEs (`fidelity-council.md` row 19, `metrics.md` §12.1;
+    /// `cross-platform-parity.md` §3: it was 12 here and 14 on macOS).
+    public static let indentationPerLevel: Double = 14
     public static let disclosureX: Double = 12
     /// The bottom bar (`editor-area.md` F.9, checklist row 110): the "+"
     /// circle 28 × 28 at x 7–35 and the filter capsule 240 × 28 at
@@ -81,10 +83,16 @@ public enum WorkspaceChrome {
 
     public static let inspectorSymbols = ["doc", "clock", "questionmark.circle"]
     public static let inspectorTabPillSize = (width: 78.0, height: 24.0)
-    public static let inspectorContentInset: Double = 12
-    public static let inspectorContentTopInset: Double = 10
-    public static let inspectorKeyColumnWidth: Double = 80
-    public static let inspectorKeyToValue: Double = 8
+    /// The content's side insets (`metrics.md` §12.4): 7 from the divider,
+    /// 8 from the window's edge; views with one inset use their mean.
+    public static let inspectorLeadingInset: Double = 7
+    public static let inspectorTrailingInset: Double = 8
+    public static let inspectorContentInset: Double = 7.5
+    public static let inspectorContentTopInset: Double = 4
+    /// The right-aligned key column ("Name", "Type", …): its ink ends at
+    /// the inspector's edge + 78; values start 5 after it.
+    public static let inspectorKeyColumnWidth: Double = 72
+    public static let inspectorKeyToValue: Double = 5
 
     // MARK: Toolbar (`liquid-glass-ycode.md` §2, `liquid-glass.md` §2.2)
 

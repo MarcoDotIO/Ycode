@@ -84,7 +84,10 @@ extension View {
 
 /// Field insets per style (golden `textfield.rounded`: 118 − 90 = 28 and
 /// 34 − 22 = 12).
-func fieldInsets(style: Int, multiline: Bool) -> EdgeInsets {
+func fieldInsets(style: Int, multiline: Bool, desktop: Bool = false) -> EdgeInsets {
+    // B5-OPENVIEWS: the macOS IDE's bezeled field, 23 tall for 13-point
+    // text, its text 6 in.
+    if style == 2 && desktop && !multiline { return EdgeInsets(top: 3.5, leading: 6, bottom: 3.5, trailing: 6) }
     if style == 2 { return EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14) }
     return multiline ? EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4) : EdgeInsets()
 }
@@ -595,15 +598,21 @@ extension EditableText: PrimitiveView {
         let gesture = ControlTrackGesture { [weak state] e in state?.pointer(e) }
         let child: AnyView
         if style == 2 || kind == .editor {
-            let shape = RoundedRectangle(cornerRadius: kind == .editor ? 6 : 8)
+            let desktop = env._desktopChrome
+            let shape = RoundedRectangle(cornerRadius: kind == .editor || desktop ? 6 : 8)
             let palette = ControlPalette(env.colorScheme)
+            let dark = env.colorScheme == .dark
+            // B5-OPENVIEWS: the macOS IDE's field: white (#171717) with a
+            // hairline (#EBEBEB, #282929 on it).
+            let fill = desktop ? (dark ? Color(ycodeHex: 0x171717) : Color.white) : palette.fieldBackground
+            let rim = desktop ? (dark ? Color.white.opacity(0.07) : Color.black.opacity(0.08)) : palette.outline
             child = AnyView(leaf
-                .background(palette.fieldBackground, in: shape)
+                .background(fill, in: shape)
                 .overlay {
                     if state.isFocused {
                         shape.strokeBorder(.tint, lineWidth: 2)
                     } else {
-                        shape.strokeBorder(palette.outline, lineWidth: 1)
+                        shape.strokeBorder(rim, lineWidth: 1)
                     }
                 }
                 .contentShape(Rectangle())
@@ -660,7 +669,7 @@ extension EditableTextLeaf: PrimitiveView {
         let env = node.environment
         let style = env._textFieldStyle
         let multiline = kind == .editor || kind == .growing
-        let insets = fieldInsets(style: style, multiline: kind == .editor)
+        let insets = fieldInsets(style: style, multiline: kind == .editor, desktop: env._desktopChrome)
         let palette = ControlPalette(env.colorScheme)
         let display = Text(verbatim: state.displayString).resolve(in: env)
         let placeholderText = (placeholder ?? Text(verbatim: "")).foregroundColor(palette.placeholder).resolve(in: env)

@@ -32,6 +32,17 @@ import SwiftUICore
 // - indicators (Ycode's look): 3-point capsules 3 points inside the trailing
 //   and bottom edges, at least 36 long, shown while scrolling and for 1 s
 //   after (then faded over 0.25 s), always with `.visible`.
+// - desktop scrollers (B5-OPENVIEWS, `cross-platform-parity.md` §15 OV-3; the
+//   macOS IDE's scrollers as the window server drew them): with the
+//   desktop's overlay scroll bars (GNOME's overlay-scrolling, the default),
+//   a 7-point knob 2 points inside the edge, black at 0.5 (white at 0.5 in
+//   dark), shown while scrolling as above; with always-visible scroll bars
+//   (`scrollers = always`, or `.scrollIndicators(.visible)`, or
+//   `.scrollerStyle(.legacy)`), a 17-point lane beside the content (the
+//   content is narrowed by it when it overflows): an 11-point slot 3 points
+//   inside it (black at 0.047, white at 0.04) and an 11-point knob in it
+//   (#7A7A7A, dark #9E9F9F; at least 20 long), from 3 points below the top
+//   to 3 above the bottom; the lane darkened by black at 0.22 in dark.
 
 // MARK: - State
 
@@ -48,6 +59,14 @@ package final class ScrollViewState: @unchecked Sendable {
     package var windowFrame: CGRect?
     package var isEnabled = true
     package var indicators: (vertical: ScrollIndicatorVisibility, horizontal: ScrollIndicatorVisibility) = (.automatic, .automatic)
+    /// The desktop scroller look (nil: the phone's capsules; B5-OPENVIEWS).
+    package var desktopScroller: ScrollerStyle?
+    /// The lane always-visible scrollers take from the content, per axis.
+    package var lane: (vertical: CGFloat, horizontal: CGFloat) {
+        guard desktopScroller == .legacy else { return (0, 0) }
+        return (axes.contains(.vertical) && indicators.vertical != .hidden && indicators.vertical != .never ? DesktopScrollerMetrics.lane : 0,
+                axes.contains(.horizontal) && indicators.horizontal != .hidden && indicators.horizontal != .never ? DesktopScrollerMetrics.lane : 0)
+    }
     /// Where a drag started (offset at the start).
     var dragStart: CGPoint?
     weak var node: ViewNode?
@@ -409,6 +428,7 @@ extension ScrollView: PrimitiveView {
         s.isEnabled = env.isScrollEnabled
         s.indicators = showsIndicators ? (env.verticalScrollIndicatorVisibility, env.horizontalScrollIndicatorVisibility)
                                        : (.hidden, .hidden)
+        s.desktopScroller = ScrollerStyle.resolved(env, indicators: s.indicators)
         s.observers = env._scrollGeometryObservers
         s.targetBehavior = env._scrollTargetBehavior
         s.positionBinding = env._scrollPositionBinding
@@ -450,7 +470,13 @@ extension ScrollView: PrimitiveView {
         let palette = ControlPalette(env.colorScheme)
         let bar = LayoutNode.color()
         bar.draw = { rec, size in
-            MainActor.assumeIsolated { drawIndicators(&rec, size: size, state: s, color: palette.indicator, environment: env) }
+            MainActor.assumeIsolated {
+                if s.desktopScroller != nil {
+                    drawDesktopScrollers(&rec, size: size, state: s, environment: env)
+                } else {
+                    drawIndicators(&rec, size: size, state: s, color: palette.indicator, environment: env)
+                }
+            }
         }
         // The indicator layer has no view node, so it takes no hits.
         return [viewport.overlay(bar, alignment: .center)]
@@ -498,7 +524,14 @@ struct ScrollViewportBehavior: NodeBehavior {
 
     func sizeThatFits(_ p: ProposedViewSize, node: LayoutNode) -> CGSize {
         guard let inner = node.children.last, let content = inner.children.first else { return .zero }
-        let cs = content.sizeThatFits(contentProposal(p))
+        var cs = content.sizeThatFits(contentProposal(p))
+        // B5-OPENVIEWS: an always-visible vertical scroller beside
+        // overflowing content takes its lane from the content's width.
+        if let s = (inner.behavior as? ScrollOffsetBehavior)?.state, s.lane.vertical > 0, !axes.contains(.horizontal),
+           let ph = p.height, cs.height > ph + 0.5 {
+            let narrowed = content.sizeThatFits(ProposedViewSize(width: p.width.map { max(0, $0 - s.lane.vertical) }, height: nil))
+            cs = CGSize(width: narrowed.width + s.lane.vertical, height: narrowed.height)
+        }
         let w = axes.contains(.horizontal) ? (p.width ?? cs.width) : cs.width
         let h = axes.contains(.vertical) ? (p.height ?? cs.height) : cs.height
         return CGSize(width: w, height: h)
@@ -522,14 +555,25 @@ struct ScrollOffsetBehavior: NodeBehavior {
 
     func placeChildren(size: CGSize, proposal: ProposedViewSize, node: LayoutNode) -> [ChildPlacement] {
         guard let content = node.children.first else { return [] }
-        let p = ProposedViewSize(width: axes.contains(.horizontal) ? nil : size.width,
+        var p = ProposedViewSize(width: axes.contains(.horizontal) ? nil : size.width,
                                  height: axes.contains(.vertical) ? nil : size.height)
-        let cs = content.sizeThatFits(p)
+        var cs = content.sizeThatFits(p)
+        // B5-OPENVIEWS: always-visible scrollers take their lanes from
+        // overflowing content (the content is laid out narrower).
+        let lane = state.lane
+        if lane.vertical > 0, !axes.contains(.horizontal), cs.height > size.height + 0.5 {
+            p.width = max(0, size.width - lane.vertical)
+            cs = content.sizeThatFits(p)
+        }
+        if lane.horizontal > 0, !axes.contains(.vertical), cs.width > size.width + 0.5 {
+            p.height = max(0, size.height - lane.horizontal)
+            cs = content.sizeThatFits(p)
+        }
         state.contentSize = cs
         state.viewportSize = size
         var o = CGPoint.zero
-        if !axes.contains(.horizontal) { o.x = (size.width - cs.width) / 2 }
-        if !axes.contains(.vertical) { o.y = (size.height - cs.height) / 2 }
+        if !axes.contains(.horizontal) { o.x = ((p.width ?? size.width) - cs.width) / 2 }
+        if !axes.contains(.vertical) { o.y = ((p.height ?? size.height) - cs.height) / 2 }
         return [ChildPlacement(index: 0, origin: o, size: cs, proposal: p)]
     }
 

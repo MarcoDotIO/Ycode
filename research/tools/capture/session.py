@@ -351,6 +351,10 @@ class Session:
         dx, dy, dw, dh = display["frame"]
         w, h = min(w, dw - 20), min(h, dh - 60)
         px, py = win.get("position", [dx + (dw - w) / 2, dy + 40 + (dh - 40 - h) / 2])
+        if "offset" in win:
+            # [x, y] from the display's top left (room below the window for a
+            # sheet taller than it, captured with a "margin").
+            px, py = dx + win["offset"][0], dy + win["offset"][1]
         placed = ax.run("window", "--window", chosen["title"], "--position", f"{px},{py}", "--size", f"{w},{h}",
                         "--raise")
         frame = placed["window"]["frame"]
@@ -436,9 +440,10 @@ class Session:
 
     # ------------------------------------------------------------ capture
 
-    def still(self, pid, path, mode, select=None):
+    def still(self, pid, path, mode, select=None, margin=None):
+        extra = ["--margin", str(margin)] if margin and mode == "app" else []
         r = subprocess.run([str(self.wincap), "still", "--pid", str(pid), "--mode", mode, *(select or self.window_select),
-                            "-o", str(path)], capture_output=True, text=True)
+                            *extra, "-o", str(path)], capture_output=True, text=True)
         if r.returncode != 0:
             log(f"still failed: {r.stderr.strip()}")
             return None
@@ -579,7 +584,7 @@ class Session:
                 log("  could not bring the app to the front")
             time.sleep(0.3)
         if stills in ("before", "both"):
-            entry["still_before"] = self.still(pid, target_dir / f"{sid}-before.png", mode, select)
+            entry["still_before"] = self.still(pid, target_dir / f"{sid}-before.png", mode, select, rec.get("margin"))
         proc = None
         if record:
             video = target_dir / f"{sid}.mov"
@@ -595,7 +600,7 @@ class Session:
                     # button is pressed): NN-step-<name>.png.
                     snap = f"{sid}-{action['snap']}.png"
                     entry.setdefault("snaps", {})[action["snap"]] = self.still(
-                        pid, target_dir / snap, action.get("mode", mode), select)
+                        pid, target_dir / snap, action.get("mode", mode), select, rec.get("margin"))
                     continue
                 r = self.act(ax, action, names, project_dir, focus)
                 r.setdefault("wall_start", r.get("wall", t))
@@ -614,7 +619,7 @@ class Session:
             entry["t_action_in_video"] = round(first - entry["video_first_frame_wall"], 4)
         time.sleep(float(step.get("settle", 0.3)))
         if stills in ("after", "both"):
-            entry["still_after"] = self.still(pid, target_dir / f"{sid}-after.png", mode, select)
+            entry["still_after"] = self.still(pid, target_dir / f"{sid}-after.png", mode, select, rec.get("margin"))
         return entry
 
     def frame_rate(self, display):

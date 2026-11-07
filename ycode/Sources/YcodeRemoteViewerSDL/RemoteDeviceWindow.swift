@@ -42,6 +42,36 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
     public var log: (String) -> Void = { print($0) }
     public var onClose: () -> Void = {}
 
+    // MARK: The window's frame (DeviceWindowFrame): toolbar, canvas, inspector
+
+    /// Draws the toolbar and the inspector (OpenViews, set by the viewer's
+    /// main); nil: the bare canvas, as before (cross-platform-parity.md §13).
+    public var chromeRenderer: ((DeviceChromeRequest, DeviceChromeRequest.Part) -> DeviceChromeImage?)? {
+        didSet {
+            // The window grows by the toolbar and the inspector around its canvas.
+            if oldValue == nil, chromeRenderer != nil, window != nil {
+                var w: Int32 = 0, h: Int32 = 0
+                _ = sdl.GetWindowSize(window, &w, &h)
+                let s = DeviceWindowFrame.windowSize(canvasWidth: Double(w), canvasHeight: Double(h), inspectorShown: inspectorShown)
+                _ = sdl.SetWindowSize(window, Int32(s.width.rounded()), Int32(s.height.rounded()))
+            }
+            updateWindowMetrics()
+        }
+    }
+    public var hasChrome: Bool { chromeRenderer != nil }
+    /// The Settings inspector is shown (More Actions ▸ Show/Hide Inspector).
+    public var inspectorShown = true { didSet { updateWindowMetrics() } }
+    public private(set) var inspectorTab: DeviceWindowFrame.Item = .settingsTab
+    /// Keys go to the device (the toolbar's Capture Keyboard).
+    public private(set) var capturesKeyboard = true
+    /// What the Settings tab shows.
+    public var settingsContent = DeviceInspectorContent.standard(note: DeviceInspectorContent.notAvailableNote) { didSet { needsRedraw = true } }
+    /// The frame in window units.
+    public private(set) var frame = DeviceWindowFrame(width: 1, height: 1)
+    /// Where canvas drawing goes in the window (the canvas's origin while it is drawn).
+    private var origin = (x: 0.0, y: 0.0)
+    private var chromeTextures: [Bool: (texture: UnsafeMutableRawPointer, request: DeviceChromeRequest, size: (Int, Int))] = [:]
+
     private var window: UnsafeMutableRawPointer!
     private var renderer: UnsafeMutableRawPointer!
     private var texture: UnsafeMutableRawPointer?
@@ -100,12 +130,24 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         e.raw.withUnsafeMutableBytes { _ = sdl.PushEvent($0.baseAddress!) }
     }
 
+    /// The canvas in the window (the whole window without the chrome).
+    var canvasRect: ViewerRect { hasChrome ? frame.canvas : ViewerRect(x: 0, y: 0, width: frame.width, height: frame.height) }
+
+    /// The window size for a canvas of `size`.
+    func windowSize(canvas size: (width: Double, height: Double)) -> (width: Double, height: Double) {
+        hasChrome ? DeviceWindowFrame.windowSize(canvasWidth: size.width, canvasHeight: size.height, inspectorShown: inspectorShown) : size
+    }
+
     private func updateWindowMetrics() {
+        guard window != nil else { return }
         var w: Int32 = 0, h: Int32 = 0, pw: Int32 = 0, ph: Int32 = 0
         _ = sdl.GetWindowSize(window, &w, &h)
         _ = sdl.GetWindowSizeInPixels(window, &pw, &ph)
-        session.windowWidth = Double(w)
-        session.windowHeight = Double(h)
+        frame = hasChrome ? DeviceWindowFrame(width: Double(w), height: Double(h), inspectorShown: inspectorShown)
+            : DeviceWindowFrame(width: Double(w), height: Double(h), inspectorShown: false)
+        let canvas = canvasRect
+        session.windowWidth = canvas.width
+        session.windowHeight = canvas.height
         session.pixelDensity = w > 0 ? Double(pw) / Double(w) : 1
         // Render in window units (SDL scales to pixels).
         _ = sdl.SetRenderScale(renderer, Float(session.pixelDensity), Float(session.pixelDensity))
@@ -114,7 +156,7 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
 
     /// Resizes the window to show the device at the current scale mode's size.
     public func fitWindowToDevice(scale: Double) {
-        let s = ViewerLayout.windowSize(geometry: session.geometry, scale: scale)
+        let s = windowSize(canvas: ViewerLayout.windowSize(geometry: session.geometry, scale: scale))
         _ = sdl.SetWindowSize(window, Int32(s.width.rounded()), Int32(s.height.rounded()))
         updateWindowMetrics()
     }
@@ -162,6 +204,7 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         }
         session.cancelInput()
         if let texture { sdl.DestroyTexture(texture) }
+        for (_, c) in chromeTextures { sdl.DestroyTexture(c.texture) }
         sdl.DestroyRenderer(renderer)
         sdl.DestroyWindow(window)
         sdl.QuitFn()
@@ -180,7 +223,8 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
             session.cancelInput()
             buttonDown = false
         case SDLConst.mouseButtonDown where e.buttonIndex == 1:
-            let (x, y) = (Double(e.buttonX), Double(e.buttonY))
+            if frameClick(Double(e.buttonX), Double(e.buttonY)) { needsRedraw = true; return }
+            let (x, y) = toCanvas(Double(e.buttonX), Double(e.buttonY))
             lastMouse = (x, y)
             if chromeClick(x, y, alt: sdl.GetModState() & SDLConst.kmodAlt != 0) { needsRedraw = true; return }
             buttonDown = true
@@ -189,7 +233,7 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
                                 control: mod & SDLConst.kmodCtrl != 0)
             needsRedraw = true
         case SDLConst.mouseMotion:
-            let (x, y) = (Double(e.motionX), Double(e.motionY))
+            let (x, y) = toCanvas(Double(e.motionX), Double(e.motionY))
             lastMouse = (x, y)
             updateHover(x, y)
             let mod = sdl.GetModState()
@@ -197,11 +241,13 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
             needsRedraw = true
         case SDLConst.mouseButtonUp where e.buttonIndex == 1:
             buttonDown = false
-            session.pointerUp(x: Double(e.buttonX), y: Double(e.buttonY))
+            let (x, y) = toCanvas(Double(e.buttonX), Double(e.buttonY))
+            session.pointerUp(x: x, y: y)
             needsRedraw = true
         case SDLConst.mouseWheel:
             let flip: Float = e.wheelFlipped ? -1 : 1
-            session.wheel(x: Double(e.wheelMouseX), y: Double(e.wheelMouseY), dx: Double(e.wheelX * flip), dy: Double(e.wheelY * flip),
+            let (wx, wy) = toCanvas(Double(e.wheelMouseX), Double(e.wheelMouseY))
+            session.wheel(x: wx, y: wy, dx: Double(e.wheelX * flip), dy: Double(e.wheelY * flip),
                           now: Double(viewerNanoseconds()) / 1e9, alt: sdl.GetModState() & SDLConst.kmodAlt != 0)
         case SDLConst.windowMouseLeave:
             session.multiTouchHover = nil
@@ -223,8 +269,9 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
             if down, !e.keyRepeat { shortcut(sc, shift: mod & SDLConst.kmodShift != 0) }
             return
         }
-        // Ctrl itself stays with the window.
-        if sc == 0xE0 || sc == 0xE4 { return }
+        // Ctrl itself stays with the window; Capture Keyboard off: no keys
+        // reach the device.
+        if sc == 0xE0 || sc == 0xE4 || !capturesKeyboard { return }
         if e.keyRepeat { return }
         guard let u = HIDKeys.usage(sdlScancode: sc) else { return }
         // A Vision Pro: Alt + the camera keys move the camera (not sent to the device).
@@ -305,18 +352,84 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
 
     // MARK: Chrome (the capsules, More Actions, tooltips)
 
-    var menuItems: [ViewerMenuItem] { session.moreItems(muted: session.audio?.muted, statusLine: showStatus) }
+    var menuItems: [ViewerMenuItem] {
+        session.moreItems(muted: session.audio?.muted, statusLine: showStatus, inspector: hasChrome ? inspectorShown : nil)
+    }
+
+    /// The menu's anchor in canvas units: the toolbar's More Actions.
+    var menuAnchor: ViewerRect? {
+        guard hasChrome, let m = frame.rect(of: .more) else { return nil }
+        let c = canvasRect
+        return ViewerRect(x: m.x - c.x, y: m.y - c.y, width: m.width, height: m.height)
+    }
+
+    /// A window point in canvas units.
+    func toCanvas(_ x: Double, _ y: Double) -> (Double, Double) {
+        let c = canvasRect
+        return (x - c.x, y - c.y)
+    }
+
+    /// A click on the toolbar or the inspector (window units); true: taken.
+    private func frameClick(_ x: Double, _ y: Double) -> Bool {
+        guard hasChrome else { return false }
+        if menuOpen, frame.item(at: x, y) != .more {
+            // The menu reaches over the toolbar: let the canvas handler close it.
+            return false
+        }
+        if frame.toolbar.contains(x, y) {
+            if let item = frame.item(at: x, y) { toolbar(item) }
+            return true
+        }
+        return frame.inspector?.contains(x, y) == true
+    }
+
+    /// A toolbar item's action.
+    public func toolbar(_ item: DeviceWindowFrame.Item) {
+        switch item {
+        case .captureKeyboard:
+            capturesKeyboard.toggle()
+            if !capturesKeyboard { session.cancelInput() }
+        case .resizeMode: break
+        case .zoomOut: setScale(session.scaleMode == .pixel ? .point : .fit)
+        case .zoomFit: setScale(.fit)
+        case .zoomActual: setScale(.point)
+        case .zoomIn: setScale(session.scaleMode == .fit ? .point : .pixel)
+        case .more: menuOpen.toggle(); hover = nil
+        case .settingsTab, .reportsTab, .infoTab: inspectorTab = item
+        }
+        needsRedraw = true
+    }
+
+    /// What the inspector shows for its tab (Ycode's choice for Reports
+    /// and Info: the device's facts, or that there are no reports).
+    var inspectorContent: DeviceInspectorContent {
+        switch inspectorTab {
+        case .infoTab:
+            let h = session.hello
+            let rows: [DeviceInspectorContent.Row] = [
+                .init(symbol: "iphone", label: "Name", control: .popUp(session.title), enabled: true),
+                .init(symbol: "cpu", label: "Model", control: .popUp(h?.model ?? session.spec.name), enabled: true),
+                .init(symbol: "gearshape", label: "OS", control: .popUp(h?.osVersion ?? "—"), enabled: true),
+            ]
+            return DeviceInspectorContent(cards: [rows], note: nil)
+        case .reportsTab: return DeviceInspectorContent(cards: [], note: "No Reports")
+        default: return settingsContent
+        }
+    }
+
+    /// The toolbar's title and subtitle: the device and its OS.
+    var subtitle: String { session.hello?.osVersion ?? "" }
 
     /// A click on the chrome; true: it was the chrome's (not the device's).
     private func chromeClick(_ x: Double, _ y: Double, alt: Bool) -> Bool {
         let more = DeviceWindowChrome.moreButton(windowWidth: session.windowWidth)
         if menuOpen {
             let items = menuItems
-            if let i = DeviceWindowChrome.menuItem(at: x, y, items: items, windowWidth: session.windowWidth) { run(items[i]) }
+            if let i = DeviceWindowChrome.menuItem(at: x, y, items: items, windowWidth: session.windowWidth, anchor: menuAnchor) { run(items[i]) }
             menuOpen = false
             return true
         }
-        if more.contains(x, y) { menuOpen = true; hover = nil; return true }
+        if !hasChrome, more.contains(x, y) { menuOpen = true; hover = nil; return true }
         if let c = session.control(at: x, y) {
             if c.enabled { perform(c.command, alt: alt) }
             return true
@@ -325,7 +438,7 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
     }
 
     private func updateHover(_ x: Double, _ y: Double) {
-        let key: String? = DeviceWindowChrome.moreButton(windowWidth: session.windowWidth).contains(x, y) ? "more"
+        let key: String? = !hasChrome && DeviceWindowChrome.moreButton(windowWidth: session.windowWidth).contains(x, y) ? "more"
             : session.control(at: x, y)?.command.rawValue
         guard key != hover?.key else { return }
         hover = key.map { ($0, Double(viewerNanoseconds()) / 1e9) }
@@ -361,6 +474,7 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         case .scale(let m)?: setScale(m)
         case .statusLine?: showStatus.toggle()
         case .refresh?: session.refreshDisplay()
+        case .inspector?: inspectorShown.toggle()
         case nil: break
         }
     }
@@ -384,6 +498,14 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
             guard let v = ViewerAppearance(rawValue: a) else { return false }
             appearance = v
             return true
+        case ("toolbar", let k?):
+            guard hasChrome, let item = DeviceWindowFrame.Item(rawValue: k) else { return false }
+            toolbar(item)
+            return true
+        case ("inspector", let k?):
+            guard hasChrome, k == "show" || k == "hide" else { return false }
+            inspectorShown = k == "show"
+            return true
         default: return false
         }
     }
@@ -393,14 +515,14 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
     private func color(_ r: UInt8, _ g: UInt8, _ b: UInt8, _ a: UInt8 = 255) { _ = sdl.SetRenderDrawColor(renderer, r, g, b, a) }
 
     private func fill(_ r: ViewerRect) {
-        var f = SDLFRect(x: Float(r.x), y: Float(r.y), w: Float(r.width), h: Float(r.height))
+        var f = SDLFRect(x: Float(r.x + origin.x), y: Float(r.y + origin.y), w: Float(r.width), h: Float(r.height))
         _ = sdl.RenderFillRect(renderer, &f)
     }
 
     /// A filled polygon (a fan around its first point; the shapes are convex).
     private func polygon(_ pts: [(Double, Double)], _ c: (Float, Float, Float, Float)) {
         guard pts.count >= 3 else { return }
-        var verts = pts.map { SDLVertex(x: Float($0.0), y: Float($0.1), r: c.0, g: c.1, b: c.2, a: c.3, u: 0, v: 0) }
+        var verts = pts.map { SDLVertex(x: Float($0.0 + origin.x), y: Float($0.1 + origin.y), r: c.0, g: c.1, b: c.2, a: c.3, u: 0, v: 0) }
         var idx: [Int32] = []
         for i in 1..<(pts.count - 1) { idx += [0, Int32(i), Int32(i + 1)] }
         _ = verts.withUnsafeMutableBytes { v in idx.withUnsafeBufferPointer { sdl.RenderGeometry(renderer, nil, v.baseAddress!, Int32(pts.count), $0.baseAddress, Int32(idx.count)) } }
@@ -411,7 +533,7 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
     /// Triangles (three points each) in one colour.
     private func triangles(_ pts: [(Double, Double)], _ c: ViewerColor) {
         guard pts.count >= 3 else { return }
-        var verts = pts.map { SDLVertex(x: Float($0.0), y: Float($0.1), r: c.r, g: c.g, b: c.b, a: c.a, u: 0, v: 0) }
+        var verts = pts.map { SDLVertex(x: Float($0.0 + origin.x), y: Float($0.1 + origin.y), r: c.r, g: c.g, b: c.b, a: c.a, u: 0, v: 0) }
         _ = verts.withUnsafeMutableBytes { sdl.RenderGeometry(renderer, nil, $0.baseAddress!, Int32(pts.count), nil, Int32(pts.count)) }
     }
 
@@ -420,7 +542,7 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         guard pts.count >= 3, let y0 = pts.map(\.1).min(), let y1 = pts.map(\.1).max() else { return }
         var verts = pts.map { p -> SDLVertex in
             let t = Float(y1 > y0 ? (p.1 - y0) / (y1 - y0) : 0)
-            return SDLVertex(x: Float(p.0), y: Float(p.1), r: top.r + (bottom.r - top.r) * t, g: top.g + (bottom.g - top.g) * t,
+            return SDLVertex(x: Float(p.0 + origin.x), y: Float(p.1 + origin.y), r: top.r + (bottom.r - top.r) * t, g: top.g + (bottom.g - top.g) * t,
                              b: top.b + (bottom.b - top.b) * t, a: top.a + (bottom.a - top.a) * t, u: 0, v: 0)
         }
         var idx: [Int32] = []
@@ -493,9 +615,8 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
 
     /// Ycode's own glyph of a control, centred at (cx, cy) (§11.1's
     /// descriptions; no Apple artwork).
-    private func glyph(_ c: DeviceCommand, _ cx: Double, _ cy: Double, colour g: ViewerColor, highlighted: Bool) {
-        let p = palette
-        switch c {
+    private func glyph(_ c0: DeviceCommand, _ cx: Double, _ cy: Double, colour g: ViewerColor, highlighted: Bool) {
+        switch c0 {
         case .home:
             // A 3 × 3 grid of dots.
             for i in -1...1 { for j in -1...1 { disc(cx + Double(i) * 5, cy + Double(j) * 5, 1.6, g) } }
@@ -513,13 +634,9 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
             arc(cx, cy, 7, 1.4, g)
             disc(cx, cy, 3.9, g)
         case .rotateLeft:
-            // A square with a curved arrow at two corners.
-            stroke(roundedRect(ViewerRect(x: cx - 5.5, y: cy - 2.5, width: 9, height: 9), radius: 1.6), 1.3, g, closed: true)
-            arc(cx + 0.5, cy + 0.5, 7.5, 1.3, g, from: -0.62 * Double.pi, to: -0.12 * Double.pi)
-            let tip = (cx + 0.5 + cos(-0.12 * Double.pi) * 7.5, cy + 0.5 + sin(-0.12 * Double.pi) * 7.5)
-            polygon([(tip.0 - 3, tip.1 - 0.5), (tip.0 + 3, tip.1 - 0.5), (tip.0, tip.1 + 3)], g)
-            let tail = (cx + 0.5 + cos(-0.62 * Double.pi) * 7.5, cy + 0.5 + sin(-0.62 * Double.pi) * 7.5)
-            polygon([(tail.0 + 0.5, tail.1 - 3), (tail.0 + 0.5, tail.1 + 3), (tail.0 - 3, tail.1)], g)
+            // Ycode's Rotate (§13.1): a square with curved arrows at two
+            // opposite corners, the shapes the macOS window draws too.
+            shared(DeviceControlGlyphs.rotate, cx, cy, line: g, fill: nil)
         case .resetCamera:
             // A circular arrow.
             arc(cx, cy, 6.5, 1.4, g, from: -0.35 * Double.pi, to: 1.35 * Double.pi)
@@ -527,28 +644,37 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
             let tip = (cx + cos(a) * 6.5, cy + sin(a) * 6.5)
             polygon([(tip.0 - 3.2, tip.1 - 1.5), (tip.0 + 1.5, tip.1 - 3), (tip.0 + 0.5, tip.1 + 2)], g)
         case .poseClosed, .posePartiallyOpen, .poseOpen:
-            // The current pose: accent outline, light accent fill; the others black with a grey fill.
-            let line = highlighted ? p.accent : g
-            let fill = highlighted ? p.accentFill : p.poseFill.with(alpha: g.a)
-            switch c {
-            case .poseClosed:
-                let r = roundedRect(ViewerRect(x: cx - 4, y: cy - 7, width: 8, height: 14), radius: 1.8)
-                polygon(r, fill)
-                stroke(r, 1.2, line, closed: true)
-            case .posePartiallyOpen:
-                // An open book seen from above.
-                let left = [(cx, cy + 5), (cx - 7.5, cy + 2.5), (cx - 7.5, cy - 6), (cx, cy - 3.5)]
-                let right = [(cx, cy + 5), (cx, cy - 3.5), (cx + 7.5, cy - 6), (cx + 7.5, cy + 2.5)]
-                for q in [left, right] { polygon(q, fill); stroke(q, 1.2, line, closed: true) }
-            default:
-                let r = roundedRect(ViewerRect(x: cx - 7.5, y: cy - 5.5, width: 15, height: 11), radius: 1.8)
-                polygon(r, fill)
-                stroke(r, 1.2, line, closed: true)
-                stroke([(cx, cy - 4.5), (cx, cy + 4.5)], 0.9, line)
-            }
+            // The current posture in the accent colour over its fill, the
+            // others in the glyph colour over grey (§13.1), dimmed with the
+            // glyph when disabled.
+            let c = DeviceControlGlyphs.postureColours(current: highlighted, dark: appearance == .dark)
+            let posture: DeviceControlGlyphs.Posture = c0 == .poseClosed ? .closed : c0 == .posePartiallyOpen ? .halfOpen : .flat
+            shared(DeviceControlGlyphs.posture(posture), cx, cy, line: ViewerColor(c.line, alpha: g.a), fill: ViewerColor(c.fill, alpha: g.a))
         default:
             disc(cx, cy, 2, g)
         }
+    }
+
+    /// A shared glyph (`DeviceControlGlyphs`) centred at (cx, cy): its fills
+    /// in `fill`, its lines and solids in `line`.
+    private func shared(_ g: DeviceControlGlyphs.Glyph, _ cx: Double, _ cy: Double, line: ViewerColor, fill: ViewerColor?) {
+        func points(_ s: DeviceControlGlyphs.Shape) -> (pts: [(Double, Double)], closed: Bool) {
+            switch s {
+            case .roundedRect(let x, let y, let w, let h, let r):
+                return (DeviceControlGlyphs.outline(x: x, y: y, width: w, height: h, radius: r).map { (cx + $0.x, cy + $0.y) }, true)
+            case .arc(let c, let r, let f, let t):
+                return (DeviceControlGlyphs.arcPoints(centre: c, radius: r, from: f, to: t).map { (cx + $0.x, cy + $0.y) }, false)
+            case .polygon(let p): return (p.map { (cx + $0.x, cy + $0.y) }, true)
+            case .polyline(let p): return (p.map { (cx + $0.x, cy + $0.y) }, false)
+            case .disc(let c, let r): return (circlePoints(cx + c.x, cy + c.y, r, steps: 12), true)
+            }
+        }
+        if let fill { for s in g.fills { polygon(points(s).pts, fill) } }
+        for s in g.strokes {
+            let q = points(s)
+            stroke(q.pts, g.lineWidth, line, closed: q.closed)
+        }
+        for s in g.solids { polygon(points(s).pts, line) }
     }
 
     /// A text box with the debug font: the tooltip, the notice, menu rows.
@@ -573,10 +699,13 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
             let g = c.enabled ? p.glyph : p.glyph.with(alpha: p.disabledAlpha)
             glyph(c.command, c.rect.x + c.rect.width / 2, c.rect.y + c.rect.height / 2, colour: g, highlighted: c.highlighted)
         }
-        // More Actions.
+        // More Actions (in the toolbar when the window has one).
         let more = DeviceWindowChrome.moreButton(windowWidth: session.windowWidth)
-        glass(more)
-        for i in -1...1 { disc(more.x + more.width / 2 + Double(i) * 5, more.y + more.height / 2, 1.5, p.glyph) }
+        if !hasChrome {
+            glass(more)
+            for i in -1...1 { disc(more.x + more.width / 2 + Double(i) * 5, more.y + more.height / 2, 1.5, p.glyph) }
+        }
+        drawFrameChrome()
         // The notice ("Screenshot Saved", …) in a glass capsule at the top.
         if let n = session.notice {
             let w = Double(n.text.count) * 8 + 28
@@ -599,14 +728,47 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         }
     }
 
+    /// The toolbar and the inspector (window units), from the renderer's
+    /// pictures, drawn over the canvas (a device larger than the canvas
+    /// goes under them).
+    private func drawFrameChrome() {
+        guard let render = chromeRenderer else { return }
+        let saved = origin
+        origin = (0, 0)
+        defer { origin = saved }
+        let request = DeviceChromeRequest(frame: frame, title: session.title, subtitle: subtitle, dark: appearance == .dark,
+                                          scaleMode: session.scaleMode, capturesKeyboard: capturesKeyboard, inspectorTab: inspectorTab,
+                                          inspector: inspectorContent, pixelDensity: session.pixelDensity)
+        let parts: [(DeviceChromeRequest.Part, ViewerRect?)] = [(.toolbar, frame.toolbar), (.inspector, frame.inspector)]
+        for (part, rect) in parts {
+            guard let rect else { continue }
+            let key = part == .toolbar
+            if chromeTextures[key]?.request != request, let img = render(request, part), img.width > 0, img.height > 0 {
+                if let old = chromeTextures[key], old.size != (img.width, img.height) {
+                    sdl.DestroyTexture(old.texture)
+                    chromeTextures[key] = nil
+                }
+                let tex = chromeTextures[key]?.texture
+                    ?? sdl.CreateTexture(renderer, SDLConst.pixelFormatABGR8888, SDLConst.textureStreaming, Int32(img.width), Int32(img.height))
+                if let tex {
+                    _ = img.rgba.withUnsafeBytes { sdl.UpdateTexture(tex, nil, $0.baseAddress!, Int32(img.width * 4)) }
+                    chromeTextures[key] = (tex, request, (img.width, img.height))
+                }
+            }
+            guard let tex = chromeTextures[key]?.texture else { continue }
+            var dst = SDLFRect(x: Float(rect.x), y: Float(rect.y), w: Float(rect.width), h: Float(rect.height))
+            _ = sdl.RenderTexture(renderer, tex, nil, &dst)
+        }
+    }
+
     private func drawMenu() {
         let p = palette
         let items = menuItems
-        let r = DeviceWindowChrome.menuRect(items: items, windowWidth: session.windowWidth)
+        let r = DeviceWindowChrome.menuRect(items: items, windowWidth: session.windowWidth, anchor: menuAnchor)
         polygon(roundedRect(ViewerRect(x: r.x - 1, y: r.y + 1, width: r.width + 2, height: r.height + 2), radius: 9), p.shadow.with(alpha: p.shadow.a * 2))
         polygon(roundedRect(r, radius: 8), p.menuRim)
         polygon(roundedRect(ViewerRect(x: r.x + 1, y: r.y + 1, width: r.width - 2, height: r.height - 2), radius: 7), p.menuFill)
-        let hovered = DeviceWindowChrome.menuItem(at: lastMouse.0, lastMouse.1, items: items, windowWidth: session.windowWidth)
+        let hovered = DeviceWindowChrome.menuItem(at: lastMouse.0, lastMouse.1, items: items, windowWidth: session.windowWidth, anchor: menuAnchor)
         var y = r.y + 4
         for (i, item) in items.enumerated() {
             if item.isSeparator {
@@ -642,7 +804,7 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
             case 3: (tu, tv) = (1 - v, u)
             default: (tu, tv) = (u, v)
             }
-            return SDLVertex(x: Float(p.0), y: Float(p.1), r: 1, g: 1, b: 1, a: 1, u: Float(tu), v: Float(tv))
+            return SDLVertex(x: Float(p.0 + origin.x), y: Float(p.1 + origin.y), r: 1, g: 1, b: 1, a: 1, u: Float(tu), v: Float(tv))
         }
         var idx: [Int32] = []
         for i in 1..<(pts.count - 1) { idx += [0, Int32(i), Int32(i + 1)] }
@@ -651,7 +813,7 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
 
     private func text(_ s: String, x: Double, y: Double, scale: Float = 1) {
         if scale != 1 { _ = sdl.SetRenderScale(renderer, scale * Float(session.pixelDensity), scale * Float(session.pixelDensity)) }
-        _ = sdl.RenderDebugText(renderer, Float(x) / scale, Float(y) / scale, s)
+        _ = sdl.RenderDebugText(renderer, Float(x + origin.x) / scale, Float(y + origin.y) / scale, s)
         if scale != 1 { _ = sdl.SetRenderScale(renderer, Float(session.pixelDensity), Float(session.pixelDensity)) }
     }
 
@@ -694,7 +856,8 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         needsRedraw = false
         // The window takes the device's shape when it connects (and when a
         // foldable shows another panel or turns).
-        if let size = session.windowFitIfNeeded() {
+        if let canvasSize = session.windowFitIfNeeded() {
+            let size = windowSize(canvas: canvasSize)
             _ = sdl.SetWindowSize(window, Int32(size.width.rounded()), Int32(size.height.rounded()))
             updateWindowMetrics()
         }
@@ -703,6 +866,9 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         let bg = palette.canvas.bytes
         color(bg.0, bg.1, bg.2)
         _ = sdl.RenderClear(renderer)
+        // The canvas's drawing in canvas units, placed below the toolbar.
+        origin = (canvasRect.x, canvasRect.y)
+        defer { origin = (0, 0) }
         let body = l.window(g.body), screen = l.screen
         let framed = session.bezels && session.spec.hasFrame
         if framed {

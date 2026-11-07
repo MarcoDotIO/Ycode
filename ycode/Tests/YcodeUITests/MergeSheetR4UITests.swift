@@ -153,10 +153,11 @@ import Testing
         let h = try #require(wc.window?.contentView?.superview?.bounds.height)
         let box = base.windowRect(sheet.sheetView.box, sheet.sheetView.box.bounds, wc)
         #expect(abs(box.maxY - (h - 33)) <= 0.5, "box to \(box.maxY) in a \(h)-point window")
-        #expect(abs(box.minY - (sheet.view.frame.minY + 11.5)) <= 0.5)
+        let sheetRect = base.windowRect(sheet.view, sheet.view.bounds, wc)
+        #expect(abs(box.minY - (sheetRect.minY + 11.5)) <= 0.5)
         let merge = base.windowRect(sheet.mergeButton, sheet.mergeButton.bounds, wc)
-        #expect(abs(merge.minY - box.maxY - 21.5) <= 0.5 && merge.maxY > h)
-        #expect(sheet.view.frame.maxY > h)
+        #expect(abs(merge.minY - box.maxY - 19) <= 0.5 && merge.maxY > h)
+        #expect(sheetRect.maxY > h)
         sheet.cancelButton.performClick(nil)
         await eventually("the abort") { await wc.sourceControl.idle(); return wc.sourceControl.mergeOverlay == nil }
     }

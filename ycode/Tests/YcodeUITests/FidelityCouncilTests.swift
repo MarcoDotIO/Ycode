@@ -156,7 +156,9 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let e = wc.editor
         e.view.layoutSubtreeIfNeeded()
         guard e.showsMinimap else { return }
-        #expect(abs(e.minimap.frame.maxX - (e.view.bounds.maxX - e.scrollerLaneWidth)) < 0.5)
+        // Round 5 (row 116): it covers the scroller's first 3 points.
+        #expect(abs(e.minimap.frame.maxX - (e.view.bounds.maxX - e.scrollerLaneWidth + e.minimapOverlap)) < 0.5)
+        #expect(abs(e.minimap.frame.minX - e.minimapLeftEdge) < 0.5)
         #expect(e.minimapWidthValue == MinimapView.width(forEditorWidth: e.view.bounds.width))
     }
 

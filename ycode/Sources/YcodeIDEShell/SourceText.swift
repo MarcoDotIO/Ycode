@@ -144,6 +144,9 @@ public struct SourcePalette: Equatable, Sendable {
     public var background: ThemeColor
     public var foreground: ThemeColor
     public var currentLine: ThemeColor
+    /// The band in a split's pane without focus (the default theme's dark
+    /// #2A2A2A, `editor-area.md` F.3; the focused band elsewhere).
+    public var unfocusedCurrentLine: ThemeColor
     public var lineNumber: ThemeColor
     public var selection: ThemeColor
     public var tokens: [SyntaxTokenKind.Role: ThemeColor]
@@ -165,7 +168,9 @@ public struct SourcePalette: Equatable, Sendable {
         }
         if tokens[.typeDeclaration] == nil { tokens[.typeDeclaration] = tokens[.typeName] }
         let own = theme.background != nil
-        return SourcePalette(background: bg, foreground: fg, currentLine: ThemeColor(hex: theme.currentLine) ?? base.currentLine,
+        let band = ThemeColor(hex: theme.currentLine) ?? base.currentLine
+        let unfocused = dark && isDefault && theme.currentLine == nil ? ThemeColor(hex: "#2A2A2A")! : band
+        return SourcePalette(background: bg, foreground: fg, currentLine: band, unfocusedCurrentLine: unfocused,
                              lineNumber: own ? mix(fg, bg, 0.45) : base.lineNumber,
                              selection: ThemeColor(hex: theme.selection) ?? base.selection, tokens: tokens)
     }

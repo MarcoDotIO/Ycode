@@ -664,6 +664,55 @@ Target: enable the compact-window button whenever the window shows a
 device. Enabled toolbar glyphs are #E1E1E1 in the reference, a little
 below Ycode's pure white.
 
+## 13. Council round 5 (2026-11-06): the second capsule for a foldable
+
+The same still as round 4 (1100 × 800, sidebar hidden, the iPhone Duo on
+iOS 27.1 at its Home screen, dark, 2x); Ycode `a1f82372` showed the same
+simctl device, which it does not operate, now with its capsules drawn
+disabled (I.14). Both device pictures are centred (the pair's centre x 410
+in both; a judge's "125 points to the right" is not borne out). Checklist
+rows 131–132 in `fidelity-council.md`.
+
+### 13.1 The two capsules, measured
+
+| | Reference | Ycode now |
+|---|---|---|
+| Capsule 1 | Home · Screenshot · Record, x **279–388** (109), y **756–792** (36) | x 332–440 (108), y 756–792; glyphs grey #9E9E9F (disabled) |
+| Capsule 2 | **Rotate │ three posture buttons**, x **395–541** (146), y 756–792 | **Rotate only**: x 448–488 (40 × 36) |
+| Gap, centre | 7 apart; the pair centred on x 410 | 7.5 apart; centred on x 410 |
+| Fill | #3B3B3D–#3C3C3D, rim as §12.1 | the same |
+
+Capsule 2, left to right (glyph ink boxes; centres on §11.1's 34-point
+pitch after the divider):
+
+| Item | Box | Centre x | Look (in words; Ycode draws its own) |
+|---|---|---|---|
+| Rotate | x 406–425, y 763.5–785 (19 × 21.5) | 415.5 (20.5 from the capsule's left end) | a square outline with a **curved arrow at two opposite corners**: one over the top-left corner pointing right, one under the bottom-right corner pointing left; white |
+| Divider | x 433.5–434.5, y 764–784 | 434 | 1 point, #505051 |
+| Posture 1, closed (current) | x 447.5–458, y 767.5–781 (10.5 × 13.5) | 452.75 | a narrow upright phone outline with a small dot near its top-right corner, **accent #007AFF outline, dark blue fill #2D4B6D** (the current posture) |
+| Posture 2, half open | x 478.5–494.5 (16 × 13.5) | 486.5 | an open book seen from above: a wide outline whose top and bottom edges dip toward the middle; white outline, grey fill #6C6C6D |
+| Posture 3, flat | x 512–529 (17 × 13.5) | 520.5 | a wide rounded rectangle with a short bar near its bottom edge (a tablet laid flat); white outline, grey fill #6C6C6D |
+
+The last centre is 20.5 from the capsule's right end. Capsule 1's glyph
+centres: 299.75, 333.75, 367.5 (Home 12.5 × 12.5, Screenshot 14.5 × 14.5,
+Record 15 × 15).
+
+**Target.** For a **foldable** device type the second capsule always
+holds Rotate, the divider and the three posture buttons (146 wide), the
+current posture in the accent colour; for other iPhones and iPads it
+holds Rotate alone. A device Ycode does not operate keeps this layout
+with every control disabled (I.14's choice), so the capsules do not
+change width between a running and a non-operated device of the same
+type. Ycode's Rotate glyph (a square with one arrow at its top-right)
+should show the two opposite arrows.
+
+### 13.2 Not settled by round 5
+
+- The capsule's content for other device kinds (a classic iPhone, an
+  iPad, a watch) in the same window: only the foldable was captured.
+- The posture buttons' order when the device is rotated, and whether the
+  current posture follows a posture change made from the Device menu.
+
 ## I. Ycode implementation (HUB-UI, 2026-10-28)
 
 Clean-room work from this spec, `simulator-features.md` §7 and its
@@ -1492,6 +1541,12 @@ appearance resolution, the light palette).
   canvas says "Ycode doesn't run this device, so it has no window of its
   own." (Ycode's choice). The Linux device window has no toolbar.
 
+### I.15 Council round 5: the foldable's second capsule, Rotate; the Linux device window (B5-MERGE, 2026-11-07)
+
+- **Row 131.** A simctl device whose type Ycode knows by name (`DeviceFrameSpec.named(name:)`, for example "iPhone Duo") gets that type's picture, so a foldable Ycode does not operate keeps Rotate │ Closed · Partially Open · Open (145.5 wide), every control disabled, Closed current (Ycode's choice: a device Ycode does not run is drawn closed). The postures are Ycode's drawings from `DeviceControlGlyphs` (YcodeDeviceModel): closed 10.5 × 13.5 with a dot near its top-right corner, half open 16 × 13.5 (an open book whose edges dip at the spine), flat 17 × 13.5 with a bar near its bottom edge; the current one an accent outline over #2D4B6D (dark) or #BFDDFE (light), the others the glyph colour over #6C6C6D or #BEBEBE. The macOS canvas and the Linux device window draw the same shapes.
+- **Row 132.** Rotate is Ycode's drawing (`DeviceControlGlyphs.rotate`): a rounded square with a curved arrow over its top-left corner pointing right and one under its bottom-right corner pointing left, about 19 × 21.5, on both IDEs (macOS no longer asks the system for a symbol).
+- **Linux device window (cross-platform-parity.md §13).** `DeviceWindowFrame` (YcodeRemoteViewer) lays the SDL window out as the macOS device window: a 52-point toolbar (the device's name and OS; [Capture Keyboard │ resize mode] [Zoom Out · Zoom to Fit · Actual Size · Zoom In] [More Actions], 36-point capsules right-aligned over the canvas; the tabs [Settings · Reports · Info] over the inspector), the canvas with the control capsules, and the 280-point Settings inspector (`DeviceInspectorContent`: the macOS cards and rows, 260 wide, 42-point rows; every row disabled with a note until the window can read the device's settings; `RemoteDeviceWindow.settingsContent` is where they go). `ycode-sim-viewer` draws the toolbar and the inspector with OpenViews (rendered to pixels, `DeviceChrome.swift`); the live picture stays the SDL window's (OpenViews has no live-picture view). More Actions hangs from the toolbar and shows or hides the inspector. Ycode's choices: one device per window, so no sidebar, Add Device, Filter or Open in New Window; Zoom In and Out step through Zoom to Fit, Point Accurate and Pixel Accurate. `YCODE_VIEWER_BARE=1` keeps the bare window.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -1532,6 +1587,7 @@ appearance resolution, the light palette).
 | Look (§8) | 1, 3 | capture; `liquid-glass.md` |
 | Gap list (§9) | — | comparison with `ycode-sim-viewer` and `specs/ide/devices.md`; Ycode decisions |
 | Council round 4 (§12): the capsules in dark, the toolbar's enabled states | 3 | Council round 4 device still (Device Hub and Ycode, dark, 2x): capsule boxes from pixels differing from the canvas, rim and fill samples, glyph ink boxes and colours, toolbar glyph brightness |
+| Council round 5 (§13): the second capsule's items for a foldable, sizes, centres and colours | 3 | Council round 5 device still (Device Hub and Ycode, dark, 2x): horizontal and vertical colour runs through the capsules, glyph ink boxes and colours |
 | Ycode implementation, round 3 (§I.13): the capsules' layout, the Linux glyphs and More Actions, the cards, the canvas placement | — | §11's measurements; Ycode decisions; public AppKit API (`NSToolbarItemGroup.controlRepresentation`, `NSToolbarItem.isHidden`), SDL 3's public `SDL_GetSystemTheme` (level 1) |
 | Ycode implementation (§I): frame proportions, symbols, steps, banners, lifecycle, persistence, the answers to Q1–Q13 | — | Ycode decisions; public AppKit API (`NSSplitViewController`, `NSToolbarItemGroup`, `NSMenuToolbarItem`, `NSGlassEffectView`, `NSTrackingSeparatorToolbarItem`), public SF Symbols names, AVFoundation (`AVAssetWriter`) and Core Graphics (`CGDisplayScreenSize`) documentation (level 1) |
 | Device panel data (§I.1): pixels, scale, pixels per inch, corner radii | — | Ycode's own device types (`Sources/ycode-simd/DeviceTypes.swift`, `device-capabilities.md`, `foldable.md` §10) |

@@ -841,7 +841,10 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         guard let r = selected else { canvas.showMessage(emptyCanvasMessage); return }
         updatePairedCapsule(for: r)
         let d = hubDevice(r)
-        let spec = r.deviceTypeID.flatMap(DeviceFrameSpec.named(typeID:)) ?? DeviceFrameSpec.placeholder(for: d.family)
+        // A simctl device's type by its name, so a foldable keeps its posture
+        // capsule even when Ycode does not run it (§13.1).
+        let spec = r.deviceTypeID.flatMap(DeviceFrameSpec.named(typeID:)) ?? DeviceFrameSpec.named(name: r.model)
+            ?? DeviceFrameSpec.placeholder(for: d.family)
         if busyDevices.contains(r.identifier) {
             canvas.showStopped(spec: spec, name: r.name, os: d.osTitle, action: nil, busy: true)
         } else if r.isYcodeRemote, r.state == "Booted", let l = link(for: r) {

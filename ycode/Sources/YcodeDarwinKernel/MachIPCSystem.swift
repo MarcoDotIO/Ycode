@@ -31,6 +31,8 @@ public final class MachIPCSystem: @unchecked Sendable {
     /// The audit session id every guest process reports (`processes.md` §4.5:
     /// one fixed session per simulator instance).
     public var auditSessionID: UInt32 = 0
+    /// When the system was made (`KernelClock`): the time base of `LookupHold`.
+    let createdAt = KernelClock.now()
 
     /// The host task (stage4c-contract.md §3), once `makeHostTask(lock:)` ran.
     public internal(set) var hostTask: MachHostTask?

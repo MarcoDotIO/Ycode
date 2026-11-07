@@ -2,17 +2,20 @@ import AppKit
 import YcodeIDECore
 
 /// The layer over the whole workspace window, toolbar included, that
-/// holds the merge confirmation and the merge sheet
-/// (`specs/ide/merge-sheet.md` §1.2, §2, §10): the veil that darkens the
-/// window, then the alert centred on it or the sheet below the toolbar.
-/// It is the window frame's top subview, so it covers the toolbar and
-/// takes every click while it is up (the window stays key).
+/// holds the merge confirmation and attaches the merge sheet
+/// (`specs/ide/merge-sheet.md` §1.2, §2, §10, §14.1): the veil that darkens
+/// the window, then the alert centred on it, or the sheet below the toolbar
+/// in a window of its own (`MergeSheetWindow`), which hangs below the
+/// parent's bottom edge. It is the window frame's top subview, so it covers
+/// the toolbar and takes every click while it is up.
 @MainActor
 public final class MergeOverlayView: NSView {
     /// Black over the window; its opacity animates (§1.2).
     public let veil = CALayer()
     public private(set) var alert: MergeAlertView?
     public private(set) var sheet: MergeSheetController?
+    /// The sheet's window while the sheet is up (§14.1).
+    public private(set) var sheetWindow: MergeSheetWindow?
     /// Where the toolbar ends, from the window's top (the sheet's top).
     public var toolbarBottom: CGFloat = 52
     /// Reduce Motion: the sheet fades only (tests set it).
@@ -70,10 +73,18 @@ public final class MergeOverlayView: NSView {
             let f = MergeSheetMetrics.alertFrame(window: (bounds.width, bounds.height), chooser: a.chooser != nil)
             a.frame = NSRect(x: f.x, y: f.y, width: f.width, height: f.height)
         }
-        if let s = sheet {
-            let f = MergeSheetMetrics.sheetFrame(window: (bounds.width, bounds.height), toolbarBottom: toolbarBottom)
-            s.view.frame = NSRect(x: f.x, y: f.y, width: f.width, height: f.height)
-        }
+        placeSheetWindow()
+    }
+
+    /// The sheet's frame in the window (points from its top-left corner).
+    public var sheetFrame: MergeSheetMetrics.Rect {
+        MergeSheetMetrics.sheetFrame(window: (bounds.width, bounds.height), toolbarBottom: toolbarBottom)
+    }
+
+    /// Puts the sheet's window at the sheet's place below the toolbar.
+    func placeSheetWindow() {
+        guard let sw = sheetWindow, let w = window else { return }
+        sw.place(sheet: sheetFrame, in: w)
     }
 
     // Every click lands on the overlay while it is up (the window is modal
@@ -169,18 +180,29 @@ public final class MergeOverlayView: NSView {
 
     // MARK: Sheet
 
-    /// Shows the merge sheet (§10): it fades in over 90 ms while sliding
-    /// down 32 points over 200 ms; with Reduce Motion it fades only.
+    /// Shows the merge sheet (§10, §14.1) in its own window attached to
+    /// this one: it fades in over 90 ms while sliding down 32 points over
+    /// 200 ms; with Reduce Motion it fades only. The file list has the focus
+    /// (§14.3). The sheet's window is ordered in only with a visible parent.
     func showSheet(_ sheet: MergeSheetController) {
         self.sheet = sheet
+        let sw = MergeSheetWindow()
+        sw.appearance = window?.appearance
+        sw.colorSpace = window?.colorSpace
+        sheetWindow = sw
         let v = sheet.view
         v.wantsLayer = true
-        addSubview(v)
+        sw.container.addSubview(v)
         needsLayout = true
         layoutSubtreeIfNeeded()
+        placeSheetWindow()
+        if let w = window, w.isVisible {
+            w.addChildWindow(sw, ordered: .above)
+            if w.isKeyWindow { sw.makeKey() }
+        }
         if veil.opacity == 0 { setVeil(on: true, duration: MergeSheetMotion.veilIn) }
         animateSheet(in: true)
-        window?.makeFirstResponder(sheet.canvas)
+        sw.makeFirstResponder(sheet.fileList)
     }
 
     /// The sheet's appear (or, reversed, disappear) animations.
@@ -197,9 +219,10 @@ public final class MergeOverlayView: NSView {
         guard !reduceMotion else { layer.removeAnimation(forKey: "sheetSlide"); return }
         let c = MergeSheetMotion.slideCurve
         let slide = CABasicAnimation(keyPath: "transform.translation.y")
-        // The frame view is not flipped below us: a layer moved up has a
-        // larger y in a layer tree that is not flipped.
-        let up = (layer.superlayer?.isGeometryFlipped ?? false) || isFlipped ? -MergeSheetMotion.slideDistance : MergeSheetMotion.slideDistance
+        // A layer moved up has a smaller y in a flipped layer tree and a
+        // larger one in a tree that is not flipped.
+        let flipped = (layer.superlayer?.isGeometryFlipped ?? false) || (sheet?.view.superview?.isFlipped ?? isFlipped)
+        let up = flipped ? -MergeSheetMotion.slideDistance : MergeSheetMotion.slideDistance
         slide.fromValue = appearing ? up : 0
         slide.toValue = appearing ? 0 : up
         slide.duration = appearing ? MergeSheetMotion.sheetSlide : MergeSheetMotion.sheetOutSlide
@@ -215,11 +238,17 @@ public final class MergeOverlayView: NSView {
         if animated, sheet != nil { animateSheet(in: false) }
         if let a = alert { a.removeFromSuperview(); alert = nil }
         setVeil(on: false, duration: animated ? MergeSheetMotion.veilIn : 0)
-        let s = sheet
+        let s = sheet, sw = sheetWindow
         sheet = nil
         let finish = { [weak self] in
             s?.view.removeFromSuperview()
             s?.removeFromParent()
+            if let sw {
+                sw.parent?.removeChildWindow(sw)
+                sw.orderOut(nil)
+                sw.close()
+            }
+            self?.sheetWindow = nil
             self?.removeFromSuperview()
             self?.onClose?()
         }
@@ -254,6 +283,9 @@ public final class MergeButton: NSControl {
     public var isDefaultLook = false { didSet { needsDisplay = true } }
     public var keyEquivalent = ""
     var fontSize: CGFloat = 13
+    /// The corner radius; nil draws a capsule (the alert's buttons). The
+    /// sheet's buttons are rounded rectangles of radius 6 (§14.2).
+    public var cornerRadius: CGFloat? { didSet { needsDisplay = true } }
 
     public init(title: String) {
         self.title = title
@@ -281,7 +313,8 @@ public final class MergeButton: NSControl {
     public override func draw(_ dirtyRect: NSRect) {
         let c = colors
         c.fill.setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
+        let r = cornerRadius ?? bounds.height / 2
+        NSBezierPath(roundedRect: bounds, xRadius: r, yRadius: r).fill()
         let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fontSize, weight: isDefaultLook ? .medium : .regular),
                                                     .foregroundColor: c.label]
         let s = NSAttributedString(string: title, attributes: attrs)
@@ -318,4 +351,8 @@ public final class MergeButton: NSControl {
         performClick(nil)
         return true
     }
+
+    /// The hit test at any point of the button finds the button (§13.2):
+    /// an `NSControl` without a cell would otherwise answer nothing.
+    public override func accessibilityHitTest(_ point: NSPoint) -> Any? { self }
 }

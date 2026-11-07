@@ -186,7 +186,7 @@ extension YcodeMCPHost {
 
     func remoteSettings() throws -> RemoteSimulatorSettings {
         guard let r = remoteSimulator, r.isConfigured else {
-            throw MCPToolError("no Ycode Simulator host is set up. In the IDE: Settings ▸ Simulators. For `ycode mcp`: --simulator-config <file.json> or the YCODE_MCP_SIM_* variables (see `ycode mcp --help`).")
+            throw MCPToolError("no Ycode Simulator host is set up. In the IDE: Settings ▸ Components ▸ Simulator Host. For `ycode mcp`: --simulator-config <file.json> or the YCODE_MCP_SIM_* variables (see `ycode mcp --help`).")
         }
         return r
     }

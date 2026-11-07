@@ -25,10 +25,15 @@ public struct WindowConfiguration: Sendable, Equatable {
     /// parent; the window system may move it to keep it on screen.
     public var popupParent: PlatformWindowID?
     public var popupOrigin: CGPoint
+    /// The window system draws the window's title bar and frame (true), or
+    /// the app draws its own: no title bar or frame from the window system;
+    /// the app's hit test (`PlatformWindow.setHitTest`) says where the
+    /// window moves and resizes (client-side decorations, B5-OPENVIEWS).
+    public var decorated: Bool
 
     public init(title: String = "", size: CGSize = CGSize(width: 800, height: 600), resizable: Bool = true,
                 vulkan: Bool = false, highPixelDensity: Bool = true, popupParent: PlatformWindowID? = nil,
-                popupOrigin: CGPoint = .zero) {
+                popupOrigin: CGPoint = .zero, decorated: Bool = true) {
         self.title = title
         self.size = size
         self.resizable = resizable
@@ -36,7 +41,16 @@ public struct WindowConfiguration: Sendable, Equatable {
         self.highPixelDensity = highPixelDensity
         self.popupParent = popupParent
         self.popupOrigin = popupOrigin
+        self.decorated = decorated
     }
+}
+
+/// What a point of an undecorated window is for (the window system moves or
+/// resizes the window when a press lands on a draggable or resize region).
+public enum WindowHitRegion: Sendable, Equatable {
+    case normal, draggable
+    case resizeTopLeft, resizeTop, resizeTopRight, resizeRight, resizeBottomRight, resizeBottom, resizeBottomLeft,
+         resizeLeft
 }
 
 /// Text on the system clipboard.
@@ -118,6 +132,23 @@ public protocol PlatformWindow: AnyObject {
 
 extension PlatformWindow {
     public var screenOrigin: CGPoint? { nil }
+}
+
+/// The window-state operations of client-side decorations (the close,
+/// minimize and zoom buttons an app draws; B5-OPENVIEWS). Windows that do
+/// not adopt it are decorated by their window system.
+@MainActor
+public protocol PlatformWindowDecorations: AnyObject {
+    /// False when the window was created without the window system's title
+    /// bar and frame (`WindowConfiguration.decorated`).
+    var isDecorated: Bool { get }
+    /// Asks `test` (points in the window) where presses move or resize the
+    /// window; nil removes the test.
+    func setHitTest(_ test: (@MainActor (CGPoint) -> WindowHitRegion)?)
+    var isMaximized: Bool { get }
+    var isFullscreen: Bool { get }
+    func setMaximized(_ maximized: Bool)
+    func setFullscreen(_ fullscreen: Bool)
 }
 
 /// A source of windows and events.

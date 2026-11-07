@@ -18,40 +18,11 @@ extension WorkspaceWindowController {
     }
 
     /// Working copy (outside git: none) and the targets of the project
-    /// that holds the file; in a package, the target folder the file is in.
+    /// that holds the file; in a package, the target folder the file is in
+    /// (`FileInspectorInfo.make`, shared with the Linux IDE).
     public func fileInspectorInfo(_ url: URL) -> FileInspectorInfo {
-        var info = FileInspectorInfo()
-        let path = url.standardizedFileURL.path
-        if Preferences.shared.sourceControlEnabled, let repo = repository {
-            let root = repo.root.standardizedFileURL.path
-            let resolved = url.resolvingSymlinksInPath().standardizedFileURL.path
-            for p in [path, resolved] where p.hasPrefix(root + "/") {
-                info.workingCopy = root
-                info.relativePath = String(p.dropFirst(root.count + 1))
-                break
-            }
-        }
-        switch session.model.kind {
-        case .package:
-            let base = session.model.url.standardizedFileURL.path
-            // reference-ui-6.md §6 (I1): a package's files show only
-            // Identity and Type and Text Settings.
-            info.isPackageFile = path.hasPrefix(base + "/")
-            for dir in ["Sources", "Tests"] where path.hasPrefix(base + "/\(dir)/") {
-                // Sources/<Target>/…: the folder names the target.
-                let parts = path.dropFirst(base.count + dir.count + 2).split(separator: "/")
-                if parts.count >= 2 {
-                    info.memberships = [TargetMembership(targetID: String(parts[0]), name: String(parts[0]), isMember: true, isEditable: false)]
-                }
-            }
-        default:
-            if let (projPath, proj) = project(holding: path) {
-                info.memberships = proj.memberships
-                let dir = proj.project.projectDirectory(xcodeprojURL: URL(fileURLWithPath: projPath))
-                if case .synchronized? = proj.project.place(ofFile: path, projectDirectory: dir) { info.inSynchronizedFolder = true }
-            }
-        }
-        return info
+        let root = Preferences.shared.sourceControlEnabled ? repository?.root : nil
+        return FileInspectorInfo.make(for: url, in: session.model, repositoryRoot: root)
     }
 
     /// The project whose tree holds `path`, with the file's memberships.

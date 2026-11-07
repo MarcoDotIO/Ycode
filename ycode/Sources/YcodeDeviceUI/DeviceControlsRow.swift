@@ -213,10 +213,14 @@ public final class DeviceControlsRow: NSView {
     private func update() {
         for (c, b) in buttons {
             let look = Self.look(c, recording: configuration.recording)
-            // Closed and Open are Ycode's own glyphs (no product symbols, AGENTS.md rule 5).
+            // Rotate and the postures are Ycode's own drawings (§13.1; no
+            // product symbols, AGENTS.md rule 5), the same shapes as on Linux.
+            let current = Self.isCurrentPose(c, configuration.posture)
             switch c {
-            case .poseClosed: b.image = DeviceGlyph.phone.image(height: 16, lit: true)
-            case .poseOpen: b.image = DeviceGlyph.openFlat.image(height: 13, lit: true)
+            case .rotateLeft: b.image = DeviceControlGlyphImage.rotate()
+            case .poseClosed: b.image = DeviceControlGlyphImage.posture(.closed, current: current)
+            case .posePartiallyOpen: b.image = DeviceControlGlyphImage.posture(.halfOpen, current: current)
+            case .poseOpen: b.image = DeviceControlGlyphImage.posture(.flat, current: current)
             default:
                 b.image = NSImage(systemSymbolName: look.symbol, accessibilityDescription: look.help)?
                     .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))

@@ -11,7 +11,7 @@ import YcodeIDEShell
 /// window, as the same paged assistant (`liquid-glass-ycode.md` §11): page
 /// dots that show each step's state and jump to it, a centred page with the
 /// step's glyph, title and summary over a 520-point column (checks in a
-/// grouped box), and Back, Close, Re-check and Continue in the footer. The
+/// grouped box), and Back, Re-check and Continue in the footer. The
 /// page pushes in from the trailing edge going forward and from the leading
 /// edge going back (a crossfade under Reduce Motion). An action runs only
 /// after an alert that shows its exact command.
@@ -130,11 +130,13 @@ struct RuntimeSetupSheet: View {
     }
 
     func goNext() {
+        if session.step == .host { commitHost() }
         guard let i = session.steps.firstIndex(of: session.step), i + 1 < session.steps.count else { return }
         go(to: session.steps[i + 1])
     }
 
     func goBack() {
+        if session.step == .host { commitHost() }
         guard let i = session.steps.firstIndex(of: session.step), i > 0 else { return }
         go(to: session.steps[i - 1])
     }
@@ -235,8 +237,8 @@ struct RuntimeSetupSheet: View {
         }
     }
 
-    func label(_ t: String, _ c: ShellColors) -> some View {
-        Text(verbatim: t).font(.system(size: 13)).foregroundStyle(c.label).frame(width: 120, alignment: .trailing)
+    func label(_ t: String, _ c: ShellColors, width: CGFloat = 120) -> some View {
+        Text(verbatim: t).font(.system(size: 13)).foregroundStyle(c.label).frame(width: width, alignment: .trailing)
     }
 
     func note(_ t: String, _ c: ShellColors) -> some View {
@@ -274,30 +276,36 @@ struct RuntimeSetupSheet: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// The macOS IDE's form (parity §11): right-aligned labels, fields 320
+    /// wide (Ports 120) in the drawn field style, the note under them. The
+    /// fields are committed on Return and by Continue, Back and Re-check.
     func hostStep(_ c: ShellColors) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack { label("Host:", c); field("user@sim-host", $host, "runtime host") }
-            HStack { label("Data folder:", c); field("/data/ycode", $data, "runtime data") }
-            HStack { label("Link name:", c); field("The host's name on Ycode's link", $link, "runtime link") }
-            HStack { label("Ports (TCP/UDP):", c); field("47800/47801", $ports, "runtime ports") }
-            HStack {
-                Spacer().frame(width: 128)
-                Button("Check Host") { commitHost() }.buttonStyle(.bordered).shellTarget("runtime host check")
-            }
+            HStack { label("Host:", c, width: RuntimeSetupLayout.labelWidth); field("user@sim-host", $host, "runtime host", width: RuntimeSetupLayout.fieldWidth) }
+            HStack { label("Data folder:", c, width: RuntimeSetupLayout.labelWidth); field("/data/ycode", $data, "runtime data", width: RuntimeSetupLayout.fieldWidth) }
+            HStack { label("Link name:", c, width: RuntimeSetupLayout.labelWidth); field("The host's name on Ycode's link", $link, "runtime link", width: RuntimeSetupLayout.fieldWidth) }
+            HStack { label("Ports (TCP/UDP):", c, width: RuntimeSetupLayout.labelWidth); field("47800/47801", $ports, "runtime ports", width: RuntimeSetupLayout.portsWidth) }
             HStack(alignment: .top) {
-                Spacer().frame(width: 128)
-                note("Ycode logs in with an ssh key only and never asks for a password. The data folder holds runtimes and devices; choose a volume with room for them (about 16 GB per iOS runtime).", c)
-                    .frame(width: 340, alignment: .leading)
+                Spacer().frame(width: RuntimeSetupLayout.labelWidth + 8)
+                note(RuntimeSetupLayout.hostNote, c)
+                    .frame(width: RuntimeSetupLayout.fieldWidth, alignment: .leading)
             }
         }
         .frame(maxWidth: .infinity)
     }
 
-    func field(_ placeholder: String, _ text: Binding<String>, _ id: String) -> some View {
-        TextField(placeholder, text: text)
-            .textFieldStyle(.roundedBorder)
+    func field(_ placeholder: String, _ text: Binding<String>, _ id: String, width: CGFloat) -> some View {
+        let p = SettingsPalette(scheme)
+        let r = RuntimeSetupLayout.fieldRadius
+        return TextField(placeholder, text: text)
+            .textFieldStyle(.plain)
             .font(.system(size: 12, design: .monospaced))
-            .frame(width: 340)
+            .padding(.horizontal, RuntimeSetupLayout.fieldPadding)
+            .frame(width: width, height: RuntimeSetupLayout.fieldHeight)
+            .background {
+                RoundedRectangle(cornerRadius: r, style: .continuous).fill(p.fieldFill)
+                    .overlay { RoundedRectangle(cornerRadius: r, style: .continuous).stroke(p.fieldBorder, lineWidth: 1) }
+            }
             .onSubmit { commitHost() }
             .shellTarget(id)
     }
@@ -592,25 +600,58 @@ struct RuntimeSetupSheet: View {
     // MARK: Footer
 
     /// Back at the leading side (hidden on the first step), the status, then
-    /// Close, Re-check and the default Continue (Done on the last step).
+    /// Re-check and the default Continue (Done on the last step), as on
+    /// macOS; the window's own close button closes it.
     func footer(_ c: ShellColors) -> some View {
         HStack(spacing: 8) {
             if !session.isFirstStep {
-                Button("Back") { goBack() }.buttonStyle(.bordered).shellTarget("runtime back")
+                // The macOS footer's widths (88, 86 and 104 with the 12-point padding).
+                Button { goBack() } label: { Text("Back").frame(minWidth: 64) }.buttonStyle(.bordered).shellTarget("runtime back")
             }
             if session.isChecking || session.running != nil { ProgressView().controlSize(.small) }
             Text(verbatim: session.running ?? session.status ?? (session.isChecking ? "Checking…" : ""))
                 .font(.system(size: 11)).foregroundStyle(c.secondaryLabel).lineLimit(2).shellTarget("runtime status")
             Spacer()
-            Button("Close") { app.closeRuntimeSetup() }.keyboardShortcut(.cancelAction).buttonStyle(.bordered).shellTarget("runtime close")
-            Button("Re-check") { session.recheck() }.buttonStyle(.bordered).disabled(session.isChecking).shellTarget("runtime recheck")
-            Button(session.isLastStep ? "Done" : "Continue") {
+            Button {
+                if session.step == .host { commitHost() }
+                session.recheck()
+            } label: { Text("Re-check").frame(minWidth: 62) }.buttonStyle(.bordered).disabled(session.isChecking).shellTarget("runtime recheck")
+            Button {
                 if session.isLastStep { app.closeRuntimeSetup() } else { goNext() }
-            }
+            } label: { Text(session.isLastStep ? "Done" : "Continue").frame(minWidth: 80) }
             .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).shellTarget("runtime continue")
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 20)
+    }
+}
+
+/// The wizard's window (as on macOS, its own window; cross-platform
+/// parity §11): the session's page, closed with the session.
+struct RuntimeSetupWindow: View {
+    var app: ShellAppModel
+    @Environment(\.dismissWindow) private var dismissWindow
+
+    var body: some View {
+        Group {
+            if let s = app.runtimeSetup { RuntimeSetupSheet(session: s, app: app) } else { Color.clear }
+        }
+        .frame(width: RuntimeSetupSheet.size.width, height: RuntimeSetupSheet.size.height)
+        #if os(Linux)
+        .windowButtonsShown(.close)
+        #endif
+        .onAppear {
+            let dismiss = dismissWindow
+            ShellAppModel.dismissRuntimeSetupWindow = { dismiss(id: ShellAppModel.runtimeSetupWindowID) }
+        }
+        // Closing the window ends the session.
+        .onDisappear {
+            if app.runtimeSetup != nil {
+                app.runtimeSetup?.stop()
+                app.runtimeSetup = nil
+            }
+        }
+        .shellTarget("runtime window")
     }
 }
 

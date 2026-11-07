@@ -38,9 +38,10 @@ struct MergeSheetView: View {
                 MergeContentBox(scm: scm, editor: editor, palette: p, width: CGFloat(box.width), height: CGFloat(box.height))
                     .frame(width: CGFloat(box.width), height: CGFloat(box.height))
                     .offset(x: CGFloat(box.x), y: CGFloat(box.y))
-                Button { if !isClosing { scm.cancelMerge() } } label: {
+                Button(role: .cancel) { if !isClosing { scm.cancelMerge() } } label: {
                     MergeButtonLabel(title: MergeSheetText.cancel, isDefault: false, palette: p,
-                                     width: CGFloat(M.buttonWidth), height: CGFloat(M.buttonHeight))
+                                     width: CGFloat(M.buttonWidth), height: CGFloat(M.buttonHeight),
+                                     cornerRadius: CGFloat(M.buttonCornerRadius))
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
@@ -50,7 +51,8 @@ struct MergeSheetView: View {
                 .shellTarget("merge cancel")
                 Button { if !isClosing { Task { await scm.completeMerge() } } } label: {
                     MergeButtonLabel(title: state.primaryTitle, isDefault: state.canMerge, isEnabled: state.canMerge && !editor.isLoading,
-                                     palette: p, width: mergeWidth, height: CGFloat(M.buttonHeight))
+                                     palette: p, width: mergeWidth, height: CGFloat(M.buttonHeight),
+                                     cornerRadius: CGFloat(M.buttonCornerRadius))
                 }
                 .buttonStyle(.plain)
                 .disabled(!state.canMerge)
@@ -201,21 +203,24 @@ struct MergeFileList: View {
 
     func row(_ r: ConflictEditorState.FileRow, _ p: MergeSheetPalette) -> some View {
         let selected = r.path != nil && r.path == editor.state.currentFile
-        let ink = selected ? Color.white : Color(mergeHex: p.label)
+        // §14.3: accent while the list has the focus, grey once the panes have it.
+        let colors = p.fileRow(selected: selected, listFocused: !editor.panesFocused)
+        let lit = colors.ink != nil
+        let ink = Color(mergeHex: colors.ink ?? p.label)
         let indent = CGFloat(r.depth) * 15
         return HStack(spacing: 0) {
             if r.kind == .folder {
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(selected ? Color.white : Color(mergeHex: p.secondaryLabel))
+                    .foregroundStyle(lit ? Color.white : Color(mergeHex: p.secondaryLabel))
                     .frame(width: 15)
-                Image(systemName: "folder.fill").font(.system(size: 12)).foregroundStyle(selected ? Color.white : Color(mergeHex: p.folder))
+                Image(systemName: "folder.fill").font(.system(size: 12)).foregroundStyle(lit ? Color.white : Color(mergeHex: p.folder))
                     .frame(width: 16)
                     .padding(.leading, 1)
                 Text(verbatim: r.title).font(.system(size: 13)).foregroundStyle(ink).lineLimit(1)
                     .padding(.leading, 5)
             } else {
                 Image(systemName: WorkspaceChrome.fileSymbol(r.title)).font(.system(size: 11))
-                    .foregroundStyle(selected ? Color.white : Color(mergeHex: MergeGlyphs.fileTint(r.title, p)))
+                    .foregroundStyle(lit ? Color.white : Color(mergeHex: MergeGlyphs.fileTint(r.title, p)))
                     .frame(width: 14.5)
                     .padding(.leading, CGFloat(M.fileIconX) - 15 + indent)
                 Text(verbatim: r.title).font(.system(size: 13)).foregroundStyle(ink).lineLimit(1)
@@ -223,17 +228,20 @@ struct MergeFileList: View {
             }
             Spacer(minLength: 4)
             if r.isConflicted {
-                Text(verbatim: "C").font(.system(size: 9, weight: .bold)).foregroundStyle(Color(mergeHex: p.badgeLetter))
+                Text(verbatim: "C").font(.system(size: 9, weight: .bold)).foregroundStyle(Color(mergeHex: colors.badgeLetter))
                     .frame(width: CGFloat(M.badgeSize), height: CGFloat(M.badgeSize))
-                    .background { RoundedRectangle(cornerRadius: 3, style: .continuous).fill(Color(mergeHex: p.badge)) }
+                    .background { RoundedRectangle(cornerRadius: 3, style: .continuous).fill(Color(mergeHex: colors.badge)) }
                     .padding(.trailing, CGFloat(M.badgeTrailing))
             }
         }
         .frame(height: CGFloat(M.fileRowHeight))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background { if selected { Rectangle().fill(Color(mergeHex: p.selection)) } }
+        .background { if let fill = colors.fill { Rectangle().fill(Color(mergeHex: fill)) } }
         .contentShape(Rectangle())
-        .onTapGesture { if let path = r.path { editor.showFile(path) } }
+        .onTapGesture {
+            editor.panesFocused = false
+            if let path = r.path { editor.showFile(path) }
+        }
         // A file row is a button to accessibility (§13.2).
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(r.title + (r.isConflicted ? ", conflicted" : ""))

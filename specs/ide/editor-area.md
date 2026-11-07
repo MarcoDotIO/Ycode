@@ -942,6 +942,230 @@ path that does not fit is not settled.
   reference (#2A2A2A on #262626; the focused pane's is #353535); Ycode
   draws the focused band in both panes (F.3).
 
+## Council round 5 measurements (2026-11-06)
+
+Round 5 repeated round 4's main session (Retina, 120 fps, foreground, key
+window, dark, 1400 × 880 then 1100 × 880) with Ycode `a1f82372`. Load:
+Ycode's session started while the 1-minute load fell from about 265 to 76
+(its steps 03–08 at about 150–260), the reference's at 73 → 25; weigh
+small timing differences in 03–08 lightly. Values in window points, times
+in ms from the action the capture tool posted (from its manifest), frame
+times from the recorder's frame list. Checklist rows 115–116 and 133–141
+in `fidelity-council.md`. These values supersede §F where they differ.
+
+### G.1 Hiding and showing the inspector (steps 10, 11; refines F.5)
+
+The inspector panel's left edge at y 700 (1168 shown, 1400 hidden);
+progress is the share of the travel. The recorder delivered a frame every
+10–15 ms in both apps; a value repeated over several frames is a hold.
+
+**Reference, hide:**
+
+| ms | 60 | 88 | 101 | 129 | 145 | 200 | 218 | 232 | 258 |
+|---|---|---|---|---|---|---|---|---|---|
+| progress | 0.03 | 0.19 | 0.21 | 0.27 | 0.48 | 0.76 | 0.90 | 0.97 | 1 |
+
+**Ycode, hide:**
+
+| ms | 132 | 176 | 210 | 232 | 251 |
+|---|---|---|---|---|---|
+| progress | 0.02 | 0.44 | 0.77 | 0.97 | 1 |
+
+**Reference, show:**
+
+| ms | 170 | 197 | 211 | 241 | 256 | 288 | 317 | 331 | 345 | 358 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| progress | 0.07 | 0.10 | 0.24 | 0.36 | 0.52 | 0.75 | 0.79 | 0.83 | 0.97 | 1 |
+
+**Ycode, show:**
+
+| ms | 108 | 120 | 141 | 163 | 187 | 211 | 244 | 286 | 334 |
+|---|---|---|---|---|---|---|---|---|---|
+| progress | 0.05 | 0.16 | 0.33 | 0.50 | 0.61 | 0.71 | 0.82 | 0.98 | 1 |
+
+| | Reference hide | Ycode hide | Reference show | Ycode show |
+|---|---|---|---|---|
+| First motion | **60** (round 4: 48) | 132 | **170** (round 4: 116–129) | 108 |
+| Motion | **198 ms**, 9 positions (one hold of 55 ms at mid-travel) | **119 ms**, 5 positions, a new one every 34–44 ms | **188 ms**, 10 positions, holds ≤ 30 ms | **226 ms**: 12–24 ms steps to 211, then **holds of 33, 42 and 48 ms** over the last 18 % |
+| Shape | ease-in-out | starts late, then fast; the end matches | ease-in-out | ease-out: a third of the travel in the first 33 ms, the last fifth in two late steps |
+
+The end layouts match (Ycode's edge rests at 1169, one point right of
+the reference's). The judges' "325 against 250" and "287 against 383"
+are the tool's whole-change segments, which include the toolbar's and
+the editor's relayout; the edge itself is above.
+
+Target (rounds 4 and 5 together): **hide** starts within about 60 ms of
+the press, **show** within about 120–170 ms; the edge moves ease-in-out
+(0.42, 0, 0.58, 1) over **about 200 ms** in both directions; a new
+position at least every 25 ms through the whole motion, and above all no
+holds in its last third (Ycode's show "ends stepped" there).
+
+### G.2 Split panes at 1100: the right pane wraps narrower (step 17)
+
+| | Reference | Ycode now |
+|---|---|---|
+| Left pane | x 290–563.5; minimap 487.5–549.5 (**62**), scroll lane 549.5–560.5, divider 563.5–566.5 | x 290–562; minimap 489–548 (**59**) then a 3-point darker strip (#1E1E1F) 548–551, lane 551–562, divider 562–565 |
+| Right pane | x 566.5–840; minimap 764–826 (62), lane 826–837 | x 565–839.5; minimap 764–823 (59), strip 823–826, lane 826–837 |
+| Text start (column 0) | left 341.5, right 617.5 | the same |
+| Widest text row ends | left **476.5**, right **753** (each about 11 before its minimap) | left 476.5, right **737** |
+| Columns that fit (8.04 cell) | **17 in both panes** | left 17, **right 15** |
+| Seen | right pane: "material for" on one continuation row; "import Foundation" on one row | right pane: "material" / "for the" / "capture"; "import" / "Foundation" |
+
+The pane frames are equal in both apps (the judges' "330 against 220" is
+not borne out); the right pane's **wrap width** is two columns short in
+Ycode. Target: each pane's text container runs from its text start to
+about 10.5 before its own minimap, recomputed from the pane's final frame
+after the window's size changes; equal panes wrap at the same column
+count. Ycode's minimap is 3 points narrower than the 62-point floor of
+E.6 and leaves a darker strip before the lane; the reference's minimap
+meets the lane.
+
+The left pane's one-row difference ("0: a" / "comment" in the reference)
+is F.6's "space after a word" observation, seen again in this round on
+the same line of the same file (row 88).
+
+### G.3 The minimap follows the text's visual rows (Bands.swift, step 07)
+
+| | Reference | Ycode now |
+|---|---|---|
+| Long.swift | one minimap row every **3** points | the same |
+| Bands.swift, comment band line (3 visual rows in the editor, F.1) | marks **9** apart | **6** apart |
+| Bands.swift, string band line | 6 apart | 6 apart |
+| The test file's 12-band group repeats every | **246** points | 210 (14 % less) |
+
+Ycode's editor text now wraps the bands as F.1 requires, but its minimap
+still lays the comment bands out on two rows each. Target: the minimap
+draws one 3-point row per **visual** row, using the same line breaking
+as the text (F.1), so its vertical scale (and its viewport box) matches.
+
+### G.4 Narrowing the window (step 17; refines F.6)
+
+| | Reference | Ycode now |
+|---|---|---|
+| Content relayout | one frame, **219 ms** after the size request (round 4: 105); the request returned at 308 | one frame at **415**; the request returned at 418 (it waits for the layout) |
+| Toolbar, the overflow capsule | appears with the content frame, a little wider than its circle, and shrinks: its right edge (measured at y 14) **841 → 828.5** over 170 ms, most of it in the first 70 | appears **wide** (right edge 915) with a **small "»" that grows**; 915 → 828 over 190 ms |
+| Toolbar, other items | settle with the content frame (the scheme capsule shows its two icons only; the issue capsule its symbol only) | the scheme capsule is drawn **merged with the next group** for three frames (441–481 ms), then separates; the toolbar settles at 643 |
+
+Round 4 saw the reference's capsule start 120 wide; round 5 about 40, so
+its start width is not a fixed rule. Target: relayout within about 200
+ms of the request without blocking the caller; the overflow capsule's
+"»" at full size from its first frame; the capsule settles within about
+170 ms; never draw two capsules merged (row 107's rule, still open).
+
+### G.5 The image inspector's spacing (step 05)
+
+Ink tops (y) of the inspector's parts for Stripes.png, both apps, the
+inspector at x 1146–1400:
+
+| Part | Reference | Ycode now | Ycode − reference |
+|---|---|---|---|
+| "Identity and Type" header | 87.5 | 89.5 | +2 |
+| Name … Full Path rows | 116.5 … 233.5 | the same | 0 |
+| "On Demand Resource Tags" header | 267 | 266.5 | 0 |
+| Its field | box **289–313** | 281–305 | −8 |
+| Separator | **325** | 310.5 | −14.5 |
+| "Image Properties" header | **333.5** | 323 | −10.5 |
+| Dimensions, Resolution, Color Space, Alpha Channel | **359, 377, 395.5, 413.5** (18 apart) | 343.5, 363.5, 383.5, 403.5 (20 apart) | −15.5 to −10 |
+| Separator | 436 | 423.5 | −12.5 |
+| "Localization" header | 444.5 | 436 | −8.5 |
+| Localize… button | 472.5–488.5 | 451–467 | −21.5 |
+| Separator | 505 | 472.5 | −32.5 |
+| "Target Membership" header | 513.5 | 485 | −28.5 |
+| Its box | from 532 | from 500 | −32 |
+
+**Rule (reference):** a section header's ink starts **8.5** below the
+separator above it (Ycode 12.5); the section's content starts **13–18**
+below the header's ink (Ycode 4–6); the next separator is **12–16.5**
+below the content (Ycode 5.5–9.5); label-and-value property rows are
+**18** apart (Ycode 20). With those gaps every part from On Demand
+Resource Tags down lands on the reference's y.
+
+**"--".** The reference again showed "--" for all four image properties
+in the after still (1.2 s after the step), as in round 4; round 2 showed
+values. F.8's target stands: Ycode's filled values are acceptable, "--"
+is the reference's not-yet-read state. Whether the reference ever fills
+them without another selection is open (`fidelity-council.md`).
+
+### G.6 Switching files (steps 07, 05)
+
+The editor's text area (x 300–850, y 100–800) per frame, from the click
+on the navigator row:
+
+| Step | Reference | Ycode now |
+|---|---|---|
+| 07, Long.swift → Bands.swift | old text to 158 ms; the **empty editor** (its background only, #262626) at 173 and 185; the new text at **202** | old text to 255; the new text at **267**, in one frame |
+| 05, → Stripes.png | the empty canvas at 254; "Loading…" at 692; the image at 867 (round 4: 148, 608, 689) | the image at 308, in one frame |
+
+The judges' "blank for about 75 ms" is about **29 ms** (two recorded
+frames). Target: the new file's text within about 200 ms of the click;
+up to two frames of the empty editor before it match the reference; the
+old text must not stay up with the new file's jump bar. Images: F.8.
+
+### G.7 The Add Editor button (step 16)
+
+The button's region (x 920–1010, y 3–48) per frame, from the click on it
+(the menu itself is another window and not in the recording):
+
+| | Reference | Ycode now |
+|---|---|---|
+| Menu-open state | at **90 ms**: a darker rounded square behind the glyph, held while the menu is open | at 64, the same look |
+| Bright press highlight | **one frame** at 624 ms (about 13 ms), then back to the menu-open state | bright from **252 to about 363** (110 ms), then a gradual fade back to the menu-open state until about **750** (about 400 ms) |
+
+Target: the bright highlight is a single-frame flash, with no fade. The
+judges' "438 ms split transition" is this highlight; the split itself is
+one frame in both apps (E.2).
+
+**Split latency (not settled).** The reference drew the split **858 ms**
+after the accessibility press on "Editor Pane On Right". Ycode's split
+was not in the recording, which ran 1.2 s past the press; it was in the
+after still 2.2 s past it. Measure again with a longer post-roll before
+acting on it.
+
+### G.8 Issue reporting: the toolbar capsule and the jump-bar stepper
+
+The test project had one warning for the whole main session, and the
+conflict session had one warning before the merge and an error and a
+warning during it. **Ycode shows neither element in the main window.**
+
+**Toolbar capsule.** A glass capsule in the toolbar's capsule material
+(dark fill #444444), **36 tall** (y 8–44), right after the scheme capsule
+(7.5 apart): in the 1400 window x **811–872** (61 wide) holding a warning
+symbol (a yellow #FFE015 triangle with a white exclamation mark, 17.5 ×
+15.5, its left edge 16.5 inside the capsule) and the count ("1", white,
+about 13 points) 8 after it. With errors and warnings it holds both
+pairs in one capsule, errors first: a red circle with a white cross and
+its count, then the triangle and its count (110.5 wide in the conflict
+window). In the 1100 window it shows the symbol without the count. It is
+there in every captured step of both sessions, so it shows whenever the
+workspace has issues; a session with none was not captured.
+
+**Jump-bar stepper.** At the right end of **every editor's jump bar**
+(both panes of a split, also for the image): a back chevron (6.5 × 11.5,
+#9D9D9D), the symbol of the most severe issue kind (here the yellow
+triangle, about 11 × 10.5), and a forward chevron, over x **1084.5–1124.5**
+in the 1400 window (its right end 14.5 inside the editor's right edge),
+centred on y 66. The merge sheet's jump bar shows the same stepper with
+the error symbol; Ycode already draws that one. The chevrons step to the
+previous and next issue.
+
+Target: both elements, driven by the workspace's issues (build, live and
+project issues), counts by kind, hidden when there are none (Ycode's
+choice until a capture without issues).
+
+### G.9 Items raised by one judge, checked or noted
+
+- **Plain group (row 113):** still collapsed at session start in Ycode
+  (Sol).
+- **Activity subtitle (Opus):** in the conflict session the reference's
+  window title had a second line naming a background activity while the
+  workspace was still preparing its editor services; Ycode's title has
+  none. Low; the wording is the reference's and is not copied.
+- **Welcome window path (Opus):** the reference showed the recent
+  project's path with the temporary folder's link resolved; Ycode the
+  unresolved path. Not measured (the rows are painted out below the
+  first).
+- **Step 13 (Sol):** "Ycode omits Inner" is wrong; both show Inner.
+
 ## Evidence
 
 - Commands, shortcuts and the assistant/counterparts behavior: Apple's
@@ -991,3 +1215,12 @@ path that does not fit is not settled.
   list, the press time from the session manifest) and least-squares
   Bezier fits; the flick from the capture tool's timing segments.
   Measured in the dirty room; prose only here.
+- Council round 5 (G.1–G.9), level 3: the round 5 session's Retina
+  stills and 120 fps recordings of both apps (foreground, key window,
+  dark). Inspector keyframes from per-frame edge positions at three
+  heights; pane, minimap and text extents from colour runs and per-row
+  ink ends on the stills; minimap pitch from mark runs; toolbar and
+  button states from per-frame changed regions and region means; issue
+  elements from ink boxes and colour runs; all times against the
+  session manifest's action times. Measured in the dirty room; prose
+  only here.

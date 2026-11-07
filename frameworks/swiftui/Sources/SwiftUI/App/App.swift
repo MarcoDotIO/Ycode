@@ -70,6 +70,15 @@ package struct SceneDescription {
     package var changeObservers: [SceneChangeObserver] = []
     /// `commands` of the scene (R11; merged into the app's menu bar).
     package var commands: [any Commands] = []
+    /// `windowStyle(_:)` (B5-OPENVIEWS).
+    package var windowStyle: WindowStyleKind = .automatic
+    package var titleBarHeight: CGFloat = WindowButtonMetrics.titleBarHeight
+    package var menuBarPresentation = MenuBarPresentation.automatic
+    /// `defaultLaunchBehavior(_:)`.
+    package var launchBehavior = SceneLaunchBehavior.automatic
+    /// `windowResizability(.contentSize)`: without a default size the
+    /// window takes its content's ideal size (as Settings windows do).
+    package var sizesToContent = false
 }
 
 /// A scene-level `onChange(of:)`.
@@ -256,7 +265,10 @@ extension Scene {
     }
 
     public func windowResizability(_ resizability: WindowResizability) -> _ModifiedScene<Self> {
-        modified { $0.resizable = resizability != .contentSize }
+        modified {
+            $0.resizable = resizability != .contentSize
+            $0.sizesToContent = resizability == .contentSize
+        }
     }
 
     /// Sets an environment value for the scene's views.

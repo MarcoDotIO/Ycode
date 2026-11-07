@@ -1,5 +1,6 @@
 import Foundation
 import OVPlatform
+import OVText
 #if OPENVIEWS_RENAMED
 import OpenViewsCore
 #else
@@ -89,18 +90,35 @@ struct WindowRootView: View, PrimitiveView {
     var commands: [any Commands] = []
     /// The window's tooltip (R13).
     var tooltips: TooltipCenter?
+    /// The window's chrome state (B5-OPENVIEWS: buttons, on-demand menu bar).
+    var windowChrome: WindowChromeState?
 
     func _makeChildren(node: ViewNode, old: WindowRootView?, transaction: Transaction) {
         var items: [(AnyHashable, any View)] = [(AnyHashable(0), content)]
         if let chrome {
+            // The commands host (and an on-demand menu bar) also serve
+            // windows without an in-window bar.
             items.append((AnyHashable("top"), WindowTopChrome(configuration: chrome)))
             items.append((AnyHashable("bottom"), WindowBottomChrome()))
-            if chrome.menuBar || !commands.isEmpty {
+            if chrome.menuBar || chrome.menuBarOnDemand || !commands.isEmpty {
                 items.append((AnyHashable("commands"), CommandsHostView(commands: commands, model: chrome.commands, actions: chrome.actions)))
             }
         }
         if let p = presentations, !p.isEmpty {
             items.append((AnyHashable(2), PresentationLayer(center: p, entries: p.entries)))
+        }
+        // B5-OPENVIEWS: the window buttons over the content (and above a
+        // sheet's veil), and the on-demand menu bar over the top.
+        if let chrome, let state = windowChrome {
+            let top = chrome.menuBar ? MenuBarMetrics.height : 0
+            if chrome.drawsWindowButtons {
+                items.append((AnyHashable("windowButtons"),
+                              WindowButtonsLayer(state: state, contentTop: top, modal: !(presentations?.isEmpty ?? true))))
+            }
+            if chrome.menuBarOnDemand {
+                items.append((AnyHashable("menuBarOnDemand"),
+                              MenuBarView(model: chrome.commands, actions: chrome.actions, onDemand: state)))
+            }
         }
         if let overlays { items.append((AnyHashable(1), overlays)) }
         if let tooltips { items.append((AnyHashable("tooltip"), TooltipLayer(center: tooltips))) }
@@ -194,6 +212,16 @@ package final class WindowHost {
     /// The color scheme applied for `preferredColorScheme(_:)` (nil: the
     /// desktop's, `baseEnvironment`'s).
     package private(set) var preferredColorScheme: ColorScheme?
+    /// B5-OPENVIEWS (WindowHost+Decorations.swift): whether the window
+    /// resizes from its edges, its active state, the on-demand menu bar's
+    /// reveal timer and a pending Alt tap.
+    package internal(set) var isResizable = true
+    package internal(set) var activeState = ControlActiveState.key
+    /// A driver's fixed active state (screenshots of an inactive window
+    /// while it has the focus); nil follows the window system.
+    package var activeStateOverride: ControlActiveState?
+    let revealTimerOwner: AnyObject = NSObject()
+    var altTapPending = false
 
     init(platform: any PlatformWindow, sceneIndex: Int, sceneID: String?, content: any View,
          environment: EnvironmentValues, clock: HostClock, presenter: (any FramePresenter)?,
@@ -219,7 +247,8 @@ package final class WindowHost {
         var symbols = OpenSymbolProvider()
         symbols.displayScale = platform.scale
         graph = ViewGraph(rootView: WindowRootView(content: content, presentations: services.presentations, chrome: chrome,
-                                                   commands: commands, tooltips: services.tooltips), environment: env,
+                                                   commands: commands, tooltips: services.tooltips,
+                                                   windowChrome: services.windowChrome), environment: env,
                           layout: HostLayout(.window(platform.size, safeAreaInsets: EdgeInsets()), symbols: symbols),
                           timeSource: clock)
         gestures = GestureEngine(graph: graph)
@@ -259,7 +288,7 @@ package final class WindowHost {
         WindowRootView(content: content, overlays: overlayPopups.isEmpty ? nil
                        : OverlayPopupLayer(items: overlayPopups, windowSize: platform.size),
                        presentations: services.presentations, chrome: chrome, commands: commands,
-                       tooltips: isPopup ? nil : services.tooltips)
+                       tooltips: isPopup ? nil : services.tooltips, windowChrome: isPopup ? nil : services.windowChrome)
     }
 
     private func refreshRoot() { graph.setRootView(rootView()) }
@@ -377,6 +406,7 @@ package final class WindowHost {
     }
 
     func handlePointer(_ p: PointerEvent) {
+        trackChromePointer(p)
         // R11: a secondary click opens a context menu.
         if p.kind == .mouse && p.button == 3 && p.phase == .down {
             services.pointerModifiers = p.modifiers
@@ -421,6 +451,7 @@ package final class WindowHost {
 
     func handleKey(_ k: KeyEvent) {
         services.lastEventTime = k.timestamp
+        if trackChromeKey(k) { return }
         if k.isDown { suppressNextText = false }
         // R13: `onKeyPress` handlers around the focused view come first.
         if KeyPressDispatch.deliver(k, focused: services.focus.focusedNode) {
@@ -444,6 +475,7 @@ package final class WindowHost {
                 if openContextMenuForFocus() { return }
             } else if let bar = services.menuBar, !k.modifiers.contains(.control), !k.modifiers.contains(.command) {
                 // (Alt is ignored: some X keymaps deliver F10 with it.)
+                if services.windowChrome.menuBarOnDemand { services.windowChrome.menuBarRevealed = true }
                 bar.openFirst()
                 return
             }
@@ -492,7 +524,11 @@ package final class WindowHost {
     }
 
     func exposed() { needsDisplay = true }
-    func pointerLeft() { gestures.pointerLeft() }
+    func pointerLeft() {
+        gestures.pointerLeft()
+        services.windowChrome.lastPointer = nil
+        if services.windowChrome.buttonsHovered { services.windowChrome.buttonsHovered = false }
+    }
 
     /// Delivers a URL to the window's `onOpenURL` handlers; false if none.
     func deliver(_ url: URL) -> Bool {
@@ -587,6 +623,9 @@ package final class AppHost: RunLoopClient {
             guard a.contains("://"), let u = URL(string: a) else { return nil }
             return u
         }
+        // B5-OPENVIEWS: OV_FONT_METRICS=desktop adjusts the bundled faces to
+        // the macOS IDE's widths (FontTracking.swift).
+        FontCatalog.shared.applyMetricsFromEnvironment()
         let host = AppHost(type, backend: backend, urls: urls)
         current = host
         if ProcessInfo.processInfo.environment["OV_TRACE"] != nil {
@@ -638,8 +677,10 @@ package final class AppHost: RunLoopClient {
         let graph = ViewGraph(rootView: root, environment: environment(for: nil))
         appGraph = graph
         graph.update()
-        // The first scene that is not a Settings scene opens at launch.
-        if let first = scenes.indices.first(where: { scenes[$0].kind != .settings }) { openWindow(sceneIndex: first) }
+        // The first scene that is not a Settings scene opens at launch
+        // (B5-OPENVIEWS: or the scenes `defaultLaunchBehavior(.presented)`
+        // names, without the `.suppressed` ones).
+        for i in launchScenes() { openWindow(sceneIndex: i) }
         setAppPhase(.inactive)
         setAppPhase(.active)
         let urls = pendingURLs
@@ -776,12 +817,16 @@ package final class AppHost: RunLoopClient {
         let actions = commandActions(box)
         env._appCommands = actions
         var size = scene.defaultSize ?? defaultWindowSize
-        if isSettings && scene.defaultSize == nil {
+        if (isSettings || scene.sizesToContent) && scene.defaultSize == nil {
             // Settings windows take their content's ideal size (Ycode's rule).
             size = idealSize(of: scene.content(), environment: env, minimum: CGSize(width: 360, height: 200))
         }
         var config = WindowConfiguration(title: isSettings && scene.title.isEmpty ? "Settings" : scene.title, size: size,
                                          resizable: isSettings ? false : scene.resizable)
+        // B5-OPENVIEWS: hidden title bars and plain windows draw their own
+        // chrome (no window-system title bar or frame).
+        let ownChrome = scene.windowStyle == .hiddenTitleBar || scene.windowStyle == .plain
+        config.decorated = !ownChrome
         guard let (pw, presenter) = makeWindow(&config) else {
             log?("window creation failed")
             return nil
@@ -789,7 +834,11 @@ package final class AppHost: RunLoopClient {
         log?("scene connect \(scene.id ?? "#\(sceneIndex)")")
         // R11: main windows get the menu bar; the settings window does not
         // (its commands are the app's, reachable from the main windows).
-        let chrome = WindowChromeConfiguration(menuBar: showsMenuBar && !isSettings, commands: CommandsModel(), actions: actions)
+        let presentation = menuBarPresentation(for: scene)
+        var chrome = WindowChromeConfiguration(menuBar: showsMenuBar && !isSettings && presentation == .inWindow,
+                                               commands: CommandsModel(), actions: actions)
+        chrome.menuBarOnDemand = showsMenuBar && !isSettings && presentation == .onDemand
+        chrome.drawsWindowButtons = scene.windowStyle == .hiddenTitleBar
         let storageKey = "\(scene.id ?? "#\(sceneIndex)").\(windows.filter { $0.sceneIndex == sceneIndex && !$0.isPopup }.count)"
         let storage = sceneArchive?.restore(key: storageKey) ?? SceneStorageStore()
         storage.archiveKey = storageKey
@@ -800,6 +849,8 @@ package final class AppHost: RunLoopClient {
         box.window = w
         w.services.clipboard = backend.clipboard
         w.services.popups = WindowPopupPresenter(host: self, window: w)
+        w.isResizable = config.resizable
+        configureDecorations(w, scene: scene, onDemandMenuBar: chrome.menuBarOnDemand)
         windows.append(w)
         return w
     }
@@ -971,6 +1022,7 @@ package final class AppHost: RunLoopClient {
             // The last window takes the app with it (closeWindow).
             if windows.filter({ !$0.isPopup }).count == 1, ApplicationTermination.shouldTerminate?() == false { return }
             closeWindow(w)
+            updateActiveStates()
         case .pointerLeft: w.pointerLeft()
         case .minimized, .hidden:
             w.isMinimized = true
@@ -992,11 +1044,13 @@ package final class AppHost: RunLoopClient {
         case .focusGained:
             windowFocusKnown = true
             activeWindowID = w.platform.id
+            updateActiveStates()
             // No frame follows a change of the active window by itself.
             accessibilityExport?.afterFrame()
         case .focusLost:
             windowFocusKnown = true
             if activeWindowID == w.platform.id { activeWindowID = nil }
+            updateActiveStates()
             accessibilityExport?.afterFrame()
         }
     }

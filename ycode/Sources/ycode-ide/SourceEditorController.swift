@@ -65,12 +65,18 @@ final class SourceEditorController {
     var windowOrigin = CGPoint.zero
     var fontSize: CGFloat = 12
     private(set) var measured = false
-    var lineHeight: CGFloat = 15
+    /// 18 at 13 points, as the macOS editor (`EditorMetrics.lineHeight`).
+    var lineHeight: CGFloat = 18
+    /// The display's scale (the cell's rounding, `EditorCell`).
+    var displayScale: CGFloat = 1
+    /// Added to every glyph's own advance so the face draws on the cell.
+    private(set) var cellTracking: CGFloat = 0
     /// Wrapped rows (+Wrap.swift).
     let wrap = EditorWrapState()
     /// How far the text's top sits under the line's top, to center it.
     var textDrop: CGFloat = 0
-    static let topInset: CGFloat = 4
+    /// The first line's top below the content top (`EditorMetrics.firstLineInset`).
+    static let topInset = CGFloat(EditorMetrics.firstLineInset)
     static let bottomInset: CGFloat = 8
 
     // Pointer.
@@ -109,6 +115,12 @@ final class SourceEditorController {
     var onEscape: () -> Bool = { false }
     /// The caret moved or the text changed (Quick Help follows; set by the view).
     var onActivity: (() -> Void)?
+    /// A press in the editor (its pane takes focus; EditorPanes.swift).
+    var onPointerDown: (() -> Void)?
+    /// Bumped when the highlighting is refined (the minimap's colours).
+    var highlightGeneration = 0
+    /// The minimap's bars by line and what they were made for (+Minimap.swift).
+    var minimapCache: (key: [Int], lines: [Int: [[MinimapRows.Bar<SyntaxTokenKind.Role?>]]])?
     /// A click in the gutter on a 1-based line; true when it was handled
     /// (a test's diamond runs the test) instead of selecting the line.
     var onGutterDiamondClick: (Int) -> Bool = { _ in false }
@@ -116,9 +128,11 @@ final class SourceEditorController {
     init(document: EditorDocument) {
         self.document = document
         let measure = measure
-        layout = EditorLineLayout(tabWidth: Preferences.shared.tabWidth, advance: 7) { measure.character?($0) ?? 7 }
-        fontSize = CGFloat(ShellPreferences.fontSize)
-        lineHeight = (fontSize * 1.25).rounded()
+        let size = CGFloat(ShellPreferences.fontSize)
+        let cell = EditorCell.advance(fontSize: size, scale: 1)
+        layout = EditorLineLayout(tabWidth: Preferences.shared.tabWidth, advance: cell) { measure.character?($0) ?? cell }
+        fontSize = size
+        lineHeight = EditorCell.lineHeight(fontSize: size)
         appliedRevision = ShellPreferences.shared.revision
         wrap.readPreferences()
     }
@@ -133,12 +147,15 @@ final class SourceEditorController {
 
     // MARK: Geometry
 
+    /// The gutter: the code column at the editor's edge + 51, line numbers
+    /// right-aligned at + 38 (`EditorMetrics`, as the macOS editor; wider
+    /// only for numbers of more than five digits).
     var gutterWidth: CGFloat {
-        let digits = max(3, String(buffer.lineCount).count)
-        return max(CGFloat(WorkspaceChrome.gutterWidth), CGFloat(digits) * 6.2 + 26)
+        let digits = String(buffer.lineCount).count
+        return max(CGFloat(EditorMetrics.codeColumn), CGFloat(digits) * 6.6 + 18)
     }
-    var numberRight: CGFloat { gutterWidth - 22 }
-    var textOrigin: CGFloat { gutterWidth + CGFloat(WorkspaceChrome.textInset) }
+    var numberRight: CGFloat { gutterWidth - CGFloat(EditorMetrics.codeColumn - EditorMetrics.lineNumberEnd) - EditorCell.numberInset }
+    var textOrigin: CGFloat { gutterWidth }
 
     // Lines are counted in visual rows: a wrapped line takes several
     // (+Wrap.swift).
@@ -185,9 +202,16 @@ final class SourceEditorController {
         guard revision != appliedRevision else { return }
         appliedRevision = revision
         fontSize = CGFloat(ShellPreferences.fontSize)
-        lineHeight = (fontSize * 1.25).rounded()
+        lineHeight = EditorCell.lineHeight(fontSize: fontSize)
         layout.tabWidth = Preferences.shared.tabWidth
         wrap.readPreferences()
+        measured = false
+    }
+
+    /// The display's scale changed: the cell is measured again (F.2).
+    func setDisplayScale(_ scale: CGFloat) {
+        guard scale > 0, scale != displayScale else { return }
+        displayScale = scale
         measured = false
     }
 
@@ -201,9 +225,13 @@ final class SourceEditorController {
             (String(ch) as NSString).size(withAttributes: [.font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)]).width
         }
         #endif
+        // The face's own advance, then the cell it is drawn on: the macOS
+        // editor's (`EditorCell`), the difference spread as tracking.
         let ten = measure("0000000000")
-        layout.reset(advance: ten.width / 10)
-        textDrop = ((lineHeight - ten.height) / 2).rounded(.down)
+        let cell = EditorCell.advance(fontSize: fontSize, scale: displayScale)
+        cellTracking = ten.width > 0 ? cell - ten.width / 10 : 0
+        layout.reset(advance: cell)
+        textDrop = EditorCell.textDrop(lineHeight: lineHeight, textHeight: ten.height)
         recomputeLongestLine()
     }
 
@@ -329,12 +357,13 @@ final class SourceEditorController {
         refineTask?.cancel()
         let doc = buffer.document
         if doc.hasParsed, doc.lastRefineDuration < 0.008, doc.needsRefinement, buffer.refineHighlighting() {
+            highlightGeneration &+= 1
             invalidate()
         }
         refineTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1e9))
             guard !Task.isCancelled, let self else { return }
-            if self.buffer.refineHighlighting() { self.invalidate() }
+            if self.buffer.refineHighlighting() { self.highlightGeneration &+= 1; self.invalidate() }
             self.recomputeLongestLine()
         }
     }

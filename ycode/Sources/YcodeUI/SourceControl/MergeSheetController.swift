@@ -65,6 +65,9 @@ public final class MergeSheetController: NSViewController, NSTextViewDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
         canvas.handEditor.delegate = self
         ruler.onClick = { [weak self] share in self?.scroll(toShare: share) }
+        ruler.scrollView = scrollView
+        // Rounded rectangles of radius 6 (§14.2).
+        for b in [cancelButton, mergeButton] { b.cornerRadius = CGFloat(MergeSheetMetrics.buttonCornerRadius) }
         cancelButton.target = self
         cancelButton.action = #selector(cancel(_:))
         mergeButton.target = self
@@ -75,7 +78,7 @@ public final class MergeSheetController: NSViewController, NSTextViewDelegate {
         reloadFiles()
     }
 
-    @objc func scrolled() { }
+    @objc func scrolled() { ruler.needsDisplay = true }
 
     /// Positions everything from the spec's metrics (§2–§9).
     func layoutSheet() {
@@ -345,6 +348,7 @@ public final class MergeSheetController: NSViewController, NSTextViewDelegate {
         let name = state.currentFile.map { URL(fileURLWithPath: $0).lastPathComponent } ?? ""
         canvas.reload(state: state, fileName: name)
         ruler.marks = state.rulerMarks(rows: canvas.rows)
+        ruler.needsDisplay = true
         fileList.needsDisplay = true
         jumpBar.needsDisplay = true
         footer.needsDisplay = true
@@ -391,14 +395,9 @@ public final class MergeSheetView: NSView {
         wantsLayer = true
         layer?.cornerRadius = MergeSheetMetrics.cornerRadius
         layer?.cornerCurve = .continuous
-        layer?.masksToBounds = false
-        shadow = {
-            let s = NSShadow()
-            s.shadowBlurRadius = 30
-            s.shadowOffset = NSSize(width: 0, height: -8)
-            s.shadowColor = NSColor.black.withAlphaComponent(0.28)
-            return s
-        }()
+        layer?.masksToBounds = true
+        // The sheet's window draws the shadow (§14.1: the sheet is a window).
+        layer?.borderWidth = 1
         setAccessibilityElement(true)
         setAccessibilityRole(.sheet)
         setAccessibilityLabel("Merge")
@@ -415,7 +414,10 @@ public final class MergeSheetView: NSView {
     public override var isFlipped: Bool { true }
     public override var wantsUpdateLayer: Bool { true }
     public override func updateLayer() {
-        layer?.backgroundColor = NSColor(mergeHex: MergeSheetPalette.forDark(effectiveAppearance.isDarkMerge).sheet).cgColor
+        let p = MergeSheetPalette.forDark(effectiveAppearance.isDarkMerge)
+        layer?.backgroundColor = NSColor(mergeHex: p.sheet).cgColor
+        // The 1-point rim a step lighter than the fill (§13.3; light: none).
+        layer?.borderColor = NSColor(mergeHex: p.sheetRim).cgColor
     }
 
     public override func layout() {
@@ -532,6 +534,20 @@ public final class MergeFileListView: NSView, NSTextFieldDelegate {
 
     public override var isFlipped: Bool { true }
 
+    // The list takes the focus (its selection is then the accent); a click
+    // in the panes, the gutter or on a token moves it there (§14.3).
+    public override var acceptsFirstResponder: Bool { true }
+    public override func becomeFirstResponder() -> Bool { needsDisplay = true; return true }
+    public override func resignFirstResponder() -> Bool { needsDisplay = true; return true }
+
+    /// The list (or its Filter field) has the keyboard focus.
+    public var hasListFocus: Bool {
+        guard let r = window?.firstResponder else { return false }
+        if r === self { return true }
+        if let v = r as? NSView, v.isDescendant(of: self) { return true }
+        return (r as? NSText)?.delegate === filterField
+    }
+
     /// The segments' frames: Hierarchical (the 74.5-wide pill), Flat.
     public var segmentFrames: (hierarchical: NSRect, flat: NSRect) {
         let hw: CGFloat = 74.5, fw: CGFloat = 40.5
@@ -577,14 +593,17 @@ public final class MergeFileListView: NSView, NSTextFieldDelegate {
         if rows.isEmpty, c.state.files.isEmpty, c.loading != nil {
             MergeDraw.text(MergeSheetText.loading, at: NSPoint(x: 12, y: CGFloat(M.fileListHeader) + 6), size: 12, color: NSColor(mergeHex: p.secondaryLabel))
         }
+        let focused = hasListFocus
         for (i, r) in rows.enumerated() {
             let f = rowFrame(i)
             let isSelected = r.path != nil && r.path == c.state.currentFile
-            if isSelected {
-                NSColor(mergeHex: p.selection).setFill()
+            let colors = p.fileRow(selected: isSelected, listFocused: focused)
+            if let fill = colors.fill {
+                NSColor(mergeHex: fill).setFill()
                 f.fill()
             }
-            let ink = isSelected ? NSColor.white : NSColor(mergeHex: p.label)
+            let ink = NSColor(mergeHex: colors.ink ?? p.label)
+            let lit = colors.ink != nil
             if r.kind == .folder {
                 // Disclosure triangle (open), folder symbol, name.
                 let tri = NSBezierPath()
@@ -592,23 +611,24 @@ public final class MergeFileListView: NSView, NSTextFieldDelegate {
                 tri.line(to: NSPoint(x: 11, y: f.midY - 2))
                 tri.line(to: NSPoint(x: 8, y: f.midY + 2))
                 tri.close()
-                NSColor(mergeHex: p.secondaryLabel).setFill()
+                NSColor(mergeHex: lit ? 0xFFFFFF : p.secondaryLabel).setFill()
                 tri.fill()
-                MergeDraw.symbol("folder.fill", in: NSRect(x: 16, y: f.minY, width: 16, height: f.height), color: NSColor(mergeHex: p.folder), pointSize: 12)
+                MergeDraw.symbol("folder.fill", in: NSRect(x: 16, y: f.minY, width: 16, height: f.height),
+                                 color: lit ? .white : NSColor(mergeHex: p.folder), pointSize: 12)
                 MergeDraw.text(r.title, at: NSPoint(x: 37, y: f.minY), size: 13, color: ink, maxWidth: f.width - 45, centredIn: f.height)
             } else {
                 let x = CGFloat(r.depth) * 15
                 MergeDraw.symbol(WorkspaceChrome.fileSymbol(r.title), in: NSRect(x: x + CGFloat(M.fileIconX) - 15, y: f.minY, width: 14.5, height: f.height),
-                                 color: isSelected ? .white : MergeDraw.fileTint(r.title), pointSize: 10)
+                                 color: lit ? .white : MergeDraw.fileTint(r.title), pointSize: 10)
                 MergeDraw.text(r.title, at: NSPoint(x: x + CGFloat(M.fileNameX) - 15, y: f.minY), size: 13, color: ink,
                                maxWidth: f.width - x - CGFloat(M.fileNameX) - 10, centredIn: f.height)
                 if r.isConflicted {
                     let b = NSRect(x: f.maxX - CGFloat(M.badgeTrailing) - CGFloat(M.badgeSize), y: f.midY - CGFloat(M.badgeSize) / 2,
                                    width: CGFloat(M.badgeSize), height: CGFloat(M.badgeSize))
-                    NSColor(mergeHex: p.badge).setFill()
+                    NSColor(mergeHex: colors.badge).setFill()
                     NSBezierPath(roundedRect: b, xRadius: 3, yRadius: 3).fill()
                     let w = MergeDraw.width("C", size: 9, weight: .bold)
-                    MergeDraw.text("C", at: NSPoint(x: b.midX - w / 2, y: b.minY), size: 9, weight: .bold, color: NSColor(mergeHex: p.badgeLetter),
+                    MergeDraw.text("C", at: NSPoint(x: b.midX - w / 2, y: b.minY), size: 9, weight: .bold, color: NSColor(mergeHex: colors.badgeLetter),
                                    centredIn: b.height)
                 }
             }
@@ -623,6 +643,7 @@ public final class MergeFileListView: NSView, NSTextFieldDelegate {
 
     public override func mouseDown(with event: NSEvent) {
         guard let c = controller else { return }
+        window?.makeFirstResponder(self)
         let pt = convert(event.locationInWindow, from: nil)
         let seg = segmentFrames
         if seg.hierarchical.contains(pt) { c.setFlat(false); return }
@@ -644,6 +665,9 @@ public final class MergeFileListView: NSView, NSTextFieldDelegate {
     ]
 
     public override func accessibilityChildren() -> [Any]? { segmentElements + [filterField] }
+    public override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        drawnControl(at: point, in: { [unowned self] in segmentElements }) ?? super.accessibilityHitTest(point)
+    }
 
     // A context menu on a file: Mark as Resolved (Ycode's choice).
     public override func menu(for event: NSEvent) -> NSMenu? {
@@ -742,6 +766,9 @@ public final class MergeJumpBarView: NSView {
                             press: { [unowned self] in controller?.nextHunk(nil) }),
     ]
     public override func accessibilityChildren() -> [Any]? { navigatorElements }
+    public override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        drawnControl(at: point, in: { [unowned self] in navigatorElements }) ?? super.accessibilityHitTest(point)
+    }
 }
 
 /// The footer row under both panes (§8): each side's repository › branch ›
@@ -811,4 +838,7 @@ public final class MergeFooterView: NSView {
                             press: { [unowned self] in controller?.nextHunk(nil) }),
     ]
     public override func accessibilityChildren() -> [Any]? { stepperElements }
+    public override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        drawnControl(at: point, in: { [unowned self] in stepperElements }) ?? super.accessibilityHitTest(point)
+    }
 }

@@ -48,7 +48,7 @@ public final class RuntimeSetupSession {
     /// Replaces the ssh runner for the host's checks (tests).
     @ObservationIgnored public var hostRunner: ((RuntimeHostSettings) -> any HeadsetCommandRunner)?
     @ObservationIgnored public var pairedHosts: @Sendable () -> [String]
-    /// Runtime roots already configured for the host (Settings ▸ Simulators).
+    /// Runtime roots already configured for the host (Settings ▸ Components ▸ Simulator Host).
     @ObservationIgnored public var configuredRoots: () -> [String]
     @ObservationIgnored public var folder: String
     @ObservationIgnored public var ssh: String
@@ -442,8 +442,8 @@ public final class RuntimeSetupSession {
         var out: [String] = []
         if machine.isMac {
             let named = RemoteSimulatorSettings.load(defaults).destination == host.destination
-            out.append(named ? "Settings ▸ Simulators names \(host.destination): the runtimes Ycode copies there become run destinations."
-                             : "Name \(host.destination) in Settings ▸ Simulators to run on its devices.")
+            out.append(named ? "Settings ▸ Components ▸ Simulator Host names \(host.destination): the runtimes Ycode copies there become run destinations."
+                             : "Name \(host.destination) in Settings ▸ Components ▸ Simulator Host to run on its devices.")
         } else {
             out.append("Pair this computer with the host over Ycode's link (ycode sim remote pair) to see its devices as run destinations.")
         }
@@ -453,9 +453,9 @@ public final class RuntimeSetupSession {
         return out
     }
 
-    /// A runtime copied to the host that Settings ▸ Simulators already names
+    /// A runtime copied to the host that Settings ▸ Components ▸ Simulator Host already names
     /// becomes one of its runtime roots (its destinations follow); true when
-    /// it was added. Another host is left to the user (Settings ▸ Simulators).
+    /// it was added. Another host is left to the user (Settings ▸ Components ▸ Simulator Host).
     @discardableResult
     func registerRemoteRoot(_ root: String, record: SimRuntimeRecord, host: String) -> Bool {
         var s = RemoteSimulatorSettings.load(defaults)

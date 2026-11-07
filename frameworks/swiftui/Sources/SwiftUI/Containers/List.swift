@@ -552,6 +552,7 @@ public struct List<SelectionValue: Hashable, Content: View>: View {
     @Environment(\._scrollContentBackgroundVisible) private var showsBackground
     @Environment(\.colorScheme) private var scheme
     @Environment(\.defaultMinListRowHeight) private var minRowHeight
+    @Environment(\._desktopChrome) private var desktopChrome
     @State private var controller = ListController()
     @State private var focused = false
     @Environment(\._collapsedSplit) private var collapsedSplit
@@ -575,7 +576,8 @@ public struct List<SelectionValue: Hashable, Content: View>: View {
         let focused = self.focused
         let palette = ControlPalette(scheme)
         let background: Color = !showsBackground ? .clear
-            : (metrics.grouped ? palette.groupedBackground : (kind == .sidebar ? palette.sidebarBackground : palette.plainBackground))
+            : (metrics.grouped ? palette.groupedBackground
+               : (kind == .sidebar ? (desktopChrome ? Material.sidebar.color(scheme) : palette.sidebarBackground) : palette.plainBackground))
         let container = LazyContainer(content: content, axis: .vertical, spacing: 0, arrangement: .stack(.topLeading),
                                       wrap: { item, _ in
                                           let view = item.make()

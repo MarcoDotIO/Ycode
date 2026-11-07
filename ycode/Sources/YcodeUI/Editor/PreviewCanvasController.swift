@@ -45,7 +45,7 @@ public final class PreviewCanvasController: NSViewController {
     public var onIssue: ((PreviewIssue) -> Void)?
     /// Selectable mode: a click on a tile reveals that preview's source.
     public var onRevealPreview: ((Int) -> Void)?
-    /// The needs-a-simulator card's button: Settings ▸ Simulators.
+    /// The needs-a-simulator card's button: Settings ▸ Components ▸ Simulator Host.
     public var onOpenSimulatorSettings: (() -> Void)? = { SettingsWindowController.shared.show(pane: "Simulators") }
     /// The needs-a-simulator card's button (tests).
     public internal(set) var simulatorSettingsButton: NSButton?
@@ -625,7 +625,7 @@ public final class PreviewCanvasController: NSViewController {
     }
 
     /// UIKit previews without a simulator: an iPhone, what is needed and
-    /// a button to Settings ▸ Simulators (no red: nothing failed).
+    /// a button to Settings ▸ Components ▸ Simulator Host (no red: nothing failed).
     private func needsSimulatorCard(_ message: String) -> NSView {
         let icon = NSImageView(image: NSImage(systemSymbolName: "rectangle.portrait", accessibilityDescription: "Simulator") ?? NSImage())
         icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 28, weight: .light)

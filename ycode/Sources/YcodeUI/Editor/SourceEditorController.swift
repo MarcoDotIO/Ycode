@@ -398,7 +398,7 @@ final class JumpBar: NSView {
         super.init(frame: frame)
         for s in [stack, issueStack] {
             s.orientation = .horizontal
-            s.spacing = 2
+            s.spacing = s === issueStack ? CGFloat(IssueStepper.spacing) : 2
             s.translatesAutoresizingMaskIntoConstraints = false
             addSubview(s)
         }
@@ -412,7 +412,8 @@ final class JumpBar: NSView {
                 c.priority = .defaultLow
                 return c
             }(),
-            issueStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            // The stepper ends 14.5 inside the bar (G.8: x 1084.5–1124.5).
+            issueStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -CGFloat(IssueStepper.trailingInset)),
             issueStack.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
         issueStack.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -583,18 +584,23 @@ final class JumpBar: NSView {
     /// The severity glyph the Issues menu shows (error if any, else warning).
     private(set) var issueGlyph: String?
 
-    func setIssues(_ list: [IssueEntry]?) {
-        guard list != issues || (list != nil && issueStack.arrangedSubviews.isEmpty) else { return }
+    /// The kind shown (the workspace's most severe, `IssueStepper`).
+    private(set) var issueKind: IssueStepper.Kind?
+
+    func setIssues(_ list: [IssueEntry]?, kind: IssueStepper.Kind? = nil) {
+        let kind = list == nil ? nil : (kind ?? (list!.contains { $0.isError } ? .error : .warning))
+        guard list != issues || kind != issueKind || (list != nil && issueStack.arrangedSubviews.isEmpty) else { return }
         issues = list
+        issueKind = kind
         issueStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         issuesMenu = nil
-        guard let list else { return }
+        guard let list, let kind else { return }
         // Three glyph-only controls: ‹, the severity glyph menu, ›
-        // (reference-ui-6.md §4.1.2, E2).
-        let prev = iconButton("chevron.left", "Show Previous Issue")
+        // (reference-ui-6.md §4.1.2, E2), 40 wide, 8 apart (G.8).
+        let prev = stepperChevron("chevron.left", "Show Previous Issue")
         prev.target = self
         prev.action = #selector(previousIssueClicked)
-        let next = iconButton("chevron.right", "Show Next Issue")
+        let next = stepperChevron("chevron.right", "Show Next Issue")
         next.target = self
         next.action = #selector(nextIssueClicked)
         let pop = NSPopUpButton(frame: .zero, pullsDown: true)
@@ -602,12 +608,11 @@ final class JumpBar: NSView {
         pop.controlSize = .small
         pop.font = .systemFont(ofSize: 11)
         pop.addItem(withTitle: "")
-        let hasError = list.contains { $0.isError }
-        issueGlyph = hasError ? "xmark.octagon.fill" : "exclamationmark.triangle.fill"
-        pop.item(at: 0)?.image = NSImage(systemSymbolName: issueGlyph!, accessibilityDescription: "Issues")
+        issueGlyph = kind.symbol
+        pop.item(at: 0)?.image = Self.issueSymbol(kind)
         pop.imagePosition = .imageOnly
         (pop.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
-        pop.widthAnchor.constraint(equalToConstant: 20).isActive = true
+        pop.widthAnchor.constraint(equalToConstant: CGFloat(IssueStepper.symbolWidth)).isActive = true
         pop.toolTip = "Issues"
         pop.setAccessibilityLabel("Issues")
         pop.setAccessibilityTitle("Issues")
@@ -619,11 +624,31 @@ final class JumpBar: NSView {
             let item = NSMenuItem(title: e.message, action: #selector(issuePicked(_:)), keyEquivalent: "")
             item.target = self
             item.tag = e.line
-            item.image = NSImage(systemSymbolName: e.isError ? "xmark.octagon.fill" : "exclamationmark.triangle.fill", accessibilityDescription: nil)
+            item.image = Self.issueSymbol(e.isError ? .error : .warning)
             pop.menu?.addItem(item)
         }
         issuesMenu = pop
         for v in [prev, pop, next] as [NSView] { issueStack.addArrangedSubview(v) }
+    }
+
+    /// A stepper chevron: 6.5 × 11.5, the secondary label colour.
+    private func stepperChevron(_ symbol: String, _ name: String) -> NSButton {
+        let b = iconButton(symbol, name)
+        b.image = b.image?.withSymbolConfiguration(.init(pointSize: 11, weight: .regular))
+        b.imageScaling = .scaleProportionallyDown
+        b.contentTintColor = .secondaryLabelColor
+        b.widthAnchor.constraint(equalToConstant: CGFloat(IssueStepper.chevronWidth)).isActive = true
+        b.heightAnchor.constraint(equalToConstant: CGFloat(IssueStepper.chevronHeight)).isActive = true
+        return b
+    }
+
+    /// An issue kind's symbol in its colours: white mark on yellow, white
+    /// cross on red (G.8).
+    static func issueSymbol(_ kind: IssueStepper.Kind) -> NSImage? {
+        let fill: NSColor = kind == .error ? .systemRed : .systemYellow
+        return NSImage(systemSymbolName: kind.symbol, accessibilityDescription: "Issues")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .regular)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [.white, fill])))
     }
 
     @objc private func previousIssueClicked() { onPreviousIssue?() }
@@ -687,8 +712,11 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     }
     /// Shows the file's issues at the jump bar's right end; nil hides them.
     public func setJumpBarIssues(_ list: [(message: String, line: Int, isError: Bool)]?) {
-        jumpBar.setIssues(list?.map { JumpBar.IssueEntry(message: $0.message, line: $0.line, isError: $0.isError) })
+        jumpBar.setIssues(list?.map { JumpBar.IssueEntry(message: $0.message, line: $0.line, isError: $0.isError) }, kind: jumpBarIssueKind)
     }
+    /// The workspace's most severe issue kind the stepper shows (nil: the
+    /// file's own issues decide).
+    public var jumpBarIssueKind: IssueStepper.Kind?
     /// The jump bar's Counterparts menu (title, path); empty hides it.
     public func setCounterparts(_ list: [(String, String)], onPick: @escaping (String) -> Void) {
         jumpBar.onPickCounterpart = onPick
@@ -768,8 +796,11 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     let textView: SourceTextView
     let gutter: GutterView
     let minimap = MinimapView()
-    private var minimapWidth: NSLayoutConstraint!
+    var minimapWidth: NSLayoutConstraint!
     var minimapTrailing: NSLayoutConstraint!
+    /// How far the minimap runs over the scroller's first points
+    /// (`EditorMetrics.minimapStrip`; +Layout.swift).
+    var minimapOverlap: CGFloat = 0
     let bandBackdrop = EditorBandBackdrop()
     let stickyHeader = ScopeHeaderView()
     var stickyHeaderTrailing: NSLayoutConstraint!
@@ -970,13 +1001,17 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         bandBackdrop.jumpBarTop = view.safeAreaInsets.top
         if minimapWidth.constant > 0 {
             let w = MinimapView.width(forEditorWidth: view.bounds.width)
-            if minimapWidth.constant != w { minimapWidth.constant = w }
+            if minimapWidthValue != w { minimapWidth.constant = w + minimapOverlap }
         }
         updateEditorInsets()
     }
 
-    /// The minimap's width (tests).
-    public var minimapWidthValue: CGFloat { minimapWidth.constant }
+    /// The minimap's width, its separator included (`MinimapView.width`):
+    /// from its left edge to the scroller's lane.
+    public var minimapWidthValue: CGFloat { minimapWidth.constant - minimapOverlap }
+    /// The minimap's left edge in the editor's view (the text container
+    /// ends 10 before it).
+    public var minimapLeftEdge: CGFloat { view.bounds.maxX - scrollerLaneWidth - minimapWidthValue }
 
     // MARK: Other editors in this area
 
@@ -1876,6 +1911,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         set {
             _ = view
             minimapWidth.constant = newValue ? MinimapView.width(forEditorWidth: view.bounds.width) : 0  // editor-area.md §C.5
+            minimapOverlap = 0
             if newValue != showsMinimapCache {
                 showsMinimapCache = newValue
                 updateEditorInsets()

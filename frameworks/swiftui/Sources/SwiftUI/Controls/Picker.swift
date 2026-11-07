@@ -289,13 +289,15 @@ enum SegmentedMetrics {
 /// golden first baseline at 20.67).
 struct SegmentedLayout: Layout {
     var scale: CGFloat = 3
+    /// The control's height (the phone's 31; desktop sizes, DesktopControls.swift).
+    var height: CGFloat = SegmentedMetrics.height
 
     func spacing(subviews: Subviews, cache: inout ()) -> ViewSpacing { ViewSpacing() }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        if let w = proposal.width { return CGSize(width: max(0, w), height: SegmentedMetrics.height) }
+        if let w = proposal.width { return CGSize(width: max(0, w), height: height) }
         let widest = subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
-        return CGSize(width: CGFloat(subviews.count) * (widest + 2 * SegmentedMetrics.labelPadding), height: SegmentedMetrics.height)
+        return CGSize(width: CGFloat(subviews.count) * (widest + 2 * SegmentedMetrics.labelPadding), height: height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
@@ -319,13 +321,78 @@ struct SegmentedPicker: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.displayScale) private var displayScale
+    @Environment(\._desktopChrome) private var desktop
+    @Environment(\.controlSize) private var controlSize
+    @Environment(\.font) private var font
     @State private var isFocused = false
     @State private var pressed: Int?
 
     var body: some View {
+        if desktop {
+            desktopBody
+        } else {
+            phoneBody
+        }
+    }
+
+    /// B5-OPENVIEWS: the macOS IDE's segmented control (a grey track, the
+    /// selected segment a darker grey over its full height, the labels in
+    /// the text colour; DesktopControls.swift).
+    private var desktopBody: some View {
+        let n = options.count
+        let shape = RoundedRectangle(cornerRadius: DesktopControlMetrics.segmentRadius)
+        return SegmentedLayout(scale: max(1, displayScale), height: DesktopControlMetrics.segmentHeight(controlSize)) {
+            ForEach(Array(options.enumerated()), id: \.offset) { i, o in
+                o.view
+                    .font(font ?? DesktopControlMetrics.segmentFont(controlSize))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .opacity(pressed == i ? 0.6 : 1)
+            }
+        }
+        .background {
+            GeometryReader { g in
+                let segment = n > 0 ? g.size.width / CGFloat(n) : 0
+                ZStack(alignment: .topLeading) {
+                    shape.fill(DesktopControlMetrics.segmentTrack(scheme))
+                    if let selected, n > 0 {
+                        shape.fill(DesktopControlMetrics.segmentSelected(scheme))
+                            .frame(width: max(0, segment), height: g.size.height)
+                            .offset(x: CGFloat(selected) * segment)
+                    }
+                }
+            }
+        }
+        .overlay { pressCatchers(n) }
+        .focusRing(isFocused, shape)
+        .controlFocus($isFocused) { k in keyStep(k, n) }
+        .opacity(isEnabled ? 1 : 0.45)
+    }
+
+    private func pressCatchers(_ n: Int) -> some View {
+        HStack(spacing: 0) {
+            ForEach(0..<n, id: \.self) { i in
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(ControlPressGesture(onPressed: { p in pressed = p ? i : nil }, onAction: { choose(i) }))
+            }
+        }
+    }
+
+    private func keyStep(_ k: KeyEvent, _ n: Int) -> Bool {
+        guard k.isDown, n > 0 else { return false }
+        switch k.key {
+        case .leftArrow: choose(max(0, (selected ?? 0) - 1))
+        case .rightArrow: choose(min(n - 1, (selected ?? -1) + 1))
+        default: return false
+        }
+        return true
+    }
+
+    private var phoneBody: some View {
         let palette = ControlPalette(scheme)
         let n = options.count
-        SegmentedLayout(scale: max(1, displayScale)) {
+        return SegmentedLayout(scale: max(1, displayScale)) {
             ForEach(Array(options.enumerated()), id: \.offset) { i, o in
                 o.view
                     .font(.subheadline)
@@ -384,6 +451,8 @@ struct MenuPickerButton: View {
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\._formColumnWidth) private var columnWidth
     @Environment(\.colorScheme) private var scheme
+    @Environment(\._desktopChrome) private var desktop
+    @Environment(\._menuStyle) private var menuStyle
     @State private var ref = NodeRef()
     @State private var box = PopupBox()
     @State private var isFocused = false
@@ -399,7 +468,38 @@ struct MenuPickerButton: View {
             openPopup(services: services, ref: ref, box: box, submenu: false, content: AnyView(rows))
         }
         Group {
-            if columnWidth != nil {
+            if desktop && menuStyle == 2 {
+                // B5-OPENVIEWS: the macOS IDE's inspector pop-up: the value
+                // and up-down chevrons at the column's end on a faint
+                // rounded fill.
+                HStack(spacing: 4) {
+                    if let selected, options.indices.contains(selected) {
+                        options[selected].view.lineLimit(1).truncationMode(.tail)
+                    }
+                    Spacer(minLength: 0)
+                    UpDownChevrons().stroke(Color.primary.opacity(0.85), style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round))
+                        .frame(width: 5.5, height: 10)
+                }
+                .foregroundStyle(.primary)
+                .padding(.leading, 6)
+                .padding(.trailing, 7)
+                .frame(maxWidth: .infinity, minHeight: 16)
+                .background { RoundedRectangle(cornerRadius: 5).fill(DesktopControlMetrics.borderlessPopUpFill(scheme)) }
+            } else if desktop && columnWidth == nil {
+                // B5-OPENVIEWS: the macOS IDE's pop-up: the value, then a
+                // round well with up-down chevrons.
+                HStack(spacing: 12.5) {
+                    if let selected, options.indices.contains(selected) {
+                        options[selected].view.lineLimit(1)
+                    }
+                    UpDownChevrons().stroke(Color.primary.opacity(0.9), style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round))
+                        .frame(width: 6, height: 10)
+                        .frame(width: 20, height: 20)
+                        .background(Circle().fill(DesktopControlMetrics.well(scheme)))
+                }
+                .foregroundStyle(.primary)
+                .frame(minHeight: 20)
+            } else if columnWidth != nil {
                 // A `.columns` form's pop-up button (the desktop's): the
                 // choice and up/down chevrons on a filled rounded bezel.
                 HStack(spacing: 6) {

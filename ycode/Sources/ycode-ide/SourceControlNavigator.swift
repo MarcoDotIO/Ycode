@@ -23,8 +23,10 @@ struct SourceControlNavigator: View {
                 scm.mode = SourceControlShellModel.Mode(rawValue: i) ?? .changes
             }
             .padding(.horizontal, CGFloat(RepositoriesViewStyle.modeControlInset))
-            .padding(.top, 8)
-            .padding(.bottom, 4)
+            // y 88 under the selector, the rows from 117 (the macOS
+            // navigator's; cross-platform-parity.md §7).
+            .padding(.top, 7)
+            .padding(.bottom, 3)
             if !scm.hasRead {
                 EmptyNavigator(lines: ["Source Control", "Reading the repository…"])
             } else if scm.repository == nil {
@@ -240,7 +242,9 @@ struct OutlineRowAccessories: View {
                 Image(systemName: s).font(.system(size: 12)).foregroundStyle(c.tint(row.trailingTint))
             }
         }
-        .padding(.trailing, row.trailing != nil || row.badge != nil || row.trailingSymbol != nil ? 12 : 0)
+        // A status letter's ink ends 23 from the navigator's edge, as on
+        // macOS (cross-platform-parity.md §3).
+        .padding(.trailing, row.badge != nil ? 17 : row.trailing != nil || row.trailingSymbol != nil ? 12 : 0)
         .frame(height: CGFloat(WorkspaceChrome.rowHeight))
     }
 }

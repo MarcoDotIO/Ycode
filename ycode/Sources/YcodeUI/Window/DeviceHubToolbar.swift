@@ -266,7 +266,7 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
 
     /// Add Device (§3 item 2; §2.3): the simulator kinds and Pair Nearby
     /// Device…. Ycode decision: Ycode's simulators are its runtimes and
-    /// device types, set in Settings ▸ Simulators, so iPhone… and iPad…
+    /// device types, set in Settings ▸ Components ▸ Simulator Host, so iPhone… and iPad…
     /// open that pane; Ycode has no TV or headset simulator to create here,
     /// so those items are disabled. Apple Watch… creates a watch simulator
     /// and iPhone with Paired Watch… a paired iPhone and watch

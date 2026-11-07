@@ -1713,7 +1713,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         case .activity:
             applyBehaviors(for: session.activity)
             switch session.activity {
-            case .idle: activityView.status = ""
+            case .idle: activityView.status = WorkspaceChrome.idleActivityText(preparingEditorServices: session.isPreparingEditorServices)
             case .building(let s), .running(let s), .paused(let s):
                 // A build starts (reference-ui-5.md §5.3.2): earlier issues stay, stale, until it ends.
                 // A test run's build texts (reference-ui-6.md §3.4) are not a
@@ -1799,11 +1799,15 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     /// toolbar (a flexible space before it, the sidebar tracking separator
     /// after it), Back | Forward starts the editor's; a fixed space keeps
     /// New Conversation's circle out of the scheme's capsule (adjacent
-    /// bordered items otherwise share one glass shape); Show Inspector sits
+    /// bordered items otherwise share one glass shape), and another keeps
+    /// the issue capsule its own, 7.5 after the scheme's (`editor-area.md`
+    /// G.8), and a third keeps both apart from Add Editor's group when the
+    /// flexible space between them closes in a narrowing (G.4: never two
+    /// capsules merged); Show Inspector sits
     /// in the inspector's section.
     public func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [Self.leftPanesID, .flexibleSpace, Self.runID, FlushSidebar.separatorIdentifier, Self.historyID, Self.activityID, .flexibleSpace,
-         Self.newConversationID, .space, Self.schemeID, Self.issuesID,
+         Self.newConversationID, .space, Self.schemeID, .space, Self.issuesID, .space,
          .flexibleSpace, EditorOptionsMenu.addEditorID, EditorOptionsMenu.editorOptionsID, Self.editorModesID,
          .inspectorTrackingSeparator, .flexibleSpace, Self.inspectorToggleID]
     }
@@ -2337,8 +2341,13 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     /// issues, each listing its file's issues.
     func refreshJumpBarIssues() {
         let list = navigableIssues
+        // Every pane shows the stepper while the workspace has issues, with
+        // the toolbar capsule's counts (`IssueStepper`, editor-area.md G.8, row 139).
+        let counts = navigator.issueModel.capsuleCounts(fresh: session.displayedIssues)
+        let kind = IssueStepper.kind(errors: counts.errors, warnings: counts.warnings)
         for e in editorArea.allEditors {
-            guard !list.isEmpty else { e.setJumpBarIssues(nil); continue }
+            guard let kind else { e.setJumpBarIssues(nil); continue }
+            e.jumpBarIssueKind = kind
             let path = e.fileURL.map { URL(fileURLWithPath: $0.path).standardizedFileURL.path }
             let mine = list.filter { URL(fileURLWithPath: $0.location!.file).standardizedFileURL.path == path }
             e.setJumpBarIssues(mine.map { (message: $0.message, line: $0.location!.line, isError: $0.severity == .error) })

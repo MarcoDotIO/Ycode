@@ -54,6 +54,8 @@ struct SettingsPalette {
 /// The text sizes of the form.
 enum SettingsFonts {
     static let label = Font.system(size: SettingsLayout.fontSize)
+    /// The selected sidebar row's label (R5.3).
+    static let selectedSidebarLabel = Font.system(size: SettingsLayout.fontSize, weight: .semibold)
     static let header = Font.system(size: SettingsLayout.fontSize, weight: .bold)
     static let help = Font.system(size: SettingsLayout.helpFontSize)
     /// Semibold (R4.2).
@@ -66,6 +68,8 @@ struct SettingsForm<Content: View>: View {
     /// The form starts with a card (no header): 20 under the title area
     /// (R4.1).
     var startsWithCard = false
+    /// The first header's cap top in the window (76; Components' 59, R5.2).
+    var firstHeaderCapTop = SettingsLayout.firstHeaderCapTop
     @ViewBuilder var content: Content
     @Environment(\.colorScheme) private var scheme
 
@@ -76,7 +80,7 @@ struct SettingsForm<Content: View>: View {
                 // the title area, less the label's 3 above its cap top; a
                 // first card at y 72.
                 .padding(.top, startsWithCard ? SettingsLayout.firstCardTop - SettingsLayout.titleAreaHeight
-                    : SettingsLayout.firstHeaderCapTop - SettingsLayout.titleAreaHeight - 3)
+                    : firstHeaderCapTop - SettingsLayout.titleAreaHeight - 3)
                 .padding(.horizontal, SettingsLayout.cardInset)
                 .padding(.bottom, SettingsLayout.cardInset - SettingsSection<EmptyView, EmptyView>.bottomGap)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -445,12 +449,10 @@ struct BackRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold))
-                Text(verbatim: title).font(SettingsFonts.label)
-            }
-            .foregroundStyle(SettingsPalette(.light).selection)
-            .contentShape(Rectangle())
+            // The macOS IDE's words and colour: "‹ Editing" in the accent.
+            Text(verbatim: "\u{2039} " + title).font(SettingsFonts.label)
+                .foregroundStyle(SettingsPalette(.light).selection)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .padding(.leading, SettingsLayout.labelInset)

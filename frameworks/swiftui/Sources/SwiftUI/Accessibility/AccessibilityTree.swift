@@ -55,6 +55,10 @@ package struct AccessibilityElement: CustomStringConvertible {
     package var isExpanded: Bool?
     /// Sliders and progress views (R10 export).
     package var rangeValue: AccessibilityRangeValue?
+    /// The window's default button (Return) and cancel button (Escape)
+    /// (B5-OPENVIEWS; AT-SPI state `is-default`).
+    package var isDefaultButton = false
+    package var isCancelButton = false
     package var children: [AccessibilityElement] = []
     weak var node: ViewNode?
     var actions: [String: @MainActor () -> Void] = [:]
@@ -67,6 +71,8 @@ package struct AccessibilityElement: CustomStringConvertible {
         if let hint { parts.append("hint=\(hint)") }
         if let identifier { parts.append("id=\(identifier)") }
         parts.append("traits=\(AccessibilityTree.traitNames(traits).joined(separator: "+"))")
+        if isDefaultButton { parts.append("default") }
+        if isCancelButton { parts.append("cancel") }
         return parts.joined(separator: " ")
     }
 
@@ -161,7 +167,10 @@ package enum AccessibilityTree {
             if node.view is WindowRootView {
                 // Reading order of a window: menu bar and toolbar, content,
                 // bottom bar, then presentations and pop-up overlays.
-                let rank: [AnyHashable: Int] = [AnyHashable("top"): 0, AnyHashable(0): 1, AnyHashable("bottom"): 2]
+                // B5-OPENVIEWS: the window buttons first, as in a macOS
+                // window, then an on-demand menu bar.
+                let rank: [AnyHashable: Int] = [AnyHashable("windowButtons"): -2, AnyHashable("menuBarOnDemand"): -1,
+                                                AnyHashable("top"): 0, AnyHashable(0): 1, AnyHashable("bottom"): 2]
                 // The commands host is not laid out (its controls exist for
                 // their shortcuts; the menu bar shows them).
                 children = zip(node.childKeys, node.children).filter { $0.0 != AnyHashable("commands") }
@@ -220,6 +229,8 @@ package enum AccessibilityTree {
             e.actionNames = actionNames(attrs)
             e.isExpanded = attrs.isExpanded
             e.rangeValue = attrs.rangeValue?()
+            e.isDefaultButton = attrs.isDefaultButton ?? false
+            e.isCancelButton = attrs.isCancelButton ?? false
             return e
         }
 

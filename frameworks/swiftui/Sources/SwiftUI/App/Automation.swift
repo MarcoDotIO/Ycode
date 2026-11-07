@@ -197,6 +197,61 @@ public enum OpenViewsAutomation {
     /// Ends the app's run loop.
     public static func terminate() { host?.terminate() }
 
+    // MARK: Windows and their chrome (B5-OPENVIEWS)
+
+    /// The scene identifier of each main window (nil: an unnamed window
+    /// group), in `mainWindows` order: drivers find Welcome or a wizard's
+    /// window by its scene.
+    public static var windowSceneIDs: [String?] { mainWindows.map(\.sceneID) }
+
+    /// The index of the first main window of the scene `id`.
+    public static func windowIndex(sceneID id: String) -> Int? { mainWindows.firstIndex { $0.sceneID == id } }
+
+    /// Where a press at `p` goes in a window with a hidden title bar: the
+    /// app, a window move or a resize.
+    public static func hitRegion(at p: CGPoint, window index: Int = 0) -> WindowHitRegion {
+        mainWindows.indices.contains(index) ? mainWindows[index].hitRegion(at: p) : .normal
+    }
+
+    /// Whether the window's on-demand menu bar is shown.
+    public static func isMenuBarRevealed(_ index: Int = 0) -> Bool {
+        mainWindows.indices.contains(index) ? mainWindows[index].windowChrome.menuBarRevealed : false
+    }
+
+    /// Shows or hides a window's on-demand menu bar (drivers' screenshots).
+    public static func setMenuBarRevealed(_ shown: Bool, window index: Int = 0) {
+        guard mainWindows.indices.contains(index) else { return }
+        mainWindows[index].windowChrome.menuBarRevealed = shown
+    }
+
+    /// The window's active state as its views see it.
+    public static func activeState(_ index: Int = 0) -> ControlActiveState? {
+        mainWindows.indices.contains(index) ? mainWindows[index].activeState : nil
+    }
+
+    /// Fixes a window's active state (drivers' screenshots of an inactive
+    /// window while it has the focus); nil follows the window system again.
+    public static func setActiveState(_ state: ControlActiveState?, window index: Int = 0) {
+        guard let h = host, mainWindows.indices.contains(index) else { return }
+        mainWindows[index].activeStateOverride = state
+        h.updateActiveStates()
+    }
+
+    /// Writes the window's accessibility tree (one element per line,
+    /// indented; frames in window points), for drivers' reports.
+    public static func accessibilityDump(_ index: Int = 0) -> String {
+        guard mainWindows.indices.contains(index) else { return "" }
+        var out: [String] = []
+        func walk(_ e: AccessibilityElement, _ depth: Int) {
+            let f = e.frame
+            out.append(String(repeating: "  ", count: depth) + e.description
+                       + String(format: " frame=%.1f,%.1f,%.1f,%.1f", f.minX, f.minY, f.width, f.height))
+            for c in e.children { walk(c, depth + 1) }
+        }
+        walk(mainWindows[index].accessibilityTree(), 0)
+        return out.joined(separator: "\n")
+    }
+
     /// With a list set, each main window's frame adds how long it took
     /// (update, layout, drawing, presenting; seconds), for the benchmark drivers.
     public static var frameDurations: [Double]?

@@ -12,7 +12,9 @@ import Testing
         let rows = SourceControlInspector.fileRows("M  Sources/App/main.swift\nA  Assets.xcassets\nD  Info.plist")
         #expect(rows.map(\.name) == ["main.swift", "Assets.xcassets", "Info.plist"])
         #expect(rows.map(\.status) == ["M", "A", "D"])
-        #expect(rows.map(\.symbol) == ["swift", "photo.on.rectangle", "list.bullet.rectangle"])
+        // No trademark-shaped symbols (the Swift bird): the project
+        // navigator's glyph for a Swift file.
+        #expect(rows.map(\.symbol) == ["chevron.left.forwardslash.chevron.right", "photo.on.rectangle", "list.bullet.rectangle"])
         #expect(rows.allSatisfy { NSImage(systemSymbolName: $0.symbol, accessibilityDescription: nil) != nil })
         let v = SourceControlInspector.view(sections: [("Commit", [("Identifier", "abc"), ("Files", "M  Sources/App/main.swift\nA  README.md")])])
         func all(_ v: NSView) -> [NSView] { [v] + v.subviews.flatMap(all) }

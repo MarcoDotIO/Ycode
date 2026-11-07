@@ -34,7 +34,9 @@ public final class MergeAlertView: NSView {
             s.shadowColor = NSColor.black.withAlphaComponent(0.25)
             return s
         }()
-        iconView.image = NSApp.applicationIconImage
+        // Ycode's icon, as on Linux (a process without its own icon file,
+        // such as a test host, would show the system's generic one).
+        iconView.image = Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") == nil ? ProductIcon.image : NSApp.applicationIconImage
         iconView.imageScaling = .scaleProportionallyUpOrDown
         titleField.font = .boldSystemFont(ofSize: 13)
         messageField.font = .systemFont(ofSize: 11)

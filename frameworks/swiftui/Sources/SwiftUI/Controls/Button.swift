@@ -127,6 +127,7 @@ public struct Button<Label: View>: View {
     let role: ButtonRole?
     @Environment(\._buttonStyle) private var style
     @Environment(\._inMenu) private var inMenu
+    @Environment(\._keyboardShortcut) private var shortcut
     @State private var shortcutOwner = ShortcutOwner()
 
     public init(action: @escaping @MainActor () -> Void, @ViewBuilder label: () -> Label) {
@@ -152,7 +153,9 @@ public struct Button<Label: View>: View {
             }
         }
         .modifier(ShortcutRegistrationModifier(owner: shortcutOwner, action: action))
-        .accessibilityControl(inMenu ? .menuItem : .button, traits: .isButton, actions: ["default": action])
+        .accessibilityControl(inMenu ? .menuItem : .button, traits: .isButton, actions: ["default": action],
+                              isDefault: !inMenu && shortcut == .defaultAction,
+                              isCancel: !inMenu && (role == .cancel || shortcut == .cancelAction))
     }
 }
 
@@ -336,9 +339,12 @@ struct BorderedButtonBody: View {
     let kind: Kind
     @Environment(\._buttonBorderShape) private var borderShape
     @Environment(\.controlSize) private var controlSize
+    @Environment(\._desktopChrome) private var desktop
 
     var body: some View {
-        let shape = borderShape.resolvedShape(controlSize: controlSize)
+        let shape = desktop && borderShape == .automatic && kind != .glass
+            ? AnyShape(RoundedRectangle(cornerRadius: DesktopControlMetrics.buttonRadius(controlSize)))
+            : borderShape.resolvedShape(controlSize: controlSize)
         ButtonBehavior(configuration: configuration, ring: shape) { c in
             BorderedLook(configuration: c, kind: kind, shape: shape)
         }
@@ -352,18 +358,25 @@ struct BorderedLook: View {
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.controlSize) private var controlSize
     @Environment(\.colorScheme) private var scheme
+    @Environment(\._desktopChrome) private var desktop
 
     var body: some View {
-        let pad = borderedPadding(controlSize)
+        let pad = desktop && kind != .glass ? DesktopControlMetrics.buttonPadding(controlSize) : borderedPadding(controlSize)
         let palette = ControlPalette(scheme)
         let destructive = configuration.role == .destructive
         let padded = configuration.label
             .padding(.horizontal, pad.h)
             .padding(.vertical, pad.v)
+            .frame(minHeight: desktop && kind != .glass ? DesktopControlMetrics.buttonHeight(controlSize) : nil)
         Group {
             switch kind {
             case .bordered:
-                if destructive {
+                if desktop {
+                    // B5-OPENVIEWS: the macOS IDE's push button, a grey
+                    // bezel with the label in the text colour.
+                    padded.foregroundStyle(destructive ? AnyShapeStyle(Color.red) : AnyShapeStyle(HierarchicalShapeStyle.primary))
+                        .background(DesktopControlMetrics.bezel(scheme), in: shape)
+                } else if destructive {
                     padded.foregroundStyle(Color.red).background(palette.fill, in: shape)
                 } else {
                     padded.foregroundStyle(.tint).background(palette.fill, in: shape)

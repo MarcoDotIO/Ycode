@@ -32,7 +32,7 @@ public struct RemoteProfile: Sendable, Equatable {
 }
 
 /// Where the Ycode iOS simulator runs on an arm64 Linux host. Kept in the
-/// user's defaults only (Settings ▸ Simulators). See `specs/ide/run.md`
+/// user's defaults only (Settings ▸ Components ▸ Simulator Host). See `specs/ide/run.md`
 /// §Remote Ycode simulator.
 public struct RemoteSimulatorSettings: Equatable, Sendable {
     /// `user@host` (an SSH destination; keys only — BatchMode, no passwords).
@@ -668,8 +668,8 @@ extension WorkspaceSession {
             return
         }
         guard remote.settings.isConfigured else {
-            appendConsole("Ycode: set the remote simulator in Settings ▸ Simulators first.\n")
-            fail("the remote simulator is not set up (Settings ▸ Simulators)")
+            appendConsole("Ycode: set the remote simulator in Settings ▸ Components ▸ Simulator Host first.\n")
+            fail("the remote simulator is not set up (Settings ▸ Components ▸ Simulator Host)")
             return
         }
         let state = SimulatorRunState(target: .remote(destination: remote.settings.destination), app: app)
@@ -888,7 +888,7 @@ extension WorkspaceSession {
     /// (`foldable.md` §8.3), off the main actor: (succeeded, message). The
     /// reply goes to the console.
     public func controlRemoteSimulator(remote: RemoteSimulator, _ words: [String]) async -> (Bool, String) {
-        guard remote.settings.isConfigured else { return (false, "Set the remote simulator in Settings ▸ Simulators first.") }
+        guard remote.settings.isConfigured else { return (false, "Set the remote simulator in Settings ▸ Components ▸ Simulator Host first.") }
         let (status, output) = await Task.detached { remote.control(words) }.value
         let text = output.trimmingCharacters(in: .whitespacesAndNewlines)
         if words.first != "state" && words.first != "settings" { appendConsole("Ycode: \(words.joined(separator: " ")): \(text)\n", kind: .debugger) }
@@ -900,7 +900,7 @@ extension WorkspaceSession {
     /// message). Refused while this workspace runs an app on it. The
     /// launcher waits for another run of the device, and its save, to end.
     public func eraseRemoteSimulator(remote: RemoteSimulator) async -> (Bool, String) {
-        guard remote.settings.isConfigured else { return (false, "Set the remote simulator in Settings ▸ Simulators first.") }
+        guard remote.settings.isConfigured else { return (false, "Set the remote simulator in Settings ▸ Components ▸ Simulator Host first.") }
         if case .remote = simulatorRun?.target { return (false, "Stop the run on \(RemoteSimulator.deviceName) before erasing it.") }
         appendConsole("Ycode: erasing \(RemoteSimulator.deviceName) (\(remote.remoteDevicePath) on \(remote.settings.destination))\n", kind: .debugger)
         let (status, output) = await Task.detached { remote.erase() }.value

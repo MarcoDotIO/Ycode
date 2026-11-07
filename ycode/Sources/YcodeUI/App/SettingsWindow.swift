@@ -131,10 +131,11 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
                               "arrow.triangle.turn.up.right.diamond", "bell", "square.and.pencil", "keyboard", "arrow.triangle.branch",
                               "square.3.layers.3d", "externaldrive"]
 
-    public init(prefs: Preferences = .shared, components: [ComponentsSettingsPane.Component]? = nil) {
+    public init(prefs: Preferences = .shared, components: [ComponentsSettingsPane.Component]? = nil,
+                componentsInventory: ComponentsInventory? = nil) {
         tabs.tabStyle = .unspecified
         let locations = SettingsController()
-        let componentsPane = ComponentsSettingsPane(prefs: prefs, components: components)
+        let componentsPane = ComponentsSettingsPane(prefs: prefs, components: components, inventory: componentsInventory)
         let simulatorsPane = SimulatorsSettingsPane(prefs: prefs)
         let panes: [NSViewController] = [
             GeneralSettingsPane(prefs: prefs), ThemesSettingsPane(prefs: prefs), AccountsSettingsPane(prefs: prefs),
@@ -245,8 +246,14 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
         sidebar.reloadData()
         sidebar.selectRowIndexes([0], byExtendingSelection: false)
         updateTitle()
-        // Simulators: a page of Components, with a way back.
+        // Simulators: a page of Components (its Simulator Host row's info
+        // button, R5.5), with a way back.
         componentsPane.onOpenSimulators = { [weak self] in self?.show(page: "Simulators") }
+        // Predictive code completion's info button: Editing ▸ Completion.
+        componentsPane.onOpenCompletion = { [weak self] in
+            self?.show(page: "Editing")
+            self?.pane(TextEditingSettingsPane.self)?.page = .completion
+        }
         simulatorsPane.onBack = { [weak self] in self?.show(page: "Components") }
         locations.onChange = { p in
             // Open workspaces switch engines for their next build.

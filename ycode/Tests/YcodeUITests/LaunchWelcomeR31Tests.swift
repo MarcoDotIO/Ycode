@@ -134,7 +134,10 @@ import YcodeProject
         // (reference-ui-6.md §1.3 supersedes pass 5 §3.5; R38 tests).
         wc.applyDefaultLayout()
         wc.window?.contentView?.layoutSubtreeIfNeeded()
-        #expect(wc.editor.emptyView == nil && wc.editor.jumpBarTitles.last == "No Selection")
+        // The path's last item (the issue stepper follows it when the
+        // project has issues, editor-area.md G.8).
+        let path = wc.editor.jumpBarTitles.filter { !["Show Previous Issue", "Issues", "Show Next Issue"].contains($0) }
+        #expect(wc.editor.emptyView == nil && path.last == "No Selection")
 
         let file = try #require(wc.session.model.root.allFiles.first { $0.name == "ContentView.swift" }?.path)
         wc.open(path: file, line: nil)

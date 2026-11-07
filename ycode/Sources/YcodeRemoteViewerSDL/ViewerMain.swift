@@ -12,6 +12,10 @@ import YcodeSimLink
 extension RemoteDeviceWindow: ViewerScriptHost {}
 
 public enum LinuxViewer {
+    /// Draws the device window's toolbar and inspector (set by the
+    /// executable when OpenViews is built in; nil: the bare canvas).
+    nonisolated(unsafe) public static var chromeRenderer: ((DeviceChromeRequest, DeviceChromeRequest.Part) -> DeviceChromeImage?)?
+
     public static let usage = """
         usage: ycode-sim-viewer [--connect <address> | --link <device> [--host <name>] [--media udp|tcp]] [--scale fit|point|pixel] [--fps N] [--encoding jpeg|zlib]
                                 [--quality Q] [--downscale N] [--no-bezels] [--status] [--timing] [--appearance light|dark]
@@ -221,6 +225,9 @@ public enum LinuxViewer {
         }
         guard win.open() else { return 69 }
         let env = ProcessInfo.processInfo.environment
+        // The toolbar and the Settings inspector, as the macOS device window
+        // (cross-platform-parity.md §13); YCODE_VIEWER_BARE=1 keeps the bare canvas.
+        if env["YCODE_VIEWER_BARE"] != "1" { win.chromeRenderer = chromeRenderer }
         win.appearance = ViewerAppearance.resolve(argument: o.appearance, environment: env,
                                                   settingsFileText: try? String(contentsOfFile: ViewerAppearance.settingsFilePath(environment: env), encoding: .utf8),
                                                   systemDark: sdl.systemDark)

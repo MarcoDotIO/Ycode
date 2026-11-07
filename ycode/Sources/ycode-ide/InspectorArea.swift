@@ -6,10 +6,12 @@ import YcodeIDEShell
 /// The inspector column (`metrics.md` §5): its toolbar band, the tab
 /// capsule (File, History, Quick Help), then the File inspector's sections
 /// for the open file (`WorkspaceShellModel.fileInspector`, the rows the
-/// AppKit inspector shows): 12-point side insets, an 80-point key column,
-/// values 8 after it, 11-point text.
+/// AppKit inspector shows, laid out by `FileInspectorView` as the AppKit
+/// inspector lays them out).
 struct InspectorColumn: View {
     var model: WorkspaceShellModel
+    /// Off while the column slides (the toggle stays at the window's edge).
+    var showsToolbar = true
     /// The asset catalog editor's Attributes tab is chosen.
     @State private var assetTab = false
     @Environment(\.colorScheme) private var scheme
@@ -17,7 +19,7 @@ struct InspectorColumn: View {
     var body: some View {
         let c = ShellColors(scheme)
         VStack(spacing: 0) {
-            InspectorToolbar(model: model)
+            InspectorToolbar(model: model).opacity(showsToolbar ? 1 : 0)
             // File, History and Quick Help follow the model (Quick Help can be
             // asked for from the editor); the asset catalog editor adds its
             // Attributes tab on top.
@@ -54,18 +56,10 @@ struct InspectorColumn: View {
                     // "No Selection" in the Repositories view (editor-area.md F.10).
                     centered(model.navigator == .sourceControl && model.sourceControl.mode == .repositories ? "No Selection" : "Not Applicable", c)
                 } else {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(model.fileInspector.enumerated()), id: \.offset) { pair in
-                            if pair.offset > 0 {
-                                Hairline(color: c.separator).padding(.top, 10).padding(.bottom, 8)
-                            }
-                            section(pair.element, c)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, CGFloat(WorkspaceChrome.inspectorContentInset))
-                    .padding(.top, CGFloat(WorkspaceChrome.inspectorContentTopInset))
+                    // The contents scroll when taller than the area (an
+                    // image's or a project file's sections).
+                    ScrollView { FileInspectorView(sections: model.fileInspector) }   // FileInspectorView.swift
+                        .scrollIndicators(.hidden)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -86,79 +80,13 @@ struct InspectorColumn: View {
         return nil
     }
 
-    /// An empty inspector's message, centered on the whole column (as the
-    /// AppKit inspector centers it), 13 points.
+    /// An empty inspector's message, centred in the room below the tab bar
+    /// as the AppKit inspector centres it (navigators.md round 3 §2;
+    /// `cross-platform-parity.md` §8: it was 41 higher), about 17 points
+    /// (cap height 12; editor-area.md F.10, row 111).
     func centered(_ s: String, _ c: ShellColors) -> some View {
-        // About 17 points, cap height 12 (editor-area.md F.10, row 111).
         Text(verbatim: s).font(Font.system(size: 17)).foregroundStyle(c.secondaryLabel)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.top, -(CGFloat(WorkspaceChrome.toolbarHeight) + CGFloat(WorkspaceChrome.selectorHeight)))
-    }
-
-    func section(_ s: InspectorSection, _ c: ShellColors) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(verbatim: s.title).font(ShellFonts.smallBold).tracking(ShellFonts.smallTracking).foregroundStyle(c.label)
-                .padding(.bottom, 2)
-            ForEach(Array(s.rows.enumerated()), id: \.offset) { pair in
-                row(pair.element, c)
-            }
-        }
-    }
-
-    func row(_ r: InspectorRow, _ c: ShellColors) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: CGFloat(WorkspaceChrome.inspectorKeyToValue)) {
-            Text(verbatim: r.key).font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.secondaryLabel)
-                .frame(width: CGFloat(WorkspaceChrome.inspectorKeyColumnWidth), alignment: .trailing)
-            value(r.value, c)
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        }
-        // The row takes the content's width, never its controls' ideal
-        // widths (a long pop-up title truncates inside its column).
-        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
-    func value(_ v: InspectorRow.Value, _ c: ShellColors) -> some View {
-        switch v {
-        case .field(let s):
-            Text(verbatim: s).font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.label).lineLimit(1)
-                .padding(.horizontal, 6)
-                .frame(maxWidth: .infinity, minHeight: 22, alignment: .leading)
-                .background {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous).fill(c.fieldFill)
-                        .overlay { RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(c.fieldStroke, lineWidth: 1) }
-                }
-        case .popUp(let s, let button):
-            HStack(spacing: 6) {
-                PopUpLook(title: s)
-                if let button { Image(systemName: button).font(.system(size: 12)).foregroundStyle(c.secondaryLabel) }
-            }
-        case .label(let s, let bold):
-            Text(verbatim: s).font(bold ? ShellFonts.smallBold : ShellFonts.small).foregroundStyle(c.label).lineLimit(1)
-        case .path(let s, let button):
-            HStack(alignment: .center, spacing: 6) {
-                // The path wraps in 140 points (the AppKit label's preferred
-                // width), less what the reveal button needs at this width.
-                Text(verbatim: s).font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.label).lineLimit(12)
-                    .frame(width: 132, alignment: .leading)
-                Spacer(minLength: 0)
-                Image(systemName: button).font(.system(size: 12)).foregroundStyle(c.secondaryLabel)
-            }
-        case .steppers(let list):
-            HStack(spacing: 12) {
-                ForEach(Array(list.enumerated()), id: \.offset) { pair in
-                    VStack(spacing: 1) {
-                        HStack(spacing: 4) {
-                            Text(verbatim: "\(pair.element.value)").font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.label)
-                            Image(systemName: "chevron.up.chevron.down").font(.system(size: 9)).foregroundStyle(c.secondaryLabel)
-                                .frame(width: 14, height: 18)
-                                .background { Capsule(style: .continuous).stroke(c.fieldStroke, lineWidth: 1) }
-                        }
-                        Text(verbatim: pair.element.title).font(.system(size: 9)).foregroundStyle(c.secondaryLabel)
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -181,8 +109,9 @@ struct InspectorTabs: View {
                 let width: CGFloat = extras.isEmpty ? CGFloat(pill.width) : extras.count == 1 ? 58 : 30
                 Button { select(pair.offset) } label: {
                     ZStack {
-                        if on { Capsule(style: .continuous).fill(c.selectorPill).frame(width: width, height: CGFloat(pill.height)) }
-                        Image(systemName: pair.element).font(.system(size: 13)).foregroundStyle(on ? c.accent : c.toolbarIcon)
+                        if on { Capsule(style: .continuous).fill(c.panePill).frame(width: width, height: CGFloat(pill.height)) }
+                        // Grey glyphs on a grey pill, no accent (row 18).
+                        Image(systemName: pair.element).font(.system(size: 13)).foregroundStyle(c.inspectorTabGlyph(selected: on))
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: CGFloat(WorkspaceChrome.selectorHeight))
@@ -196,6 +125,6 @@ struct InspectorTabs: View {
         }
         .padding(.horizontal, 3)
         .frame(height: CGFloat(WorkspaceChrome.selectorHeight))
-        .background { GlassCapsule(height: CGFloat(WorkspaceChrome.selectorHeight)) }
+        .background { PaneCapsule(height: CGFloat(WorkspaceChrome.selectorHeight)) }   // PaneStyle.swift
     }
 }

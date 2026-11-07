@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The File inspector's control look (`specs/ide/metrics.md` §12.4):
 /// filled fields and pop-ups with no border, a bordered Target Membership
@@ -6,7 +7,7 @@ import AppKit
 @MainActor
 enum InspectorStyle {
     /// From a key's ink to its value.
-    static let keyToValue: CGFloat = 5
+    static let keyToValue = CGFloat(WorkspaceChrome.inspectorKeyToValue)
     /// A section rule keeps this far from the controls on each side.
     static let ruleGap: CGFloat = 6
     static let headingRowHeight: CGFloat = 20
@@ -33,6 +34,22 @@ enum InspectorStyle {
     static let pathRuleToTagsRule: CGFloat = 2
     /// The tags field's box runs this much deeper than the field.
     static let tagsBoxExtra: CGFloat = 12.5
+
+    /// Council round 5 (`editor-area.md` G.5, checklist row 135): an
+    /// image's inspector from On Demand Resource Tags down, shared with the
+    /// Linux IDE (`ResourceInspectorRhythm`).
+    enum Resource {
+        typealias R = ResourceInspectorRhythm
+        static let headerToTags = CGFloat(R.headerToTags)
+        static let tagsToRule = CGFloat(R.tagsToRule)
+        static let ruleToHeader = CGFloat(R.ruleToHeader)
+        static let headerToProperties = CGFloat(R.headerToProperties)
+        static let propertyInset = CGFloat(R.propertyInset)
+        static let propertiesToRule = CGFloat(R.propertiesToRule)
+        static let headerToButton = CGFloat(R.headerToButton)
+        static let buttonToRule = CGFloat(R.buttonToRule)
+        static let headerToMembership = CGFloat(R.headerToMembership)
+    }
 
     /// A target's icon in Target Membership: a rounded square in the
     /// accent colour (`metrics.md` §16.2: the target's app icon left of

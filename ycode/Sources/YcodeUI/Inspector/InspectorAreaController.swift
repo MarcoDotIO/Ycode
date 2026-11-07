@@ -140,7 +140,11 @@ public final class InspectorAreaController: NSViewController {
         // area: while the inspector slides in or out the guide keeps its
         // full width pinned to the divider, so nothing reflows and the
         // area clips it (editor-area.md §C.7).
-        let root = NSView()
+        let root = InspectorRootView()
+        // The filled controls' colours are resolved in the inspector's own
+        // appearance, again when it changes (a window whose appearance is
+        // not the app's drew light fills dark, and the reverse).
+        root.onAppearanceChange = { [weak self] in self?.refresh() }
         root.clipsToBounds = true
         root.addLayoutGuide(slideGuide)
         guideFollowsArea = slideGuide.widthAnchor.constraint(equalTo: root.widthAnchor)
@@ -271,6 +275,14 @@ public final class InspectorAreaController: NSViewController {
     }
 
     public func select(_ index: Int) {
+        if isViewLoaded {
+            view.effectiveAppearance.performAsCurrentDrawingAppearance { build(index) }
+        } else {
+            build(index)
+        }
+    }
+
+    private func build(_ index: Int) {
         selectedIndex = index
         for b in buttons { b.contentTintColor = TabGlyphTint.color(selected: b.tag == index) }
         if isViewLoaded { view.needsLayout = true }   // the pill follows
@@ -633,12 +645,19 @@ public final class InspectorAreaController: NSViewController {
     }
 
     private func imageSections() {
-        content.addArrangedSubview(heading("Image Properties"))
+        typealias R = InspectorStyle.Resource
+        // G.5: the tags field's rule 12 below it, each header 8.5 below its
+        // rule, the properties on an 18-point pitch.
+        let ip = heading("Image Properties", ruleBefore: R.tagsToRule, ruleAfter: R.ruleToHeader)
+        content.addArrangedSubview(ip)
+        content.setCustomSpacing(R.headerToProperties, after: ip)
         for (k, v) in imageProperties?.rows ?? ImageFileProperties.placeholderRows {
-            content.addArrangedSubview(row(k, v))
+            content.addArrangedSubview(row(k, v, inset: R.propertyInset))
             rowValues.append((k, v))
         }
-        content.addArrangedSubview(heading("Localization"))
+        let loc = heading("Localization", ruleBefore: R.propertiesToRule, ruleAfter: R.ruleToHeader)
+        content.addArrangedSubview(loc)
+        content.setCustomSpacing(R.headerToButton, after: loc)
         // editor-area.md §D.8: a pop-up-style button as wide as the value
         // area, 16 tall, filled, its title centred.
         let localize = NSButton(title: "Localize…", target: nil, action: nil)
@@ -659,7 +678,10 @@ public final class InspectorAreaController: NSViewController {
     // MARK: On Demand Resource Tags, Target Membership (§7.3)
 
     private func onDemandResourceTags(resource: Bool = false) {
-        content.addArrangedSubview(heading("On Demand Resource Tags"))
+        let header = heading("On Demand Resource Tags")
+        content.addArrangedSubview(header)
+        // G.5: a resource's field box 22 below the header's ink.
+        if resource { content.setCustomSpacing(InspectorStyle.Resource.headerToTags, after: header) }
         let tags = NSTokenField()
         // An image is a resource: a "Tags" field (editor-area.md §D.8).
         tags.placeholderString = resource ? "Tags" : "Only resources are taggable"
@@ -684,7 +706,14 @@ public final class InspectorAreaController: NSViewController {
         guard !info.memberships.isEmpty else { return }
         let tags = fileControls["On Demand Resource Tags"]
         let afterTags = tags != nil && content.arrangedSubviews.last === tags
-        content.addArrangedSubview(heading("Target Membership"))
+        let afterLocalize = fileControls["Localize"].map { content.arrangedSubviews.last === $0 } ?? false
+        typealias R = InspectorStyle.Resource
+        // An image's: 16.5 from Localize… to the rule, the box 18.5 below the
+        // header's ink (G.5).
+        let tmHeader = afterLocalize ? heading("Target Membership", ruleBefore: R.buttonToRule, ruleAfter: R.ruleToHeader)
+            : heading("Target Membership")
+        content.addArrangedSubview(tmHeader)
+        if afterLocalize { content.setCustomSpacing(R.headerToMembership, after: tmHeader) }
         // §16.2: the tags box runs deeper (Target Membership 12.5 lower).
         if afterTags, let tags { content.setCustomSpacing(InspectorStyle.ruleGap + InspectorStyle.tagsBoxExtra, after: tags) }
         let members = info.memberships.filter(\.isMember)
@@ -833,8 +862,8 @@ public final class InspectorAreaController: NSViewController {
 
     /// A section heading; from the second section on, a thin rule above it
     /// (reference-ui-6.md §6, I1).
-    private func heading(_ s: String) -> NSView {
-        if !sectionTitles.isEmpty { addRule() }
+    private func heading(_ s: String, ruleBefore: CGFloat = InspectorStyle.ruleGap, ruleAfter: CGFloat = InspectorStyle.ruleGap) -> NSView {
+        if !sectionTitles.isEmpty { addRule(before: ruleBefore, after: ruleAfter) }
         sectionTitles.append(s)
         let l = NSTextField(labelWithString: s)
         l.font = .boldSystemFont(ofSize: 11)
@@ -855,13 +884,14 @@ public final class InspectorAreaController: NSViewController {
         return rule
     }
 
-    /// A thin rule across the inspector, 6 from the controls on each side.
-    private func addRule() {
-        if let last = content.arrangedSubviews.last { content.setCustomSpacing(InspectorStyle.ruleGap, after: last) }
+    /// A thin rule across the inspector, 6 from the controls on each side
+    /// (an image's sections have their own gaps, G.5).
+    private func addRule(before: CGFloat = InspectorStyle.ruleGap, after: CGFloat = InspectorStyle.ruleGap) {
+        if let last = content.arrangedSubviews.last { content.setCustomSpacing(before, after: last) }
         let rule = NSBox.hairline()
         content.addArrangedSubview(rule)
         rule.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -Self.horizontalInsets).isActive = true
-        content.setCustomSpacing(InspectorStyle.ruleGap, after: rule)
+        content.setCustomSpacing(after, after: rule)
         sectionRuleCount += 1
     }
 
@@ -902,13 +932,13 @@ public final class InspectorAreaController: NSViewController {
         return s
     }
 
-    private func row(_ key: String, _ value: String) -> NSView {
+    private func row(_ key: String, _ value: String, inset: CGFloat = 3) -> NSView {
         let v = InspectorStyle.pathLabel(value)
         v.preferredMaxLayoutWidth = 160
         let s = InspectorRowView(views: [keyLabel(key), v])
         s.alignment = .firstBaseline
         s.spacing = InspectorStyle.keyToValue
-        s.edgeInsets = NSEdgeInsets(top: 3, left: 0, bottom: 3, right: 0)
+        s.edgeInsets = NSEdgeInsets(top: inset, left: 0, bottom: inset, right: 0)
         return s
     }
 
@@ -928,16 +958,16 @@ public final class InspectorAreaController: NSViewController {
 
     /// The content's side insets (metrics.md §12.4): 7 from the divider,
     /// 8 from the window's edge.
-    static let leadingInset: CGFloat = 7
-    static let trailingInset: CGFloat = 8
+    static let leadingInset = CGFloat(WorkspaceChrome.inspectorLeadingInset)
+    static let trailingInset = CGFloat(WorkspaceChrome.inspectorTrailingInset)
     static var horizontalInsets: CGFloat { leadingInset + trailingInset }
     /// The larger of the two (layout checks).
     static let contentInset: CGFloat = 8
     /// The room above the first heading and below the last row.
-    static let contentTopInset: CGFloat = 4
+    static let contentTopInset = CGFloat(WorkspaceChrome.inspectorContentTopInset)
     /// The right-aligned key column ("Name", "Type", …): its ink ends at
-    /// the inspector's edge + 78.
-    static let keyColumnWidth: CGFloat = 72
+    /// the inspector's edge + 78 (shared with the Linux IDE).
+    static let keyColumnWidth = CGFloat(WorkspaceChrome.inspectorKeyColumnWidth)
 
     @objc private func tabClicked(_ b: NSButton) { select(b.tag) }
 }
@@ -955,6 +985,16 @@ final class InspectorRowView: NSStackView {
         let c = widthAnchor.constraint(equalTo: sup.widthAnchor, constant: -InspectorAreaController.horizontalInsets)
         c.isActive = true
         widthConstraint = c
+    }
+}
+
+/// The inspector's root view: tells the controller when its appearance
+/// changes.
+final class InspectorRootView: NSView {
+    var onAppearanceChange: (() -> Void)?
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChange?()
     }
 }
 

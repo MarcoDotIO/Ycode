@@ -226,8 +226,11 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let fc = FidelityCouncilTests()
         let dir = try fc.project("r2-inset")
         let wc = try fc.window(dir)
+        // Ordered in, it must stay off every display (AppKit would move it on).
+        MergeSheetR5UITests.Offscreen.on()
+        wc.window?.setFrameOrigin(NSPoint(x: -6000, y: -6000))
         wc.window?.orderBack(nil)
-        defer { wc.window?.orderOut(nil) }
+        defer { wc.window?.orderOut(nil); MergeSheetR5UITests.Offscreen.off() }
         wc.open(path: dir.appendingPathComponent("GlassScroll/Long.swift").path, line: nil)
         expectFirstLine(wc, "opened")
         // The end of a live resize (the window's, or the inspector's slide)
@@ -399,9 +402,9 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             #expect(abs(d) < 0.12, "\(ms) ms")
         }
         #expect((squares / Double(hide.count)).squareRoot() < 0.07)
-        // Round 4's fits (editor-area.md F.5): 43 + 226 and 118 + 217 ms.
-        #expect(abs(EditorMetrics.inspectorSlideTotal(show: false) - 0.269) < 0.001)
-        #expect(abs(EditorMetrics.inspectorSlideTotal(show: true) - 0.335) < 0.001)
+        // Round 5's target (editor-area.md G.1): 50 + 200 and 145 + 200 ms.
+        #expect(abs(EditorMetrics.inspectorSlideTotal(show: false) - 0.250) < 0.001)
+        #expect(abs(EditorMetrics.inspectorSlideTotal(show: true) - 0.345) < 0.001)
     }
 
     // MARK: Round 2: inspector (rows 41–43) and the status bar for images (row 44)

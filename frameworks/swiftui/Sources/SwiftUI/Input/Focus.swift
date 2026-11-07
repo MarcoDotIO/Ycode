@@ -350,6 +350,9 @@ package final class WindowServices {
     package let contextMenus = ContextMenuCenter()
     /// The tooltip shown in the window (R13, `help(_:)`).
     package let tooltips = TooltipCenter()
+    /// The window's style, buttons, behaviours and on-demand menu bar
+    /// (B5-OPENVIEWS, WindowStyle.swift).
+    package let windowChrome = WindowChromeState()
     /// Back-end time of the last input event (R13: tooltip timers).
     package var lastEventTime: TimeInterval = 0
     /// Draws the window again from its last layout (a text surface's own
@@ -368,6 +371,9 @@ package final class WindowServices {
     }
 
     package var nextTimerDeadline: TimeInterval? { timers.values.map(\.deadline).min() }
+
+    /// The deadline of `owner`'s timer, if one is set.
+    package func timerDeadline(_ owner: AnyObject) -> TimeInterval? { timers[ObjectIdentifier(owner)]?.deadline }
 
     package func fireTimers(now: TimeInterval) {
         let due = timers.filter { $0.value.deadline <= now + 1e-9 }

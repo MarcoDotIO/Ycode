@@ -180,7 +180,8 @@ enum SettingsDriver {
         await shot(prefix, "appearance")
         await click("settings theme duplicate")
         say("settings theme after Duplicate: \(prefs.themeName)")
-        await type("#FF8A3D", into: "settings color comment")
+        // The colour well edits in a popover; set the colour as it would.
+        prefs.editSelectedTheme { $0.tokens["comment"] = "#FF8A3D" }
         await ShellDriver.pause(0.4)
         say("settings comment color: \(prefs.theme.tokens["comment"] ?? "-")")
         await shot(prefix, "appearance-user-theme")
@@ -254,7 +255,7 @@ enum SettingsDriver {
         prefs.sourceControlEnabled = true
         await open(.components)
         await ShellDriver.pause(0.5)
-        say("settings components empty: \(frame("settings components empty") != nil)")
+        say("settings components platforms: \(frame("settings components row iOS") != nil)")
         await shot(prefix, "components")
         await open(.locations)
         await ShellDriver.pause(1)

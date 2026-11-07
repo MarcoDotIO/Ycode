@@ -53,6 +53,8 @@ public enum ShellCommand: String, CaseIterable, Sendable {
     case codingToolExplain, codingToolDocument, codingToolGeneratePlayground, codingToolGeneratePreview
     // Editor ▸ Canvas and Editor ▸ Layout (WorkspaceShellModel+Previews.swift)
     case toggleCanvas, canvasLayoutAutomatic, canvasLayoutRight, canvasLayoutBottom
+    // File ▸ New ▸ Editor Pane On Right, Below (WorkspaceShellModel+Panes.swift)
+    case splitEditor, splitEditorBelow
 
     /// The `CommandTable` action (and tag) of the command.
     public var action: (selector: String, tag: Int) {
@@ -140,6 +142,8 @@ public enum ShellCommand: String, CaseIterable, Sendable {
         case .canvasLayoutAutomatic: ("setCanvasLayout:", 0)
         case .canvasLayoutRight: ("setCanvasLayout:", 1)
         case .canvasLayoutBottom: ("setCanvasLayout:", 2)
+        case .splitEditor: ("splitEditor:", 0)
+        case .splitEditorBelow: ("splitEditorBelow:", 0)
         default: (Self.integrateSelectors[self] ?? Self.assistantActions[self]?.selector ?? "", 0)
         }
     }
@@ -172,6 +176,7 @@ public enum ShellCommand: String, CaseIterable, Sendable {
         case .findSelectedSymbol, .showCallHierarchy: "Find"
         case .showSymbolNavigator, .showFileInspector, .showQuickHelpInspector: "View"
         case .toggleCanvas, .canvasLayoutAutomatic, .canvasLayoutRight, .canvasLayoutBottom: "Editor"
+        case .splitEditor, .splitEditorBelow: "File"
         default: Self.assistantActions[self]?.menu ?? "Integrate"
         }
     }

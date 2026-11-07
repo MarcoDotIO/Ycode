@@ -312,17 +312,19 @@ public enum SourceControlInspector {
         }
     }
 
-    /// Ycode's own icon for a file, by type (SF Symbols).
+    /// Ycode's own icon for a file, by type (SF Symbols): a Swift file has
+    /// the project navigator's glyph, never the trademark-shaped bird, and a
+    /// project its gear folder, never the hammer (rule 5).
     public static func fileSymbol(_ path: String) -> String {
         switch (path as NSString).pathExtension.lowercased() {
-        case "swift": "swift"
+        case "swift": WorkspaceChrome.fileSymbol(path)
         case "m", "mm", "c", "cc", "cpp", "h", "hpp", "metal", "s": "chevron.left.forwardslash.chevron.right"
         case "png", "jpg", "jpeg", "gif", "heic", "pdf", "svg", "tiff": "photo"
         case "plist", "json", "xcstrings", "strings", "entitlements", "xcconfig", "yml", "yaml": "list.bullet.rectangle"
         case "storyboard", "xib": "rectangle.on.rectangle"
         case "md", "txt", "rtf": "doc.text"
         case "xcassets": "photo.on.rectangle"
-        case "pbxproj", "xcodeproj", "xcworkspace": "hammer"
+        case "pbxproj", "xcodeproj", "xcworkspace": "folder.badge.gearshape"
         case "sh", "py", "rb": "terminal"
         default: "doc"
         }

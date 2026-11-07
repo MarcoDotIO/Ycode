@@ -13,7 +13,11 @@ was apsd reconnecting to the push courier about three times a second
 (a missing host-side name; Ycode now registers it) and that the inner
 panel's is SpringBoard's own work for a second display. §15 (agent
 B3-SIMOBS2, 2026-11-06) observes the reference's identity service and the
-guest programs behind Ycode's excess log volume.
+guest programs behind Ycode's excess log volume. §18 (agent B3-BOOT4,
+2026-11-06) finds LaunchServices sound (its excess is two log categories
+and lsd waiting for containermanagerd's start), mobile-asset extraction
+failing on decmpfs files, and measures an opt-in hold of failed look-ups
+that reproduces dasd's quiet phase (−5.6 s).
 
 This is Ycode's own design. It names no Apple internals. The Linux facts
 (KVM memslots, `mremap`, transparent huge pages, `/proc` accounting) come
@@ -2917,6 +2921,314 @@ xpc connection established" 1; "LaunchServices database schema version:
 4. installd's build check (`LastBuildInfo.plist`) was not exercised; what
    it triggers on a build change is unknown.
 
+## 18. LaunchServices, mobile assets and dasd's hold (agent B3-BOOT4, 2026-11-06)
+
+§16.8's step 1 and §17.8's items with Ycode's own simulator, and the
+experiment §17.8 item 4 asks for. Target: home_s ≤ 21.4 s, full boot,
+every service on (networking and the Duo's inner panel included).
+
+### 18.1 Conditions
+
+- Thor; one copy of the golden device in the agent's own folder (iPhone
+  Duo, iOS 27.1), booted at that path nine times before the first series
+  (two plain boots, seven diagnostic boots); full boot, default switches,
+  `YCODE_HOME_WATCH`, stopped 5 s after home (diagnostic boots 10–420 s),
+  no save.
+- Builds: *base* = `7a8685dc` (§16 merged); *tree* = this branch (§18.4's
+  switch, off by default, and a trace text). With the switch off the two
+  are the same program.
+- Guest log lines from `log stream` one-shots (info or debug level) in
+  separate, untimed boots; trap traces (`--trace-name`); frame-profile
+  windows (`YCODE_FRAME_PROFILE_BOOT=120`); `var/db/lsd` listed before and
+  after every boot. A stream changes what the guest logs (§18.2), so counts
+  come from profiles and traces, not from streams.
+
+### 18.2 LaunchServices
+
+**Markers.** The golden device's `var/db/lsd` holds the two stores, the
+unregistered-types database and the app-protection plist, and no
+`com.apple.LaunchServices.error`, `.syncInterrupted` or `(…~).csstore`.
+After each of this section's eleven boots the listing was the same four
+files (only the `.db` rewritten); lsd creates `.error` when it loads the
+store and removes it when its in-memory registrations end, as §17.5
+describes. There is no marker loop. One of §16's diagnostic boots
+(`diag-ls`) started with a `.syncInterrupted` left by the boot before it;
+lsd removed it at once ("Successfully removed recovery file"). Ycode's
+stop at home + 5 s ends every guest process with a signal (lsd: status
+137 or 143), not with launchd_sim's shutdown, so a stop during an
+installd sync can leave the marker; the timed series never showed one.
+
+**SpringBoard has the database.** In a trap trace of SpringBoard its
+`com.apple.lsd.mapdb` request is answered with one memory object of
+0x704000 bytes (the store's size, 7 356 416 bytes), which it maps, copies
+into its own allocation and makes read-only; a debug-level stream then
+shows "LS DB needs to be mapped into process … (existing DB @ 0x0)",
+"Loaded LS database with sequence number 652", the schema-version line,
+and "Will enumerate 163 candidate bundle identifiers/units". The record
+construction that follows is the application-record enumerator of that
+database (42 enumerations by home): for each candidate,
+"BindingEvaluator::CreateWithBundleInfo(ID=…)", "Truncating a list of
+bindings …" twice, then "constructing bundle record for file://…/X.app/".
+The order of the apps is the database's, and the first enumeration takes
+1.3 s. Nothing here falls back to bundle URLs: it is the normal path.
+
+**What differs is the logging.** The runtime's
+`System/Library/Preferences/Logging/Subsystems/com.apple.launchservices.plist`
+(read as a property list) sets `DEFAULT-OPTIONS` to `Enable: Info` and two
+categories to `Enable: Default`: `privacy` and `datasep`. Those are exactly
+the two categories of §15.7's absent patterns ("constructing bundle
+record" is `privacy`, "application record search init" is `datasep`).
+SpringBoard reads the plist (two `openat` + `pread` of its 291 bytes),
+yet in a boot without a stream it still sends both kinds: 1 670 and 1 299
+log messages by home in §16's trace, of about 22 000 (debug-level lines,
+such as the `binding` category's, are not sent). On the reference, diagnosticd's
+receive counter matches the store to within 1–7 % (§13.3), so its
+SpringBoard does not send them. Both systems write the same
+diagnosticd filter (`global` = 0x9_0007_0000, §13.3), so the global
+stream does not explain it: in Ycode's guest, a category's `Enable:
+Default` does not keep its info messages from being sent; on the
+reference it does. Why is open (§18.8). The cost is small: about 3 000
+messages in SpringBoard and about 1 300 in other programs, under 0.5 s of
+diagnosticd's CPU (§14.5: about 100 µs each).
+
+**lsd's start-up.** From "lsd starting" to "Starting services" took 6.3 s
+in an info stream and 9.6 s in a debug stream, against 0.28–0.52 s on the
+reference (§17.2):
+
+| Phase (info stream, §16's `diag-ls`; debug stream, `diag-ls-debug`) | Ycode | |
+|---|---|---|
+| start → the `class 10` container query sent | 0.2 s | 0.3 s |
+| query → result (containermanagerd) | **4.8 s** | **4.9 s** |
+| store load, "Cleaning new database object" | 0.2 s | 0.4 s |
+| extension points | 0.2 s | 2.9 s (debug lines) |
+| canonical names, framework strings, `.error` removed | 0.8 s | 1.0 s |
+
+The query waits for **containermanagerd's start**: the per-user
+`com.apple.containermanagerd` is launched on demand by this query
+(launchd.log: "launching: ipc (mach)" 2.3 s after lsd), logs its first
+line about 3 s after the query and answers 1.8 s later. In §16's profile
+lsd's main thread waited 4.3 s for it, and the waker's path back is host
+run-queue time (sharingd 1.9 s, containermanagerd 0.75 s) and guest code
+(sharingd 1.1 s, containermanagerd 0.14 s): the saturated host of §12.6,
+not a Ycode call. SpringBoard's `mapdb` request waited for lsd's
+"Starting services" (1.4 s in the debug boot). Whether the reference's
+containermanagerd is already running when lsd queries it is a dirty-room
+question (§18.8).
+
+### 18.3 Mobile-asset downloads fail in extraction: decmpfs
+
+Every boot of the aged device downloads mobile assets (Siri understanding
+and dialog, text-to-speech voices: 3–57 MB each) and every extraction
+fails, so the next boot downloads them again. What it costs before home
+varies with how far an extraction gets: in §16's profile `p-tree2` the
+extractor, `STExtractionService`, used 0.36 cores over the 40 s window
+(14.6 CPU s, the second-largest program after SpringBoard); in this
+section's profiles it stopped at its first compressed file (0.4 CPU s),
+and mobileassetd (7–8 CPU s) and nsurlsessiond (1 CPU s) did the rest of
+the asset work. A trap trace of `STExtractionService` shows why it fails:
+
+- AppleArchive writes **compressed files** (decmpfs, xnu
+  `bsd/sys/decmpfs.h`): `fsetxattr("com.apple.decmpfs")` with a header of
+  type **13** (LZBITMAP, payload in the attribute; uncompressed size
+  1 005), `ftruncate(0)`, `fchflags(UF_COMPRESSED)`; for a larger file
+  type 14 (LZBITMAP, payload in the resource fork) with
+  `fsetxattr("com.apple.ResourceFork", 4 674 bytes, position 12)`.
+- Ycode keeps `com.apple.decmpfs` as an ordinary attribute and ignores
+  UF_COMPRESSED (`file-system-features.md` §3), so the first file is left
+  empty; the resource-fork write is EINVAL (Ycode allows only position 0,
+  and the host's ext4 refuses attribute values over about 4 KB: ENOSPC at
+  4 674 bytes). The extractor logs "Invalid argument: fsetxattr resource
+  fork", the download "Task finished with error", and mobileassetd retries
+  at the next boot (120 such lines in a 420 s boot).
+- Tried: answering ENOTSUP for both attribute names (a volume without
+  compression). AppleArchive does not fall back to plain files ("Operation
+  not supported: fsetxattr decmpfs", same abort); reverted.
+
+On the reference's APFS these files read back decompressed, so its
+downloads install once. A fix needs decmpfs on Ycode's volume: resource
+forks of any size and position (a side file, not a host attribute), and
+decompression of types 13 and 14 when UF_COMPRESSED is set. LZBITMAP has
+no permissively licensed reference implementation (LZFSE and LZVN have),
+so its format needs a dirty-room specification first (§18.8). Until then
+every boot pays the asset work, and so did every series since §16.3 made
+the downloads reach extraction.
+
+### 18.4 dasd's hold: failed look-ups answered late (experiment)
+
+§17.6: on the reference, dasd's first blocking read of a CoreDuet context
+key fails 20–71 s after it starts, and dasd accepts nothing meanwhile; its
+backlog and SpringBoard's notification server run after home. In Ycode
+the same read fails at once and that work runs before home (§15.7).
+
+What Ycode's code decides here: a guest's look-up goes to launchd_sim
+(the guest's own), which answers an unknown name itself with
+`{error: 3}` (`bootstrap-wire.md` §4.2); it never asks Ycode's host
+bootstrap (the host log holds only the 708 start-up request). Nothing in
+Ycode delays or answers it, and launchd_sim on the reference logs the
+failure at once too (§17.6). So the reference's wait is not launchd_sim
+holding the reply for a name it might still publish; either its host's
+load (1-minute load 90–660, dasd's threads at background priority) or
+something after the look-up. That is still open (§17.9 item 1).
+
+`YCODE_LOOKUP_HOLD` reproduces the observable behaviour for an
+experiment, without touching launchd_sim: the kernel notes a look-up
+request (pipe routine 207 or 804) that names a listed service, and holds
+the failure reply sent to its reply port until a release time
+(`YCODE_LOOKUP_HOLD_UNTIL`, seconds after the start, default 40); a reply
+that grants the name, or comes later, passes at once.
+
+| | |
+|---|---|
+| Switch | `YCODE_LOOKUP_HOLD=com.apple.coreduetd.context` (names, comma-separated), `YCODE_LOOKUP_HOLD_UNTIL=<s>` |
+| Default | off |
+| Code | `LookupHold.swift` (hook in `MachIPC.deliver`), one stderr line per held reply |
+| Tests | `LookupHoldTests` (held until the release time, then delivered; other names, granted look-ups and replies after the release pass at once) |
+| Snapshot | held replies are not captured |
+
+Smoke boot (40 s, with a dasd stream): 8 failure replies held, the first
+for 38.4 s; dasd logged 9 lines before them and 4 701 in the ten seconds
+after the release; home at 27.7 s.
+
+### 18.5 Timed series
+
+Series T1 and T2, one binary (*tree*), three arms rotated, n = 5 each,
+the aged device copy, every boot started with no other `ycode-simd` and a
+1-minute load of 3.39–3.99 (`parity-ladder.md` §3.1's conditions); T1
+21:30–21:59, T2 22:26–22:55 (after the fidelity and profiled boots):
+
+| Arm | n | median home_s | mean ± sd | range | kernel lock held at home, median | CPU s at home, median | guest fatal |
+|---|---|---|---|---|---|---|---|
+| default (hold off) | 5 | **33.18** | 33.02 ± 0.62 | 32.08–33.72 | 6.3 s | 357 | 4–6 |
+| hold until 40 s | 5 | **27.59** | 27.68 ± 0.22 | 27.48–28.04 | 4.2 s | 278 | 2 |
+| hold until 30 s | 5 | 27.84 | 27.83 ± 0.31 | 27.38–28.13 | 4.3 s | 293 | 2–3 |
+| T2: default | 5 | **33.57** | 33.42 ± 0.59 | 32.62–34.18 | 6.2 s | 362 | 3–6 |
+| T2: hold until 40 s | 5 | **27.90** | 28.03 ± 0.28 | 27.79–28.45 | 4.2 s | 279 | 2 |
+| T2: hold until 40 s, `YCODE_SYNC_HANDOFF=2` | 5 | 27.78 | 27.92 ± 0.42 | 27.58–28.63 | 4.4 s | 289 | 2 |
+
+- **The hold: −5.6 s by the median in T1 and −5.7 s in T2** (ranges 4 s
+  apart in both), and 79–83 CPU s (22 %) less work before home. Releasing at 30 s or 40 s makes no
+  difference: home comes before either, so the release only decides when
+  the held work runs after home.
+- The sync hand-off (§16.5) on top of the hold: −0.1 s, inside the
+  spread; it stays off.
+- The guest fatals that go are intelligencetasksd's (its restart loop,
+  started by dasd, §12.7): with the hold it starts after home.
+- The default arm (33.2 s) is 3 s faster than §16's U1/U2 (36.1–36.4 s)
+  with no change of Ycode's own: a quieter evening and this device copy.
+  Compare arms within the series.
+
+### 18.6 Log messages and CPU per program
+
+One profiled boot of each arm (`p-tree` home 33.7 s, `p-hold40` home
+27.5 s; the second started at load 13, so its CPU figures are a little
+high), log messages (send-only `mach_msg2`, id 0x10000000) from the start
+to home, against the reference's start-to-home counts (§13.3, §15.6):
+
+| Program | default | hold until 40 s | Reference |
+|---|---|---|---|
+| SpringBoard | 21 309 | **12 199** | 10 744 (11 525 in §13) |
+| runningboardd | 8 796 | 6 688 | 12 404 |
+| dasd | 7 073 | **10** | 287 |
+| mobileassetd | 4 203 | 3 697 | 1 343 |
+| locationd | 4 043 | 3 616 | 3 379 |
+| biomed | 3 580 | 3 402 | 716 |
+| cfprefsd | 3 443 | 2 748 | 2 962 |
+| sleepd | 551 | 13 | — |
+| usernotificationsd | 543 | 281 | — |
+| **all programs** | 130 282 | **89 808** | about 89 000 |
+
+- With the hold, the log volume before home is the reference's: the total
+  matches (89 800 against about 89 000), and SpringBoard's comes within
+  14 % of it (the remaining excess there is mostly §18.2's two
+  LaunchServices categories, about 3 000).
+- CPU of all guest programs in the window: 313 s (default) against 257 s
+  (hold). The largest differences: SpringBoard −4.7 s (its notification
+  server's initial load, §17.7, now after home), diagnosticd −4.3 s, and
+  about 20 programs that dasd's activities start and that now start after
+  home (ScreenTimeAgent, ShortcutsTopHitsExtension, SafariLinkExtension,
+  photoanalysisd, mediaanalysisd, the speech-synthesis units, voicebankingd:
+  0.8–3.6 s each).
+- dasd's 10 messages are its start-up before the first context read; the
+  reference's 287 include about 20 read failures in its first 10 s
+  (§15.7), which the hold delays as well (it holds every failed look-up of
+  the name until the release, not only the one the reference's silence
+  starts with).
+
+### 18.7 Service fidelity
+
+`scripts/ycode-launchd-spawns` over 700 s, one boot each after a boot of
+the same build, on the same device copy:
+
+| | default | hold until 40 s |
+|---|---|---|
+| all starts | 667 (217 labels) | 620 (220 labels) |
+| restart loops (facetimemessagestored, managedappdistributiond, mlhostd, proactiveeventtrackerd, intelligencetasksd, fileindexerd) | 67, 66, 64, 68, 6, 1 | 67, 63, 61, 68, 7, 1 |
+| other daemons and agents | 354 | 312 |
+| per-process domains | 38 | 38 |
+| apps | 3 | 3 |
+| starts by reason (xpc event, demand, Mach IPC, speculative) | 315, 151, 152, 32 | 316, 151, 105, 32 |
+
+The labels that differ by more than three: **pairedsyncd, 47 → 1**. In
+the default boot something starts it by Mach IPC every 10 s from 226 s
+on (each run exits 0 after 0.4 s; `lean-boot.md` §2 found "pairing store
+path was nil"); with the hold it starts once, as on the Mac (1 and 1 in
+700 s, `parity-ladder.md` §3.3, where it is one of Ycode's four own
+restart loops). The other labels differ by one to three starts
+(managedappdistributiond and mlhostd −3, the throttle loops' phase;
+imageplaygroundd, nanoappregistryd, parsec-fbf, stickersd, eligibilityd,
+intelligencetasksd +1; a key-sync agent −1). Fidelity is unchanged, and
+closer to the Mac for pairedsyncd. (This device copy's counts are above
+§16's: PosterBoard started 135 times in both boots, its extensions
+repeatedly, §12.7.)
+
+### 18.8 How far from 21.4 s, and what is left
+
+- Default switches, every service on: **33.2–33.6 s** (T1, T2), 1.55–1.57 ×
+  the reference. With the look-up hold: **27.6–27.9 s**, **1.29–1.30 ×**,
+  6.2–6.5 s short; 278–279 CPU s before home against 357–362 (medians).
+- **Recommendation on the hold (the owner decides; it stays off).** It
+  reproduces what §17.6–§17.7 observed on the reference: dasd silent from
+  its first context read until well after home, SpringBoard's notification
+  server waiting for dasd, and with it Ycode's log volume before home
+  becomes the reference's (§18.6) while service fidelity is unchanged
+  (§18.7). Against it: §17's reference boots all ran at a 1-minute load of
+  90–690, and whether a quiet reference host shows the same 20–71 s wait
+  is not known (§17.9 item 1); if it does not, the hold makes Ycode faster
+  than the reference by deferring work the reference does before home.
+  The dirty-room boot that decides it: §17.6's dasd read on the reference
+  at a load under 4 (`parity-ladder.md` §3.1). If the wait is there, turn
+  the hold on by default with the reference's release time; if it is not,
+  remove the switch.
+- With the hold, the boot's critical path (profile `p-hold40`, 27.1 s) is
+  38.6 % guest code (liveactivitiesd 3.4 s of guest code with no trap on
+  its main thread at 16.1–19.8 s, SpringBoard 2.5 s, dataaccessd 1.0 s),
+  25 % host run-queue waits (diagnosticd's wakeups 1.7 s, dataaccessd
+  1.3 s), 12.6 % thread and process starts, 11.7 % kernel-lock and
+  hand-off costs (diagnosticd's event lock and wakeups 1.4 s).
+
+Next, in order of size:
+
+1. **liveactivitiesd's start** (3.4 s of uninterrupted guest code on the
+   path with the hold; 3.6–4.0 CPU s in both arms): what it computes, and
+   whether the reference's takes as long (its CPU in the first 30 s).
+2. **Mobile-asset extraction** (§18.3): a dirty-room specification of
+   LZBITMAP (decmpfs types 13 and 14), then decmpfs on Ycode's volume
+   (resource forks in a side file, decompression at UF_COMPRESSED). Until
+   then every boot downloads and fails again.
+3. **LaunchServices' two log categories** (§18.2, about 3 000 messages in
+   SpringBoard and 1 300 elsewhere): a dirty-room check of how the
+   reference keeps `privacy` and `datasep` info messages from being sent
+   while diagnosticd's filter is the same (a `log config --status
+   --subsystem com.apple.launchservices` in the device, and whether a
+   stream-less boot's store holds any of them).
+4. **lsd behind containermanagerd** (§18.2, 4.8 s): whether the reference's
+   per-user containermanagerd is running before lsd's first query, and how
+   long its query takes.
+5. The log path (§16.5): with the hold, diagnosticd's wakeups are again
+   the largest wait on the path (the profile above), but the sync hand-off
+   on top of the hold gains nothing measurable (T2: −0.1 s); the per-trap
+   cost of §14.8 item 3 is the remaining lever there.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -2984,6 +3296,13 @@ xpc connection established" 1; "LaunchServices database schema version:
 | dasd's thread states and priorities; port rights (§17.6, §17.9) | 3 | `ps -M` every second; `lsmp` of dasd and launchd_sim (no root) |
 | dasd's silences, the read that ends them, read latencies; dasd's acceptance of SpringBoard's task against SpringBoard's initial load (§17.6, §17.7) | 3 | `log show` timestamps and thread ids, 19 boots |
 
+| lsd's store files and markers before and after each boot; lsd's and SpringBoard's LaunchServices lines; the `mapdb` reply's memory object; the enumerator's lines; containermanagerd's on-demand launch (§18.2) | 3 | B3-BOOT4's Thor runs of Ycode's own simulator: `var/db/lsd` listings, guest `log stream` one-shots (`diag-ls-debug`, `diag-cm`), the device's `launchd.log`; §16's trap traces and stream (`diag-sb-trace`, `diag-ls`) re-read |
+| The runtime's `com.apple.launchservices` logging configuration (categories `privacy`, `datasep`: `Enable: Default`) (§18.2) | 2 | the runtime's `System/Library/Preferences/Logging/Subsystems/com.apple.launchservices.plist`, read as a property list |
+| decmpfs header layout and the UF_COMPRESSED flag (§18.3) | 1 | xnu `bsd/sys/decmpfs.h`, `bsd/sys/stat.h`, setxattr(2) |
+| AppleArchive's compressed-file writes (types 13/14, resource fork at position 12), the extraction errors, the asset downloads retried (§18.3) | 3 | trap traces of `STExtractionService` (`trace-stx`, `trace-stx2`, the latter with the trace text of commit `725c2dc6`), guest streams `diag-assets`, `diag-assets2`; the host's ext4 attribute limit by a probe of our own |
+| Look-ups of unknown names answered by launchd_sim, not the host bootstrap (§18.4) | 3 | the device's `ycode-host-bootstrap.log` (only the 708 request) |
+| Series T1 (and T2), profiles `p-tree` and `p-hold40`, log messages and CPU per program, critical paths, fidelity counts (§18.5–§18.8) | 3 | B3-BOOT4's Thor runs (`ab-T1.txt`, `ab-T2.txt`, `fp/`, `runs/fid-tree`, `runs/fid-hold40`; `scripts/ycode-frame-profile`, `scripts/ycode-launchd-spawns`, §16's `logcount.py`) |
+
 Level 5 was not used. `.claude/Xcode.app`, `research/dirty/` and Ghidra
 were not opened.
 §13 is a dirty-room observation (agent B3-SIMOBS): Apple's simulator ran
@@ -3013,3 +3332,7 @@ was created, re-dated or deleted beforehand. No binary was disassembled or
 decompiled, Ghidra was not opened, and the Simulator app's window and
 Xcode's GUI were not used. Its raw data stays in the git-ignored
 `research/dirty/simobs3/`.
+§18 (agent B3-BOOT4) is clean-room work: only Ycode's own simulator ran
+(on the Thor, with the runtime copy as a black box), and only `specs/`,
+Ycode's code, public xnu headers and man pages (as cited) and one of the
+runtime's logging property lists were read.

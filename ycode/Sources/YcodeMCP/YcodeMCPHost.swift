@@ -26,7 +26,7 @@ public final class YcodeMCPHost {
     public weak var delegate: YcodeMCPHostDelegate?
     /// The engine new sessions build with (tests replace it).
     public var engine: BuildEngine
-    /// The remote Ycode simulator (Settings ▸ Simulators in the IDE; a
+    /// The remote Ycode simulator (Settings ▸ Components ▸ Simulator Host in the IDE; a
     /// file or the environment for `ycode mcp`).
     public var remoteSimulator: RemoteSimulatorSettings?
     /// Whether the session is the IDE's (its scheme and destination stay

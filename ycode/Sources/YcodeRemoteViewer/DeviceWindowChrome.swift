@@ -124,6 +124,8 @@ public struct ViewerMenuItem: Equatable, Sendable {
         case scale(ViewerScaleMode)
         case statusLine
         case refresh
+        /// Show or hide the Settings inspector (the window with a toolbar).
+        case inspector
     }
     public var title: String
     public var shortcut: String
@@ -162,16 +164,17 @@ public enum DeviceWindowChrome {
         ViewerRect(x: windowWidth - moreInset - moreSize, y: moreInset, width: moreSize, height: moreSize)
     }
 
-    /// The menu's rectangle (under the circle, right-aligned with it).
-    public static func menuRect(items: [ViewerMenuItem], windowWidth: Double) -> ViewerRect {
+    /// The menu's rectangle (under the circle, right-aligned with it; with
+    /// `anchor`, under that button: the toolbar's More Actions).
+    public static func menuRect(items: [ViewerMenuItem], windowWidth: Double, anchor: ViewerRect? = nil) -> ViewerRect {
         let h = items.reduce(8.0) { $0 + ($1.isSeparator ? separatorHeight : menuRowHeight) }
-        let m = moreButton(windowWidth: windowWidth)
+        let m = anchor ?? moreButton(windowWidth: windowWidth)
         return ViewerRect(x: max(4, m.x + m.width - menuWidth), y: m.y + m.height + 6, width: menuWidth, height: h)
     }
 
     /// The item under a window point (nil: none or a separator).
-    public static func menuItem(at x: Double, _ y: Double, items: [ViewerMenuItem], windowWidth: Double) -> Int? {
-        let r = menuRect(items: items, windowWidth: windowWidth)
+    public static func menuItem(at x: Double, _ y: Double, items: [ViewerMenuItem], windowWidth: Double, anchor: ViewerRect? = nil) -> Int? {
+        let r = menuRect(items: items, windowWidth: windowWidth, anchor: anchor)
         guard r.contains(x, y) else { return nil }
         var top = r.y + 4
         for (i, item) in items.enumerated() {
@@ -246,8 +249,10 @@ extension RemoteDeviceSession {
         client.send(.fold(angle: UInt16(min(180, max(0, angle))), instant: false))
     }
 
-    /// The More Actions menu (Ycode decision, see the file's comment).
-    public func moreItems(muted: Bool?, statusLine: Bool) -> [ViewerMenuItem] {
+    /// The More Actions menu (Ycode decision, see the file's comment); with
+    /// `inspector`, the window has a toolbar and the menu shows or hides
+    /// its Settings inspector.
+    public func moreItems(muted: Bool?, statusLine: Bool, inspector: Bool? = nil) -> [ViewerMenuItem] {
         var out: [ViewerMenuItem] = [ViewerMenuItem(title: "Lock", shortcut: "Ctrl+L", action: .command(.lock), enabled: isLive)]
         if spec.hasVolumeButtons {
             out += [ViewerMenuItem(title: "Volume Up", shortcut: "Ctrl+Up", action: .command(.volumeUp), enabled: isLive),
@@ -269,6 +274,9 @@ extension RemoteDeviceSession {
         }
         out += [ViewerMenuItem(title: "Show Frame Rate", shortcut: "Ctrl+F", action: .statusLine, checked: statusLine),
                 ViewerMenuItem(title: "Refresh Display", shortcut: "Ctrl+R", action: .refresh)]
+        if let inspector {
+            out += [.separator, ViewerMenuItem(title: inspector ? "Hide Inspector" : "Show Inspector", shortcut: "Ctrl+Alt+0", action: .inspector)]
+        }
         return out
     }
 }

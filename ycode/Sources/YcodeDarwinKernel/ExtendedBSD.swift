@@ -221,9 +221,13 @@ extension DarwinKernel {
                 if !value.isEmpty { try mem.write(va: a[2], bytes: value) }
                 return UInt64(value.count)
             case BSD2.setxattr, BSD2.fsetxattr:
-                call.set("\(byDescriptor ? "fsetxattr" : "setxattr")(\(subject), \"\(name)\", size=\(a[3]), options=\(hx(UInt32(bitPattern: options))))")
+                call.set("\(byDescriptor ? "fsetxattr" : "setxattr")(\(subject), \"\(name)\", size=\(a[3]), position=\(a[4]), options=\(hx(UInt32(bitPattern: options))))")
                 guard a[4] == 0, a[3] <= 1 << 26 else { throw Failure(errno: Errno.EINVAL) }
                 let value: [UInt8] = a[3] == 0 ? [] : try mem.read(va: a[2], count: Int(a[3]))
+                if name == "com.apple.decmpfs", value.count >= 16 {
+                    // decmpfs header (xnu bsd/sys/decmpfs.h): magic, type, size.
+                    call += (" [decmpfs type \(value.readLE(UInt32.self, at: 4)), size \(value.readLE(UInt64.self, at: 8))]")
+                }
                 try fs.setExtendedAttribute(target, name: name, value: value, create: options & 0x2 != 0,
                                             replace: options & 0x4 != 0)
                 return 0

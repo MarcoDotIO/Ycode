@@ -1779,8 +1779,9 @@ extension NavigatorAreaController {
     static let clipToFirstRow: CGFloat = firstRowGap - selectorToContent
 
     /// `metrics.md` §12.1: every level steps 14 (triangle, icon, label);
-    /// the icon's left edge at 27 + 14 × level, the label at 48 + 14 × level.
-    static let indentation: CGFloat = 14
+    /// the icon's left edge at 27 + 14 × level, the label at 48 + 14 × level
+    /// (the shared constant: the Linux IDE indents the same).
+    static let indentation = CGFloat(WorkspaceChrome.indentationPerLevel)
     static let iconInset: CGFloat = 1
     static let iconToLabel: CGFloat = 5
 

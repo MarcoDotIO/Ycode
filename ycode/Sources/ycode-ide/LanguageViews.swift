@@ -389,17 +389,17 @@ struct DocumentItemsMenu: View {
                 Button(String(repeating: "    ", count: pair.element.depth) + "\(DocumentSymbols.badge(s.kind))  \(s.name)") { model.openSymbol(s) }
             }
         } label: {
-            HStack(spacing: 3) {
-                if let s = f.caretSymbol {
-                    SymbolBadge(kind: s.kind)
-                    Text(verbatim: s.name).font(ShellFonts.small.weight(.medium)).foregroundStyle(c.label).lineLimit(1)
-                } else {
-                    Text(verbatim: WorkspaceChrome.jumpBarNoSymbol).font(ShellFonts.small).tracking(ShellFonts.smallTracking)
-                        .foregroundStyle(c.secondaryLabel).lineLimit(1)
-                }
+            // Plain text after the chevron, as the macOS jump bar: the
+            // symbol's name, or "No Selection" in the tertiary colour
+            // (`cross-platform-parity.md` §4).
+            if let s = f.caretSymbol {
+                Text(verbatim: s.name).font(ShellFonts.small).foregroundStyle(c.label).lineLimit(1)
+            } else {
+                Text(verbatim: WorkspaceChrome.jumpBarNoSymbol).font(ShellFonts.small)
+                    .foregroundStyle(c.tertiaryLabel).lineLimit(1)
             }
         }
-        .menuStyle(.button)
+        .menuStyle(.borderlessButton)
         .buttonStyle(.plain)
         .fixedSize()
         .help("Show Document Items")

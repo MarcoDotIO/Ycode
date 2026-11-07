@@ -61,6 +61,7 @@ public final class ImageViewerController: NSViewController {
         previewButton.target = self
         previewButton.action = #selector(openWithPreview(_:))
         ImageViewerLayout.stylePreviewButton(previewButton)
+        root.previewButton = previewButton
         imageView.isHidden = true
         loadingLabel.isHidden = true
         for v in [imageView, loadingLabel, previewButton] as [NSView] {
@@ -110,7 +111,7 @@ public final class ImageViewerController: NSViewController {
     private func show(_ decoded: ImageFileProperties.Decoded?) {
         loadingLabel.isHidden = true
         guard let decoded else {
-            loadingLabel.stringValue = "Unable to open the image"
+            loadingLabel.stringValue = ImageEditorMetrics.failureText
             loadingLabel.isHidden = false
             return
         }
@@ -142,7 +143,7 @@ public final class ImageViewerController: NSViewController {
 public enum ImageViewerLayout {
     /// "Loading…" shows only when the image is still not ready this long
     /// after it was asked for (`editor-area.md` E.3: about 450 ms).
-    public static let loadingDelay: TimeInterval = 0.45
+    public static let loadingDelay: TimeInterval = ImageEditorMetrics.loadingDelay
     /// Files up to this size decode before the viewer is shown (a few
     /// milliseconds), so the swap is one frame with the image in it.
     public static let synchronousDecodeLimit = 24 * 1024 * 1024
@@ -158,19 +159,30 @@ public enum ImageViewerLayout {
               let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int else { return false }
         return w * h <= synchronousPixelLimit
     }
-    public static let topMargin: CGFloat = 20
-    public static let bottomMargin: CGFloat = 60
-    public static let sideMargin: CGFloat = 20
-    public static let buttonHeight: CGFloat = 20
-    public static let buttonBottomGap: CGFloat = 20
+    // Shared with the Linux IDE's image editor (`ImageEditorMetrics`).
+    public static let topMargin = CGFloat(ImageEditorMetrics.topMargin)
+    public static let bottomMargin = CGFloat(ImageEditorMetrics.bottomMargin)
+    public static let sideMargin = CGFloat(ImageEditorMetrics.sideMargin)
+    public static let buttonHeight = CGFloat(ImageEditorMetrics.buttonHeight)
+    public static let buttonBottomGap = CGFloat(ImageEditorMetrics.buttonBottomGap)
 
     /// The image's drawn rect in a box: scaled down to fit (never up) and
     /// centred.
     public static func fittedRect(imageSize: NSSize, in box: NSRect) -> NSRect {
         guard imageSize.width > 0, imageSize.height > 0, box.width > 0, box.height > 0 else { return .zero }
-        let scale = min(1, box.width / imageSize.width, box.height / imageSize.height)
-        let w = imageSize.width * scale, h = imageSize.height * scale
-        return NSRect(x: box.midX - w / 2, y: box.midY - h / 2, width: w, height: h)
+        let r = ImageEditorMetrics.fittedRect(imageWidth: imageSize.width, imageHeight: imageSize.height,
+                                              box: (box.minX, box.minY, box.width, box.height))
+        return NSRect(x: r.x, y: r.y, width: r.width, height: r.height)
+    }
+
+    /// The button's fill in its window's appearance: a layer colour is
+    /// resolved once, so it is set again when the appearance changes.
+    @MainActor
+    static func updatePreviewButtonFill(_ b: NSButton) {
+        b.effectiveAppearance.performAsCurrentDrawingAppearance {
+            let dark = b.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            b.layer?.backgroundColor = (dark ? NSColor(white: 0.25, alpha: 1) : NSColor(white: 0xEC / 255.0, alpha: 1)).cgColor
+        }
     }
 
     /// A flat filled button with no border (#ECECEC in light).
@@ -179,12 +191,10 @@ public enum ImageViewerLayout {
         b.bezelStyle = .push
         b.isBordered = false
         b.wantsLayer = true
-        b.font = .systemFont(ofSize: 12)
+        b.font = .systemFont(ofSize: CGFloat(ImageEditorMetrics.buttonFontSize))
         b.contentTintColor = .labelColor
-        b.layer?.cornerRadius = 5
-        b.layer?.backgroundColor = NSColor(name: nil) { a in
-            a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.25, alpha: 1) : NSColor(white: 0xEC / 255.0, alpha: 1)
-        }.cgColor
+        b.layer?.cornerRadius = CGFloat(ImageEditorMetrics.buttonCornerRadius)
+        updatePreviewButtonFill(b)
         b.setContentHuggingPriority(.required, for: .horizontal)
         // The title's own width plus 10 on each side.
         let w = (b.title as NSString).size(withAttributes: [.font: b.font as Any]).width + 20
@@ -208,6 +218,21 @@ public final class FittedImageView: NSView {
 /// The editor's background behind the image viewer.
 final class ImageViewerBackground: NSView {
     override var isFlipped: Bool { true }
+    /// The button whose fill follows the appearance.
+    weak var previewButton: NSButton?
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        if let b = previewButton { ImageViewerLayout.updatePreviewButtonFill(b) }
+        needsDisplay = true
+    }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let b = previewButton { ImageViewerLayout.updatePreviewButtonFill(b) }
+    }
+    override func layout() {
+        super.layout()
+        if let b = previewButton { ImageViewerLayout.updatePreviewButtonFill(b) }
+    }
     override func draw(_ dirtyRect: NSRect) {
         Theme.backgroundColor.setFill()
         dirtyRect.intersection(bounds).fill()

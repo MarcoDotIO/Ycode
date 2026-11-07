@@ -76,7 +76,7 @@ public enum ExperimentalNotice {
     /// The simulator and everything that runs on it.
     public static let simulator = "The Ycode simulator is experimental. It needs a Linux arm64 host with KVM and a simulator runtime you obtain yourself; "
         + "Ycode does not include one."
-    public static let simulatorSetup = "Add a host in Settings ▸ Simulators, or pair one with `ycode sim remote pair`."
+    public static let simulatorSetup = "Add a host in Settings ▸ Components ▸ Simulator Host, or pair one with `ycode sim remote pair`."
     /// The runtime wizard (`runtime-onboarding.md` §11.6, #55).
     public static let runtimes = "Simulator runtimes are Apple software. Ycode includes none and shares none; it gets one from Apple for you only when you ask, or uses one you have."
     public static let headset = "Viewing a device in a headset is experimental. It needs a Linux PC running the viewer and an OpenXR headset."

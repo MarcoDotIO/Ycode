@@ -38,7 +38,7 @@ extension SourceEditorController {
     var wrapColumns: Int? {
         guard wrap.wraps, measured, layout.advance > 0 else { return nil }
         let room = viewport.width - textOrigin - CGFloat(EditorMetrics.textToMinimap)
-        return room > layout.advance * 8 ? Int(room / layout.advance) : nil
+        return room > layout.advance * 8 ? EditorMetrics.wrapColumns(room: Double(room), advance: Double(layout.advance)) : nil
     }
 
     /// The rows, made again when the text, the width or the settings changed.
@@ -67,8 +67,10 @@ extension SourceEditorController {
             let chars = Self.expandingTabs(text, tabWidth: tab)
             guard chars.count > columns else { continue }
             let extra = w.indents ? EditorMetrics.wrappedIndent(of: Substring(text), tabWidth: tab) : 0
-            let indent = min(extra, columns / 2)
-            let s = EditorTextGeometry.rowStarts(of: chars, firstColumns: columns, continuationColumns: columns - indent)
+            // The line's own indentation plus four, as the macOS editor's
+            // head indent (no cap: a deep line's rows are narrow there too).
+            let indent = extra
+            let s = EditorTextGeometry.rowStarts(of: chars, firstColumns: columns, continuationColumns: max(1, columns - indent))
             guard !s.isEmpty else { continue }
             w.starts[n] = s
             w.indent[n] = indent

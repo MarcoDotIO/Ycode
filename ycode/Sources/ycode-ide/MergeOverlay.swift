@@ -196,6 +196,9 @@ struct MergeButtonLabel: View {
     var width: CGFloat
     var height: CGFloat
     var fontSize: CGFloat = 13
+    /// nil: a capsule (the alert); the sheet's buttons are rounded
+    /// rectangles of radius 6 (§14.2).
+    var cornerRadius: CGFloat?
 
     var body: some View {
         let p = palette
@@ -206,7 +209,7 @@ struct MergeButtonLabel: View {
             .foregroundStyle(ink)
             .lineLimit(1)
             .frame(width: width, height: height)
-            .background { RoundedRectangle(cornerRadius: height / 2, style: .continuous).fill(Color(mergeHex: fill)) }
+            .background { RoundedRectangle(cornerRadius: cornerRadius ?? height / 2, style: .continuous).fill(Color(mergeHex: fill)) }
             .contentShape(Rectangle())
     }
 }

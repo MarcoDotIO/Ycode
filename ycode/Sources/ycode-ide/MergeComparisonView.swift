@@ -28,6 +28,8 @@ struct MergeComparisonView: View {
     /// The last layout, kept while the document is unchanged (a click on a
     /// row only moves the selection).
     @State private var layouts = MergeLayoutCache()
+    /// The panes' scroll offset and content height (the ruler's knob).
+    @State private var scrolled = MergeScrollState()
 
     typealias M = MergeSheetMetrics
 
@@ -72,9 +74,12 @@ struct MergeComparisonView: View {
                     }
                 }
                 .scrollIndicators(.hidden)
+                .onScrollGeometryChange(for: MergeScrollState.self, of: { MergeScrollState(top: $0.contentOffset.y, content: $0.contentSize.height) }) { _, s in
+                    scrolled = s
+                }
                 .frame(width: layout.totalWidth, height: height)
                 .shellTarget("merge panes")
-                MergeRuler(marks: state.rulerMarks(rows: layout.rows), palette: p) { share in
+                MergeRuler(marks: state.rulerMarks(rows: layout.rows), palette: p, scroll: scrolled, visibleHeight: height) { share in
                     let i = Int((share * Double(layout.rows.count)).rounded(.down))
                     if layout.rows.indices.contains(i) { proxy.scrollTo(i, anchor: .center) }
                 }
@@ -122,6 +127,8 @@ struct MergeComparisonView: View {
     /// selected; a second click on a change's left lines within 0.4 s
     /// writes it by hand.
     func click(_ i: Int, at pt: CGPoint, _ layout: MergePaneLayout) {
+        // A click in the panes or the gutter moves the focus there (§14.3).
+        if !editor.panesFocused { editor.panesFocused = true }
         let row = layout.rows[i]
         // Only what changes is set: a frame drawn between a double-click's
         // two clicks must not be needed.
@@ -160,7 +167,11 @@ struct MergeComparisonView: View {
         .menuIndicator(.hidden)
         #endif
         .fixedSize()
-        .simultaneousGesture(TapGesture().onEnded { if editor.state.currentHunk != h { editor.selectHunk(h) } })
+        .simultaneousGesture(TapGesture().onEnded {
+            // The token's click moves the focus into the panes (§14.3).
+            if !editor.panesFocused { editor.panesFocused = true }
+            if editor.state.currentHunk != h { editor.selectHunk(h) }
+        })
         .shellTarget("merge token \(h)")
     }
 
@@ -403,27 +414,48 @@ struct MergeTokenView: View {
     }
 }
 
-/// The 17-point overview ruler (§4.4): the whole file on the pane's
-/// height, a 10-wide mark per change (conflicts #FDB9B5, clean #D4D4D4);
-/// a click scrolls there.
+/// The panes' scroll offset and content height.
+struct MergeScrollState: Equatable {
+    var top: CGFloat = 0
+    var content: CGFloat = 0
+}
+
+/// The 17-point overview ruler (§4.4, §14.4): the track 3 inside the
+/// pane's top and bottom; in dark an 11-wide knob (#A2A2A2) over its
+/// visible part (the whole track when the file fits); a 10-wide mark per
+/// change at its first line's centre (conflicts #FDB9B5, clean #D4D4D4); a
+/// click scrolls there.
 struct MergeRuler: View {
     var marks: [(position: Double, isConflict: Bool)]
     var palette: MergeSheetPalette
+    var scroll = MergeScrollState()
+    var visibleHeight: CGFloat = 0
     var onClick: (Double) -> Void
+
+    typealias M = MergeSheetMetrics
 
     var body: some View {
         let p = palette
         GeometryReader { geo in
             Canvas { ctx, size in
                 ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(mergeHex: p.pane)))
+                if let knob = p.rulerKnob {
+                    let k = M.rulerKnob(visibleTop: Double(scroll.top), visibleHeight: Double(visibleHeight),
+                                        contentHeight: Double(max(scroll.content, visibleHeight)), height: Double(size.height))
+                    let r = CGRect(x: CGFloat(M.rulerKnobX), y: CGFloat(k.y), width: CGFloat(M.rulerKnobWidth), height: CGFloat(k.height))
+                    ctx.fill(Path(roundedRect: r, cornerRadius: r.width / 2), with: .color(Color(mergeHex: knob)))
+                }
                 for m in marks {
-                    ctx.fill(Path(CGRect(x: CGFloat(MergeSheetMetrics.rulerMarkX), y: (CGFloat(m.position) * size.height).rounded(.down),
-                                         width: CGFloat(MergeSheetMetrics.rulerMarkWidth), height: 1)),
+                    ctx.fill(Path(CGRect(x: CGFloat(M.rulerMarkX), y: CGFloat(M.rulerMarkY(share: m.position, height: Double(size.height))),
+                                         width: CGFloat(M.rulerMarkWidth), height: 1)),
                              with: .color(Color(mergeHex: m.isConflict ? p.rulerConflict : p.rulerClean)))
                 }
             }
             .contentShape(Rectangle())
-            .onTapGesture(count: 1, coordinateSpace: .local) { pt in onClick(max(0, min(1, Double(pt.y / max(1, geo.size.height))))) }
+            .onTapGesture(count: 1, coordinateSpace: .local) { pt in
+                let inset = M.rulerTrackInset
+                onClick(max(0, min(1, (Double(pt.y) - inset) / max(1, Double(geo.size.height) - 2 * inset))))
+            }
         }
     }
 }

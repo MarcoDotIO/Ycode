@@ -50,6 +50,19 @@ final class DrawnControlElement: NSAccessibilityElement {
         press()
         return true
     }
+
+    override func accessibilityHitTest(_ point: NSPoint) -> Any? { self }
+}
+
+extension NSView {
+    /// The accessibility hit test of a view that draws its controls itself:
+    /// the drawn control under `point` (screen coordinates), else nil. The
+    /// hit test is answered on the main thread.
+    nonisolated func drawnControl(at point: NSPoint, in elements: @escaping @MainActor () -> [DrawnControlElement]) -> Any? {
+        nonisolated(unsafe) var found: Any?
+        MainActor.assumeIsolated { found = elements().first { $0.accessibilityFrame().contains(point) } }
+        return found
+    }
 }
 
 /// The Choose menu's pointer tracking (`merge-sheet.md` §13.6): AppKit

@@ -61,8 +61,9 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         // The title: semibold 17 points (R4.2), #4D4D4D, its text 12.5 after the capsule, centred on y 26.
         let title = rect(wc.titleLabel, in: w)
         #expect(abs(title.minX + 3.5 - SettingsMetrics.titleX) <= px(w) && abs(title.midY - 26) <= 1, "title at \(title)")
-        #expect(wc.titleLabel.font?.pointSize == 17)
-        #expect(NSFontManager.shared.weight(of: wc.titleLabel.font!) == NSFontManager.shared.weight(of: .systemFont(ofSize: 17, weight: .semibold)))
+        // 15 points since round 5 (R5.3).
+        #expect(wc.titleLabel.font?.pointSize == SettingsMetrics.titleFontSize)
+        #expect(NSFontManager.shared.weight(of: wc.titleLabel.font!) == NSFontManager.shared.weight(of: .systemFont(ofSize: 15, weight: .semibold)))
         var light: NSColor?
         NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance { light = wc.titleLabel.textColor?.usingColorSpace(.sRGB) }
         #expect(light.map { Int(($0.redComponent * 255).rounded()) } == 0x4D)

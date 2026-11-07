@@ -71,7 +71,7 @@ struct MergeAlertCard: View {
                 .offset(x: textX, y: CGFloat(M.alertMessageTop) + 30)
                 .shellTarget("merge alert branch")
             }
-            Button { if !isLeaving { scm.cancelMergeAlert() } } label: {
+            Button(role: .cancel) { if !isLeaving { scm.cancelMergeAlert() } } label: {
                 MergeButtonLabel(title: MergeSheetText.cancel, isDefault: false, palette: p,
                                  width: CGFloat(M.alertCancelWidth), height: CGFloat(M.alertButtonHeight))
             }

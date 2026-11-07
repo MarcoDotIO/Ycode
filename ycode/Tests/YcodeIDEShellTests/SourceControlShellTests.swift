@@ -80,7 +80,8 @@ struct GitPackage {
         #expect(rows.first?.title == "Demo")
         #expect(rows.first?.detail == "main")
         #expect(rows[1].title == "Uncommitted Changes")
-        #expect(rows[1].trailing == "2")
+        // The count right after the title (cross-platform-parity.md §7).
+        #expect(rows[1].detail == "2" && rows[1].trailing == nil)
         #expect(rows.dropFirst(2).map(\.title) == ["Greeting", "New"])
         #expect(rows.dropFirst(2).map(\.badge) == ["M", "?"])
         // The project navigator shows the same letters on the files.

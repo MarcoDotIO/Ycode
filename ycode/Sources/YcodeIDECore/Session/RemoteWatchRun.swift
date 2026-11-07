@@ -198,7 +198,7 @@ extension WorkspaceSession {
             return
         }
         guard watch.settings.isConfigured else {
-            appendConsole("Ycode: set the remote simulator in Settings ▸ Simulators first.\n")
+            appendConsole("Ycode: set the remote simulator in Settings ▸ Components ▸ Simulator Host first.\n")
             return
         }
         let state = SimulatorRunState(target: .remote(destination: watch.settings.destination), app: app)

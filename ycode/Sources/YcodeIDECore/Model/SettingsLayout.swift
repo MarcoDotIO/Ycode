@@ -16,7 +16,11 @@ public enum SettingsLayout {
     /// The title's ink starts 12.5 after the capsule, centred on y 26.
     public static let titleX: CGFloat = 273.5
     public static let titleCenterY: CGFloat = 26
-    public static let titleFontSize: CGFloat = 17
+    /// 15 points (R5.3): the reference's "General" is 54.5 wide with its
+    /// stem 2.0–2.1, the same weight as Ycode's former 17-point title scaled
+    /// down by 10–12.5 %; the spec's "cap height 12" is the ink from the
+    /// "l"'s top to the "G"'s overshoot, which a 15-point face fills.
+    public static let titleFontSize: CGFloat = 15
     /// The title is semibold (R4.2: the stem 2.3 points at 17).
     public static let titleIsSemibold = true
 
