@@ -1,4 +1,5 @@
 import Foundation
+import YcodeSubprocess
 
 /// Code coverage of a test run, gathered with the toolchain's open-source
 /// `llvm-cov` from the merged profile, and its two result-bundle forms: the
@@ -231,11 +232,11 @@ public enum Coverage {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: tool)
         p.arguments = ["--simplified"]
-        let out = Pipe()
-        p.standardOutput = out
+        guard let out = try? SpawnPipe(childReads: false) else { return [:] }
+        p.standardOutput = out.childEnd
         p.standardInput = try? FileHandle(forReadingFrom: input)
         p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return [:] }
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: out)) != nil else { return [:] }
         let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         p.waitUntilExit()
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)

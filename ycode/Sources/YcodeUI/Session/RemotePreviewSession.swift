@@ -194,7 +194,7 @@ public final class RemotePreviewSession {
             p.standardOutput = FileHandle.nullDevice
             p.standardError = FileHandle.nullDevice
             if let payload, let h = try? FileHandle(forReadingFrom: payload) { p.standardInput = h } else { p.standardInput = FileHandle.nullDevice }
-            guard (try? p.run()) != nil else { return 127 }
+            guard (try? p.runWithSignalsUnblocked()) != nil else { return 127 }
             p.waitUntilExit()
             return p.terminationStatus
         }.value

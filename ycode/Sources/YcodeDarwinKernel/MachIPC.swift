@@ -592,6 +592,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
             p.importanceCount = 0
             p.creditedProcess = nil
         }
+        dropSyncPush(p)
         for m in queued { destroyMessage(m) }
         p.receiveWaiters.wakeAll()
         p.sendWaiters.wakeAll()
@@ -674,6 +675,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
         if p.messages.isEmpty { p.readyStamp = nextStamp() }
         p.messages.append(m)
         if m.importance { importanceQueued(on: p, id: m.id) }
+        if let t = m.syncPush { syncPushQueued(t, on: p) }
         p.receiveWaiters.wakeAll()
         for s in p.sets { s.waiters.wakeAll() }
         // The hooks of the space that holds the receive right.
@@ -693,6 +695,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     func dequeue(_ p: IPCPort) -> (KMessage, seqno: UInt32) {
         let m = p.messages.popFirst()!
         if m.importance { importanceDequeued(from: p) }
+        if let t = m.syncPush { syncPushDequeued(t, from: p) }
         let seqno = p.seqno
         p.seqno &+= 1
         if !p.messages.isEmpty { p.readyStamp = nextStamp() }
@@ -774,6 +777,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
             _ = portDeallocate(context.portName)
             if let thread, thread !== mainThreadPort { portDeath(thread) }
             specialReplyPorts[context.threadID] = nil
+            endSyncWait(context)
         }
     }
 

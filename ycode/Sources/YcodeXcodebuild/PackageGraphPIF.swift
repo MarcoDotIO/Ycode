@@ -372,10 +372,10 @@ public struct PackageGraphLoader: Sendable {
         p.executableURL = URL(fileURLWithPath: tool)
         p.arguments = args
         p.standardInput = FileHandle.nullDevice
-        let out = Pipe(), err = Pipe()
-        p.standardOutput = out
-        p.standardError = err
-        guard (try? p.run()) != nil else { return (-1, Data(), "cannot run \(tool)") }
+        guard let out = try? SpawnPipe(childReads: false), let err = try? SpawnPipe(childReads: false) else { return (-1, Data(), "cannot run \(tool)") }
+        p.standardOutput = out.childEnd
+        p.standardError = err.childEnd
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: out, err)) != nil else { return (-1, Data(), "cannot run \(tool)") }
         // stderr is read on another thread so that neither pipe fills up.
         final class Box: @unchecked Sendable { var data = Data() }
         let box = Box()

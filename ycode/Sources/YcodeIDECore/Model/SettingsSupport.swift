@@ -1,4 +1,5 @@
 import Foundation
+import YcodeSubprocess
 
 // The toolkit-free parts of Settings that both IDEs use: the AppKit panes
 // (YcodeUI) and the SwiftUI panes of the Linux IDE (ycode-ide). See
@@ -198,10 +199,10 @@ public enum GitGlobalConfig {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         p.arguments = ["git", "config", "--global", "--get", key]
-        let out = Pipe()
-        p.standardOutput = out
+        guard let out = try? SpawnPipe(childReads: false) else { return nil }
+        p.standardOutput = out.childEnd
         p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return nil }
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: out)) != nil else { return nil }
         let d = out.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         let s = String(decoding: d, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)

@@ -3,6 +3,7 @@ import YcodeDeviceModel
 import YcodeDeviceUI
 import YcodeDisplayStream
 import YcodeIDECore
+import YcodeSubprocess
 
 /// One device's live display in the IDE: the ssh forward and the session
 /// that the hub's canvas and the device's compact window show. The forward
@@ -53,7 +54,7 @@ public final class RemoteDisplayLink {
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
         p.standardInput = FileHandle.nullDevice
-        do { try p.run(); forward = p } catch { forward = nil }
+        do { try p.runWithSignalsUnblocked(); forward = p } catch { forward = nil }
     }
 
     public func close() {

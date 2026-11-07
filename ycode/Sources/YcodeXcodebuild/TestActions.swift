@@ -1,4 +1,5 @@
 import Foundation
+import YcodeSubprocess
 import YcodeProject
 import YcodeWorkspace
 
@@ -305,11 +306,11 @@ enum TestActions {
         p.executableURL = URL(fileURLWithPath: tool)
         p.arguments = args
         p.environment = environment
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = lines == nil ? FileHandle.nullDevice : pipe
+        guard let pipe = try? SpawnPipe(childReads: false) else { return (-1, "") }
+        p.standardOutput = pipe.childEnd
+        p.standardError = lines == nil ? FileHandle.nullDevice : pipe.childEnd
         p.standardInput = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return (-1, "") }
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: pipe)) != nil else { return (-1, "") }
         var all = Data()
         var buffer = Data()
         let h = pipe.fileHandleForReading

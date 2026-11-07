@@ -201,7 +201,10 @@ extension MachIPC {
             return nameResult(copyoutNewSend(hostPort))
 
         case Trap.machMsg, Trap.machMsgOverwrite:
-            return machMsgTrap(n, &frame, context: context, memory: memory)
+            let outcome = machMsgTrap(n, &frame, context: context, memory: memory)
+            // The sender's wait for its reply is over (scheduling-policy.md §4.10).
+            if context.syncWait != nil { endSyncWait(context) }
+            return outcome
 
         case Trap.taskForPid:
             // Ycode (`processes.md` §3.5): self only; any other pid fails.
@@ -247,7 +250,9 @@ extension MachIPC {
             return kr(result, " [pid \(pidOut)]")
 
         case Trap.machMsg2:
-            return machMsg2Trap(&frame, context: context, memory: memory)
+            let outcome = machMsg2Trap(&frame, context: context, memory: memory)
+            if context.syncWait != nil { endSyncWait(context) }
+            return outcome
 
         case Trap.portGetAttributes:
             call.set("mach_port_get_attributes(target=\(hx(u32(0))), name=\(hx(u32(1))), flavor=\(u32(2)), "

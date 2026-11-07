@@ -2,6 +2,7 @@
 import AppKit
 #endif
 import Foundation
+import YcodeSubprocess
 import YcodeAssistant
 
 /// The app-wide parts of the coding assistant: where secrets are kept, the
@@ -49,7 +50,7 @@ public final class CodingAssistantServices {
         p.arguments = ["xdg-open", url.absoluteString]
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
-        do { try p.run() } catch { return false }
+        do { try p.runWithSignalsUnblocked() } catch { return false }
         return true
         #endif
     }

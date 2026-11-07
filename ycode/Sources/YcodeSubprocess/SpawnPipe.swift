@@ -75,3 +75,14 @@ public final class SpawnPipe: @unchecked Sendable {
         [fileHandleForReading, fileHandleForWriting].allSatisfy { fcntl($0.fileDescriptor, F_GETFD) & FD_CLOEXEC != 0 }
     }
 }
+
+extension Process {
+    /// `runWithSignalsUnblocked()` for a child whose standard streams are
+    /// `pipes`: afterwards, whether or not the child started, this process's
+    /// copies of their child ends are closed (`SpawnPipe.closeChildEnd()`),
+    /// as `Process` does for a `Pipe`.
+    public func runWithSignalsUnblocked(closingChildEndsOf pipes: SpawnPipe?...) throws {
+        defer { pipes.forEach { $0?.closeChildEnd() } }
+        try runWithSignalsUnblocked()
+    }
+}

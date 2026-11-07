@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import YcodeIDECore
 import YcodeIDEShell
+import YcodeSubprocess
 #if os(Linux)
 import OVPlatform
 #endif
@@ -39,10 +40,10 @@ extension ShellDriver {
                 let p = Process()
                 p.executableURL = URL(fileURLWithPath: "/usr/bin/xclip")
                 p.arguments = ["-o", "-selection", "clipboard"]
-                let out = Pipe()
-                p.standardOutput = out
+                let out = try? SpawnPipe(childReads: false)
+                p.standardOutput = out?.childEnd
                 p.standardError = FileHandle.nullDevice
-                if (try? p.run()) != nil {
+                if let out, (try? p.runWithSignalsUnblocked(closingChildEndsOf: out)) != nil {
                     // xclip asks this app for the selection: keep the run loop going.
                     for _ in 0..<40 where p.isRunning { await pause(0.05) }
                     if p.isRunning { p.terminate() }

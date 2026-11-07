@@ -248,10 +248,10 @@ public struct PackageResolver: Sendable {
         p.arguments = args
         if let dir { p.currentDirectoryURL = dir }
         p.environment = ProcessInfo.processInfo.environment.merging(environment) { $1 }
-        let out = Pipe(), err = Pipe()
-        p.standardOutput = out
-        p.standardError = err
-        try p.run()
+        let out = try SpawnPipe(childReads: false), err = try SpawnPipe(childReads: false)
+        p.standardOutput = out.childEnd
+        p.standardError = err.childEnd
+        try p.runWithSignalsUnblocked(closingChildEndsOf: out, err)
         let data = out.fileHandleForReading.readDataToEndOfFile()
         let edata = err.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()

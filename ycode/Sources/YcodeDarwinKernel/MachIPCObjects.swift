@@ -149,6 +149,16 @@ final class IPCPort {
     var tempOwner = false
     weak var watchProcess: DarwinProcess?
     weak var creditedProcess: DarwinProcess?
+    /// The sync-wait push (`scheduling-policy.md` §4.10): the queued
+    /// requests' classes (16 bits per class) and the image they are credited
+    /// to; the job this port was given to as a watch port at spawn (any
+    /// type) and the space that held the receive right then.
+    var syncPushCounts: UInt64 = 0
+    weak var syncPushImage: DarwinKernel?
+    weak var pushWatchProcess: DarwinProcess?
+    weak var pushWatchHolder: MachIPC?
+    /// An on-demand start's push on this watch port (`YCODE_DEMAND_START_PUSH`).
+    var demandPush: SyncWaitPush?
     let receiveWaiters = WaitQueue()
     let sendWaiters = WaitQueue()
     /// Queue slots given to blocked senders that were woken for them and
@@ -292,6 +302,8 @@ struct KMessage {
     /// importance; the class of a synchronous sender waiting for the reply (−1 none).
     var importance = false
     var pushClass: Int8 = -1
+    /// The push of a synchronous request (`scheduling-policy.md` §4.10), shared by copies.
+    var syncPush: SyncWaitPush?
 
     /// The received size without trailer (§2.5).
     var size: Int {

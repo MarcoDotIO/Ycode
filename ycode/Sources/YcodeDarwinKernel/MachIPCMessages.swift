@@ -436,7 +436,7 @@ extension MachIPC {
         }
         let trailer = MachMsgOption.trailerSize(r.options)
         // A new receive ends the servicing episode of the last one (scheduling-policy.md §4.3).
-        if let context, context.carriedImportance != nil || context.ipcPushClass >= 0 { kernel?.endServicing(context) }
+        if let context, context.hasServicingState { kernel?.endServicing(context) }
         let deadline: UInt64? = r.options & MachMsgOption.rcvTimeout != 0
             ? KernelClock.deadline(afterNanoseconds: UInt64(r.timeout) * 1_000_000) : nil
         switch awaitMessage(name: r.name, slot: i, port: port, set: set, deadline: deadline, mayBlock: r.mayBlock) {
@@ -511,6 +511,7 @@ extension MachIPC {
                                          identity: identity, note: " [too large: \(size)+\(trailer), stays queued]")
             }
             let (m, seqno) = dequeue(source)
+            if source.demandPush != nil { handOverDemandStartPush(source, to: nil) }
             let header = bareHeader(m, local: sourceName)
             let bytes = header + makeTrailer(m, seqno: seqno, port: source, size: trailer)
             guard r.size >= 24 else { return MachReceiveResult(code: MachMsgReturn.rcvInvalidData) }
@@ -522,6 +523,7 @@ extension MachIPC {
         }
         let (m, seqno) = dequeue(source)
         if m.importance || m.pushClass >= 0 { receivedForScheduling(m, by: context) }
+        if source.demandPush != nil { handOverDemandStartPush(source, to: context) }
         let out = copyoutReceived(m, from: source, options: r.options, buffer: r.buffer, memory: memory)
         if out.headerFailed {
             let header = bareHeader(m, local: sourceName, rightsAlreadyHandled: true)

@@ -111,6 +111,44 @@ import Darwin
         #expect(state.wasCancelled)
     }
 
+    /// The parent's ends see end of file when the child exits: the child
+    /// ends are closed here once it has started, and also when it cannot.
+    @Test func runClosesTheChildEnds() throws {
+        let out = try SpawnPipe(childReads: false), inp = try SpawnPipe(childReads: true)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", "cat; echo done"]
+        p.standardInput = inp.childEnd
+        p.standardOutput = out.childEnd
+        try p.runWithSignalsUnblocked(closingChildEndsOf: out, inp)
+        inp.parentEnd.writeQuietly(Data("in\n".utf8))
+        try inp.parentEnd.close()
+        #expect(String(decoding: out.parentEnd.readDataToEndOfFile(), as: UTF8.self) == "in\ndone\n")
+        p.waitUntilExit()
+
+        let missing = try SpawnPipe(childReads: false)
+        let q = Process()
+        q.executableURL = URL(fileURLWithPath: "/nonexistent/tool")
+        q.standardOutput = missing.childEnd
+        #expect(throws: (any Error).self) { try q.runWithSignalsUnblocked(closingChildEndsOf: missing, nil) }
+        #expect(missing.parentEnd.readDataToEndOfFile().isEmpty)
+    }
+
+    /// Ending the iteration early (a `break`) also stops the child, once
+    /// nothing holds the stream any more: dropping the last iterator of an
+    /// `AsyncThrowingStream` ends it as cancelled.
+    @Test func breakingOutOfTheLoopInterruptsTheChild() async throws {
+        let dir = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let marker = dir.appendingPathComponent("interrupted")
+        let script = "trap 'echo yes > \"\(marker.path)\"; exit 130' INT; echo ready; while :; do sleep 0.1; done"
+        let started = Date()
+        for try await l in StreamingSubprocess.lines(URL(fileURLWithPath: "/bin/sh"), ["-c", script]) where l == "ready" { break }
+        for _ in 0..<30 where !FileManager.default.fileExists(atPath: marker.path) { try await Task.sleep(nanoseconds: 100_000_000) }
+        #expect(FileManager.default.fileExists(atPath: marker.path))
+        #expect(Date().timeIntervalSince(started) < 4)
+    }
+
     /// A child that exits without reading its input does not take this
     /// process down with SIGPIPE.
     @Test func aChildThatIgnoresItsInputIsHarmless() async throws {

@@ -150,6 +150,12 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible, 
         }
     }
     var carriedImportance: DarwinProcess?
+    /// The synchronous request this thread waits on (§4.10; port lock G).
+    var syncWait: SyncWaitPush?
+    /// The on-demand start push this thread took over with its first message (§4.10; G).
+    var demandServing: SyncWaitPush?
+    /// The thread's servicing episode carries something to end (§4.3, §4.6, §4.10).
+    var hasServicingState: Bool { carriedImportance != nil || demandServing != nil || ipcPushClass >= 0 }
     var threadDarwinBG = false
     /// The work interval this thread joined (`WorkInterval.swift`; only the
     /// thread itself changes it). Not kept by snapshots.
@@ -482,7 +488,7 @@ extension DarwinKernel {
         }
         ctx.isAlive = false
         withEvents { threadsByPort[ctx.portName] = nil }
-        if ctx.carriedImportance != nil { withPorts { endServicing(ctx) } }
+        if ctx.carriedImportance != nil || ctx.demandServing != nil { withPorts { endServicing(ctx) } }
         if semaphoreName != 0 { semaphore(named: semaphoreName)?.signal() }
         // The reference on the thread's own name is dropped with the thread
         // (below); any other name passed is dropped here.

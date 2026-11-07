@@ -1,4 +1,5 @@
 import Foundation
+import YcodeSubprocess
 import YcodeDebug
 
 /// A log action's message (`specs/ide/debug.md` §Breakpoint editing): text
@@ -185,6 +186,6 @@ public enum BreakpointSound {
         p.arguments = player.hasSuffix("canberra-gtk-play") ? ["-f", file] : [file]
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
-        try? p.run()
+        try? p.runWithSignalsUnblocked()
     }
 }

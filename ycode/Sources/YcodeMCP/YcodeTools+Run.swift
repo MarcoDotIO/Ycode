@@ -2,6 +2,7 @@ import Foundation
 import YcodeAssistant
 import YcodeBuild
 import YcodeIDECore
+import YcodeSubprocess
 
 extension YcodeMCPHost {
     var runTools: [MCPTool] {
@@ -112,9 +113,10 @@ extension YcodeMCPHost {
         p.executableURL = URL(fileURLWithPath: exe)
         p.arguments = arguments
         p.currentDirectoryURL = directory
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = pipe
+        let pipe: SpawnPipe
+        do { pipe = try SpawnPipe(childReads: false) } catch { throw MCPToolError("cannot launch \(exe): \(error.localizedDescription)") }
+        p.standardOutput = pipe.childEnd
+        p.standardError = pipe.childEnd
         p.standardInput = FileHandle.nullDevice
         let id = "run-\(runOrder.count + 1)"
         let run = HostRun(id: id, executable: exe, process: p)
@@ -128,7 +130,7 @@ extension YcodeMCPHost {
             if case let rest?? = try? pipe.fileHandleForReading.readToEnd(), !rest.isEmpty { run.append(rest) }
             run.finish(proc.terminationStatus)
         }
-        do { try p.run() } catch { throw MCPToolError("cannot launch \(exe): \(error.localizedDescription)") }
+        do { try p.runWithSignalsUnblocked(closingChildEndsOf: pipe) } catch { throw MCPToolError("cannot launch \(exe): \(error.localizedDescription)") }
         runs[id] = run
         runOrder.append(id)
         let deadline = Date().addingTimeInterval(wait)

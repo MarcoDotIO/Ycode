@@ -229,12 +229,12 @@ extension ThreadContext {
         max(dispatchOverrideQoS, maxExplicitOverride)
     }
 
-    /// The class the host runs this thread at (§4.6, §4.7): its class, raised
-    /// to its image's send push.
+    /// The class the host runs this thread at (§4.6, §4.7, §4.10): its class,
+    /// raised to its image's send push and sync-wait push.
     public var hostClass: Int {
         let c = schedClass
         guard let k = kernel else { return c }
-        return max(c, k.sendPushClass)
+        return max(c, k.imagePushClass)
     }
 
 }
@@ -362,6 +362,7 @@ extension DarwinKernel {
             t.ipcPushClass = -1
             refreshSchedClass(t)
         }
+        if t.demandServing != nil { (machIPC as? MachIPC)?.endDemandServing(t) }
     }
 
     // MARK: ulock inheritance (§4.6)
@@ -426,6 +427,7 @@ extension MachIPC {
         }
         if SchedPolicy.qosEnabled, options & MachMsgOption.rcvMsg != 0, case .sendOnce = m.reply, let ctx {
             m.pushClass = Int8(ctx.schedClass)
+            if SchedPolicy.syncPushEnabled { makeSyncPush(&m, ctx: ctx) }
         }
     }
 
@@ -458,7 +460,12 @@ extension MachIPC {
             p.changeImportance(1)
         }
         if m.pushClass >= 0, SchedPolicy.qosEnabled {
-            context.ipcPushClass = Int(m.pushClass)
+            var cls = Int(m.pushClass)
+            if let t = m.syncPush {
+                syncPushReceived(t, by: context)
+                cls = max(cls, t.cls)
+            }
+            context.ipcPushClass = cls
             k.refreshSchedClass(context)
         }
     }
@@ -636,7 +643,7 @@ extension DarwinSystem {
                 + "(\(SchedStats.fastRefreshes.load(ordering: .relaxed)) recomputations without L0); "
                 + "importance: \(s.donationPorts) receiving ports, \(s.tempOwnerPorts) temporary owners, "
                 + "\(s.importanceMessages) messages, \(s.refusedByPort) donor sends to other ports; "
-                + "send pushes \(SchedStats.sendPushes.load(ordering: .relaxed))"
+                + "send pushes \(SchedStats.sendPushes.load(ordering: .relaxed))" + SchedStats.syncPushReport
             line += "; " + lock.admissionReport
             return line
         }

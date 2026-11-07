@@ -12,6 +12,7 @@
 
 import CYcodeCodec
 import Foundation
+import YcodeSubprocess
 import YcodeDisplayStream
 import YcodeRemoteViewer
 
@@ -1166,15 +1167,15 @@ final class XRGPUSampler: @unchecked Sendable {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: tool)
         p.arguments = ["--query-gpu=utilization.gpu", "--format=csv,noheader,nounits", "-lms", "1000"]
-        let pipe = Pipe()
-        p.standardOutput = pipe
+        guard let pipe = try? SpawnPipe(childReads: false) else { return }
+        p.standardOutput = pipe.childEnd
         p.standardError = FileHandle.nullDevice
         pipe.fileHandleForReading.readabilityHandler = { [weak self] h in
             let text = String(decoding: h.availableData, as: UTF8.self)
             let values = text.split(whereSeparator: \.isNewline).compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
             self?.lock.withLock { self?.samples += values }
         }
-        do { try p.run(); process = p } catch {}
+        do { try p.runWithSignalsUnblocked(closingChildEndsOf: pipe); process = p } catch { pipe.fileHandleForReading.readabilityHandler = nil }
     }
 
     func stop() -> String? {

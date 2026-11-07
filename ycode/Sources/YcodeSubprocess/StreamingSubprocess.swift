@@ -9,9 +9,14 @@ import Darwin
 /// that report progress as they work (JSON-lines event streams). Nothing
 /// here blocks the caller: the child is read on its own threads.
 ///
-/// Cancelling the consumer (ending the iteration, or cancelling the task
-/// that iterates) interrupts the child: SIGINT first, so a tool can end its
-/// turn cleanly, then SIGTERM after `interruptGrace`, then SIGKILL.
+/// Cancelling the task that iterates interrupts the child: SIGINT first, so
+/// a tool can end its turn cleanly, then SIGTERM after `interruptGrace`,
+/// then SIGKILL. Ending the iteration early (a `break`) does the same, but
+/// only once nothing holds the stream any more: the stream ends as
+/// cancelled when its last iterator and the stream value itself are gone.
+/// For `for try await line in StreamingSubprocess.lines(…)` that is at the
+/// `break`; a stream that something else still holds (a stored property)
+/// keeps the child running until it is released.
 public enum StreamingSubprocess {
     /// The command exited with a non-zero status.
     public struct ExitError: Error, Sendable, CustomStringConvertible {

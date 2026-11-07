@@ -53,19 +53,23 @@ public protocol DAPTransport: AnyObject, Sendable {
 /// Runs a debug adapter (normally `lldb-dap`) and talks over its stdio.
 public final class ProcessTransport: DAPTransport, @unchecked Sendable {
     public let process = Process()
-    private let input = Pipe()
-    private let output = Pipe()
+    private let lock = NSLock()
+    /// The adapter's standard input, made by `start` with its output:
+    /// close-on-exec pipes, so no other child inherits them (`SpawnPipe`).
+    private var input: SpawnPipe?
 
     public init(executable: String, arguments: [String] = []) {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
-        process.standardInput = input
-        process.standardOutput = output
         process.standardError = FileHandle.standardError
     }
 
     public func start(receiving: @escaping @Sendable (Data?) -> Void) throws {
-        try process.run()
+        let input = try SpawnPipe(childReads: true), output = try SpawnPipe(childReads: false)
+        process.standardInput = input.childEnd
+        process.standardOutput = output.childEnd
+        try process.runWithSignalsUnblocked(closingChildEndsOf: input, output)
+        lock.withLock { self.input = input }
         let reader = output.fileHandleForReading
         Thread {
             while true {
@@ -78,13 +82,13 @@ public final class ProcessTransport: DAPTransport, @unchecked Sendable {
     }
 
     public func send(_ data: Data) {
-        try? input.fileHandleForWriting.write(contentsOf: data)
+        try? lock.withLock { input }?.fileHandleForWriting.write(contentsOf: data)
     }
 
     /// Closes the adapter's input and sends SIGTERM; an adapter still
     /// running two seconds later gets SIGKILL, so none outlives its client.
     public func close() {
-        try? input.fileHandleForWriting.close()
+        try? lock.withLock { input }?.fileHandleForWriting.close()
         guard process.isRunning else { return }
         process.terminate()
         let p = process
@@ -111,10 +115,10 @@ public enum LLDBDAP {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
         p.arguments = ["-f", "lldb-dap"]
-        let out = Pipe()
-        p.standardOutput = out
+        let out = try? SpawnPipe(childReads: false)
+        p.standardOutput = out?.childEnd
         p.standardError = FileHandle.nullDevice
-        if (try? p.run()) != nil {
+        if let out, (try? p.runWithSignalsUnblocked(closingChildEndsOf: out)) != nil {
             p.waitUntilExit()
             let path = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)

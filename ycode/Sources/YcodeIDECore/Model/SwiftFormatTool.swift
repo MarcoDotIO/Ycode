@@ -25,11 +25,12 @@ public enum SwiftFormatTool {
         let p = Process()
         p.executableURL = tool
         p.arguments = args
-        let out = Pipe(), err = Pipe(), inp = Pipe()
-        p.standardOutput = out
-        p.standardError = err
-        p.standardInput = input == nil ? FileHandle.nullDevice : inp
-        guard (try? p.run()) != nil else { return nil }
+        guard let out = try? SpawnPipe(childReads: false), let err = try? SpawnPipe(childReads: false),
+              let inp = try? SpawnPipe(childReads: true) else { return nil }
+        p.standardOutput = out.childEnd
+        p.standardError = err.childEnd
+        p.standardInput = input == nil ? FileHandle.nullDevice : inp.childEnd
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: out, err, inp)) != nil else { return nil }
         if let input {
             // Write from another thread so a large output cannot block us; a
             // thread of its own, not a global queue (see Subprocess.run).

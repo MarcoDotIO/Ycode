@@ -149,7 +149,7 @@ public enum ProjectPlugins {
         p.environment = ProcessInfo.processInfo.environment.merging(c.environment) { $1 }
         if let d = c.workingDirectory { p.currentDirectoryURL = URL(fileURLWithPath: d) }
         p.standardInput = FileHandle.nullDevice
-        try p.run()
+        try p.runWithSignalsUnblocked()
         p.waitUntilExit()
         guard p.terminationStatus == 0 else {
             throw PIFGenerator.GenerationError.unsupported("prebuild command \(c.displayName ?? c.executable) failed (\(p.terminationStatus))")
@@ -291,11 +291,11 @@ public enum ProjectPlugins {
             let commandsFile = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-plugin-\(UUID().uuidString).json")
             defer { try? FileManager.default.removeItem(at: commandsFile) }
             p.environment = ProcessInfo.processInfo.environment.merging(["YCODE_PLUGIN_COMMANDS": commandsFile.path]) { $1 }
-            let input = Pipe(), output = Pipe(), errors = Pipe()
-            p.standardInput = input
-            p.standardOutput = output
-            p.standardError = errors
-            try p.run()
+            let input = try SpawnPipe(childReads: true), output = try SpawnPipe(childReads: false), errors = try SpawnPipe(childReads: false)
+            p.standardInput = input.childEnd
+            p.standardOutput = output.childEnd
+            p.standardError = errors.childEnd
+            try p.runWithSignalsUnblocked(closingChildEndsOf: input, output, errors)
             var length = UInt64(message.count).littleEndian
             input.fileHandleForWriting.write(withUnsafeBytes(of: &length) { Data($0) } + message)
             final class Box: @unchecked Sendable { var data = Data() }

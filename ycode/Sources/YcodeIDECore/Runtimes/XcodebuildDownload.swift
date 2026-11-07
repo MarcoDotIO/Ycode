@@ -6,6 +6,7 @@
 // bundle for a Linux computer or a simulator host (route A there).
 
 import Foundation
+import YcodeSubprocess
 
 public struct XcodebuildDownload: Sendable, Equatable {
     public var platform: SimPlatform
@@ -110,7 +111,7 @@ public final class XcodebuildDownloadRun: @unchecked Sendable {
     public func cancel() {
         let p: Process? = lock.withLock { interrupted = true; return process }
         guard let p, p.isRunning else { return }
-        p.interrupt()
+        ChildSignals.send(SIGINT, to: p.processIdentifier)
         DispatchQueue.global().asyncAfter(deadline: .now() + 5) { if p.isRunning { p.terminate() } }
     }
 
@@ -123,12 +124,15 @@ public final class XcodebuildDownloadRun: @unchecked Sendable {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: tool)
         p.arguments = Array(download.arguments(tool: tool).dropFirst())
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = pipe
+        let pipe: SpawnPipe
+        do { pipe = try SpawnPipe(childReads: false) } catch {
+            return .failed(127, "\(tool): \(error.localizedDescription)")
+        }
+        p.standardOutput = pipe.childEnd
+        p.standardError = pipe.childEnd
         p.standardInput = FileHandle.nullDevice
         lock.withLock { process = p }
-        do { try p.run() } catch {
+        do { try p.runWithSignalsUnblocked(closingChildEndsOf: pipe) } catch {
             return .failed(127, "\(tool): \(error.localizedDescription)")
         }
         return await withCheckedContinuation { (k: CheckedContinuation<Outcome, Never>) in

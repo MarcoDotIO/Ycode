@@ -315,10 +315,10 @@ public enum PreviewChild {
         p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         p.arguments = arguments
         p.standardInput = FileHandle.nullDevice
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = pipe
-        guard (try? p.run()) != nil else { return (127, "could not run \(arguments.first ?? "")") }
+        guard let pipe = try? SpawnPipe(childReads: false) else { return (127, "could not run \(arguments.first ?? "")") }
+        p.standardOutput = pipe.childEnd
+        p.standardError = pipe.childEnd
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: pipe)) != nil else { return (127, "could not run \(arguments.first ?? "")") }
         final class Box: @unchecked Sendable {
             let lock = NSLock()
             var data = Data()
@@ -337,8 +337,9 @@ public enum PreviewChild {
         }
         var note = ""
         if !exited(within: timeout) {
+            // As Control-C: the build or compiler and the jobs it started.
             for sig in [SIGINT, SIGTERM, SIGKILL] where p.isRunning {
-                kill(p.processIdentifier, sig)
+                ChildSignals.send(sig, to: p.processIdentifier)
                 if exited(within: 2) { break }
             }
             note = "\n\(arguments.first ?? "") did not finish in \(Int(timeout)) s and was stopped"
@@ -354,7 +355,7 @@ public enum PreviewChild {
 /// (`requestTimeout`), and it ends with its parent.
 public final class PreviewHostProcess: @unchecked Sendable {
     private let process = Process()
-    private let input = Pipe(), output = Pipe()
+    private let input: SpawnPipe, output: SpawnPipe
     private let ioLock = NSLock()
     private var buffer = Data()
     private var inputClosed = false
@@ -363,6 +364,8 @@ public final class PreviewHostProcess: @unchecked Sendable {
     nonisolated(unsafe) public static var requestTimeout: TimeInterval = 120
 
     public init(executable: URL) throws {
+        input = try SpawnPipe(childReads: true)
+        output = try SpawnPipe(childReads: false)
         #if os(Linux)
         // A write to a host that ended fails with EPIPE instead of ending the IDE.
         signal(SIGPIPE, SIG_IGN)
@@ -370,10 +373,10 @@ public final class PreviewHostProcess: @unchecked Sendable {
         _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
         #endif
         process.executableURL = executable
-        process.standardInput = input
-        process.standardOutput = output
+        process.standardInput = input.childEnd
+        process.standardOutput = output.childEnd
         process.standardError = FileHandle.nullDevice
-        try process.run()
+        try process.runWithSignalsUnblocked(closingChildEndsOf: input, output)
     }
 
     public var pid: Int32 { process.processIdentifier }

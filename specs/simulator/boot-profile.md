@@ -3779,6 +3779,198 @@ unchanged.
   code (3.4 s at the end, the home screen's dock); LaunchServices' messages
   wait for the dirty-room check of §20.5.
 
+## 21. The band as the default, the sync-wait push, on-demand start priority (agent B3-BOOT6, 2026-11-07)
+
+§20.10's next step (a push from a waiting synchronous sender onto whoever
+will receive its request, before it receives, through chains) and §20.7's
+containermanagerd, with Ycode's own simulator. Target: home_s ≤ 21.4 s,
+full boot, every service on (networking and the Duo's inner panel
+included).
+
+### 21.1 Conditions
+
+- Thor; a fresh copy of the golden device (the same source as §20's) in
+  the agent's own folder, booted nine times at that path before any timed
+  series (five held 5 s after home, four held 120 s), as in §18; full boot,
+  `YCODE_HOME_WATCH`, stopped 5 s after home (diagnostic boots 10–30 s,
+  fidelity boots 700 s), no save.
+- Builds: *base* = `4205f006` (the band on by default for `--device`
+  runs, §20.4); *tree* = `5f9af1a3` (§21.3's push, off by default);
+  *tree3* = `4636eefa` and *tree4* = `9c1f30f8` (§21.4's on-demand
+  forms, off by default). With the new switches off every build is the
+  main line's program.
+- Timed series under the shared boot-timing lock, each boot started with
+  no other `ycode-simd` and a 1-minute load under 4 (3.38–3.99; S1 1.09
+  once), arms rotated each round. Series in the evening order S1
+  05:42–05:53, W1 05:57–06:25, W2 06:40–07:08, W3 07:38–08:07.
+- Guest log lines from `log stream` one-shots in separate, untimed boots;
+  `YCODE_SYNC_PUSH_TRACE` and `YCODE_BG_BAND_TRACE` lines; frame-profile
+  windows `p-band`, `p-push` (started right after a series, so their
+  figures are high).
+
+### 21.2 The band is on by default
+
+On the default build with no band variable set, the start line reads
+`sched: … bg band on 14 CPUs` and the home-watch line carries the band's
+counters (325 000–360 000 gate waits by home, about 950 ended by a class
+rise, none by the bound); `YCODE_BG_BAND=0` removes both.
+
+| Series | Arm | n | median home_s | mean ± sd | range | kernel lock held at home, median |
+|---|---|---|---|---|---|---|
+| S1 | default (band on) | 3 | **29.65** | 29.76 ± 0.44 | 29.38–30.24 | 4.1 s |
+| S1 | `YCODE_BG_BAND=0` | 3 | **34.37** | 35.18 ± 2.11 | 33.60–37.58 | 7.1 s |
+
+−4.7 s by the median, the ranges apart, as in §20.3 (−6.9 to −7.9 s
+there, on a younger device copy).
+
+### 21.3 The sync-wait push (`YCODE_SYNC_PUSH`, `scheduling-policy.md` §4.10)
+
+Built as §4.10 describes: a request sent with a send-once reply right by a
+thread that receives in the same call credits its sender's host class to
+the image that will receive it while it is queued (the job a watch port
+was given to at spawn, while the spawner or the job holds the receive
+right; else the holder), the receiving thread carries it once it takes
+it, the credit ends with the sender's wait, and a change travels along
+chains of such waits (at most 8 hops). Tests: `SyncWaitPushTests`
+(queued push and its end at the receive; the end of the sender's wait;
+a chain A → B → C and its undoing; a rise reaching the request of the
+serving thread; the depth bound; a watch port pushing the started job and
+falling back to the holder; off by default), `BackgroundBandTests` (a
+waiter leaves when its image is pushed).
+
+In a boot it does what it should, and misses the two waits it was meant
+for:
+
+- About 22 000–28 000 synchronous requests push by home (`sync-wait
+  pushes` in the home-watch line); 5–150 credits move with a spawn or an
+  exec; 13–120 chain updates; none reaches the depth bound.
+- **Neither §20 wait is a synchronous request.** With
+  `YCODE_SYNC_PUSH_TRACE=lsd,containermanagerd,siriinferenced,biomed`,
+  biomed's requests go to notifyd (about 1 000), launchd_sim (160) and
+  logd, none to siriinferenced; lsd's go to launchd_sim, notifyd and
+  logd, none to containermanagerd. Both clients send asynchronously (XPC
+  with a reply handler) and wait in their own process. So siriinferenced's
+  workqueue threads still wait at the band's gate (traced waits of 0.1–3.3
+  s at 8–10 s), and containermanagerd's threads are still class bg (an
+  unboosted Adaptive daemon) behind the gate while lsd waits for the
+  answer.
+- xnu's mechanism for those waits is not the send turnstile: an
+  asynchronous message carries its sender's QoS as an override of the
+  receiving workloop until it is drained, and importance rides on the
+  dispatch work item's voucher past the receive (§4.8 lists the voucher as
+  not modelled). That is where the next model has to go (§21.7).
+
+### 21.4 On-demand start priority (`YCODE_DEMAND_START_PUSH`, §4.10)
+
+§3: the reference runs a job launchd starts on demand at priority 46
+while it starts. Three forms were tried, each pushing the job's image at
+class ui:
+
+| Form | Ends | Code |
+|---|---|---|
+| a | when the first message is taken off the watch port | `53e8375d` |
+| b | at the end of the servicing episode of the thread that took it | `4636eefa` |
+| c | 2 s after the spawn (`YCODE_DEMAND_START_MS=2000`) | `9c1f30f8` |
+
+125 on-demand starts by home are pushed. containermanagerd's main thread
+runs at ui through its start (trace), but form a ends before the request
+is served (the XPC listener's thread takes the message and returns to the
+workqueue at once; the work runs later on other threads), form b likewise,
+and form c ends while the threads still wait at the gate (traced waits of
+1.4–2.0 s at 9.2 s in the timed boot). lsd's class 10 query → result,
+single stream boots (the stream slows the boot; reference 0.25–1.44 s,
+median 0.29 s, §19.6):
+
+| Boot | query → result | query → first containermanagerd line |
+|---|---|---|
+| band (tree2) | 2.76 s | 1.78 s |
+| band + push | 2.95 s; 3.32 s | 2.16 s; 2.40 s |
+| band + push + form a | 2.57 s | 1.72 s |
+| band + push + form b | 3.08 s | 1.92 s |
+| band + push + form c | 3.33 s | 2.47 s |
+
+None comes near 0.29 s: 1.7–2.5 s of each answer is containermanagerd's
+start before its first line (dyld and initialisers on a saturated host,
+§20.7–§20.8), which no priority of its own shortens while every CPU is
+busy, and the rest is its service at class bg.
+
+### 21.5 Timed series
+
+| Series | Arm | n | median home_s | mean ± sd | range | kernel lock held at home, median | CPU s at home, median | guest fatal |
+|---|---|---|---|---|---|---|---|---|
+| W1 | band (default) | 5 | **29.36** | 29.48 ± 0.47 | 29.03–30.27 | 4.1 s | 366 | 1–2 |
+| W1 | band + push | 5 | 30.14 | 30.14 ± 1.17 | 28.34–31.19 | 4.0 s | 373 | 1–2 |
+| W1 | look-up hold until 40 s, band off | 5 | **27.63** | 27.53 ± 0.48 | 27.03–28.22 | 4.2 s | 342 | 0 |
+| W2 | band (default) | 5 | **29.36** | 29.34 ± 0.72 | 28.60–30.15 | 4.1 s | 361 | 1–2 |
+| W2 | band + push + on-demand form b | 5 | 32.86 | 33.11 ± 2.17 | 30.74–35.85 | 4.3 s | 401 | 1–2 |
+| W2 | look-up hold, band off | 5 | **27.93** | 27.79 ± 0.27 | 27.38–28.06 | 4.4 s | 338 | 0 |
+| W3 | band (default) | 5 | 31.96 | 31.86 ± 2.43 | 29.62–35.49 | 4.5 s | 387 | 2 |
+| W3 | band + push + on-demand form c | 5 | 32.53 | 33.29 ± 1.34 | 32.16–34.88 | 4.7 s | 407 | 1–3 |
+| W3 | look-up hold, band off | 5 | **27.64** | 27.80 ± 0.31 | 27.52–28.30 | 4.2 s | 341 | 0 |
+
+- **The push alone gains nothing:** +0.8 s by the median (W1), inside the
+  spread, 7 CPU s more before home.
+- **The on-demand forms are slower:** form b +3.5 s (W2, ranges
+  overlapping by 0.6 s, 40 CPU s more), form c +0.6 s against a noisy band
+  arm in W3 (+3.2 s against W1's and W2's band). Pushing every on-demand
+  start to ui brings the work of about 125 jobs forward to before home;
+  the CPU at home rises by 30–40 s and the waits that matter (§21.3) are
+  not reached.
+- **The hold is still the fastest:** 27.6–27.9 s in all three series,
+  1.4–1.7 s ahead of the band in W1 and W2 (ranges apart), 21–25 CPU s
+  less before home, and no guest fatal (intelligencetasksd's loop starts
+  after home, §18.5).
+- W3's band arm has two slow boots (35.5, 32.6 s) in the series' second
+  half, with the CPU at home up to 422 s; compare arms within a series.
+
+### 21.6 Service fidelity
+
+`scripts/ycode-launchd-spawns` over 700 s, one boot each (tree3), after a
+boot of the same build, on the same device copy:
+
+| | band | band + push + on-demand form b |
+|---|---|---|
+| home_s of the boot | 28.84 | 31.17 |
+| all starts | 515 (242 labels) | 505 (234 labels) |
+| restart loops (facetimemessagestored, managedappdistributiond, mlhostd, proactiveeventtrackerd, intelligencetasksd, fileindexerd) | 67, 65, 63, 68, 10, 1 | 67, 65, 63, 68, 8, 1 |
+| other daemons and agents | 180 | 172 |
+| per-process domains | 58 | 58 |
+| apps | 3 | 3 |
+| starts by reason (xpc event, Mach IPC, demand, speculative) | 327, 101, 38, 32 | 316, 102, 38, 32 |
+
+The only label that differs by more than one start is intelligencetasksd
+(10 → 8, its throttled loop's phase). **pairedsyncd started once in each
+boot**: its Mach-IPC restart loop (§18.7, §20.9: 45–47 starts in 700 s in
+some boots) did not appear on this device copy with either arm.
+Fidelity is unchanged.
+
+### 21.7 How far from 21.4 s, and what is left
+
+- Default switches (the band): **29.4 s** (W1, W2; S1 29.7 s), **1.37 ×**
+  the reference, 8.0 s short, 361–366 CPU s before home. The look-up
+  hold: 27.6–27.9 s, 1.29–1.31 ×.
+- **Recommendation (the owner decides).** Keep the band on by default.
+  Keep `YCODE_SYNC_PUSH` and `YCODE_DEMAND_START_PUSH` off: the push is
+  the reference's mechanism and costs nothing measurable, but neither form
+  shortens the boot, and the on-demand forms lengthen it. **The hold
+  cannot be retired yet**: the band plus the push does not match it
+  (1.4–1.7 s behind in W1 and W2).
+- Next, in order of size:
+  1. **Asynchronous requests** (§21.3): the receiving workloop's QoS
+     override from a queued message (xnu: the message's QoS overrides the
+     workloop or thread that will drain it, until drained) and importance
+     carried on a dispatch work item's voucher past the servicing episode
+     (§4.8). Those are the paths behind containermanagerd's answer to lsd
+     and siriinferenced's work for biomed. The push should then reach
+     only the workloop or thread that drains the port, not the whole image
+     (§4.10 pushes every thread of the image, which brings unrelated
+     background work forward; W2's 40 CPU s).
+  2. **dasd's backlog before home** (§20.3, §20.4): what the hold still
+     wins over the band (1.4–1.7 s, 20–25 CPU s).
+  3. **Start-up costs on a saturated host**: containermanagerd's 1.7–2.5
+     s from launch to first line (0.25 s of guest code alone, §20.7) and
+     liveactivitiesd (§20.8).
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -3865,6 +4057,8 @@ unchanged.
 | The guest's effective levels, the absence of `privacy` and `datasep` messages, the stream experiment (§19.5) | 3 | `simctl spawn … log config --status` (system, subsystem, three categories) in each booted device; `log show` counts by subsystem, category and level; the untimed `log stream --info --debug` boot against `log show` of the same window |
 | containermanagerd launched by lsd's class 10 query; the query's duration (§19.6) | 3 | `launchd.log` ("launching: ipc (mach)") against lsd's `com.apple.containermanager` lines in `log show` |
 | liveactivitiesd's spawn, first line, start-up burst and CPU (§19.7) | 3 | `launchd.log`; `log show`; `ps -M` per-thread times |
+| The band's default state, series S1, W1–W3, CPU at home, the sync-wait push's and the band's counters, trace lines, the class 10 query timings, fidelity counts (§21) | 3 | B3-BOOT6's Thor runs of Ycode's own simulator (`ab-S1.txt`, `ab-W1.txt`, `ab-W2.txt`, `ab-W3.txt`, `runs/smoke-push`, `runs/trace-push`, `runs/trace3`, `runs/diag-cm-*`, `runs/cm2-*`, `runs/cm3-demand`, `runs/cm4-timed`, `runs/fid-band`, `runs/fid-pushd`, `fp/p-band.1`, `fp/p-push.1`; `scripts/ycode-launchd-spawns`, `scripts/ycode-frame-profile`) |
+| Send turnstiles, special reply port linkage, task watchports, message QoS overrides of workloops (§21.3, §21.7) | 1 | xnu `osfmk/ipc/ipc_port.c`, `osfmk/kern/turnstile.c`, `osfmk/kern/task.c`, `bsd/pthread/workqueue` / `bsd/kern/kern_event.c` (open source) |
 
 Level 5 was not used. `.claude/Xcode.app`, `research/dirty/` and Ghidra
 were not opened.
@@ -3911,3 +4105,7 @@ Its raw data stays in the git-ignored `research/dirty/simobs4/`.
 (on the Thor, with the runtime copy as a black box), and only `specs/`,
 Ycode's code, and Apple's public performance documentation (efficiency
 cores) were read.
+§21 (agent B3-BOOT6) is clean-room work: only Ycode's own simulator ran
+(on the Thor, with the runtime copy as a black box), and only `specs/`,
+Ycode's code and xnu's open-source scheduler, turnstile and IPC behaviour
+(as cited, nothing copied) were used.

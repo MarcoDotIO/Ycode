@@ -48,6 +48,7 @@ import AppKit
 import YcodeDeviceModel
 import YcodeDeviceUI
 import YcodeDisplayStream
+import YcodeSubprocess
 
 final class ScriptRunner: @unchecked Sendable {
     let lines: [String]
@@ -389,7 +390,7 @@ final class ScriptRunner: @unchecked Sendable {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
             p.arguments = ["-x", "-o", "-l", String(id), words[1]]
-            try p.run()
+            try p.runWithSignalsUnblocked()
             p.waitUntilExit()
             log("window \(id) captured to \(words[1]) (status \(p.terminationStatus))")
         case "expect-banner":

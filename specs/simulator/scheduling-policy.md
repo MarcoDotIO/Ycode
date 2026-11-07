@@ -431,8 +431,10 @@ skipped. A waiter in a condition wait that takes the mutex back
 - I/O throttling tiers, background sockets, the jetsam bands.
 - Live-donor apps changing with their UI state. Apps are donors.
 - Importance carried by vouchers past the end of the servicing episode.
-- Transitive pushes (a sender's own push is not passed on, and a raised
-  lock holder does not raise the holder of a lock it waits for).
+- Transitive pushes outside synchronous IPC: a raised ulock owner or lock
+  holder does not raise the holder of a lock it waits for, and a send push
+  (§4.6) is not passed on. Chains of synchronous requests are modelled
+  (§4.10).
 - The clutch scheduler's warp, quanta and per-cluster runqueues. Only the
   WCEL bounds are used.
 - `getpriority` still answers as before.
@@ -476,6 +478,104 @@ ended, runnable counts by class). `YCODE_BG_BAND_TRACE=<program>,…` prints
 waits of 100 ms or more of the named programs; `YCODE_BG_BAND_SAMPLE_MS=N`
 prints the runnable counts every N ms. Measurements: `boot-profile.md` §20.
 
+### 4.10 The sync-wait push (`YCODE_SYNC_PUSH`)
+
+The reference (xnu, level 1: `osfmk/ipc/ipc_port.c`, `osfmk/kern/turnstile.c`,
+`osfmk/kern/task.c`): a synchronous request (a message with a send-once
+reply right, sent by a thread that then waits for the reply) pushes the
+sender's priority onto whoever will serve it as soon as it is queued. The
+sender waits on its reply port's turnstile, which is linked to the
+destination port's send turnstile; the send turnstile's inheritor is the
+thread or workloop that services the port, or, for a launchd service port
+given to a job at spawn as a watch port, the new job's main thread (task
+watchports). Turnstiles chain, so the push follows waits on waits (A waits
+on B, whose thread waits on C), up to a hop limit per update. §4.6 pushes
+only once a thread has received the request; `boot-profile.md` §20.3 and
+§20.7 found the missing part on the boot's critical path (a daemon's
+background threads held at the band's gate while its client waited;
+containermanagerd starting at the default class for lsd's query, where
+the reference starts on-demand jobs at priority 46, §3).
+
+Ycode (`SyncWaitPush.swift`; every structure below is guarded by the
+port lock G, `mach-ipc-locking.md` §4.1, except the image's counts):
+
+- **The request.** A send with `MACH_RCV_MSG` in the same call and a
+  send-once reply right, to a port that is not a kernel object, gets a push
+  record with its sender's class: the sender's host class (its class
+  raised to its image's pushes, §4.7), so a pushed sender passes its push
+  on. The message's §4.6 class is the same value.
+- **Queued: the image that will receive it.** While the request is queued
+  on a port, its class is credited to the port's *target image*: the image
+  of the job the port was bound to as a watch port at spawn (any process
+  type), while the receive right is still with the space that held it at
+  that spawn (launchd_sim), in transit, or with the job itself; otherwise
+  the image that holds the receive right. A port keeps its credited counts
+  (16 bits per class) and the image it credited, and moves the credit when
+  the target changes: at the next enqueue or dequeue on the port, when a
+  spawn binds it as a watch port, and when the credited process execs (the
+  image of `xpcproxy_sim` becomes the daemon's). A dying port drops its
+  credit. An image's *sync-wait push* is the highest class credited to it.
+- **Who it raises.** Every thread of the target image (as the send push
+  does, §4.6: xnu pushes only the servicing thread or workloop, or the new
+  job's main thread; Ycode does not know which thread will take the
+  request, and an on-demand job's start runs on threads it has not made
+  yet). The push enters the host class (§4.7) and the band (§4.9): a rise
+  above bg wakes the image's waiters at the gate. It is not a class input
+  (§4.4).
+- **Received.** When a thread takes the request off the queue, the credit
+  ends and the thread carries the request's current class as its sync-IPC
+  push until the end of its servicing episode (§4.6).
+- **The wait ends** with the sender's trap (reply received, or the receive
+  failed, timed out or was interrupted), or with the thread's end: a credit
+  still in place is removed. A request that stays queued then pushes
+  nothing.
+- **Chains.** When an image's sync-wait push changes, each request a thread
+  of that image waits on is re-evaluated: its class becomes the class it
+  was sent with, raised to the sending thread's host class now. A queued
+  request moves its credit by the difference (which may change the next
+  image's push, and so on); a received one raises the serving thread's
+  push (a fall waits for the end of its episode) and, if that thread waits
+  on a request of its own, raises that one in turn. A change travels at
+  most `YCODE_SYNC_PUSH_DEPTH` hops (default 8); further hops are counted
+  and dropped. A cycle (two images waiting on each other's threads) can
+  keep a raise until one of the requests is answered.
+- **Lock order.** Everything runs under G; a class refresh of a serving
+  thread takes its leaf push lock (or is deferred to L0 on a fast path,
+  §4.4); the band's mutex is a leaf. No new lock.
+
+**On-demand starts** (`YCODE_DEMAND_START_PUSH=<class>`, with the push
+on; unset: off). §3: jobs that launchd starts because a client already
+sent to them run at priority 46 (the user-interactive band) while they
+start, whatever the client's own class; the push above gives such a job
+only the class of the synchronous requests waiting on its port. With the
+switch, a watch port that holds a message when a spawn binds it also
+credits the given class to the job's image (`ui` models the reference's
+46) until the job has served its first request: when a thread of the job
+takes the first message off that port, the push leaves the port and stays
+on the job's image until that thread's servicing episode ends (§4.3: its
+next receive, its return to the workqueue, or its end); it also ends when
+the job is gone. Until then it travels with the port's credit (the exec of
+`xpcproxy_sim`, the check-in), and it is passed on along chains like a
+request. (A first version ended it when the message was taken: a daemon
+whose clients ask asynchronously, as lsd asks containermanagerd, then
+served the request at its own class, darwin-bg, behind the band's gate;
+`boot-profile.md` §21.) **Timed form** (`YCODE_DEMAND_START_MS=N`): the
+job's image runs at the class for N ms from the spawn instead (carried
+over its exec; a deadline in the image read at each trap end), whatever
+its threads do meanwhile: an XPC daemon hands a request from the thread
+that receives it to a dispatch queue, so the servicing episode of §4.3
+ends before the request is served (xnu carries the importance on the
+work item's voucher, which §4.8 does not model).
+
+Switches: `YCODE_SYNC_PUSH=1` (with `YCODE_SCHED_QOS`),
+`YCODE_DEMAND_START_PUSH`; `YCODE_SYNC_PUSH_TRACE=<program>,…` prints
+each request from or to a listed program when it is queued, its credit
+moved, or received (with the time it was queued). Measurements in
+`boot-profile.md` §21: the push works as described but gains nothing (the
+two waits it was meant for are asynchronous XPC requests, not synchronous
+ones), and the on-demand forms make the boot slower (more work before
+home); all stay off by default.
+
 ## 5. Diagnostics
 
 - `ycode-simd: sched: start hold on|off, thread QoS on|off, lock admission
@@ -497,7 +597,11 @@ prints the runnable counts every N ms. Measurements: `boot-profile.md` §20.
   messages, donor sends to other ports; send pushes; lock admission: gate
   waits, ms, at the bound; host scheduling …; moves, failures, ms moving
   (moves of another thread, ms), demotions put off; lock holders promoted
-  (waits past the delay, let go raised; class weight writes, ms)`.
+  (waits past the delay, let go raised; class weight writes, ms)`; with
+  §4.10 on, `send pushes N; sync-wait pushes N (moved N, chain updates N,
+  depth stops N, ended queued N)` (requests that pushed, credits moved to a
+  new target, requests re-evaluated along chains, changes stopped at the
+  bound, waits that ended with the request still queued).
 - With `YCODE_HOME_WATCH=1`, after the home line: `ycode-simd: home watch:
   at home: kernel lock held N ms (N acquisitions); sched: …` (the exit
   report's counters at the home screen; the A/B instrument of §7.5).
@@ -536,6 +640,11 @@ prints the runnable counts every N ms. Measurements: `boot-profile.md` §20.
 | `YCODE_BG_BAND_BG_CPUS` | unset | §4.9 the most class-bg threads runnable at once |
 | `YCODE_BG_BAND_MAX_MS` | 60000 | §4.9 the longest one wait; 0 none |
 | `YCODE_BG_BAND_TRACE`, `YCODE_BG_BAND_SAMPLE_MS` | unset | §4.9 diagnostics |
+| `YCODE_SYNC_PUSH` | 0 | §4.10 the sync-wait push (with `YCODE_SCHED_QOS`); `1` on |
+| `YCODE_SYNC_PUSH_DEPTH` | 8 | §4.10 the most hops a change travels along a chain |
+| `YCODE_DEMAND_START_PUSH` | unset | §4.10 on-demand starts pushed at this class (`bg`, `ut`, `df`, `ui`) until their first request is served |
+| `YCODE_DEMAND_START_MS` | unset | §4.10 the timed form of the on-demand start push: N ms from the spawn |
+| `YCODE_SYNC_PUSH_TRACE` | unset | §4.10 trace lines for the listed programs |
 | `YCODE_HOST_SCHED_UI_PUSHED` | unset | with `YCODE_HOST_SCHED_UI_CPUS`: an image whose send push (§4.6) is at least this class also runs on the UI path's CPUs while it lasts |
 | `YCODE_BOOT_PRIORITY` | 1 for device runs (since 2026-10-27; was 0) | device runs (`--device`) only: with `YCODE_SCHED_QOS` unset, set it to 1 and `YCODE_HOST_SCHED` (if unset) to `cgroup` before the VMM starts (§7.4, §7.5); `0` turns it off. The cgroup backend re-executes the VMM in a delegated user scope only when the user's service manager is reachable (`$XDG_RUNTIME_DIR/systemd/private`); otherwise it reports itself unavailable and the run goes on without host scheduling |
 
@@ -821,6 +930,7 @@ fileindexerd and intelligencetasksd crashes (`service-fidelity.md` §11,
 | Cost of cgroup moves by thread id, by `0`, and of `cpu.weight` writes (§4.7, §7.5) | Linux cgroup-v2 documentation and kernel source (the `cgroup.threads` write path skips the threadgroup lock for the writer itself); timed on the Thor (`prio3/probes/cgcost.py`, idle host) and in boots (exit counters) |
 | Send turnstile: blocked senders push onto the receiver side (§4.6) | 1 (xnu `osfmk/ipc/ipc_port.c` send turnstile and its inheritor, `osfmk/kern/turnstile.c`) |
 | Timed boots with and without QoS and the cgroup backend (§7.4) | 3 (Thor, `ide-remote/bootcp` series C: runs `C-base-*`, `C-hand-*`, `C-qos-*`, `C-prof-qos`; series D: `D-dflt-*`, `D-off-*`; exit reports: kernel-lock hold, start-hold releases) |
+| Sync requests push their destination's servicer from the moment they are queued, through the reply port's link to the send turnstile; watch ports push the spawned job's main thread; turnstile chains are bounded per update (§4.10) | 1 (xnu `osfmk/ipc/ipc_port.c`: send turnstile inheritor, special reply port linkage, watchport elements; `osfmk/kern/turnstile.c`; `osfmk/kern/task.c`, as open source) |
 | Everything in §4–§6 | Ycode design |
 | Shell-ready holds; the boost's source; background CPUs (§4.2, §4.7) | Ycode design; `SchedPolicyTests.shellReadyHoldWaitsForTheShell`; Thor boots of `visionos.md` §10.26 |
 

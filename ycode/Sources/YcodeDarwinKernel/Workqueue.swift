@@ -636,7 +636,7 @@ extension DarwinKernel {
         let ctx = current
         guard ctx.kind == .workqueue, let w = ctx.worker, w.phase == .running else { throw Failure(errno: Errno.EINVAL) }
         // The run is over: its carried importance and sync push end (scheduling-policy.md §4.3, §4.6).
-        if ctx.carriedImportance != nil || ctx.ipcPushClass >= 0 {
+        if ctx.hasServicingState {
             // Importance counts are port-lock state on a fast path (`mach-ipc-locking.md` §4.1).
             if let ports = system.mach.portLock {
                 ports.withLock { endServicing(ctx) }

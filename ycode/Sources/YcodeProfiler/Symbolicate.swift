@@ -1,4 +1,5 @@
 import Foundation
+import YcodeSubprocess
 import YcodeMachO
 
 /// Adding images, symbols and source lines to a trace
@@ -253,11 +254,11 @@ public enum GaugeSymbolicator {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)
         p.arguments = args
-        let input = Pipe(), output = Pipe()
-        p.standardInput = input
-        p.standardOutput = output
+        guard let input = try? SpawnPipe(childReads: true), let output = try? SpawnPipe(childReads: false) else { return [:] }
+        p.standardInput = input.childEnd
+        p.standardOutput = output.childEnd
         p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return [:] }
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: input, output)) != nil else { return [:] }
         let data = Data(list.joined(separator: "\n").appending("\n").utf8)
         DispatchQueue.global().async {
             input.fileHandleForWriting.write(data)
@@ -289,10 +290,10 @@ public enum GaugeSymbolicator {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
             p.arguments = ["--find", name]
-            let out = Pipe()
-            p.standardOutput = out
+            guard let out = try? SpawnPipe(childReads: false) else { continue }
+            p.standardOutput = out.childEnd
             p.standardError = FileHandle.nullDevice
-            guard (try? p.run()) != nil else { continue }
+            guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: out)) != nil else { continue }
             let d = out.fileHandleForReading.readDataToEndOfFile()
             p.waitUntilExit()
             let path = String(decoding: d, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)

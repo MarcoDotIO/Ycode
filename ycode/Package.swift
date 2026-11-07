@@ -38,7 +38,7 @@ let package = Package(
         // Gauge (specs/ide/profiler.md)
         .target(name: "CYcodeGauge"),
         .target(name: "CYcodeGaugeAgent"),
-        .target(name: "YcodeProfiler", dependencies: ["YcodeMachO", "CYcodeGauge"]),
+        .target(name: "YcodeProfiler", dependencies: ["YcodeMachO", "CYcodeGauge", "YcodeSubprocess"]),
         .testTarget(name: "YcodeProfilerTests", dependencies: ["YcodeProfiler", "YcodeMachO"]),
         // Simulator stage 2 (specs/simulator/vm-shim-protocol.md)
         .target(name: "YcodeDarwinABI"),
@@ -130,7 +130,7 @@ package.targets += [
     // The device windows (compact window, canvas, frame, controls; specs/ide/device-hub.md), shared by the viewer and the IDE
     .target(name: "YcodeDeviceUI", dependencies: ["YcodeDisplayStream", "YcodeSimFeatures", "YcodeDeviceModel"]),
     .testTarget(name: "YcodeDeviceUITests", dependencies: ["YcodeDeviceUI", "YcodeDeviceModel", "YcodeDisplayStream"]),
-    .executableTarget(name: "ycode-sim-viewer", dependencies: ["YcodeRelease", "YcodeDisplayStream", "YcodeSimFeatures", "YcodeDeviceModel", "YcodeDeviceUI", "YcodeRemoteViewer", "YcodeSimLink"]),
+    .executableTarget(name: "ycode-sim-viewer", dependencies: ["YcodeRelease", "YcodeDisplayStream", "YcodeSimFeatures", "YcodeDeviceModel", "YcodeDeviceUI", "YcodeRemoteViewer", "YcodeSimLink", "YcodeSubprocess"]),
     .target(name: "YcodeUI", dependencies: ["YcodeMCP", "YcodeIDECore", "YcodeCompletion", "YcodePreviews", "YcodeProject", "YcodeWorkspace", "YcodeSettings", "YcodeBuild", "YcodeDebug", "YcodeLanguage", "YcodeXcodebuild", "YcodeSubprocess", "YcodeAssistant", "YcodeSimFeatures", "YcodeDeviceModel", "YcodeDeviceUI", "YcodeProfiler"]),
     .executableTarget(name: "YcodeApp", dependencies: ["YcodeRelease", "YcodeUI"]),
     .testTarget(name: "YcodeUITests", dependencies: ["YcodeMCP", "YcodeUI", "YcodeIDECore", "YcodeCompletion", "YcodePreviews", "YcodeDisplayStream", "YcodeSimFeatures", "YcodeDeviceModel", "YcodeDeviceUI", "YcodeBuild", "YcodeDebug", "YcodeLanguage", "YcodeXcodebuild", "YcodeSubprocess", "YcodeAssistant", "YcodeProfiler", "YcodeBuildServer", "YcodeIDEShell"]),
@@ -155,7 +155,7 @@ package.dependencies += [.package(url: "https://github.com/apple/swift-crypto.gi
 package.products += [.library(name: "YcodeSimLink", targets: ["YcodeSimLink"]),
                      .executable(name: "ycode-simhost", targets: ["ycode-simhost"])]
 package.targets += [
-    .target(name: "YcodeSimLink", dependencies: ["YcodeDisplayStream", .product(name: "Crypto", package: "swift-crypto")]),
+    .target(name: "YcodeSimLink", dependencies: ["YcodeDisplayStream", "YcodeSubprocess", .product(name: "Crypto", package: "swift-crypto")]),
     .testTarget(name: "YcodeSimLinkTests", dependencies: ["YcodeSimLink", "YcodeDisplayStream"]),
     .executableTarget(name: "ycode-simhost", dependencies: ["YcodeRelease", "YcodeSimLink"]),
 ]
@@ -168,7 +168,7 @@ package.targets += [
 package.products += [.executable(name: "ycode-xr-viewer", targets: ["ycode-xr-viewer"])]
 package.targets += [
     .target(name: "CYcodeOpenXR", exclude: ["openxr/LICENSE"], linkerSettings: [.linkedLibrary("dl", .when(platforms: [.linux]))]),
-    .target(name: "YcodeXRViewer", dependencies: ["CYcodeOpenXR", "CYcodeVideo", "CYcodeCodec", "YcodeDisplayStream", "YcodeRemoteViewer", "YcodeXRReprojection"]),
+    .target(name: "YcodeXRViewer", dependencies: ["CYcodeOpenXR", "CYcodeVideo", "CYcodeCodec", "YcodeDisplayStream", "YcodeRemoteViewer", "YcodeXRReprojection", "YcodeSubprocess"]),
     .executableTarget(name: "ycode-xr-viewer", dependencies: ["YcodeRelease", "YcodeXRViewer", "YcodeSimLink", "YcodeDisplayStream"]),
     .testTarget(name: "YcodeXRViewerTests", dependencies: ["YcodeXRViewer", "YcodeDisplayStream", "YcodeRemoteViewer", "CYcodeCodec", "CYcodeOpenXR", "CYcodeVideo"]),
 ]
@@ -272,7 +272,7 @@ package.targets += [
     .target(name: "YcodeEditorKit", dependencies: ["YcodeSyntax"]),
     .testTarget(name: "YcodeEditorKitTests", dependencies: ["YcodeEditorKit", "YcodeSyntax"]),
     .target(name: "YcodeIDEShell", dependencies: ["YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeXcodebuild", "YcodeSimLink", "YcodeEditorKit", "YcodeDebug", "YcodeAssistant",
-                                                  "YcodePreviews", "YcodeDeviceModel"]),
+                                                  "YcodePreviews", "YcodeDeviceModel", "YcodeSubprocess"]),
     .testTarget(name: "YcodeIDEShellTests", dependencies: ["YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion", "YcodeDebug", "YcodeAssistant",
                                                           "YcodePreviews"]),
 ]
@@ -296,7 +296,7 @@ if FileManager.default.fileExists(atPath: Context.packageDirectory + "/../framew
     package.products += [.executable(name: "ycode-ide", targets: ["ycode-ide"])]
     package.targets += [
         .executableTarget(name: "ycode-ide", dependencies: ["YcodeRelease", "YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion", "YcodeAssistant",
-                                                          "YcodePreviews",
+                                                          "YcodePreviews", "YcodeSubprocess",
                                                           .product(name: "SwiftUI", package: "swiftui"),
                                                           .product(name: "OVPlatform", package: "swiftui"),
                                                           .product(name: "OVDBus", package: "swiftui")]),

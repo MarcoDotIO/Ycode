@@ -257,11 +257,14 @@ public struct RemoteTestHost {
         p.executableURL = URL(fileURLWithPath: settings.ssh)
         p.arguments = sshOptions + [settings.destination, command]
         p.environment = ProcessInfo.processInfo.environment
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = pipe
-        p.standardInput = FileHandle.nullDevice
-        do { try p.run() } catch { return .couldNotStart("\(error)") }
+        let pipe: SpawnPipe
+        do {
+            pipe = try SpawnPipe(childReads: false)
+            p.standardOutput = pipe.childEnd
+            p.standardError = pipe.childEnd
+            p.standardInput = FileHandle.nullDevice
+            try p.runWithSignalsUnblocked(closingChildEndsOf: pipe)
+        } catch { return .couldNotStart("\(error)") }
         let pid = PIDBox()
         let verdict = TestActions.Verdict()
         let started = Date()

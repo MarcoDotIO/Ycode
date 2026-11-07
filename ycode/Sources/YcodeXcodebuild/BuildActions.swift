@@ -1,4 +1,5 @@
 import Foundation
+import YcodeSubprocess
 import YcodeBuild
 
 /// Build actions through swift-build (the `ycode-swb build` helper), with
@@ -241,11 +242,14 @@ enum BuildActions {
         // YCODE_STRINGS_COMPILER=ycode: swift-build finds Ycode's `xcstringstool` first.
         p.environment = StringsCompilerHook.environment(settings: plan.overrides, directory: work.appendingPathComponent("YcodeStringsCompiler"),
                                                         base: ctx.environment)
-        let out = Pipe()
-        let err = Pipe()
-        p.standardOutput = out
-        p.standardError = err
-        do { try p.run() } catch {
+        let out: SpawnPipe, err: SpawnPipe
+        do {
+            out = try SpawnPipe(childReads: false)
+            err = try SpawnPipe(childReads: false)
+            p.standardOutput = out.childEnd
+            p.standardError = err.childEnd
+            try p.runWithSignalsUnblocked(closingChildEndsOf: out, err)
+        } catch {
             throw XcodebuildFailure("cannot run \(helper): \(error)", exitCode: ExitCode.software)
         }
         var buffer = Data()

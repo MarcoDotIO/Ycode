@@ -211,13 +211,16 @@ public struct TestRunner: Sendable {
                 if coverage, let out = coverageSummaryPath { env["YCODE_COVERAGE_SUMMARY"] = out }
                 for (k, v) in environment { env[k] = v }
                 if (coverage && coverageSummaryPath != nil) || !environment.isEmpty { p.environment = env }
-                let pipe = Pipe()
-                p.standardOutput = pipe
-                p.standardError = pipe
-                p.standardInput = FileHandle.nullDevice
                 var parser = TestResultParser()
                 var lines = LineBuffer()
-                do { try p.run() } catch {
+                let pipe: SpawnPipe
+                do {
+                    pipe = try SpawnPipe(childReads: false)
+                    p.standardOutput = pipe.childEnd
+                    p.standardError = pipe.childEnd
+                    p.standardInput = FileHandle.nullDevice
+                    try p.runWithSignalsUnblocked(closingChildEndsOf: pipe)
+                } catch {
                     onLine("ycode: cannot run tests: \(error)")
                     return c.resume(returning: (-1, []))
                 }
@@ -242,10 +245,10 @@ public struct TestRunner: Sendable {
         p.executableURL = URL(fileURLWithPath: swift[0])
         p.arguments = Array(swift.dropFirst()) + ["test", "--show-codecov-path"]
         p.currentDirectoryURL = URL(fileURLWithPath: dir)
-        let out = Pipe()
-        p.standardOutput = out
+        guard let out = try? SpawnPipe(childReads: false) else { return nil }
+        p.standardOutput = out.childEnd
         p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return nil }
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: out)) != nil else { return nil }
         let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         p.waitUntilExit()
         let path = text.trimmingCharacters(in: .whitespacesAndNewlines)

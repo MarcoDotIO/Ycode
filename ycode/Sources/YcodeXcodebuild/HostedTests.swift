@@ -1,4 +1,5 @@
 import Foundation
+import YcodeSubprocess
 
 /// Tests hosted in an application (`TEST_HOST`) and UI test bundles: the
 /// bundle runs inside the host app, loaded by Ycode's test agent
@@ -277,11 +278,14 @@ extension TestActions {
         p.arguments = args
         p.environment = environment
         p.currentDirectoryURL = URL(fileURLWithPath: exe).deletingLastPathComponent()
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = pipe
-        p.standardInput = FileHandle.nullDevice
-        do { try p.run() } catch { return .couldNotStart("\(error)") }
+        let pipe: SpawnPipe
+        do {
+            pipe = try SpawnPipe(childReads: false)
+            p.standardOutput = pipe.childEnd
+            p.standardError = pipe.childEnd
+            p.standardInput = FileHandle.nullDevice
+            try p.runWithSignalsUnblocked(closingChildEndsOf: pipe)
+        } catch { return .couldNotStart("\(error)") }
         let verdict = Verdict()
         let started = Date()
         var finishedAt: Date?

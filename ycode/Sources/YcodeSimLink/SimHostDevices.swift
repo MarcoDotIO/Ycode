@@ -7,6 +7,7 @@
 // a running device is stopped, i.e. saved, first).
 
 import Foundation
+import YcodeSubprocess
 
 public struct SimHostConfig: Sendable, Equatable {
     public var home: String
@@ -129,10 +130,10 @@ public struct SimHostConfig: Sendable, Equatable {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)
         p.arguments = ["--version"]
-        let err = Pipe()
-        p.standardError = err
+        guard let err = try? SpawnPipe(childReads: false) else { return nil }
+        p.standardError = err.childEnd
         p.standardOutput = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return nil }   // not a program the loader complains about
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: err)) != nil else { return nil }   // not a program the loader complains about
         let deadline = Date().addingTimeInterval(5)
         while p.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.02) }
         if p.isRunning {
@@ -190,10 +191,10 @@ public final class SimHostDevices: @unchecked Sendable {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: config.simd)
         p.arguments = ["--list-device-types"]
-        let out = Pipe()
-        p.standardOutput = out
+        guard let out = try? SpawnPipe(childReads: false) else { return [] }
+        p.standardOutput = out.childEnd
         p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return [] }
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: out)) != nil else { return [] }
         let d = out.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         return String(decoding: d, as: UTF8.self).split(separator: "\n").map(String.init)
@@ -238,7 +239,7 @@ public final class SimHostDevices: @unchecked Sendable {
         let cp = Process()
         cp.executableURL = URL(fileURLWithPath: "/bin/cp")
         cp.arguments = ["-a", pristine, dir + ".partial"]
-        try cp.run()
+        try cp.runWithSignalsUnblocked()
         cp.waitUntilExit()
         guard cp.terminationStatus == 0, rename(dir + ".partial", dir) == 0 else { throw LinkError.refused("copying the pristine device failed") }
         try JSONEncoder().encode(Sidecar(deviceType: type, runtime: config.runtime(for: type))).write(to: sidecarURL(name))

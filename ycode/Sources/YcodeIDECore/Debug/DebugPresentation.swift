@@ -282,10 +282,10 @@ public enum GitBranchLookup {
         p.arguments = ["-C", path, "rev-parse", "--abbrev-ref", "HEAD"]
         // GitRepository's environment: no inherited GIT_DIR, no prompts.
         p.environment = GitRepository.environment
-        let out = Pipe()
-        p.standardOutput = out
+        guard let out = try? SpawnPipe(childReads: false) else { return nil }
+        p.standardOutput = out.childEnd
         p.standardError = FileHandle.nullDevice
-        do { try p.run() } catch { return nil }
+        do { try p.runWithSignalsUnblocked(closingChildEndsOf: out) } catch { return nil }
         let data = out.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         guard p.terminationStatus == 0 else { return nil }

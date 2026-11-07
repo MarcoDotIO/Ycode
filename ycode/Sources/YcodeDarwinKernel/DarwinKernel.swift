@@ -480,6 +480,16 @@ public final class DarwinKernel {
     /// bits per class (class c at bit 16·c): the send push of
     /// `scheduling-policy.md` §4.6. Changed by the senders without L0.
     let sendPushCounts = Atomic<UInt64>(0)
+    /// The sync-wait push (`scheduling-policy.md` §4.10): synchronous
+    /// requests queued for this image, 16 bits per class, read without a
+    /// lock; the ports credited to it and the requests its threads wait on
+    /// (both under the port lock G).
+    let syncPushCounts = Atomic<UInt64>(0)
+    var syncPushPorts: [ObjectIdentifier: IPCPort] = [:]
+    var syncWaiters: [ObjectIdentifier: SyncWaitPush] = [:]
+    /// A timed on-demand start push (`YCODE_DEMAND_START_MS`): its end
+    /// (host monotonic ns) with the class in the low two bits; 0 none.
+    let demandStartUntil = Atomic<UInt64>(0)
     /// Threads of this image waiting at the background band's gate
     /// (`BackgroundBand`), and the program name its trace lines use (set by
     /// the launcher for a program in `YCODE_BG_BAND_TRACE`).

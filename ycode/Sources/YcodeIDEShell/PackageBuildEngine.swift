@@ -1,6 +1,7 @@
 import Foundation
 import YcodeBuild
 import YcodeIDECore
+import YcodeSubprocess
 
 /// Builds, cleans and tests a Swift package with the toolchain's own
 /// SwiftPM (`swift build`, `swift package clean`, `swift test`), for hosts
@@ -92,11 +93,11 @@ public struct PackageBuildEngine: BuildEngine {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: args[0])
         p.arguments = Array(args.dropFirst())
-        let out = Pipe()
-        p.standardOutput = out
+        guard let out = try? SpawnPipe(childReads: false) else { return nil }
+        p.standardOutput = out.childEnd
         p.standardError = FileHandle.nullDevice
         p.standardInput = FileHandle.nullDevice
-        do { try p.run() } catch { return nil }
+        do { try p.runWithSignalsUnblocked(closingChildEndsOf: out) } catch { return nil }
         let data = out.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         return p.terminationStatus == 0 ? String(decoding: data, as: UTF8.self) : nil
@@ -139,9 +140,6 @@ enum SwiftPMRun {
         env["NO_COLOR"] = "1"
         env["TERM"] = "dumb"
         process.environment = env
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
         process.standardInput = FileHandle.nullDevice
         let cancelled = CancelFlag()
         let (stream, continuation) = AsyncStream<BuildEvent>.makeStream()
@@ -167,8 +165,12 @@ enum SwiftPMRun {
                 if let a = PackageBuildEngine.activity(for: line) { continuation.yield(.activity(a)) }
                 report(parser.feed(line))
             }
+            let pipe: SpawnPipe
             do {
-                try process.run()
+                pipe = try SpawnPipe(childReads: false)
+                process.standardOutput = pipe.childEnd
+                process.standardError = pipe.childEnd
+                try process.runWithSignalsUnblocked(closingChildEndsOf: pipe)
             } catch {
                 continuation.yield(.output("ycode: cannot run \(args[0]): \(error)"))
                 continuation.yield(.finished(BuildResult(status: .failed, exitCode: -1, issues: [])))
@@ -202,7 +204,8 @@ enum SwiftPMRun {
         thread.start()
         return BuildOperation(events: stream) {
             cancelled.set()
-            if process.isRunning { process.interrupt() }
+            // As Control-C: SwiftPM and the compilers it started.
+            if process.isRunning { ChildSignals.send(SIGINT, to: process.processIdentifier) }
         }
     }
 

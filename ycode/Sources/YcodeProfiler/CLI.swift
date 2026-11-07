@@ -1,4 +1,5 @@
 import Foundation
+import YcodeSubprocess
 
 /// `ycode profile` (specs/ide/profiler.md §7): record Linux processes or a
 /// Ycode simulator app, and read Gauge traces as text, call trees, flame
@@ -205,7 +206,7 @@ func profileRecord(_ args: [String], err: (String) -> Void) throws -> Int32 {
         let source = DispatchSource.makeSignalSource(signal: SIGINT)
         source.setEventHandler { p.interrupt() }
         source.resume()
-        try p.run()
+        try p.runWithSignalsUnblocked()
         p.waitUntilExit()
         if FileManager.default.fileExists(atPath: output) {
             err("ycode profile: wrote \(output)\n")

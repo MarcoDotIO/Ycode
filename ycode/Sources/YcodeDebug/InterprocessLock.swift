@@ -73,10 +73,10 @@ public final class InterprocessLock: @unchecked Sendable {
         p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         p.arguments = ["lldb", "--batch", "-o", "process launch", executable]
         #endif
-        let out = Pipe()
-        p.standardOutput = out
+        let out = try? SpawnPipe(childReads: false)
+        p.standardOutput = out?.childEnd
         p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { probeCache[executable] = false; return false }
+        guard let out, (try? p.runWithSignalsUnblocked(closingChildEndsOf: out)) != nil else { probeCache[executable] = false; return false }
         let deadline = Date().addingTimeInterval(timeout)
         while p.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
         if p.isRunning {
@@ -87,7 +87,7 @@ public final class InterprocessLock: @unchecked Sendable {
             let k = Process()
             k.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
             k.arguments = ["-9", "-f", executable]
-            try? k.run()
+            try? k.runWithSignalsUnblocked()
             k.waitUntilExit()
             probeCache[executable] = false
             lastProblem = "launch probe timed out after \(Int(timeout)) s; Developer Mode " + (developerModeDisabled() ? "disabled" : "enabled")
@@ -107,10 +107,10 @@ public final class InterprocessLock: @unchecked Sendable {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/sbin/DevToolsSecurity")
         p.arguments = ["-status"]
-        let out = Pipe()
-        p.standardOutput = out
-        p.standardError = out
-        guard (try? p.run()) != nil else { return false }
+        guard let out = try? SpawnPipe(childReads: false) else { return false }
+        p.standardOutput = out.childEnd
+        p.standardError = out.childEnd
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: out)) != nil else { return false }
         p.waitUntilExit()
         return String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).contains("disabled")
         #else

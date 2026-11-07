@@ -213,10 +213,10 @@ public struct SwiftBuildSettingsProvider: SettingsProvider {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: helper)
         p.arguments = ["settings", requestURL.path]
-        let out = Pipe(), err = Pipe()
-        p.standardOutput = out
-        p.standardError = err
-        try p.run()
+        let out = try SpawnPipe(childReads: false), err = try SpawnPipe(childReads: false)
+        p.standardOutput = out.childEnd
+        p.standardError = err.childEnd
+        try p.runWithSignalsUnblocked(closingChildEndsOf: out, err)
         let data = out.fileHandleForReading.readDataToEndOfFile()
         let errData = err.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()

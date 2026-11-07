@@ -23,10 +23,10 @@ extension XcodebuildEngine {
         process.executableURL = URL(fileURLWithPath: command[0])
         process.arguments = Array(command.dropFirst()) + Self.arguments(for: r).dropLast() + ["-showBuildSettings", "-json"] + overrides
         if case .package(let dir) = request.container { process.currentDirectoryURL = URL(fileURLWithPath: dir) }
-        let out = Pipe()
-        process.standardOutput = out
+        let out = try SpawnPipe(childReads: false)
+        process.standardOutput = out.childEnd
         process.standardError = FileHandle.nullDevice
-        try process.run()
+        try process.runWithSignalsUnblocked(closingChildEndsOf: out)
         let data = out.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         guard let list = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }

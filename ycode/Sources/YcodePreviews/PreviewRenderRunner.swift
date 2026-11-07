@@ -1,4 +1,5 @@
 import Foundation
+import YcodeSubprocess
 
 /// Renders one `#Preview` of a file to a PNG headlessly: writes the
 /// `PreviewRenderHost` package, builds it against OpenViews and runs it
@@ -69,11 +70,12 @@ public enum PreviewRenderRunner {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         p.arguments = arguments
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = pipe
+        let pipe: SpawnPipe
+        do { pipe = try SpawnPipe(childReads: false) } catch { return (127, "\(error)") }
+        p.standardOutput = pipe.childEnd
+        p.standardError = pipe.childEnd
         p.standardInput = FileHandle.nullDevice
-        do { try p.run() } catch { return (127, "\(error)") }
+        do { try p.runWithSignalsUnblocked(closingChildEndsOf: pipe) } catch { return (127, "\(error)") }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         return (p.terminationStatus, String(decoding: data, as: UTF8.self))

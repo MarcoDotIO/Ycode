@@ -9,6 +9,7 @@
 // from everything it prints.
 
 import Foundation
+import YcodeSubprocess
 #if canImport(AppleArchive)
 import AppleArchive
 import CryptoKit
@@ -96,12 +97,12 @@ public struct PythonAEAExpander: RuntimeArchiveExpander {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: python)
         p.arguments = ["-I", "-c", Self.helper, archive]
-        let input = Pipe(), output = Pipe(), errors = Pipe()
-        p.standardInput = input
-        p.standardOutput = output
-        p.standardError = errors
+        let input = try SpawnPipe(childReads: true), output = try SpawnPipe(childReads: false), errors = try SpawnPipe(childReads: false)
+        p.standardInput = input.childEnd
+        p.standardOutput = output.childEnd
+        p.standardError = errors.childEnd
         let errText = LockedText()
-        try p.run()
+        try p.runWithSignalsUnblocked(closingChildEndsOf: input, output, errors)
         // Standard error, read to its end on its own thread.
         let drained = DispatchSemaphore(value: 0)
         DispatchQueue.global().async {

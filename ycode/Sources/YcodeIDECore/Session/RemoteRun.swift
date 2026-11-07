@@ -516,11 +516,11 @@ public struct RemoteSimulator: Sendable {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)
         p.arguments = args
-        let out = Pipe()
-        p.standardOutput = out
-        p.standardError = errors ? out : FileHandle.nullDevice
+        guard let out = try? SpawnPipe(childReads: false) else { return (127, Data("could not run \(exe)".utf8)) }
+        p.standardOutput = out.childEnd
+        p.standardError = errors ? out.childEnd : FileHandle.nullDevice
         p.standardInput = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return (127, Data("could not run \(exe)".utf8)) }
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: out)) != nil else { return (127, Data("could not run \(exe)".utf8)) }
         if let timeout {
             DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { if p.isRunning { p.terminate() } }
         }
@@ -805,7 +805,7 @@ extension WorkspaceSession {
         forward.standardInput = FileHandle.nullDevice
         forward.standardOutput = FileHandle.nullDevice
         forward.standardError = FileHandle.nullDevice
-        do { try forward.run() } catch {
+        do { try forward.runWithSignalsUnblocked() } catch {
             appendConsole("Ycode: the debugger's ssh forward did not start: \(error)\n", kind: .debugger)
             return
         }

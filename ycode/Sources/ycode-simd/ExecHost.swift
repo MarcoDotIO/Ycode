@@ -444,7 +444,8 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         HostSched.threadID = { ckvmThreadID() }
         stderrLine("ycode-simd: sched: start hold \(SchedPolicy.holdEnabled ? "on" : "off"), thread QoS \(SchedPolicy.qosEnabled ? "on" : "off")"
             + (SchedPolicy.qosEnabled ? ", lock admission \(SchedPolicy.admissionEnabled ? "on" : "off"), host \(HostSched.configure())" : "")
-            + (BackgroundBand.active ? ", bg band on \(BackgroundBand.cpus) CPUs" : ""))
+            + (BackgroundBand.active ? ", bg band on \(BackgroundBand.cpus) CPUs" : "")
+            + (SchedPolicy.syncPushActive ? ", sync-wait push on (depth \(SchedPolicy.syncPushDepth))" : ""))
         system.holdLog = { stderrLine("ycode-simd: sched: " + $0) }
     }
     // The background band (scheduling-policy.md §4.9): a vCPU host thread

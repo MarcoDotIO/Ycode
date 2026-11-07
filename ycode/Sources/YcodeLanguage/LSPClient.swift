@@ -346,10 +346,10 @@ public enum SourceKitLSP {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
         p.arguments = ["-f", "sourcekit-lsp"]
-        let out = Pipe()
-        p.standardOutput = out
+        let out = try? SpawnPipe(childReads: false)
+        p.standardOutput = out?.childEnd
         p.standardError = FileHandle.nullDevice
-        if (try? p.run()) != nil {
+        if let out, (try? p.runWithSignalsUnblocked(closingChildEndsOf: out)) != nil {
             p.waitUntilExit()
             let path = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)

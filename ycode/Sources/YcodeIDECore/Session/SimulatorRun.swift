@@ -27,7 +27,7 @@ public struct Simctl: Sendable {
         guard let h = try? FileHandle(forWritingTo: file) else { return (127, "no temporary file") }
         p.standardOutput = h
         p.standardError = h
-        guard (try? p.run()) != nil else { return (127, "xcrun not found") }
+        guard (try? p.runWithSignalsUnblocked()) != nil else { return (127, "xcrun not found") }
         p.waitUntilExit()
         try? h.close()
         return (p.terminationStatus, (try? String(contentsOf: file, encoding: .utf8)) ?? "")
@@ -99,7 +99,6 @@ public struct AppBundle: Equatable, Sendable {
 /// line, under load).
 package final class StreamingProcess: @unchecked Sendable {
     let process = Process()
-    private let pipe = Pipe()
     private var buffer = Data()
     private let lock = NSLock()
     private var exitStatus: Int32?
@@ -121,14 +120,16 @@ package final class StreamingProcess: @unchecked Sendable {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         if let environment { process.environment = environment }
-        process.standardOutput = pipe
-        process.standardError = pipe
     }
 
     /// Starts; `onLine` gets each line (without the newline), then `onExit`
     /// the status. Lines that arrive after a reported exit (a child kept the
     /// pipe open past `outputGrace`) still reach `onLine`, after it.
     package func start(onLine: @escaping @MainActor (String) -> Void, onExit: @escaping @MainActor (Int32) -> Void) throws {
+        // Output and errors share one close-on-exec pipe (`SpawnPipe`).
+        let pipe = try SpawnPipe(childReads: false)
+        process.standardOutput = pipe.childEnd
+        process.standardError = pipe.childEnd
         // One consumer on the main actor keeps lines and the exit in order.
         let (stream, continuation) = AsyncStream<Event>.makeStream()
         lock.lock()
@@ -144,7 +145,7 @@ package final class StreamingProcess: @unchecked Sendable {
         }
         process.terminationHandler = { p in self.processEnded(p.terminationStatus) }
         do {
-            try process.run()
+            try process.runWithSignalsUnblocked(closingChildEndsOf: pipe)
         } catch {
             continuation.finish()
             throw error
@@ -337,9 +338,9 @@ extension WorkspaceSession {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
         p.arguments = ["-n", "-f", marker]
-        let out = Pipe()
-        p.standardOutput = out
-        guard (try? p.run()) != nil else { return nil }
+        guard let out = try? SpawnPipe(childReads: false) else { return nil }
+        p.standardOutput = out.childEnd
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: out)) != nil else { return nil }
         let d = out.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         return Int(String(decoding: d, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))

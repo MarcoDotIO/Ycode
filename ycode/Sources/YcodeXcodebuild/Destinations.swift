@@ -1,4 +1,5 @@
 import Foundation
+import YcodeSubprocess
 import YcodeBuild
 import YcodeSettings
 
@@ -129,10 +130,10 @@ enum Destinations {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
         p.arguments = ["SPHardwareDataType"]
-        let pipe = Pipe()
-        p.standardOutput = pipe
+        guard let pipe = try? SpawnPipe(childReads: false) else { return out }
+        p.standardOutput = pipe.childEnd
         p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return out }
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: pipe)) != nil else { return out }
         let text = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         p.waitUntilExit()
         for line in text.split(separator: "\n") {
@@ -374,10 +375,10 @@ func xcrun(_ args: [String]) -> Data? {
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
     p.arguments = args
-    let out = Pipe()
-    p.standardOutput = out
+    guard let out = try? SpawnPipe(childReads: false) else { return nil }
+    p.standardOutput = out.childEnd
     p.standardError = FileHandle.nullDevice
-    guard (try? p.run()) != nil else { return nil }
+    guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: out)) != nil else { return nil }
     let data = out.fileHandleForReading.readDataToEndOfFile()
     p.waitUntilExit()
     return p.terminationStatus == 0 ? data : nil

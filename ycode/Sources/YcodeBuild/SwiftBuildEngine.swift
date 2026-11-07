@@ -282,10 +282,10 @@ public struct SwiftBuildEngine: BuildEngine {
         p.executableURL = URL(fileURLWithPath: swift)
         p.arguments = (swift.hasSuffix("env") ? ["swift"] : []) + ["package", "dump-pif"]
         p.currentDirectoryURL = directory
-        let out = Pipe(), err = Pipe()
-        p.standardOutput = out
-        p.standardError = err
-        try p.run()
+        let out = try SpawnPipe(childReads: false), err = try SpawnPipe(childReads: false)
+        p.standardOutput = out.childEnd
+        p.standardError = err.childEnd
+        try p.runWithSignalsUnblocked(closingChildEndsOf: out, err)
         let data = out.fileHandleForReading.readDataToEndOfFile()
         let errors = err.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
@@ -378,16 +378,17 @@ public struct SwiftBuildEngine: BuildEngine {
             // YCODE_STRINGS_COMPILER=ycode: swift-build finds Ycode's `xcstringstool` first.
             process.environment = StringsCompilerHook.environment(settings: request.settings,
                                                                   directory: inv.derivedData.appendingPathComponent("YcodeStringsCompiler"))
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
+            let pipe: SpawnPipe
+            do { pipe = try SpawnPipe(childReads: false) } catch { return fail("cannot run \(tool): \(error)") }
+            process.standardOutput = pipe.childEnd
+            process.standardError = pipe.childEnd
             process.standardInput = FileHandle.nullDevice
             let projectWarnings = inv.warnings.map { Diagnostic(severity: .warning, message: $0) }
             for w in projectWarnings {
                 continuation.yield(.output("warning: \(w.message)"))
                 continuation.yield(.issue(w))
             }
-            do { try process.run() } catch { return fail("cannot run \(tool): \(error)") }
+            do { try process.runWithSignalsUnblocked(closingChildEndsOf: pipe) } catch { return fail("cannot run \(tool): \(error)") }
             if !viaHelper {
                 continuation.yield(.output("ycode: the ycode-swb helper was not found (YCODE_SWB); signing to run locally without entitlements"))
             }
@@ -413,7 +414,8 @@ public struct SwiftBuildEngine: BuildEngine {
         }.start()
         return BuildOperation(events: stream) {
             cancelled.set()
-            if process.isRunning { process.interrupt() }
+            // As Control-C: swift-build and the compilers it started.
+            if process.isRunning { ChildSignals.send(SIGINT, to: process.processIdentifier) }
         }
     }
 }

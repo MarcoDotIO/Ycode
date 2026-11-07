@@ -159,6 +159,25 @@ extension KernelSwitchSuites {
         }
     }
 
+    /// A synchronous request queued for the waiter's image (the sync-wait
+    /// push, scheduling-policy.md §4.10) raises its host class: it goes on.
+    @Test func aSyncWaitPushOnTheImageLetsItsWaitersGo() {
+        with(cpus: 1) {
+            let a = Runner(context(SchedClass.default, 1), kernel: kernel)
+            #expect(a.wentOn.wait(timeout: .now() + 5) == .success)
+            let bg = Runner(context(SchedClass.background, 2), kernel: kernel)
+            waitForWaiters(1)
+            #expect(bg.wentOn.wait(timeout: .now() + 0.2) == .timedOut)
+            kernel.syncPushCounts.wrappingAdd(KernelLock.unit(SchedClass.default), ordering: .relaxed)
+            defer { kernel.syncPushCounts.wrappingSubtract(KernelLock.unit(SchedClass.default), ordering: .relaxed) }
+            BackgroundBand.poke(kernel: kernel)
+            #expect(bg.wentOn.wait(timeout: .now() + 5) == .success)
+            #expect(BackgroundBand.runnableByClass == [0, 0, 2, 0])
+            a.finish()
+            bg.finish()
+        }
+    }
+
     @Test func theBoundEndsAWait() {
         with(cpus: 1, boundMs: 100) {
             let a = Runner(context(SchedClass.default, 1), kernel: kernel)

@@ -354,10 +354,10 @@ public struct PreviewRenderer: Sendable {
         p.arguments = args
         p.currentDirectoryURL = cwd
         p.standardInput = FileHandle.nullDevice
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = pipe
-        guard (try? p.run()) != nil else { return (127, "could not run \(exe)") }
+        guard let pipe = try? SpawnPipe(childReads: false) else { return (127, "could not run \(exe)") }
+        p.standardOutput = pipe.childEnd
+        p.standardError = pipe.childEnd
+        guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: pipe)) != nil else { return (127, "could not run \(exe)") }
         final class Box: @unchecked Sendable {
             let lock = NSLock()
             var data = Data()
@@ -377,8 +377,9 @@ public struct PreviewRenderer: Sendable {
             return !p.isRunning
         }
         guard exited(within: limit) else {
+            // As Control-C: SwiftPM and the jobs it started.
             for sig in [SIGINT, SIGTERM, SIGKILL] where p.isRunning {
-                kill(p.processIdentifier, sig)
+                ChildSignals.send(sig, to: p.processIdentifier)
                 if exited(within: 2) { break }
             }
             // A grandchild may still hold the output open: take what came.
@@ -400,7 +401,7 @@ final class MacPreviewHostProcess: @unchecked Sendable {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var hosts: [String: MacPreviewHostProcess] = [:]
     let process = Process()
-    private let input = Pipe(), output = Pipe()
+    private let input: SpawnPipe, output: SpawnPipe
     private let ioLock = NSLock()
     private var buffer = Data()
     private var inputClosed = false
@@ -410,9 +411,11 @@ final class MacPreviewHostProcess: @unchecked Sendable {
     nonisolated(unsafe) static var requestTimeout: TimeInterval = 120
 
     init(executable: URL) throws {
+        input = try SpawnPipe(childReads: true)
+        output = try SpawnPipe(childReads: false)
         process.executableURL = executable
-        process.standardInput = input
-        process.standardOutput = output
+        process.standardInput = input.childEnd
+        process.standardOutput = output.childEnd
         process.standardError = FileHandle.nullDevice
         // A write to a host that died fails with EPIPE instead of a SIGPIPE
         // that would end Ycode (or the test process). The Mac host runs only
@@ -420,7 +423,7 @@ final class MacPreviewHostProcess: @unchecked Sendable {
         #if canImport(Darwin)
         _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
         #endif
-        try process.run()
+        try process.runWithSignalsUnblocked(closingChildEndsOf: input, output)
     }
 
     var pid: pid_t { process.processIdentifier }

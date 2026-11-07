@@ -1,4 +1,5 @@
 import Foundation
+import YcodeSubprocess
 
 /// Builds by running `xcodebuild` as a subprocess and reading its log.
 /// This is the interim engine; see `specs/ide/build.md` §Engines.
@@ -68,9 +69,6 @@ public enum ProcessBuild {
         process.arguments = Array(args.dropFirst())
         if let currentDirectory { process.currentDirectoryURL = URL(fileURLWithPath: currentDirectory) }
         if let environment { process.environment = environment }
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
         process.standardInput = FileHandle.nullDevice
         let cancelled = Flag()
 
@@ -85,8 +83,12 @@ public enum ProcessBuild {
                 if let a = activity(line) { continuation.yield(.activity(a)) }
                 for d in parser.feed(line) { continuation.yield(.issue(d)) }
             }
+            let pipe: SpawnPipe
             do {
-                try process.run()
+                pipe = try SpawnPipe(childReads: false)
+                process.standardOutput = pipe.childEnd
+                process.standardError = pipe.childEnd
+                try process.runWithSignalsUnblocked(closingChildEndsOf: pipe)
             } catch {
                 continuation.yield(.output("ycode: cannot run \(args[0]): \(error)"))
                 continuation.yield(.finished(BuildResult(status: .failed, exitCode: -1, issues: [])))
@@ -110,7 +112,8 @@ public enum ProcessBuild {
         thread.start()
         return BuildOperation(events: stream) {
             cancelled.set()
-            if process.isRunning { process.interrupt() }
+            // As Control-C: the tool and what it started (compilers, swift-build).
+            if process.isRunning { ChildSignals.send(SIGINT, to: process.processIdentifier) }
         }
     }
 }

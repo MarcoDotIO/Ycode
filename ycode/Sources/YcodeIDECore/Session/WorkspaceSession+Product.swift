@@ -349,10 +349,10 @@ enum SDKInfo {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
             p.arguments = args
-            let out = Pipe()
-            p.standardOutput = out
+            guard let out = try? SpawnPipe(childReads: false) else { return nil }
+            p.standardOutput = out.childEnd
             p.standardError = FileHandle.nullDevice
-            guard (try? p.run()) != nil else { return nil }
+            guard (try? p.runWithSignalsUnblocked(closingChildEndsOf: out)) != nil else { return nil }
             let data = out.fileHandleForReading.readDataToEndOfFile()
             p.waitUntilExit()
             let s = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)

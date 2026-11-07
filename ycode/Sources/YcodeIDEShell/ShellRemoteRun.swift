@@ -11,6 +11,7 @@ import Foundation
 import YcodeBuild
 import YcodeIDECore
 import YcodeSimLink
+import YcodeSubprocess
 
 public enum ShellRemoteRun {
     /// Destination identifiers: "ycode-link:<host>/<device>".
@@ -166,7 +167,7 @@ public enum ShellRemoteRun {
         let viewer = Process()
         viewer.executableURL = URL(fileURLWithPath: SimRemoteCLI.viewerPath())
         viewer.arguments = SimRemoteCLI.viewerArguments(host: hostName, device: device, extra: [])
-        try viewer.run()
+        try viewer.runWithSignalsUnblocked()
         watchBoot(host: host, device: device, app: scheme, client: client, output: output, phase: phase)
         return Started(viewer: viewer, app: app, bundleID: r.bundleID ?? up.bundleID, host: host, device: device, debugSocket: r.debugSocket)
     }
@@ -195,9 +196,10 @@ public enum ShellRemoteRun {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: argv[0])
             p.arguments = Array(argv.dropFirst())
-            let pipe = Pipe()
-            p.standardOutput = pipe
-            p.standardError = pipe
+            let pipe: SpawnPipe
+            do { pipe = try SpawnPipe(childReads: false) } catch { return k.resume(throwing: error) }
+            p.standardOutput = pipe.childEnd
+            p.standardError = pipe.childEnd
             pipe.fileHandleForReading.readabilityHandler = { h in
                 let d = h.availableData
                 if !d.isEmpty { output(String(decoding: d, as: UTF8.self)) }
@@ -207,9 +209,12 @@ public enum ShellRemoteRun {
                 k.resume(returning: proc.terminationStatus)
             }
             do {
-                try p.run()
+                try p.runWithSignalsUnblocked(closingChildEndsOf: pipe)
                 started(p)
-            } catch { k.resume(throwing: error) }
+            } catch {
+                pipe.fileHandleForReading.readabilityHandler = nil
+                k.resume(throwing: error)
+            }
         }
     }
 }

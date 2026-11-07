@@ -144,7 +144,7 @@ extension DarwinKernel {
     @inline(__always)
     func applyHostPolicy(_ context: ThreadContext) {
         let push = sendPushClass
-        if HostSched.backend != .none { HostSched.apply(max(context.schedClass, push)) }
+        if HostSched.backend != .none { HostSched.apply(max(context.schedClass, push, syncPushClass)) }
         HostSched.place(uiPath: onUIPath(push: push))
     }
 
@@ -165,7 +165,7 @@ extension DarwinKernel {
         if BackgroundBand.active { BackgroundBand.afterTrap(context, kernel: self) }
         guard HostSched.fastTrapClass != .off || HostSched.uiCPUMasks != nil || HostSched.placeHook != nil else { return }
         let push = sendPushClass
-        HostSched.applyAfterFastTrap(threadClass: context.schedClass, push: push)
+        HostSched.applyAfterFastTrap(threadClass: context.schedClass, push: max(push, syncPushClass))
         HostSched.place(uiPath: onUIPath(push: push))
     }
 }

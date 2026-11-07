@@ -570,11 +570,17 @@ final class SetupProcess: @unchecked Sendable {
             let path = argv[0].hasPrefix("/") ? argv[0] : "/usr/bin/env"
             p.executableURL = URL(fileURLWithPath: path)
             p.arguments = argv[0].hasPrefix("/") ? Array(argv.dropFirst()) : argv
-            let out = Pipe()
-            p.standardOutput = out
-            p.standardError = out
-            let input = Pipe()
-            p.standardInput = stdin == nil ? FileHandle.nullDevice : input
+            let out: SpawnPipe, input: SpawnPipe?
+            do {
+                out = try SpawnPipe(childReads: false)
+                input = stdin == nil ? nil : try SpawnPipe(childReads: true)
+            } catch {
+                take(Data("\(argv[0]): \(error)\n".utf8))
+                return k.resume(returning: 127)
+            }
+            p.standardOutput = out.childEnd
+            p.standardError = out.childEnd
+            p.standardInput = input?.childEnd ?? FileHandle.nullDevice
             let reader = DispatchQueue(label: "ycode.setup-process")
             out.fileHandleForReading.readabilityHandler = { [weak self] h in
                 let d = h.availableData
@@ -587,8 +593,8 @@ final class SetupProcess: @unchecked Sendable {
                 k.resume(returning: proc.terminationReason == .uncaughtSignal ? 128 + proc.terminationStatus : proc.terminationStatus)
             }
             do {
-                try p.run()
-                if let stdin {
+                try p.runWithSignalsUnblocked(closingChildEndsOf: out, input)
+                if let stdin, let input {
                     let h = input.fileHandleForWriting
                     DispatchQueue.global().async {
                         h.write(Data(stdin.utf8))
@@ -596,6 +602,8 @@ final class SetupProcess: @unchecked Sendable {
                     }
                 }
             } catch {
+                // The output's write end is closed now: stop watching it.
+                out.fileHandleForReading.readabilityHandler = nil
                 take(Data("\(argv[0]): \(error)\n".utf8))
                 k.resume(returning: 127)
             }
