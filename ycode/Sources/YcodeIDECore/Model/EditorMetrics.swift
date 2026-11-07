@@ -129,8 +129,10 @@ public enum EditorMetrics {
 
     /// From the press to the first motion: hide 43 ms, show 118 ms.
     public static func inspectorSlideDelay(show: Bool) -> Double { show ? 0.118 : 0.043 }
-    /// The motion with fitted ends: hide 248 ms, show 240 ms.
-    public static func inspectorSlideMotion(show: Bool) -> Double { show ? 0.240 : 0.248 }
+    /// The motion: round 4's ease-in-out fits (`editor-area.md` F.5),
+    /// hide 226 ms, show 217 ms (round 2's fitted ends were 248 and 240;
+    /// round 2's hide table fits 226 as well).
+    public static func inspectorSlideMotion(show: Bool) -> Double { show ? 0.217 : 0.226 }
     /// Ease-in-out, the working curve for both.
     public static let inspectorSlideEaseInOut = (x1: 0.42, y1: 0.0, x2: 0.58, y2: 1.0)
 

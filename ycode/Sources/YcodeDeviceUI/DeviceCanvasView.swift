@@ -191,6 +191,11 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
     /// shows, and the action button where the controls float (`action` nil:
     /// none; `busy`: a spinner and "Starting…" instead, Q1). `name` and `os`
     /// are the toolbar's title and subtitle, not drawn on the canvas (§11.2).
+    /// With no action and not starting (a device Ycode does not operate, or
+    /// one whose display is not reachable), the control capsules float in
+    /// their place with every control disabled (Ycode's choice for
+    /// `device-hub.md` §12.1 question 2: the canvas keeps the reference's
+    /// layout, the device centred between the toolbar and the capsules).
     public func showStopped(spec: DeviceFrameSpec, name: String, os: String, action: String?, busy: Bool = false) {
         detachSession()
         stoppedSpec = spec
@@ -233,6 +238,10 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         return "empty"
     }
 
+    /// The control capsules are shown, every control disabled, for a
+    /// device that cannot be driven (§12.1).
+    public var showsDisabledControls: Bool { session == nil && stoppedSpec != nil && statusAction == nil && !statusBusy }
+
     private func refreshState() {
         let hasDevice = session != nil || stoppedSpec != nil
         messageLabel.stringValue = message ?? ""
@@ -245,7 +254,7 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         statusLabel.isHidden = !statusBusy
         frameView.setAccessibilityLabel(stoppedSpec != nil ? stoppedName : nil)
         if statusBusy { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
-        controls.isHidden = session == nil
+        controls.isHidden = session == nil && !showsDisabledControls
         let problem = session.flatMap { $0.hasImage ? nil : $0.problemText }
         problemLabel.stringValue = problem ?? ""
         problemLabel.isHidden = problem == nil
@@ -253,6 +262,9 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
             controls.configure(.init(foldable: s.isFoldable, canRotate: s.canRotate, recording: s.isRecording, posture: s.posture,
                                      enabled: s.isLive, showsRotate: s.spec.rotates, showsHome: s.spec.family != .watch,
                                      spatial: s.isSpatial || s.spec.family == .vision))
+        } else if showsDisabledControls, let spec = stoppedSpec {
+            controls.configure(.init(foldable: spec.isFoldable, enabled: false, showsRotate: spec.rotates, showsHome: spec.family != .watch,
+                                     spatial: spec.family == .vision))
         }
         statsLabel.isHidden = !showsStatistics || session == nil
         updateStatistics()

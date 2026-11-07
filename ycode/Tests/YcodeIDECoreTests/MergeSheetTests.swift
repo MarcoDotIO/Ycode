@@ -18,10 +18,16 @@ struct MergeSheetTests {
         typealias M = MergeSheetMetrics
         let sheet = M.sheetFrame(window: (1400, 880), toolbarBottom: 52.5)
         #expect(sheet.x == 24 && sheet.width == 1352 && sheet.y == 52.5)
-        // Ycode's choice: the sheet's bottom is 24 above the window's.
-        #expect(sheet.maxY == 856)
         let box = M.contentBox(sheet: (sheet.width, sheet.height))
         #expect(box.x == 20 && box.y == 11.5 && box.width == 1312)
+        // Round 4 (§13.3): the box from y 64 to 847, 33 above the window's
+        // bottom; the button row runs past the window.
+        #expect(sheet.y + box.y == 64 && sheet.y + box.maxY == 847)
+        #expect(sheet.maxY > 880 && sheet.y + box.maxY + M.buttonGap == 868.5)
+        for h in [700.0, 1000, 1200] {
+            let f = M.sheetFrame(window: (1400, h), toolbarBottom: 52)
+            #expect(f.y + M.contentBox(sheet: (f.width, f.height)).maxY == h - 33)
+        }
         #expect(box.maxY + M.buttonGap + M.buttonHeight + M.bottomMargin == sheet.height)
         // Window coordinates of §2's columns: the box starts at x 44.
         let c = M.columns(boxWidth: box.width)
@@ -120,6 +126,27 @@ struct MergeSheetTests {
         #expect(s.fileRows(root: "/r", flat: true, filter: "col").map(\.title) == ["Colors.swift"])
         s.show(file: "/r/Merger/Greeting.swift", document: greeting())
         #expect(s.jumpPath(root: "/r") == ["r", "Merger", "Greeting"])
+        // Round 4 (§13.7): the path starts with the workspace's project,
+        // from the project's folder.
+        #expect(s.jumpPath(root: "/r", project: MergeSheetProject(name: "Merger", folder: "/r")) == ["Merger", "Merger", "Greeting"])
+        #expect(s.jumpPath(root: "/r", project: MergeSheetProject(name: "App", folder: "/r/Merger")) == ["App", "Greeting"])
+        #expect(s.jumpPath(root: "/r", project: MergeSheetProject(name: "App", folder: "/elsewhere")) == ["App", "Merger", "Greeting"])
+    }
+
+    /// Round 4 (§13.4, §13.5): the dark colours and the token's rims.
+    @Test func darkPaletteAndTokens() {
+        let d = MergeSheetPalette.dark, l = MergeSheetPalette.light
+        #expect(d.sheet == 0x1D1E1F && d.sheetRim == 0x2D2E2F && d.pane == 0x262627 && d.boxBorder == 0x171718)
+        #expect(d.gutter == 0x313131 && d.gutterRule == 0x484848 && d.gutterConflict == 0x613D3F && d.gutterClean == 0x394C61)
+        #expect(d.conflictRow == 0x583436 && d.conflictWord == 0x9B3A3C && d.selectedRule == 0xDA5559 && d.cleanRow == 0x2F4457)
+        #expect(d.token == 0x575757 && d.tokenRim == 0x6A6A6A && d.selectedToken == 0x6D2A2D && d.selectedTokenRim == 0xDA5559)
+        // The veil takes the window to about 0.70 of its value.
+        #expect(d.veilOpacity == 0.30)
+        // Light: no rim on the sheet or the unselected token, white panes.
+        #expect(l.sheetRim == l.sheet && l.pane == 0xFFFFFF && l.tokenRim == l.token && l.gutterRule == 0xD7D7D7)
+        #expect(MergeSheetToken.rimWidth == 0.5 && MergeSheetToken.selectedRimWidth == 1 && MergeSheetToken.chevronLineWidth == 1)
+        #expect(MergeSheetToken.chevronHalfWidth * 2 == 6 && MergeSheetToken.chevronHeight == 3.5)
+        #expect(MergeModalTone.text == 0.63 && MergeModalTone.glyph == 0.33)
     }
 
     @Test func wrappingContinuesPastTheIndentation() {

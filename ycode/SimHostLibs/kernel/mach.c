@@ -1068,8 +1068,9 @@ YC_EXPORT int mach_voucher_attr_command(yc_port_t voucher, yc_u32 key, yc_u32 co
 
 /* kern_return_t task_info(task_name_t target_task, task_flavor_t flavor,
  *     task_info_t task_info_out, mach_msg_type_number_t *task_info_outCnt)
- * The VMM's private task_info trap (0x7963_0006): TASK_DYLD_INFO (17) and
- * TASK_AUDIT_TOKEN (15) of the caller's own task; other flavors
+ * The VMM's private task_info trap (0x7963_0006): TASK_DYLD_INFO (17) of the
+ * caller's own task, TASK_AUDIT_TOKEN (15) and the CPU-time flavors (1, 2, 3,
+ * 5, 18, 20, 21, 26; TaskInfoFlavors.swift) of any live task; other flavors
  * KERN_INVALID_ARGUMENT. libxpc reads its own audit token at start. */
 YC_EXPORT int task_info(yc_port_t task, int flavor, void *task_info_out, yc_u32 *task_info_outCnt)
 {

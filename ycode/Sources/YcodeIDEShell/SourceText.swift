@@ -155,9 +155,15 @@ public struct SourcePalette: Equatable, Sendable {
         let bg = ThemeColor(hex: theme.background) ?? base.background
         let fg = ThemeColor(hex: theme.foreground) ?? base.foreground
         var tokens: [SyntaxTokenKind.Role: ThemeColor] = [:]
+        let declarations: Set<SyntaxTokenKind.Role> = [.typeDeclaration, .otherDeclaration, .propertyReference]
+        let isDefault = theme.name == EditorTheme.builtIns[0].name && theme.tokens.isEmpty && theme.foreground == nil
         for role in SyntaxTokenKind.Role.allCases {
-            if let c = ThemeColor(hex: theme.tokens[role.rawValue]) ?? base.tokens[role.rawValue] { tokens[role] = c }
+            // A theme of its own without declaration colours draws type
+            // declarations as type names and the rest as plain text.
+            let fallback = declarations.contains(role) && !isDefault ? nil : base.tokens[role.rawValue]
+            if let c = ThemeColor(hex: theme.tokens[role.rawValue]) ?? fallback { tokens[role] = c }
         }
+        if tokens[.typeDeclaration] == nil { tokens[.typeDeclaration] = tokens[.typeName] }
         let own = theme.background != nil
         return SourcePalette(background: bg, foreground: fg, currentLine: ThemeColor(hex: theme.currentLine) ?? base.currentLine,
                              lineNumber: own ? mix(fg, bg, 0.45) : base.lineNumber,

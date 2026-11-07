@@ -486,7 +486,8 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
             polygon(roundedRect(s, radius: s.height / 2), p.shadow.with(alpha: p.shadow.a * alpha))
         }
         gradientPolygon(roundedRect(r, radius: radius), top: p.rimTop, bottom: p.rimBottom)
-        let inner = ViewerRect(x: r.x + 0.75, y: r.y + 0.75, width: r.width - 1.5, height: r.height - 1.5)
+        // A 0.5-point rim (§12.1).
+        let inner = ViewerRect(x: r.x + 0.5, y: r.y + 0.5, width: r.width - 1, height: r.height - 1)
         gradientPolygon(roundedRect(inner, radius: inner.height / 2), top: p.glassTop, bottom: p.glassBottom)
     }
 
@@ -563,10 +564,10 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         for r in session.controlCapsules { glass(r) }
         for x in session.controlDividers {
             let caps = session.controlCapsules
-            let y = (caps.first?.y ?? 0) + (DeviceControlsLayout.height - 20) / 2
+            let y = (caps.first?.y ?? 0) + (DeviceControlsLayout.height - DeviceControlsLayout.dividerHeight) / 2
             let d = p.divider.bytes
             color(d.0, d.1, d.2, d.3)
-            fill(ViewerRect(x: x - 0.5, y: y, width: 1, height: 20))
+            fill(ViewerRect(x: x - 0.5, y: y, width: 1, height: DeviceControlsLayout.dividerHeight))
         }
         for c in session.controls {
             let g = c.enabled ? p.glyph : p.glyph.with(alpha: p.disabledAlpha)

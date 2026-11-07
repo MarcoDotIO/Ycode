@@ -388,6 +388,143 @@ the sheet, Choose through tokens and the menu, hand editing, Merge, a
 cherry-pick through the sheet and a rebase cancelled and aborted, then
 checked with git.
 
+## 13. Council round 4: modal state, sheet height, dark colours (2026-11-06)
+
+Round 4 repeated the session in the **dark appearance** with Ycode
+`45c676aa`, whose merge now runs through its own UI (row menu, alert,
+sheet). The alert matches: about 417 × 132 against the reference's 418 ×
+131, the same centre and wrap, buttons within 1 point; the sheet's
+entrance 267 ms against 275 ms, both ease-out; Choose Right's result and
+timing match (408 ms against 428 ms). Values in window points of the
+1400 × 880 window, from the stills `02-merge-start-alert`,
+`03-conflict-at-rest` and the recording `04-conflict-choose-right`.
+Checklist rows 97–103 in `fidelity-council.md`.
+
+### 13.1 The parent window behind the alert and the sheet
+
+The same regions of the window, in its normal state (the Repositories
+view before the merge), behind the alert, and behind the sheet:
+
+| Region | Reference: normal → alert → sheet | Ycode now: normal → alert → sheet |
+|---|---|---|
+| Editor background (empty) | #252525 → **#1A1A1A** (×0.70) | #1E1E1E → #141414 (×0.67) |
+| Navigator background | #28292A → **#1C1C1D** → #1C1C1D | #242527 → #18191A → #151617–#171818 |
+| Navigator text ("Branches", "Remotes") | #E9E9E9 → **#666767** (×0.44) | #E9E9E9 → #9E9E9E (×0.68) |
+| Window title ("Merger") | #FFFFFF → **#6F6F70** → #6F6F70 | #DDDDDD → #969696 → #8D8D8D |
+| Run button glyph | #FFFFFF → **#3B3B3C** → #3B3B3C (×0.23) | #FFFFFF → #ADADAD → #A3A3A3 |
+| Scheme text | #E3E3E3 → **#646565** → #646565 | #E2E2E2 → #999999 → #8F8F8F |
+| Filter field text | #ABABAC → **#4E4E50** | #A0A1A2 → #6D6D6E |
+| Inspector placeholder | #757677 → **#3A3A3A** | #717274 → #4D4D4F |
+| The context menu's target row (`feature`) behind the alert | **not highlighted** (navigator background) | still highlighted (#2C2D2E on #18191A) |
+| Window buttons behind the sheet | **close grey (#4D4E4F, disabled); minimize #FBB900 and zoom #0DBE00 at full colour**, drawn above the veil | all three veiled: #9F3834, #A07700, #087800 |
+
+Behind the alert both apps draw the same system indicator over the window
+buttons (a capsule, x 16–82, #9B9CFF), so the alert still does not
+compare the buttons; the sheet still does.
+
+**Rule (target).** While a window-modal alert or sheet is up, the parent
+window:
+1. draws as **inactive and disabled**: its text takes its disabled tone
+   (about 0.63 of its value) and its toolbar buttons their disabled tone
+   (about 0.33) **before** the veil;
+2. is veiled to about **0.70** (Ycode's veil depth is right);
+3. drops transient highlights, such as the row a context menu was
+   opened on;
+4. disables the close button only (grey) and draws the window buttons
+   above the veil, minimize and zoom in full colour.
+
+### 13.2 Alert buttons are accessibility elements (behavioural requirement)
+
+Ycode's alert is an accessibility sheet holding two static texts and no
+buttons; a hit test on a button finds nothing, and the capture had to
+press Return. The reference's alert buttons were pressed through
+accessibility. Requirement: every alert button is an accessibility
+element with the button role, its label as its title and a press
+action; the alert exposes its default button (Merge) and its cancel
+button (Cancel) as such; the title and message are static texts. The
+same holds for the merge sheet's Cancel and Merge.
+
+### 13.3 The sheet's height in an 880-point window (refines §2)
+
+| Element | Reference | Ycode now |
+|---|---|---|
+| Sheet | x 24–1376, top y 52 with a 1-point lighter top rim (#2D2E2F); fill **#1D1E1F**, one step from the veiled window (#1C1C1D), so in dark the sheet's sides hardly show | x 24–1376, top rim #474849 at y 51; fill #1F1F1F over a darker veil (#151617–#171818) |
+| Content box | x 44–1356, y **64–847**; border a dark hairline **#171718** | x 44–1356, y 63.5–**792.5**; border a light line #3D3D3D |
+| Footer row (§8) | y **819–846** | y 764.5–791.5 |
+| Sheet bottom and buttons | below the window's bottom edge: the button row starts about y 868.5 (21.5 under the box) and is cut by the window | y 856; the buttons inside the window |
+
+Ycode's box is **54.5 points shorter**; the judges' "866 against 811" is
+the same difference in sheet coordinates. Target: in an 880-point window
+the content box ends at y 847, 33 above the window's bottom, even though
+the button row then extends past the window. The height rule in other
+window heights stays Open question 1.
+
+### 13.4 Dark colours in the sheet
+
+| Element | Reference | Ycode now |
+|---|---|---|
+| Pane background | #262627 | #1F1F1F |
+| Gutter | **#313131** between 1-point rules **#484848** | #252525, rules #383839 |
+| Conflict row | **#583436** (in the gutter #613D3F) | #4A2629 (gutter #47262A) |
+| Changed words | **#9B3A3C** | #7D3337 |
+| Selected change's rules | **#DA5559** | #E06669 |
+| Clean change | **#2F4457** (in the gutter #394C61) | #1E3A56 (gutter #1F3450) |
+| Syntax | the dark theme of `editor-area.md` F.3, including the declaration and interpolation colours | no declaration colours; `Greeting` in the type-in-use colour |
+
+### 13.5 Gutter tokens: dark fill, hairline rim
+
+| | Reference | Ycode now |
+|---|---|---|
+| Size and place | 38.5 × 14, x 771.5–810, vertically centred in the change's first row | the same |
+| Unselected token | fill **#575757** with a **0.5-point lighter rim** (about #6A6A6A; measured #6A6262 over a red row, #5E6771 over the blue row). On the dark gutter it reads as an outlined pill. | fill **#8A8A8A**, no rim: a light filled pill |
+| Selected token | fill **#6D2A2D**, a 1-point rim #DA5559 | fill #8E3337, rim #E0666A |
+| Glyphs | white "?" or digit; a light, thin down-chevron | white; the chevron drawn heavier and larger |
+
+### 13.6 The Choose menu: hover and separator
+
+- **Separator.** Both apps put the separator after Choose Right, at the
+  same place: item tops at 0, 24, (separator at 41), 59 and 83 points
+  from Choose Left's. The judges' "extra separator in Ycode" is wrong;
+  §7's item list stands.
+- **Hover.** The menu opens under the pointer, which rests where Choose
+  Right appears. The reference **highlights Choose Right from the
+  menu's first frame** (accent #007AFF bar x 797–962, 165 × 24, white
+  text). Ycode shows no highlight until the click. Target: track the
+  pointer from the first frame; an item under a stationary pointer is
+  highlighted when the menu appears.
+- **Position.** Ycode's menu sits 6 points lower (Choose Right's bar at
+  y 315–339 against 309–333).
+- **Click.** Reference: the highlight turns off 1293 ms after the step
+  starts and back on at 1368 (the blink), the menu fades from about 1418
+  to 1602, the pane text changes at 1685. Ycode: the highlight appears
+  at 1293 and holds, the fade runs 1443–1622, the text changes at 1705.
+  With hover tracking the blink then reads off-on as in the reference.
+
+### 13.7 The jump bar's first item and the footers
+
+- **Jump bar.** Reference: the project ("Merger", with the project's
+  icon), the group ("Merger"), the file, "No Selection". Ycode starts
+  with "project", the repository folder's name. Target: start the path
+  at the workspace's project, as the main window's jump bar does.
+- **Footers.** Reference: left "project › main › 1/3/26 Capture Test
+  2e160c6 (HEAD)", right "project › main › 1/2/26 Capture Test cb364e9".
+  Both footers name the **current branch** ("main"); only the commit on
+  the right is the incoming one. Ycode's right footer names "feature".
+  Whether the reference always names the current branch there is open
+  (one capture).
+
+### 13.8 Ycode implementation (B4-MERGE, 2026-11-06)
+
+| Row | What Ycode does now |
+|---|---|
+| 97 | While the alert or sheet is up, `ModalParentDimming` (macOS) draws the window disabled before the veil: the content and the toolbar's text items at 0.63 opacity (`MergeModalTone.text`), the toolbar's glyph buttons through AppKit's disabled state, the close button disabled (AppKit's own grey). The veil has holes at the three window buttons and lets their clicks through, so minimize and zoom stay in colour and usable. Dark veil 0.30 (×0.70). The Source Control navigator's right-click no longer selects the row (the context ring only), so no highlight stays behind the alert. Linux: the window's columns at 0.63 under the modal; its window has no window buttons and the menu bar stays uncovered (§12). The window title (drawn by AppKit) is not dimmed (open). |
+| 98 | `MergeButton` is an accessibility button (title, enabled state, press). The alert (role sheet, modal) lists the title and message as static texts, then Cancel and Merge, and names Merge its default and Cancel its cancel button; the sheet names its Merge and Cancel the same way, and Return merges once Merge is enabled. The sheet's drawn controls are exposed too: "Hierarchical" / "Flat" (radio buttons), the conflict navigator's and the stepper's chevrons, and one button per gutter token (its press opens the Choose menu). Linux: the buttons are toolkit buttons; the alert and sheet are modal containers, the buttons carry "Default button (Return)" / "Cancel button (Escape)" hints (the toolkit's tree has no default-button attribute), file rows are buttons. |
+| 99 | `MergeSheetMetrics.sheetFrame`: the content box ends `boxBottomInset` (33) above the window's bottom in every window height (Ycode's choice for open question 1); the button row and the sheet's bottom lie past the window, which cuts them, as in the reference. |
+| 100 | `MergeSheetPalette.dark` takes §13.3–§13.5's values (sheet, rim, panes, gutter and its rules, shading, word fills, rules, box hairline). The pane text is styled by the editor's own `Theme.apply` (macOS) and theme (Linux), so the declaration colours follow whatever the editor's theme gives. |
+| 101 | Tokens: a 0.5-point rim (`tokenRim`, #6A6A6A in dark, none in light) on unselected tokens, 1 point on the selected; the chevron 6 × 3.5 with a 1-point stroke. |
+| 102 | The Choose menu opens 6 points higher (`chooseMenuOrigin`). When it opens, a mouse-moved event at the pointer is queued so AppKit highlights the item under a resting pointer at once (not verified on screen: the tests do not move the pointer). Linux: hover highlighting is the toolkit's (unchanged). |
+| 103 | The jump bar starts with the workspace's project (`MergeSheetProject`: a project's or workspace's name and folder, a package's folder), then the folders below the project's folder. Both footers name the current branch (a rebase's right footer keeps the replayed branch). |
+
 ## Open questions
 
 Each has a Ycode answer in §12, marked "Ycode's choice, open question".
@@ -413,6 +550,12 @@ Each has a Ycode answer in §12, marked "Ycode's choice, open question".
 9. The token chevron circle on the clean change: a state ("a choice is in
    effect") or a pointer-hover effect. The capture supports the state
    reading (the circle was there with the pointer elsewhere).
+10. Whether the footers always name the current branch on both sides
+    (§13.7; one capture).
+11. The parent window's disabled tones: measured as about 0.63 (text)
+    and 0.33 (toolbar glyphs) of the active value before the veil, from
+    one alert and one sheet in dark; light appearance not captured with
+    the new rule in mind.
 
 ## Evidence
 
@@ -426,3 +569,4 @@ Each has a Ycode answer in §12, marked "Ycode's choice, open question".
 | Ycode's behaviour | — | The same session's captures of Ycode; the capture notes on its missing row menu |
 | §12 | — | Ycode's design and choices (B3-MERGE); the git side: git's documentation (level 1) |
 | git side of a merge | 1 | git documentation, as in `source-control.md` |
+| §13: modal state, alert accessibility, sheet height, dark colours, tokens, Choose menu hover, jump bar and footers | 3 | Council round 4 stills `01-scm-repositories`, `02-merge-start-alert`, `03-conflict-at-rest` and recording `04-conflict-choose-right` of both apps (dark); region colours, colour runs, per-frame highlight detection; the accessibility gap from the capture session's notes |

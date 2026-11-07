@@ -455,6 +455,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
 
     public func applicationWillFinishLaunching(_ n: Notification) {
         LayoutProbe.prepareIfRequested()
+        MotionProbe.prepareIfRequested()
         MainThreadWatchdog.startIfRequested()
         // Outside its bundle the app has no .icns (make-app.sh adds it).
         if Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") == nil { NSApp.applicationIconImage = ProductIcon.image }
@@ -473,6 +474,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     public func applicationDidFinishLaunching(_ n: Notification) {
         // YCODE_LAYOUT_PROBE: measure the chrome, write the report, quit.
         if LayoutProbe.startIfRequested() { return }
+        // YCODE_MOTION_PROBE: time the inspector's slide, write it, quit.
+        if MotionProbe.startIfRequested() { return }
         YcodeDocumentController.showWelcome = { [weak self] in self?.showWelcomeWindow(nil) }
         if case .open(let all) = LaunchAction.decide(arguments: Array(CommandLine.arguments.dropFirst()), openDocumentCount: 0) {
             // Gauge traces open in a profiler window (specs/ide/profiler.md §6).

@@ -267,7 +267,8 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let wc = SettingsWindowController(prefs: Preferences(defaults: t.defaults), components: [])
         #expect(SettingsWindowController.paneTitles == ["General", "Appearance", "Accounts", "Coding Assistant", "Behaviors", "Navigation",
                                                         "Notifications", "Editing", "Shortcuts", "Source Control", "Components",
-                                                        "Locations", "Simulators"])
+                                                        "Locations"])
+        #expect(SettingsWindowController.tabTitles.last == "Simulators")
         let sims = wc.pane(SimulatorsSettingsPane.self)!
         _ = sims.view
         #expect(sims.rowTitles.contains("Warm boot from snapshot") && sims.rowTitles.contains("Lean boot"))

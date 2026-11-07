@@ -42,6 +42,9 @@ public final class MergeAlertView: NSView {
             f.isSelectable = false
             f.maximumNumberOfLines = 2
             f.lineBreakMode = .byWordWrapping
+            // Static texts to accessibility (§13.2), whatever the field's cell says.
+            f.setAccessibilityElement(true)
+            f.setAccessibilityRole(.staticText)
         }
         cancelButton.target = self
         cancelButton.action = #selector(cancel(_:))
@@ -64,9 +67,12 @@ public final class MergeAlertView: NSView {
         }
         for v in [iconView, titleField, messageField, cancelButton, mergeButton] as [NSView] { addSubview(v) }
         updateTexts()
+        // An accessibility sheet (§13.2): the title and message are static
+        // texts, Cancel and Merge buttons, Merge its default button and
+        // Cancel its cancel button.
         setAccessibilityElement(true)
         setAccessibilityRole(.sheet)
-        setAccessibilityLabel(titleField.stringValue)
+        setAccessibilityModal(true)
     }
 
     @available(*, unavailable)
@@ -78,6 +84,17 @@ public final class MergeAlertView: NSView {
     func updateTexts() {
         titleField.stringValue = MergeSheetText.alertTitle(branch: branch)
         messageField.stringValue = MergeSheetText.alertMessage(branch: branch, current: current)
+    }
+
+    public override func accessibilityLabel() -> String? { titleField.stringValue }
+    public override func accessibilityDefaultButton() -> Any? { mergeButton }
+    public override func accessibilityCancelButton() -> Any? { cancelButton }
+    /// The texts, the branch pop-up and the buttons, in reading order.
+    public override func accessibilityChildren() -> [Any]? {
+        var out: [Any] = [titleField, messageField]
+        if let chooser { out.append(chooser) }
+        out += [cancelButton, mergeButton]
+        return out
     }
 
     var palette: MergeSheetPalette { MergeSheetPalette.forDark(effectiveAppearance.isDarkMerge) }

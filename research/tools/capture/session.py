@@ -570,6 +570,8 @@ class Session:
         # chosen by title, instead of the session window.
         select = ["--title", substitute(step["capture_title"], names)] if step.get("capture_title") else None
         entry = {"index": index, "id": step["id"], "note": step.get("note", ""), "actions": [], "ok": True}
+        if step.get("crop"):
+            entry["crop"] = step["crop"]  # [x, y, w, h] in window points: a detail sheet of the after stills
         if focus == "foreground":
             # Something else may have taken the front since the last step;
             # take it back before the stills and the recording start.
@@ -588,6 +590,13 @@ class Session:
         try:
             for action in step.get("do", []):
                 t = time.time()
+                if "snap" in action:
+                    # A still in the middle of a step (an alert before its
+                    # button is pressed): NN-step-<name>.png.
+                    snap = f"{sid}-{action['snap']}.png"
+                    entry.setdefault("snaps", {})[action["snap"]] = self.still(
+                        pid, target_dir / snap, action.get("mode", mode), select)
+                    continue
                 r = self.act(ax, action, names, project_dir, focus)
                 r.setdefault("wall_start", r.get("wall", t))
                 entry["actions"].append({"spec": action, "result": r})

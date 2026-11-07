@@ -95,6 +95,25 @@ extension JumpBar {
         stack.setCustomSpacing(10, after: d)
     }
 
+    /// The empty bar's divider after the grid button (`editor-area.md`
+    /// F.10): "No Selection" then starts `emptyTextStart` in.
+    func addEmptyDivider() {
+        let d = NSBox()
+        d.boxType = .separator
+        d.translatesAutoresizingMaskIntoConstraints = false
+        d.widthAnchor.constraint(equalToConstant: 1).isActive = true
+        d.heightAnchor.constraint(equalToConstant: 14).isActive = true
+        if let last = stack.arrangedSubviews.last { stack.setCustomSpacing(Self.emptyDividerGaps.before, after: last) }
+        stack.addArrangedSubview(d)
+        stack.setCustomSpacing(Self.emptyDividerGaps.after, after: d)
+    }
+
+    /// Room before and after the empty bar's divider.
+    static let emptyDividerGaps: (before: CGFloat, after: CGFloat) = (12, 13.5)
+    /// Where "No Selection" starts in the empty bar (its ink, from the bar's
+    /// leading edge: x 337.5 in a bar at 290).
+    static let emptyTextStart: CGFloat = 47.5
+
     /// The split pane's close button (tests).
     var paneCloseButton: NSButton? { showsPaneCloseButton ? paneState.closeButton : nil }
 }

@@ -193,7 +193,8 @@ public final class DeviceControlsRow: NSView {
                 inner.addSubview(b)
             }
             if let d = DeviceControlsLayout.dividerCentre(of: group) {
-                let sep = DividerLine(frame: CGRect(x: CGFloat(d) - 0.5, y: (Self.height - 20) / 2, width: 1, height: 20))
+                let dh = CGFloat(DeviceControlsLayout.dividerHeight)
+                let sep = DividerLine(frame: CGRect(x: CGFloat(d) - 0.5, y: (Self.height - dh) / 2, width: 1, height: dh))
                 sep.identifier = .init("device-controls-divider")
                 inner.addSubview(sep)
             }
@@ -222,14 +223,27 @@ public final class DeviceControlsRow: NSView {
             }
             b.toolTip = look.help
             b.setAccessibilityLabel(look.help)
-            // Glyphs black (white in dark), the current pose in the accent colour (§11.1).
+            // Glyphs black (white in dark, §12.1), the current pose in the accent colour (§11.1).
             b.contentTintColor = c == .recordScreen && configuration.recording ? .systemRed
-                : Self.isCurrentPose(c, configuration.posture) ? .controlAccentColor : .labelColor
+                : Self.isCurrentPose(c, configuration.posture) ? .controlAccentColor : Self.glyphColor
             switch c {
             case .rotateLeft: b.isEnabled = configuration.enabled && configuration.canRotate
             default: b.isEnabled = configuration.enabled
             }
         }
+    }
+
+    /// The glyphs: black on the light glass, white on the dark (§11.1, §12.1).
+    static let glyphColor = NSColor(name: "ycode.deviceControls.glyph") { a in
+        a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .white : .black
+    }
+
+    /// The divider between Rotate and the poses: #E9E9E9 on the light glass,
+    /// #505052 on the dark (§11.1, §12.1).
+    static let dividerColor = NSColor(name: "ycode.deviceControls.divider") { a in
+        a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 0x50 / 255, green: 0x50 / 255, blue: 0x52 / 255, alpha: 1)
+            : NSColor(srgbRed: 0xE9 / 255, green: 0xE9 / 255, blue: 0xE9 / 255, alpha: 1)
     }
 
     static func isCurrentPose(_ c: DeviceCommand, _ p: DevicePosture?) -> Bool {
@@ -266,7 +280,8 @@ public final class DeviceControlsRow: NSView {
     }
 }
 
-/// The one-point line between Rotate and the poses (#E9E9E9 on the light glass).
+/// The one-point line between Rotate and the poses (#E9E9E9 on the light
+/// glass, #505052 on the dark), 15 tall in the reference's dark capture.
 @MainActor
 final class DividerLine: NSView {
     override init(frame: NSRect) {
@@ -276,6 +291,10 @@ final class DividerLine: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
     override var wantsUpdateLayer: Bool { true }
-    override func updateLayer() { layer?.backgroundColor = NSColor.separatorColor.cgColor }
+    override func updateLayer() {
+        var c = NSColor.clear
+        effectiveAppearance.performAsCurrentDrawingAppearance { c = DeviceControlsRow.dividerColor.usingColorSpace(.sRGB) ?? .gray }
+        layer?.backgroundColor = c.cgColor
+    }
 }
 #endif

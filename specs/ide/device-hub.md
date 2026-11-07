@@ -613,6 +613,57 @@ or one card holding the message; the empty scroll track should not show.
   recording state.
 - Whether the capsules stay at the canvas bottom in the compact window.
 
+## 12. Council round 4 (2026-11-06)
+
+One Retina still of the hub window, 1100 × 800, sidebar hidden, the
+iPhone Duo (iOS 27.1) at its Home screen with the Settings inspector,
+active, **dark appearance**; Ycode `45c676aa` showed the same simctl
+device, which it does not operate (its simulators run on the remote
+host), as a generic outline. Title, subtitle, the three toolbar groups
+(within about 4 points) and the inspector's width match. Checklist rows
+104–105 in `fidelity-council.md`.
+
+### 12.1 The control capsules in dark (confirms §11.1)
+
+| Element | Reference | Ycode now |
+|---|---|---|
+| Capsule 1 (Home · Screenshot · Record) | x **279–388** (109), y 756–792 (36) | none |
+| Capsule 2 (Rotate │ three poses) | x **395–541** (146), y 756–792 | none |
+| Gap, position | 7 apart; bottom **8 above the window's bottom** (y 792 of 800); the pair centred on the canvas (centre x 410 of x 0–820) | — |
+| Material | fill **#3B3B3D** over the canvas #1E1E1F; a 0.5-point lighter rim (#79797C at the very top and bottom edges, #5F5F60 just inside); fully rounded ends | — |
+| Glyphs | **white**; centres x 299.8, 333.8, 367.5 (capsule 1) and 415.5 (Rotate), the poses 452.8, 486.5, 520.5: the 34-point pitch of §11.1 | — |
+| Divider | 1 point, **#505052**, x 434, y 769–784 (15 tall), between Rotate and the poses | — |
+| Current pose | its glyph in the accent colour (#007AFF) | — |
+
+Round 3's values (108 and 145.5 wide, 36.5 tall, 7.5 apart) hold within
+a point; the dark material is new.
+
+**Why Ycode shows none.** I.13 (Row 67) draws "its picture alone" for a
+simulator Ycode does not operate, and its control capsules only for its
+own devices; the captured device was such a simulator. So the absence is
+by design, and the council could not see whether the capsules appear for
+a booted Ycode simulator. Questions for the implementer:
+1. Confirm, with a booted Ycode simulator in the hub window, that both
+   capsules show at the place above.
+2. Decide whether a device Ycode does not operate should still get the
+   capsules with every control disabled, so that the canvas keeps the
+   reference's layout (the device centred between the toolbar and the
+   capsules' top). The reference was only captured with a running
+   device, so it does not settle what it shows for one it cannot drive.
+
+### 12.2 The toolbar's enabled states
+
+| Button | Reference | Ycode now |
+|---|---|---|
+| Two diagonal arrows pointing inward (§11.4's Open in New Window, the compact window) | **enabled**: glyph #E1E1E1 | **disabled**: #6F6F71 |
+| More Actions ("…") | enabled, #E1E1E1 | enabled, #FFFFFF |
+| Capture Keyboard | enabled, #E1E1E1 | enabled, #FFFFFF |
+| The resize-mode toggle beside it | disabled, #6C6C6E | disabled, #6F6F71 (its glyph differs; Ycode keeps its own drawing) |
+
+Target: enable the compact-window button whenever the window shows a
+device. Enabled toolbar glyphs are #E1E1E1 in the reference, a little
+below Ycode's pure white.
+
 ## I. Ycode implementation (HUB-UI, 2026-10-28)
 
 Clean-room work from this spec, `simulator-features.md` §7 and its
@@ -1422,6 +1473,25 @@ resize toggle, the plain "i"; opt-in pictures), `DeviceWindowChromeTests`
 current pose, More Actions and its hit testing, the tooltip's place,
 appearance resolution, the light palette).
 
+### I.14 Council round 4: capsules for every shown device, the compact-window button (B4-MERGE, 2026-11-06)
+
+- **Row 104.** A booted Ycode simulator shows both capsules, enabled
+  (`DeviceCanvasR4Tests` with a live test session). **Ycode's choice for
+  §12.1 question 2:** a device Ycode does not operate (and a booted Ycode
+  simulator whose display is not reachable) shows the capsules in the same
+  place with every control disabled, so the device keeps the reference's
+  place between the toolbar and the capsules; a stopped Ycode simulator
+  keeps Start there instead. Nothing in this spec argues for hiding them.
+  Dark: glyphs white, the divider #505052 and 15 tall (light #E9E9E9);
+  the glass itself is AppKit's. Linux (`ycode-sim-viewer`): the dark
+  palette takes §12.1's fill #3B3B3D, rim #79797C (0.5 point), divider
+  #505052, accent #007AFF; it only ever shows a running device.
+- **Row 105.** The compact-window button is enabled whenever the window
+  shows one device. A running Ycode simulator opens in its compact window;
+  a stopped one starts, then opens; for a device Ycode does not run, the
+  canvas says "Ycode doesn't run this device, so it has no window of its
+  own." (Ycode's choice). The Linux device window has no toolbar.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -1461,6 +1531,7 @@ appearance resolution, the light palette).
 | Menus (§7) | 3 | menu bar read through accessibility; Device/Controls items beyond those seen come from OBS-FEATURES (`simulator-features.md` §7.1) and the documentation (Slow Animations, Shake, Stop Recording) |
 | Look (§8) | 1, 3 | capture; `liquid-glass.md` |
 | Gap list (§9) | — | comparison with `ycode-sim-viewer` and `specs/ide/devices.md`; Ycode decisions |
+| Council round 4 (§12): the capsules in dark, the toolbar's enabled states | 3 | Council round 4 device still (Device Hub and Ycode, dark, 2x): capsule boxes from pixels differing from the canvas, rim and fill samples, glyph ink boxes and colours, toolbar glyph brightness |
 | Ycode implementation, round 3 (§I.13): the capsules' layout, the Linux glyphs and More Actions, the cards, the canvas placement | — | §11's measurements; Ycode decisions; public AppKit API (`NSToolbarItemGroup.controlRepresentation`, `NSToolbarItem.isHidden`), SDL 3's public `SDL_GetSystemTheme` (level 1) |
 | Ycode implementation (§I): frame proportions, symbols, steps, banners, lifecycle, persistence, the answers to Q1–Q13 | — | Ycode decisions; public AppKit API (`NSSplitViewController`, `NSToolbarItemGroup`, `NSMenuToolbarItem`, `NSGlassEffectView`, `NSTrackingSeparatorToolbarItem`), public SF Symbols names, AVFoundation (`AVAssetWriter`) and Core Graphics (`CGDisplayScreenSize`) documentation (level 1) |
 | Device panel data (§I.1): pixels, scale, pixels per inch, corner radii | — | Ycode's own device types (`Sources/ycode-simd/DeviceTypes.swift`, `device-capabilities.md`, `foldable.md` §10) |

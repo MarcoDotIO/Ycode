@@ -3,11 +3,12 @@ import SwiftUI
 import YcodeIDECore
 
 // The Settings window's grouped-card form on Linux, as the macOS IDE's
-// (`specs/ide/settings.md` R3.3, YcodeUI `SettingsChrome.swift`): section
-// headers over rounded cards (#F7F7F7, radius 12), rows 37.5 tall with
-// 1-point separators inset 10, labels at the left with no colon, help
+// (`specs/ide/settings.md` R3.3 and R4.1, YcodeUI `SettingsChrome.swift`):
+// section headers over rounded cards (#F7F7F7, radius 12), rows 37.5 tall
+// with 1-point separators inset 10, labels at the left with no colon, help
 // text under them in the secondary colour, and the controls at the right:
-// pop-ups as the value and a circular chevron button, switches 36 × 18.
+// pop-ups as the value and a circular chevron button, switches 36 × 16;
+// navigation rows 44 tall with a gradient icon and a disclosure chevron.
 // The geometry and colours are `SettingsLayout` and `SettingsPaletteHex`,
 // shared with the macOS IDE.
 
@@ -41,6 +42,13 @@ struct SettingsPalette {
     var popUpCircle: Color { color(SettingsPaletteHex.popUpCircle) }
     var popUpChevron: Color { color(SettingsPaletteHex.popUpChevron) }
     var switchOff: Color { color(SettingsPaletteHex.switchOff) }
+    var switchOn: Color { color(SettingsPaletteHex.switchOn) }
+    var disclosure: Color { color(SettingsPaletteHex.disclosure) }
+
+    /// An sRGB hex colour (the same in both appearances).
+    static func hex(_ v: UInt32) -> Color {
+        Color(.sRGB, red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+    }
 }
 
 /// The text sizes of the form.
@@ -48,12 +56,16 @@ enum SettingsFonts {
     static let label = Font.system(size: SettingsLayout.fontSize)
     static let header = Font.system(size: SettingsLayout.fontSize, weight: .bold)
     static let help = Font.system(size: SettingsLayout.helpFontSize)
-    static let title = Font.system(size: SettingsLayout.titleFontSize)
+    /// Semibold (R4.2).
+    static let title = Font.system(size: SettingsLayout.titleFontSize, weight: SettingsLayout.titleIsSemibold ? .semibold : .regular)
 }
 
 /// A pane's form: its sections top to bottom, scrolling, 20 from the
 /// detail pane's edges.
 struct SettingsForm<Content: View>: View {
+    /// The form starts with a card (no header): 20 under the title area
+    /// (R4.1).
+    var startsWithCard = false
     @ViewBuilder var content: Content
     @Environment(\.colorScheme) private var scheme
 
@@ -61,8 +73,10 @@ struct SettingsForm<Content: View>: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) { content }
                 // The first header's cap top 76 down the window: 24 under
-                // the title area, less the label's 3 above its cap top.
-                .padding(.top, SettingsLayout.firstHeaderCapTop - SettingsLayout.titleAreaHeight - 3)
+                // the title area, less the label's 3 above its cap top; a
+                // first card at y 72.
+                .padding(.top, startsWithCard ? SettingsLayout.firstCardTop - SettingsLayout.titleAreaHeight
+                    : SettingsLayout.firstHeaderCapTop - SettingsLayout.titleAreaHeight - 3)
                 .padding(.horizontal, SettingsLayout.cardInset)
                 .padding(.bottom, SettingsLayout.cardInset - SettingsSection<EmptyView, EmptyView>.bottomGap)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -78,13 +92,16 @@ struct SettingsSection<Content: View, Footer: View>: View {
     var title: String?
     var content: Content
     var footer: Footer
+    /// The next section is a card with no header: 10 apart (R4.1).
+    var cardFollows = false
     @Environment(\.colorScheme) private var scheme
 
     /// A card's bottom to the next header's frame (its cap top 33 under the card).
     static var bottomGap: CGFloat { SettingsLayout.cardToHeader - 3 }
 
-    init(_ title: String? = nil, @ViewBuilder content: () -> Content) where Footer == EmptyView {
+    init(_ title: String? = nil, cardFollows: Bool = false, @ViewBuilder content: () -> Content) where Footer == EmptyView {
         self.title = title
+        self.cardFollows = cardFollows
         self.content = content()
         footer = EmptyView()
     }
@@ -114,7 +131,7 @@ struct SettingsSection<Content: View, Footer: View>: View {
                 .padding(.horizontal, SettingsLayout.labelInset)
                 .padding(.top, 6)
         }
-        .padding(.bottom, Self.bottomGap)
+        .padding(.bottom, cardFollows ? SettingsLayout.cardGap : Self.bottomGap)
     }
 }
 
@@ -229,27 +246,28 @@ struct SettingsNote: View {
 
 // MARK: Controls
 
-/// The switch: a 36 × 18 track (light grey off, the accent on) with a
-/// white pill knob at its leading or trailing end.
+/// The switch (R4.1): a 36 × 16 track (#DDDDDD / #3B3B3B off, the accent
+/// on) with a white 21 × 12 pill knob at its leading or trailing end.
 struct SettingsSwitch: View {
     var isOn: Binding<Bool>
     var label: String
     @Environment(\.colorScheme) private var scheme
     @Environment(\.isEnabled) private var isEnabled
 
-    static let size = CGSize(width: 36, height: 18)
+    static let size = SettingsLayout.switchSize
+    static let knob = SettingsLayout.switchKnobSize
 
     var body: some View {
         let p = SettingsPalette(scheme)
         let on = isOn.wrappedValue
         Button { isOn.wrappedValue.toggle() } label: {
             ZStack(alignment: on ? .trailing : .leading) {
-                Capsule(style: .continuous).fill(on ? p.selection : p.switchOff)
+                Capsule(style: .continuous).fill(on ? p.switchOn : p.switchOff)
                 Capsule(style: .continuous)
                     .fill(Color.white)
                     .shadow(color: Color.black.opacity(0.18), radius: 1, y: 0.5)
-                    .frame(width: 21, height: Self.size.height - 3)
-                    .padding(1.5)
+                    .frame(width: Self.knob.width, height: Self.knob.height)
+                    .padding((Self.size.height - Self.knob.height) / 2)
             }
             .frame(width: Self.size.width, height: Self.size.height)
             .opacity(isEnabled ? 1 : 0.45)
@@ -297,9 +315,10 @@ struct SettingsPopUp<Value: Hashable>: View {
                 Text(verbatim: current).font(SettingsFonts.label).foregroundStyle(p.label).lineLimit(1)
                 ZStack {
                     Circle().fill(p.popUpCircle)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(p.popUpChevron)
+                    // Up and down chevrons, 7 wide (the macOS IDE's drawing).
+                    SettingsUpDownChevrons()
+                        .stroke(p.popUpChevron, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                        .frame(width: 7, height: 10)
                 }
                 .frame(width: SettingsLayout.popUpCircle, height: SettingsLayout.popUpCircle)
             }
@@ -408,7 +427,7 @@ struct DrillRow: View {
             SettingsRow(title) {
                 HStack(spacing: 6) {
                     if !detail.isEmpty { Text(verbatim: detail).font(SettingsFonts.label).foregroundStyle(p.help).lineLimit(1) }
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(p.help)
+                    SettingsDisclosure(color: p.disclosure)
                 }
             }
             .contentShape(Rectangle())
@@ -444,4 +463,131 @@ struct BackRow: View {
 struct FootNote: View {
     var text: String
     var body: some View { SettingsHelpText(text: text) }
+}
+
+// MARK: Navigation rows (R4.1)
+
+/// A navigation row's disclosure chevron: pointing right, 5 × 9, ending 11
+/// inside the card (a 1-point margin after it).
+struct SettingsDisclosure: View {
+    var color: Color
+
+    var body: some View {
+        SettingsChevron(left: false)
+            .stroke(color, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+            .frame(width: SettingsLayout.disclosureSize.width, height: SettingsLayout.disclosureSize.height)
+            .padding(.trailing, SettingsLayout.disclosureInset - SettingsLayout.controlInset)
+    }
+}
+
+/// A row that opens a page, led by an icon (Editing's Display, Completion
+/// and Indentation; R4.1): 44 tall, the 24 × 24 icon 10 inside the card,
+/// the label's ink 45 inside, the disclosure chevron at the right.
+struct SettingsNavigationRow: View {
+    var title: String
+    var icon: SettingsRowIcon
+    var target: String
+    var action: () -> Void
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let p = SettingsPalette(scheme)
+        Button(action: action) {
+            HStack(spacing: 0) {
+                SettingsRowIconImage(icon: icon)
+                    .padding(.leading, SettingsLayout.rowIconInset)
+                Text(verbatim: title)
+                    .font(SettingsFonts.label)
+                    .foregroundStyle(p.label)
+                    .lineLimit(1)
+                    // The label's ink 11 after the icon (its 1-point bearing).
+                    .padding(.leading, SettingsLayout.navigationLabelInset - SettingsLayout.rowIconInset - SettingsLayout.rowIconSize - 1)
+                Spacer(minLength: 12)
+                SettingsDisclosure(color: p.disclosure)
+                    .padding(.trailing, SettingsLayout.controlInset)
+            }
+            .frame(maxWidth: .infinity, minHeight: SettingsLayout.navigationRowHeight, maxHeight: SettingsLayout.navigationRowHeight)
+            .background(p.card)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .shellTarget(target)
+    }
+}
+
+/// A navigation row's icon: a 24 × 24 rounded square with a vertical
+/// gradient, lighter at the top, and a white symbol drawn by Ycode.
+struct SettingsRowIconImage: View {
+    var icon: SettingsRowIcon
+
+    var body: some View {
+        let g = icon.gradient
+        let size = SettingsLayout.rowIconSize
+        ZStack {
+            RoundedRectangle(cornerRadius: SettingsLayout.rowIconRadius, style: .continuous)
+                .fill(LinearGradient(colors: [SettingsPalette.hex(g.top), SettingsPalette.hex(g.bottom)], startPoint: .top, endPoint: .bottom))
+            symbol
+        }
+        .frame(width: size, height: size)
+    }
+
+    @ViewBuilder var symbol: some View {
+        let line = StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
+        switch icon {
+        case .display:
+            // A window with a side panel.
+            ZStack(alignment: .trailing) {
+                RoundedRectangle(cornerRadius: 2.5, style: .continuous).stroke(Color.white, style: line)
+                UnevenRoundedRectangle(cornerRadii: RectangleCornerRadii(topLeading: 0, bottomLeading: 0, bottomTrailing: 2.5, topTrailing: 2.5))
+                    .fill(Color.white)
+                    .frame(width: 5.5)
+            }
+            .frame(width: 14, height: 11)
+        case .completion:
+            Text(verbatim: "abc").font(.system(size: 11.5)).foregroundStyle(Color.white)
+        case .indentation:
+            SettingsIndentArrow().stroke(Color.white, style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+                .frame(width: 12.5, height: 11)
+        case .simulator:
+            VStack(spacing: 2) {
+                ForEach(0..<2, id: \.self) { _ in
+                    ZStack(alignment: .trailing) {
+                        RoundedRectangle(cornerRadius: 1.5, style: .continuous).stroke(Color.white, lineWidth: 1.3)
+                        Circle().fill(Color.white).frame(width: 2, height: 2).padding(.trailing, 2.5)
+                    }
+                    .frame(width: 14, height: 4.5)
+                }
+            }
+        }
+    }
+}
+
+/// An arrow pointing right into a vertical bar.
+struct SettingsIndentArrow: Shape {
+    nonisolated func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.midY))
+        p.addLine(to: CGPoint(x: r.maxX - 3.5, y: r.midY))
+        p.move(to: CGPoint(x: r.maxX - 7, y: r.midY - 3.5))
+        p.addLine(to: CGPoint(x: r.maxX - 3.5, y: r.midY))
+        p.addLine(to: CGPoint(x: r.maxX - 7, y: r.midY + 3.5))
+        p.move(to: CGPoint(x: r.maxX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+        return p
+    }
+}
+
+/// A pop-up well's up and down chevrons.
+struct SettingsUpDownChevrons: Shape {
+    nonisolated func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.midY - 1.5))
+        p.addLine(to: CGPoint(x: r.midX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.midY - 1.5))
+        p.move(to: CGPoint(x: r.minX, y: r.midY + 1.5))
+        p.addLine(to: CGPoint(x: r.midX, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.midY + 1.5))
+        return p
+    }
 }

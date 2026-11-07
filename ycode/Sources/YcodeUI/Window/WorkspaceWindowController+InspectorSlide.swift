@@ -15,16 +15,23 @@ extension WorkspaceWindowController {
     }
 
     /// Whether a slide is running (tests).
-    public var isInspectorSliding: Bool { inspectorSlide.link != nil }
+    public var isInspectorSliding: Bool { inspectorSlide.running }
 
     func slideInspector(show: Bool) {
         let split = mainSplit.splitView
-        guard let window, window.isVisible, inspectorSlide.link == nil, split.subviews.count >= 3 else {
-            if inspectorSlide.link == nil { inspectorItem.isCollapsed = !show }
+        guard let window, window.isVisible, !inspectorSlide.running, split.subviews.count >= 3 else {
+            if !inspectorSlide.running { inspectorItem.isCollapsed = !show }
             return
         }
         guard show == inspectorItem.isCollapsed else { return }
         let state = inspectorSlide
+        // The curve's clock starts at the press, not at the first frame:
+        // the work below would otherwise delay the first motion past the
+        // measured 43 / 118 ms (editor-area.md F.5: 48 and about 120 ms).
+        let press = CACurrentMediaTime()
+        // From here to the last frame (the collapse change and the first
+        // layout below would otherwise fit the toolbar mid-slide).
+        state.running = true
         state.minimum = inspectorItem.minimumThickness
         let total = split.bounds.width
         let divider = split.dividerThickness
@@ -47,7 +54,11 @@ extension WorkspaceWindowController {
         state.from = show ? total - divider - 1 : total - divider - width
         state.to = show ? total - divider - width : total - divider - 1
         state.show = show
-        state.start = nil
+        state.start = press
+        // Nothing but the slide's own layout runs per frame: the bars keep
+        // their blurred image, and the toolbar is fitted and updated once
+        // at the end (row 106).
+        EditorBlurMotion.begin()
         let link = split.displayLink(target: state, selector: #selector(InspectorSlideState.step(_:)))
         state.onFrame = { [weak self] progress in self?.inspectorSlideFrame(progress) }
         link.add(to: .main, forMode: .common)
@@ -62,10 +73,13 @@ extension WorkspaceWindowController {
         guard progress >= 1 else { return }
         state.link?.invalidate()
         state.link = nil
+        state.running = false
         inspector.endRigidSlide()
         if !state.show { inspectorItem.isCollapsed = true }
         inspectorItem.minimumThickness = state.minimum
+        EditorBlurMotion.end()
         updateToolbarState()
+        scheduleToolbarFit()
     }
 
     var inspectorSlide: InspectorSlideState { inspectorSlideBox }
@@ -76,6 +90,8 @@ extension WorkspaceWindowController {
 @MainActor
 final class InspectorSlideState: NSObject {
     var link: CADisplayLink?
+    /// From the press to the last frame.
+    var running = false
     var start: CFTimeInterval?
     var from: CGFloat = 0
     var to: CGFloat = 0
@@ -88,9 +104,9 @@ final class InspectorSlideState: NSObject {
     static let duration = EditorMetrics.inspectorSlideDuration
 
     @objc func step(_ link: CADisplayLink) {
-        // Times are those of the frames being drawn; the first sets the
-        // clock (the press), and motion starts after the measured delay
-        // (editor-area.md §D.5), on the ease-in-out curve.
+        // Times are those of the frames being drawn, from the press (or,
+        // without one, the first frame); motion starts after the measured
+        // delay (editor-area.md §D.5), on the ease-in-out curve.
         let now = link.targetTimestamp
         guard let start else { start = now; onFrame?(0); return }
         let elapsed = now - start

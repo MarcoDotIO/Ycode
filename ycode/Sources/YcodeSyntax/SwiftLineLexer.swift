@@ -39,10 +39,15 @@ struct SwiftLineLexer: LineLexer {
             if !closed { return }
             state = .initial
         }
+        // The kind of the name a declaring keyword just before announces
+        // (`struct Name`, `let name`), until anything else comes.
+        var declaring: SyntaxTokenKind?
         while i < l.end {
             let c = l[i]
             let s = i
             if isSpace(c) { i += 1; continue }
+            let announced = declaring
+            declaring = nil
             if c == 47, l[i + 1] == 47 {   // //
                 let doc = l[i + 2] == 47 && l[i + 3] != 47
                 out.add(doc ? .docComment : .comment, s, l.end)
@@ -107,6 +112,10 @@ struct SwiftLineLexer: LineLexer {
                         // `.default`, `.init` after a dot are member names.
                         if s > l.start, l[s - 1] == 46, l.string(s, i) != "init", l.string(s, i) != "self" { continue }
                         out.add(.keyword, s, i)
+                        if l.word(s, i, in: Self.typeDeclarationKeywords) { declaring = .typeDeclaration }
+                        else if l.word(s, i, in: Self.otherDeclarationKeywords) { declaring = .declaration }
+                    } else if let announced, !inImportPath(l, before: s) {
+                        out.add(announced, s, i)
                     } else if isUpper(c), !inImportPath(l, before: s) {
                         out.add(.typeName, s, i)
                     }
@@ -116,6 +125,11 @@ struct SwiftLineLexer: LineLexer {
             i += 1
         }
     }
+
+    /// Keywords that declare the name after them: a type, or another name
+    /// (the parser's classification refines these; `editor-area.md` F.3).
+    static let typeDeclarationKeywords: Set<String> = ["struct", "class", "enum", "protocol", "actor", "typealias", "associatedtype"]
+    static let otherDeclarationKeywords: Set<String> = ["let", "var", "func", "case", "macro"]
 
     /// Declaration kinds an `import` can name (`import struct M.T`).
     static let importKinds: Set<String> = ["struct", "class", "enum", "protocol", "typealias", "func", "var", "let", "actor", "macro"]

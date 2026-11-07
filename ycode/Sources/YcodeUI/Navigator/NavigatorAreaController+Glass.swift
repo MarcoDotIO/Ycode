@@ -1,28 +1,33 @@
 import AppKit
+import YcodeIDECore
 
 /// The navigator's floating glass bars and the outline scrolling beneath
 /// them (`specs/ide/liquid-glass.md` §2.3, §3.1), macOS 26 and later.
 extension NavigatorAreaController {
     /// The "+" circle's size and the room between the filter field and its
-    /// capsule's ends.
-    static let plusSize = NSSize(width: 31, height: GlassBars.height)
+    /// capsule's ends. Round 4 (`editor-area.md` F.9, checklist row 110):
+    /// the circle is 28 × 28 at x 7–35, the filter capsule 240 × 28 at
+    /// x 42.5–282.5, both centred 22 above the window's bottom (y 844–872
+    /// of 880). They were 31 × 30 and 243 × 30.
+    static let plusSize = NSSize(width: WorkspaceChrome.plusCircleWidth, height: WorkspaceChrome.filterBarHeight)
+    static let bottomCapsuleHeight = CGFloat(WorkspaceChrome.filterBarHeight)
+    static let plusLeading = CGFloat(WorkspaceChrome.filterBarLeading)
+    static let filterTrailing = CGFloat(WorkspaceChrome.filterBarTrailing)
     static let filterInset: CGFloat = 4
     /// The filter text's room at the field's leading end on the capsule:
     /// with the text cell's own 3.5-point padding, "Filter" begins 33.5
     /// into the capsule (metrics.md §15; it began at 37.5 with 32).
     static let filterTextInset: CGFloat = 28
-    /// From the "+" circle's right edge to the filter capsule: the
-    /// reference's circle spans x 6–36 and its capsule x 42–283 (242
-    /// wide), so 5 points (`liquid-glass.md` §2.3; `specs/ide/metrics.md`
-    /// §2). It was 6, which made the capsule 241 wide.
-    static let plusToFilter: CGFloat = 5
+    /// From the "+" circle's right edge to the filter capsule (F.9: 35 to
+    /// 42.5).
+    static let plusToFilter = CGFloat(WorkspaceChrome.plusToFilter)
     /// The selected icon's recessed pill.
     static let selectorPillSize = NSSize(width: 30, height: 24)
 
     /// Places the capsules around their controls: the selector bar
     /// (278 × 30 at a 290-point width, 6 from each side), the "+" circle
-    /// (31 × 30, 6 from the leading edge) and the filter capsule (5 after
-    /// the "+", 6 from the trailing edge, 7 above the window's bottom).
+    /// (28 × 28, 7 from the leading edge) and the filter capsule (7.5 after
+    /// the "+", 7.5 from the trailing edge, 8 above the window's bottom).
     func installGlassBars(_ root: NSView) {
         let field = filter
         NSLayoutConstraint.activate([
@@ -37,7 +42,7 @@ extension NavigatorAreaController {
             filterGlass.leadingAnchor.constraint(equalTo: field.leadingAnchor, constant: -Self.filterInset),
             filterGlass.trailingAnchor.constraint(equalTo: field.trailingAnchor, constant: Self.filterInset),
             filterGlass.centerYAnchor.constraint(equalTo: field.centerYAnchor),
-            filterGlass.heightAnchor.constraint(equalToConstant: GlassBars.height),
+            filterGlass.heightAnchor.constraint(equalToConstant: Self.bottomCapsuleHeight),
         ])
         // The field sits on the capsule: no bezel or background of its own.
         field.isBezeled = false

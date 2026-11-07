@@ -13,6 +13,7 @@ extension EditorAreaController {
         let panes = t.editors.filter { $0 !== t.assistant }.count
         for (i, e) in t.editors.enumerated() {
             e.jumpBar.isActivePane = !split || i == t.focused
+            e.isFocusedPane = !split || i == t.focused
             let closable = panes > 1 && t.assistant !== e
             e.jumpBar.showsPaneCloseButton = closable
             if closable { e.jumpBar.onClose = { [weak self, weak e] in if let e { self?.closePane(e) } } }

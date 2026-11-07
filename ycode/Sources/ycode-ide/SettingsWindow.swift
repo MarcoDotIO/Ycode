@@ -53,8 +53,8 @@ final class ShellPreferences {
 
 /// The panes of the Settings window, in the reference's order
 /// (`specs/ide/settings.md` R3.2, `SettingsPaneOrder.linux`): the macOS
-/// IDE's without Simulators (Ycode's own pane, macOS only). Components
-/// shows its empty state.
+/// IDE's twelve (its Simulators page, under Components, is macOS only).
+/// Components shows its empty state.
 enum ShellSettingsPane: String, CaseIterable, Identifiable {
     case general, appearance, accounts, codingAssistant, behaviors, navigation, notifications, editing, shortcuts, sourceControl, components, locations
 
@@ -177,9 +177,11 @@ struct ShellSettingsView: View {
                 Button { model.select(pane) } label: {
                     ZStack(alignment: .leading) {
                         if on {
+                            // x 10–170 (R4.2).
                             RoundedRectangle(cornerRadius: SettingsLayout.selectionRadius, style: .continuous)
                                 .fill(p.selection)
-                                .padding(.horizontal, SettingsLayout.selectionInset)
+                                .frame(width: SettingsLayout.selectionWidth)
+                                .padding(.leading, SettingsLayout.selectionInset)
                         }
                         // The symbol centred on x 29, the label at x 47 on every row.
                         SettingsSidebarSymbol(pane: pane, color: on ? Color.white : p.symbol)

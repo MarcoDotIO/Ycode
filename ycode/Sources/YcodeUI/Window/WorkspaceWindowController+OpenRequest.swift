@@ -5,9 +5,9 @@ import YcodeIDECore
 /// the system's "open this file" event; `editor-area.md` E.4, checklist
 /// row 73).
 extension WorkspaceWindowController {
-    /// The file the focused editor shows (or is about to: an image still
-    /// decoding), if any.
-    var shownDocumentURL: URL? { editor.fileURL ?? editor.auxiliaryFile ?? imageViewerBox.pending?.url }
+    /// The file the focused editor shows (an image still decoding is
+    /// shown at once), if any.
+    var shownDocumentURL: URL? { editor.fileURL ?? editor.auxiliaryFile }
 
     /// Opens `url` in the focused editor. A request for the file already
     /// shown changes nothing (no reload, no repaint); otherwise the file

@@ -87,17 +87,18 @@ public final class RecentProjects {
         url.pathExtension.isEmpty ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent
     }
 
-    /// The Welcome list's secondary text: the containing folder's path,
-    /// starting at the volume's name ("Data/Users/me/Projects",
-    /// "External/Samples").
+    /// The Welcome list's secondary text: the containing folder's path;
+    /// on another volume, from the volume's name ("External/Samples"), on
+    /// the startup volume, the path itself ("/Users/me/Projects").
     public static func folderText(_ url: URL) -> String {
         let folder = url.deletingLastPathComponent().standardizedFileURL
         let parts = folder.pathComponents  // ["/", "Volumes", "X", …]
         if parts.count >= 3, parts[1] == "Volumes" {
             return parts[2...].joined(separator: "/")
         }
-        let values = try? folder.resourceValues(forKeys: [.volumeNameKey])
-        guard let volume = values?.volumeName else { return folder.path }
-        return ([volume] + parts.dropFirst()).joined(separator: "/")
+        // On the startup volume, the stored path as it is (`editor-area.md`
+        // F.11, checklist row 112: "/private/tmp/…", with no volume name in
+        // front; the row truncates it at its head only when it does not fit).
+        return folder.path
     }
 }

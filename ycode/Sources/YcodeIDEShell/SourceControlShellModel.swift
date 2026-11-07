@@ -69,6 +69,9 @@ public final class SourceControlShellModel {
 
     /// The workspace's folder (a project's or package's folder).
     @ObservationIgnored public let folder: URL
+    /// The workspace's project, which the merge sheet's jump bar starts
+    /// with (`merge-sheet.md` §13.7; set by the window).
+    @ObservationIgnored public var mergeProject: MergeSheetProject?
     /// The last read of git (`SourceControlSnapshot`).
     public private(set) var snapshot = SourceControlSnapshot()
     /// Whether git has been read once.

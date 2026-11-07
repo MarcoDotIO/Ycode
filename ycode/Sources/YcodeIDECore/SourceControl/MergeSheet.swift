@@ -64,6 +64,11 @@ public enum MergeSheetMetrics {
     public static let buttonHeight = 24.0
     /// Ycode's choice (open question 1): the margin below the buttons.
     public static let bottomMargin = 18.0
+    /// The content box ends this far above the window's bottom edge
+    /// (§13.3: y 847 in the 880-point window); the button row below it then
+    /// runs past the window, as the reference's does. Ycode's choice for
+    /// other window heights (open question 1): the same distance.
+    public static let boxBottomInset = 33.0
 
     // §1.2 The alert
     public static let alertWidth = 420.0
@@ -84,10 +89,12 @@ public enum MergeSheetMetrics {
 
     /// The sheet's frame in a window of `size` (origin top-left) whose
     /// toolbar ends at `toolbarBottom`: 24 from each side, the top at the
-    /// toolbar's bottom, the bottom 24 above the window's (Ycode's choice,
-    /// open question 1: the sheet follows the window).
+    /// toolbar's bottom, and tall enough that its content box ends 33 above
+    /// the window's bottom (§13.3), so the button row and the sheet's bottom
+    /// margin lie below the window's edge (the window cuts them).
     public static func sheetFrame(window size: (width: Double, height: Double), toolbarBottom: Double) -> Rect {
-        let h = max(240, size.height - toolbarBottom - sheetInset)
+        let boxBottom = size.height - boxBottomInset - toolbarBottom
+        let h = max(240, boxBottom + buttonGap + buttonHeight + bottomMargin)
         return Rect(x: sheetInset, y: toolbarBottom, width: max(400, size.width - 2 * sheetInset), height: h)
     }
 
@@ -152,10 +159,15 @@ public enum MergeSheetMetrics {
     }
 }
 
-/// The sheet's colours (`merge-sheet.md` §1–§9, light, measured); the dark
-/// set is Ycode's choice until the reference's dark appearance is measured.
+/// The sheet's colours (`merge-sheet.md` §1–§9, light, measured; §13, dark,
+/// measured in council round 4).
 public struct MergeSheetPalette: Equatable, Sendable {
     public var sheet: UInt32
+    /// The sheet's 1-point rim (dark: a step lighter than its fill, §13.3;
+    /// light: none, the sheet's own colour).
+    public var sheetRim: UInt32
+    /// The panes' background (§13.4: #262627 in dark; white in light).
+    public var pane: UInt32
     /// The veil: black at this opacity (white becomes #CDCDCD).
     public var veilOpacity: Double
     public var boxBorder: UInt32
@@ -176,6 +188,8 @@ public struct MergeSheetPalette: Equatable, Sendable {
     public var currentLineNumber: UInt32
     public var currentLine: UInt32
     public var gutter: UInt32
+    /// The 1-point rules on both sides of the gutter.
+    public var gutterRule: UInt32
     public var gutterConflict: UInt32
     public var gutterClean: UInt32
     public var conflictRow: UInt32
@@ -184,6 +198,9 @@ public struct MergeSheetPalette: Equatable, Sendable {
     public var selectedRule: UInt32
     public var decidedRule: UInt32
     public var token: UInt32
+    /// The unselected token's 0.5-point rim (§13.5; in light the token's
+    /// own fill: no visible rim).
+    public var tokenRim: UInt32
     public var selectedToken: UInt32
     public var selectedTokenRim: UInt32
     public var tokenInk: UInt32
@@ -198,26 +215,34 @@ public struct MergeSheetPalette: Equatable, Sendable {
     public var folder: UInt32
 
     public static let light = MergeSheetPalette(
-        sheet: 0xFFFFFF, veilOpacity: 0.196, boxBorder: 0xBFBFBF, columnRule: 0xD7D7D7, bandRule: 0xE5E5E5, footerRule: 0xE6E6E6,
+        sheet: 0xFFFFFF, sheetRim: 0xFFFFFF, pane: 0xFFFFFF, veilOpacity: 0.196, boxBorder: 0xBFBFBF, columnRule: 0xD7D7D7,
+        bandRule: 0xE5E5E5, footerRule: 0xE6E6E6,
         label: 0x262626, secondaryLabel: 0x7A7A7A, disabledLabel: 0xA0A0A0, accent: 0x007AFF, segmentPill: 0xD1E7FF,
         selection: 0x0064E1, badge: 0xFFFFFF, badgeLetter: 0xFF383C, filterFill: 0xF3F3F3, filterPlaceholder: 0x7A7A7A,
         lineNumber: 0xB7B2B4, currentLineNumber: 0x322529, currentLine: 0xEEEEED,
-        gutter: 0xF5F5F4, gutterConflict: 0xF9D5D5, gutterClean: 0xD1E4F8,
+        gutter: 0xF5F5F4, gutterRule: 0xD7D7D7, gutterConflict: 0xF9D5D5, gutterClean: 0xD1E4F8,
         conflictRow: 0xFFDCDD, conflictWord: 0xFF9A9D, cleanRow: 0xD6EBFE, selectedRule: 0xDA5559, decidedRule: 0xFF656A,
-        token: 0x575757, selectedToken: 0x6D2A2D, selectedTokenRim: 0xDA5559, tokenInk: 0xFFFFFF,
+        token: 0x575757, tokenRim: 0x575757, selectedToken: 0x6D2A2D, selectedTokenRim: 0xDA5559, tokenInk: 0xFFFFFF,
         chevronCircle: 0x6B6C6B, selectedChevronCircle: 0xFF6569, rulerConflict: 0xFDB9B5, rulerClean: 0xD4D4D4,
         button: 0xEDEDED, buttonLabel: 0x252525, disabledButton: 0xF5F5F5, disabledButtonLabel: 0xB6B6B6, folder: 0x3A9AF5)
 
-    /// Ycode's choice: the same roles on dark surfaces.
+    /// The dark appearance (council round 4, `merge-sheet.md` §13.3–§13.5,
+    /// measured): the sheet #1D1E1F with a #2D2E2F rim, panes #262627, the
+    /// gutter #313131 between #484848 rules, the box's dark hairline,
+    /// conflict and clean shading, word fills, the selected rules, tokens
+    /// #575757 with a lighter rim, and the veil that takes the window to
+    /// about 0.70 of its value. Roles the round did not measure keep Ycode's
+    /// earlier choices.
     public static let dark = MergeSheetPalette(
-        sheet: 0x1F1F1F, veilOpacity: 0.32, boxBorder: 0x3D3D3D, columnRule: 0x383838, bandRule: 0x333333, footerRule: 0x333333,
+        sheet: 0x1D1E1F, sheetRim: 0x2D2E2F, pane: 0x262627, veilOpacity: 0.30, boxBorder: 0x171718, columnRule: 0x383838,
+        bandRule: 0x333333, footerRule: 0x333333,
         label: 0xE6E6E6, secondaryLabel: 0x8C8C8C, disabledLabel: 0x6A6A6A, accent: 0x0A84FF, segmentPill: 0x1D3A5C,
         selection: 0x0059CF, badge: 0xFFFFFF, badgeLetter: 0xFF453A, filterFill: 0x2B2B2B, filterPlaceholder: 0x8C8C8C,
         lineNumber: 0x6E6A6C, currentLineNumber: 0xE2DADD, currentLine: 0x2A2A2A,
-        gutter: 0x252525, gutterConflict: 0x47272A, gutterClean: 0x1F3550,
-        conflictRow: 0x4A2629, conflictWord: 0x7D3337, cleanRow: 0x1E3A57, selectedRule: 0xE0666A, decidedRule: 0xFF7377,
-        token: 0x8A8A8A, selectedToken: 0x8E3337, selectedTokenRim: 0xE0666A, tokenInk: 0xFFFFFF,
-        chevronCircle: 0x9C9C9C, selectedChevronCircle: 0xFF6E72, rulerConflict: 0x9B4B48, rulerClean: 0x5A5A5A,
+        gutter: 0x313131, gutterRule: 0x484848, gutterConflict: 0x613D3F, gutterClean: 0x394C61,
+        conflictRow: 0x583436, conflictWord: 0x9B3A3C, cleanRow: 0x2F4457, selectedRule: 0xDA5559, decidedRule: 0xFF656A,
+        token: 0x575757, tokenRim: 0x6A6A6A, selectedToken: 0x6D2A2D, selectedTokenRim: 0xDA5559, tokenInk: 0xFFFFFF,
+        chevronCircle: 0x6B6C6B, selectedChevronCircle: 0xFF6569, rulerConflict: 0x9B4B48, rulerClean: 0x5A5A5A,
         button: 0x3A3A3A, buttonLabel: 0xE6E6E6, disabledButton: 0x2C2C2C, disabledButtonLabel: 0x666666, folder: 0x3A9AF5)
 
     public static func forDark(_ dark: Bool) -> MergeSheetPalette { dark ? .dark : .light }
@@ -226,6 +251,14 @@ public struct MergeSheetPalette: Equatable, Sendable {
     public static func components(_ hex: UInt32) -> (r: Double, g: Double, b: Double) {
         (Double((hex >> 16) & 0xFF) / 255, Double((hex >> 8) & 0xFF) / 255, Double(hex & 0xFF) / 255)
     }
+}
+
+/// The window behind the merge alert and sheet (`merge-sheet.md` §13.1):
+/// before the veil, its text is drawn at about 0.63 of its value and its
+/// toolbar glyphs at about 0.33.
+public enum MergeModalTone {
+    public static let text = 0.63
+    public static let glyph = 0.33
 }
 
 /// The alert's and the sheet's motion (`merge-sheet.md` §1.2, §7, §10).
@@ -320,6 +353,15 @@ public enum MergeSheetText {
 
 /// One changed stretch's token in the centre gutter (§5).
 public enum MergeSheetToken {
+    /// The down-chevron: about 6 wide and 3.5 tall, drawn with a thin
+    /// stroke (§5; round 4 §13.5: light and thin).
+    public static let chevronHalfWidth = 3.0
+    public static let chevronHeight = 3.5
+    public static let chevronLineWidth = 1.0
+    /// The rims: 0.5 point on an unselected token, 1 on the selected one.
+    public static let rimWidth = 0.5
+    public static let selectedRimWidth = 1.0
+
     /// The glyph: "?" for an undecided conflict, else a digit for the
     /// choice in effect. Ycode's choice (open question 4), keeping the
     /// two digits seen: Choose Right "1", a change taken automatically "3";
@@ -561,6 +603,25 @@ public enum MergeSheetLayout {
     }
 }
 
+/// The workspace's project as the merge sheet's jump bar names it
+/// (§13.7): its name and the folder its files are under.
+public struct MergeSheetProject: Equatable, Sendable {
+    public var name: String
+    public var folder: String
+
+    public init(name: String, folder: String) {
+        self.name = name
+        self.folder = folder
+    }
+
+    /// The project of a workspace: a project's or workspace's name and the
+    /// folder holding it, a package's folder.
+    public init(workspace: WorkspaceModel) {
+        name = workspace.displayName
+        folder = (workspace.kind == .package ? workspace.url : workspace.url.deletingLastPathComponent()).path
+    }
+}
+
 /// A side's commit, as its footer shows it (§8): repository › branch ›
 /// date, author, short hash and "(HEAD)" on the current side.
 public struct MergeSheetFooter: Equatable, Sendable {
@@ -592,7 +653,11 @@ public struct MergeSheetFooter: Equatable, Sendable {
         [dateText, author, shortHash + (isHead ? " (HEAD)" : "")].filter { !$0.isEmpty }.joined(separator: "  ")
     }
 
-    /// The footers of an operation's two sides.
+    /// The footers of an operation's two sides. Both name the current
+    /// branch (§13.7, as captured for a merge; Ycode's choice for a
+    /// cherry-pick, revert or stash apply); the right footer's commit is the
+    /// incoming one. A rebase replays onto another branch, so its right
+    /// footer keeps the replayed branch's name.
     public static func read(_ repo: GitRepository, integration: GitRepository.IntegrationState, oursLabel: String,
                             theirsLabel: String) -> (left: MergeSheetFooter?, right: MergeSheetFooter?) {
         let name = repo.root.lastPathComponent
@@ -607,6 +672,7 @@ public struct MergeSheetFooter: Equatable, Sendable {
         case .reverting(let c): c
         case .none: "stash@{0}"
         }
-        return (footer("HEAD", oursLabel, head: true), footer(theirsRev, theirsLabel, head: false))
+        let rightBranch: String = if case .rebasing = integration { theirsLabel } else { oursLabel }
+        return (footer("HEAD", oursLabel, head: true), footer(theirsRev, rightBranch, head: false))
     }
 }

@@ -6,6 +6,7 @@ import YcodeDarwinABI
 /// `YCODE_WAKE_AFTER_UNLOCK` (thread-latency.md §4): wakeups made under the
 /// kernel lock are delivered after it is released; none is lost, also with
 /// many wakers and waiters, timeouts, and a waker that waits itself.
+extension KernelSwitchSuites {
 @Suite(.serialized) struct WakeAfterUnlockTests {
     final class Shared: @unchecked Sendable {
         let lock = KernelLock()
@@ -70,4 +71,5 @@ import YcodeDarwinABI
         let r = s.lock.withLock { s.pong.wait(on: s.lock, deadline: KernelClock.deadline(afterNanoseconds: 5_000_000)) }
         #expect(r == .timedOut)
     }
+}
 }

@@ -277,8 +277,10 @@ struct ScriptedEngine: BuildEngine {
         #expect(runs.first { $0.text == "let" }?.role == .keyword)
         #expect(runs.first { $0.text == "12" }?.role == .number)
         #expect(runs.last?.role == .comment)
-        // Identifiers draw in the plain color.
-        #expect(runs.contains { $0.role == nil && $0.text.contains("x") })
+        // A declared name has its own role (editor-area.md F.3); other
+        // identifiers draw in the plain color.
+        #expect(runs.first { $0.text == "x" }?.role == .otherDeclaration)
+        #expect(runs.contains { $0.role == nil && $0.text.contains("=") })
         var col = 2
         #expect(SourceDocument.expandTabs("a\tb", column: &col) == "a b" && col == 5)
     }
@@ -297,7 +299,7 @@ struct ScriptedEngine: BuildEngine {
         // "Ycode Default" (the AppKit editor's default): the system colors
         // as values, per appearance.
         let light = SourcePalette.forAppearance(dark: false), dark = SourcePalette.forAppearance(dark: true)
-        #expect(light.background.hex == "#FFFFFF" && dark.background.hex == "#1E1E1E")
+        #expect(light.background.hex == "#FFFFFF" && dark.background.hex == "#262626")
         #expect(light.color(.keyword) == WorkspaceChrome.defaultThemeColors(dark: false).tokens["keyword"])
         #expect(dark.color(.keyword) == WorkspaceChrome.defaultThemeColors(dark: true).tokens["keyword"])
         #expect(light.color(nil) == light.foreground && light.color(.identifier) == light.foreground)

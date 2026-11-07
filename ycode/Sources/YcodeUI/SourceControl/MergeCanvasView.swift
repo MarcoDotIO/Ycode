@@ -14,8 +14,10 @@ public final class MergeCanvasView: NSView {
     /// The rows and where each starts (y, from the top).
     public private(set) var rows: [MergeSheetRow] = []
     public private(set) var rowTops: [CGFloat] = []
-    var leftRuns: [[(text: String, role: SyntaxTokenKind.Role?)]] = []
-    var rightRuns: [[(text: String, role: SyntaxTokenKind.Role?)]] = []
+    /// Each pane's lines in the editor's theme (`Theme.apply`: the same
+    /// colours, fonts and declaration colours as the source editor).
+    var leftLines: [NSAttributedString] = []
+    var rightLines: [NSAttributedString] = []
     /// The pane widths (the right one without the ruler).
     var leftWidth: CGFloat = 523
     var rightWidth: CGFloat = 523
@@ -63,8 +65,8 @@ public final class MergeCanvasView: NSView {
     /// Takes the controller's state: rows, highlighting, sizes.
     func reload(state: ConflictEditorState, fileName: String) {
         rows = state.sheetRows
-        leftRuns = MergeSheetLayout.highlight(state.leftLines, fileName: fileName)
-        rightRuns = MergeSheetLayout.highlight(state.rightLines, fileName: fileName)
+        leftLines = Self.themed(state.leftLines, fileName: fileName)
+        rightLines = Self.themed(state.rightLines, fileName: fileName)
         relayoutRows()
     }
 
@@ -101,17 +103,42 @@ public final class MergeCanvasView: NSView {
                       width: CGFloat(M.tokenWidth), height: CGFloat(M.tokenHeight))
     }
 
+    // MARK: Accessibility (§13.2)
+
+    /// One button per change's token: pressing it opens the Choose menu.
+    private var tokenElements: [Int: DrawnControlElement] = [:]
+
+    public override func accessibilityChildren() -> [Any]? {
+        guard let state = controller?.state, let doc = state.document else { return [] }
+        var out: [Any] = []
+        for h in doc.hunks.indices {
+            let e = tokenElements[h] ?? DrawnControlElement(
+                in: self,
+                label: { [unowned self] in
+                    let t = controller?.state.token(forHunk: h)
+                    let n = (controller?.state.document?.hunks.count).map { "Change \(h + 1) of \($0)" } ?? "Change \(h + 1)"
+                    return n + (t?.isDecided == true ? ", choice \(t?.glyph ?? "")" : ", undecided") + ": Choose…"
+                },
+                rect: { [unowned self] in tokenRect(forHunk: h) ?? .zero },
+                press: { [unowned self] in controller?.showChooseMenu(forHunk: h) })
+            tokenElements[h] = e
+            out.append(e)
+        }
+        if !handEditorScroll.isHidden { out.append(handEditorScroll) }
+        return out
+    }
+
     // MARK: Drawing
 
     public override func draw(_ dirtyRect: NSRect) {
         let p = palette
         let state = controller?.state
         let selected = state?.currentHunk
-        NSColor(mergeHex: p.sheet).setFill()
+        NSColor(mergeHex: p.pane).setFill()
         dirtyRect.fill()
         NSColor(mergeHex: p.gutter).setFill()
         NSRect(x: gutterX, y: dirtyRect.minY, width: CGFloat(M.gutterWidth), height: dirtyRect.height).fill()
-        NSColor(mergeHex: p.columnRule).setFill()
+        NSColor(mergeHex: p.gutterRule).setFill()
         NSRect(x: leftWidth, y: dirtyRect.minY, width: 1, height: dirtyRect.height).fill()
         NSRect(x: rightX - 1, y: dirtyRect.minY, width: 1, height: dirtyRect.height).fill()
         let cols = columns
@@ -141,8 +168,8 @@ public final class MergeCanvasView: NSView {
                                                      width: rightWidth - 2 * CGFloat(M.currentLineInset), height: h), xRadius: 4, yRadius: 4).fill()
                 }
             }
-            if let l = row.left { drawSide(l, runs: leftRuns, x: 0, top: r.minY, current: currentLine.left, cols: cols, p) }
-            if let rr = row.right { drawSide(rr, runs: rightRuns, x: rightX, top: r.minY, current: currentLine.right, cols: cols, p) }
+            if let l = row.left { drawSide(l, lines: leftLines, x: 0, top: r.minY, current: currentLine.left, cols: cols, p) }
+            if let rr = row.right { drawSide(rr, lines: rightLines, x: rightX, top: r.minY, current: currentLine.right, cols: cols, p) }
         }
         // The selected change's rules, across both panes and the gutter.
         if let h = selected, let range = rows(ofHunk: h) {
@@ -161,7 +188,7 @@ public final class MergeCanvasView: NSView {
         }
     }
 
-    func drawSide(_ side: MergeSheetRow.Side, runs: [[(text: String, role: SyntaxTokenKind.Role?)]], x: CGFloat, top: CGFloat, current: Int,
+    func drawSide(_ side: MergeSheetRow.Side, lines: [NSAttributedString], x: CGFloat, top: CGFloat, current: Int,
                   cols: Int, _ p: MergeSheetPalette) {
         let lh = CGFloat(M.lineHeight), cw = CGFloat(M.cellWidth)
         let segs = MergeSheetLayout.wrap(side.text, columns: cols)
@@ -177,18 +204,15 @@ public final class MergeCanvasView: NSView {
                 }
             }
         }
-        // The line number, right-aligned at +27.
-        let numberColor = NSColor(mergeHex: side.number == current ? p.currentLineNumber : p.lineNumber)
+        // The line number, right-aligned at +27, in the editor's colours.
+        let numberColor = side.number == current ? Theme.textColor : Theme.lineNumberColor
         let n = NSAttributedString(string: String(side.number), attributes: [.font: Theme.gutterFont, .foregroundColor: numberColor])
         let ns = n.size()
         n.draw(at: NSPoint(x: x + CGFloat(M.lineNumberRight) - ns.width, y: top + ((lh - ns.height) / 2).rounded()))
-        // The text in the editor's colours.
+        // The text in the editor's theme.
         let font = Theme.font
-        let line = runs.indices.contains(side.number - 1) ? runs[side.number - 1] : [(side.text, nil)]
-        let full = NSMutableAttributedString()
-        for run in line {
-            full.append(NSAttributedString(string: run.text, attributes: [.font: font, .foregroundColor: run.role.map { Theme.color(for: $0) } ?? Theme.textColor]))
-        }
+        let full = lines.indices.contains(side.number - 1) && lines[side.number - 1].string == side.text ? lines[side.number - 1]
+            : NSAttributedString(string: side.text, attributes: [.font: font, .foregroundColor: Theme.textColor])
         let textHeight = ceil(font.ascender - font.descender)
         let total = (full.string as NSString).length
         let characters = Array(full.string)
@@ -206,12 +230,15 @@ public final class MergeCanvasView: NSView {
         let capsule = NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2)
         NSColor(mergeHex: t.isSelected ? p.selectedToken : p.token).setFill()
         capsule.fill()
-        if t.isSelected {
-            NSColor(mergeHex: p.selectedTokenRim).setStroke()
-            let rim = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: (rect.height - 1) / 2, yRadius: (rect.height - 1) / 2)
-            rim.lineWidth = 1
-            rim.stroke()
-        }
+        // The rim (§13.5): 1 point of red on the selected token, a 0.5-point
+        // lighter hairline on the others (it reads as an outlined pill on
+        // the dark gutter).
+        let rimWidth = CGFloat(t.isSelected ? MergeSheetToken.selectedRimWidth : MergeSheetToken.rimWidth)
+        NSColor(mergeHex: t.isSelected ? p.selectedTokenRim : p.tokenRim).setStroke()
+        let ri = rect.insetBy(dx: rimWidth / 2, dy: rimWidth / 2)
+        let rim = NSBezierPath(roundedRect: ri, xRadius: ri.height / 2, yRadius: ri.height / 2)
+        rim.lineWidth = rimWidth
+        rim.stroke()
         let ink = NSColor(mergeHex: p.tokenInk)
         // The glyph left of centre (ink about +14.5 to +28.5).
         let g = NSAttributedString(string: t.glyph, attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .bold), .foregroundColor: ink])
@@ -224,15 +251,37 @@ public final class MergeCanvasView: NSView {
             let d = CGFloat(M.chevronCircle)
             NSBezierPath(ovalIn: NSRect(x: cx - d / 2, y: cy - d / 2, width: d, height: d)).fill()
         }
+        // A light, thin down-chevron, about 6 × 3.5 (§5, §13.5).
+        let hw = CGFloat(MergeSheetToken.chevronHalfWidth), ch = CGFloat(MergeSheetToken.chevronHeight)
         let chevron = NSBezierPath()
-        chevron.move(to: NSPoint(x: cx - 3, y: cy - 1.5))
-        chevron.line(to: NSPoint(x: cx, y: cy + 1.75))
-        chevron.line(to: NSPoint(x: cx + 3, y: cy - 1.5))
-        chevron.lineWidth = 1.5
+        chevron.move(to: NSPoint(x: cx - hw, y: cy - ch / 2))
+        chevron.line(to: NSPoint(x: cx, y: cy + ch / 2))
+        chevron.line(to: NSPoint(x: cx + hw, y: cy - ch / 2))
+        chevron.lineWidth = CGFloat(MergeSheetToken.chevronLineWidth)
         chevron.lineCapStyle = .round
         chevron.lineJoinStyle = .round
         ink.setStroke()
         chevron.stroke()
+    }
+
+    /// `lines` (tabs expanded) styled by the editor's theme, one attributed
+    /// string per line.
+    static func themed(_ lines: [String], fileName: String) -> [NSAttributedString] {
+        let expanded = lines.map(MergeSheetLayout.expandTabs)
+        let text = expanded.joined(separator: "\n")
+        let language = SyntaxLanguage(fileName: fileName)
+        let doc = expanded.count <= 20_000 && language != .plain ? SyntaxDocument(text: text, language: language) : nil
+        let storage = NSTextStorage(string: text)
+        Theme.apply(doc, to: storage)
+        var out: [NSAttributedString] = []
+        out.reserveCapacity(expanded.count)
+        var at = 0
+        for line in expanded {
+            let n = line.utf16.count
+            out.append(storage.attributedSubstring(from: NSRange(location: at, length: n)))
+            at += n + 1
+        }
+        return out
     }
 
     // MARK: Hand editing (Ycode's choice: double-click a change's left lines)
@@ -282,7 +331,7 @@ public final class MergeRulerView: NSView {
 
     public override func draw(_ dirtyRect: NSRect) {
         let p = MergeSheetPalette.forDark(effectiveAppearance.isDarkMerge)
-        NSColor(mergeHex: p.sheet).setFill()
+        NSColor(mergeHex: p.pane).setFill()
         bounds.fill()
         for m in marks {
             NSColor(mergeHex: m.isConflict ? p.rulerConflict : p.rulerClean).setFill()

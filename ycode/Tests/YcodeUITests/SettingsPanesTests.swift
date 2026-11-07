@@ -34,7 +34,8 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(wc.tabs.tabViewItems.map(\.label) == ["General", "Appearance", "Accounts", "Coding Assistant", "Behaviors", "Navigation",
                                                        "Notifications", "Editing", "Shortcuts", "Source Control", "Components",
                                                        "Locations", "Simulators"])
-        #expect(wc.sidebar.numberOfRows == 13 && wc.selectedPane == "General")
+        // Twelve sidebar rows; Simulators is a page of Components (R4.2).
+        #expect(wc.sidebar.numberOfRows == 12 && wc.selectedPane == "General")
         wc.select(7)
         wc.select(4)
         #expect(wc.selectedPane == "Behaviors")

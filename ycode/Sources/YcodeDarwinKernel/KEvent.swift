@@ -1197,7 +1197,7 @@ extension DarwinKernel {
                         if !existing.syncWaiters.isEmpty { kevents.stats.syncWakesWithWaiter += 1 }
                     }
                     existing.syncWoken = true
-                    existing.syncWaiters.wakeAll()
+                    existing.syncWaiters.wakeAllHandingOff()
                 }
                 if KEventStats.enabled, cmd & NoteWorkloop.syncWait != 0 { kevents.stats.syncOnExistingKnote += 1 }
                 existing.fflags |= cmd & NoteWorkloop.syncMask

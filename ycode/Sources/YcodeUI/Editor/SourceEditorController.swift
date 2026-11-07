@@ -24,6 +24,13 @@ final class SourceTextView: NSTextView {
         scroll.reflectScrolledClipView(clip)
     }
 
+    /// The window moved to a display of another scale: cells follow it
+    /// (`editor-area.md` F.2; `Theme.noteDisplayScale`).
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        if let s = window?.backingScaleFactor { Theme.noteDisplayScale(s) }
+    }
+
     var issues: [Int: [Diagnostic]] = [:] { didSet { needsDisplay = true } }
     /// The text changed since the issues were set: annotations draw grey.
     var issuesStale = false { didSet { if oldValue != issuesStale { needsDisplay = true } } }
@@ -348,7 +355,7 @@ final class SourceTextView: NSTextView {
         if let l = caretLine, l != highlightedLine, var r = lineRect(l), r.intersects(rect) {
             // The band ends at the text container's edge, with rounded
             // corners there; it continues in the gutter (editor-area.md §C.2).
-            Theme.currentLineBandColor.setFill()
+            Theme.currentLineBandColor(focused: owner?.isFocusedPane ?? true).setFill()
             r.size.width = owner?.textContainerEnd ?? r.width
             r.size.height = Theme.lineHeight
             let radius = CGFloat(EditorMetrics.currentLineBandRadius)
@@ -513,7 +520,13 @@ final class JumpBar: NSView {
             counterpartsMenu = pop
             stack.addArrangedSubview(pop)
         }
-        if components.isEmpty { stack.addArrangedSubview(label("No Selection", secondary: true)) }
+        if components.isEmpty {
+            // No file open: the grid button, a 1-point divider, then "No
+            // Selection" in the bar's own text colour, from 47.5 points in
+            // (`editor-area.md` F.10, checklist row 111).
+            if !showsPaneCloseButton { addEmptyDivider() }
+            stack.addArrangedSubview(label("No Selection", secondary: false))
+        }
         for (i, (title, symbol)) in components.enumerated() {
             if i > 0 { stack.addArrangedSubview(chevronLabel()) }
             if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
@@ -638,6 +651,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     public var onBreakpointClick: ((String, Int) -> Void)?
     private var prefsObserver: NSObjectProtocol?
     private var scrollerStyleObserver: NSObjectProtocol?
+    private var displayScaleObserver: NSObjectProtocol?
     private var showsMinimapCache = false
     /// The files this editor showed (Go Back / Go Forward).
     public var history = NavigationHistory()
@@ -822,7 +836,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.textContainer?.widthTracksTextView = true
-        textView.backgroundColor = .textBackgroundColor
+        textView.backgroundColor = Theme.backgroundColor
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
         // The system's scroller style, not a forced one (metrics.md §12.2),
@@ -909,6 +923,10 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         findBarHeight.isActive = true
         view = root
         prefsObserver = NotificationCenter.default.addObserver(forName: Preferences.didChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyPreferences() }
+        }
+        // The cell follows the display's scale (editor-area.md F.2).
+        displayScaleObserver = NotificationCenter.default.addObserver(forName: Theme.displayScaleDidChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.applyPreferences() }
         }
         // Follow the system's scroller style when it changes (metrics.md §12.2).
@@ -1653,6 +1671,17 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     /// What the paragraph delegate reads for wrapped-line indentation
     /// (SourceEditorController+Layout.swift).
     nonisolated(unsafe) var wrapSnapshot = WrapSnapshot()
+    /// Where wrapped rows break (+LineBreaks.swift).
+    nonisolated let lineBreaks = EditorLineBreaks()
+    /// Whether this pane has focus (always, with one pane): a split's
+    /// other pane draws a fainter current-line band (`editor-area.md` F.3).
+    public var isFocusedPane = true {
+        didSet {
+            guard oldValue != isFocusedPane else { return }
+            gutter.bandFocused = isFocusedPane
+            textView.needsDisplay = true
+        }
+    }
 
     /// Brace and comment regions together.
     public var allFoldRegions: [FoldRegion] { foldRegions + commentRegions }

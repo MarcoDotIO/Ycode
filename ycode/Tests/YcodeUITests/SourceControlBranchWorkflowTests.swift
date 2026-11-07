@@ -224,7 +224,8 @@ private func find(_ items: [OutlineItem], key: String) -> OutlineItem? {
         // The panes: the current branch on the left, never git's markers.
         #expect(sheet.canvas.rows.map { $0.left?.text } == ["let a = 1", "let b = 200", "let c = 3"])
         #expect(sheet.canvas.rows.map { $0.right?.text } == ["let a = 1", "let b = 20", "let c = 3"])
-        #expect(sheet.state.leftFooter?.branch == "main" && sheet.state.rightFooter?.branch == "feature")
+        // Both footers name the current branch (merge-sheet.md §13.7).
+        #expect(sheet.state.leftFooter?.branch == "main" && sheet.state.rightFooter?.branch == "main")
         #expect(sheet.state.leftFooter?.isHead == true && sheet.state.leftFooter?.author == "Ycode Test")
 
         // The window's state: navigator header, Integrate menu, menu titles.

@@ -17,6 +17,7 @@ struct EditingSettingsPane: View {
     #else
     static let lineEndings = "macOS / Unix (LF)"
     #endif
+    static let textEncoding = "Unicode (UTF-8)"
 
     var body: some View {
         let _ = ShellPreferences.shared.revision
@@ -29,17 +30,25 @@ struct EditingSettingsPane: View {
     }
 
     var main: some View {
-        SettingsForm {
-            SettingsSection {
-                DrillRow(title: "Display", detail: "Line numbers, wrapping, guides", target: "settings editing display") { model.editingPage = .display }
-                DrillRow(title: "Completion", detail: Preferences.shared.predictiveCompletion.enabled ? "Predictive on" : "",
-                         target: "settings editing completion") { model.editingPage = .completion }
-                DrillRow(title: "Indentation", detail: Preferences.shared.indentWithTabs ? "Tabs" : "\(Preferences.shared.indentWidth) spaces",
-                         target: "settings editing indentation") { model.editingPage = .indentation }
+        // R4.1: the navigation rows' card, text encoding alone in a card,
+        // then line endings and the convert switch, 10 apart with no
+        // header. Ycode reads and writes UTF-8 with LF only, so each
+        // pop-up offers the one value.
+        SettingsForm(startsWithCard: true) {
+            SettingsSection(cardFollows: true) {
+                SettingsNavigationRow(title: "Display", icon: .display, target: "settings editing display") { model.editingPage = .display }
+                SettingsNavigationRow(title: "Completion", icon: .completion, target: "settings editing completion") { model.editingPage = .completion }
+                SettingsNavigationRow(title: "Indentation", icon: .indentation, target: "settings editing indentation") {
+                    model.editingPage = .indentation
+                }
             }
-            SettingsSection("Files") {
-                ValueRow(title: "Default text encoding", value: "Unicode (UTF-8)")
-                ValueRow(title: "Default line endings", value: Self.lineEndings)
+            SettingsSection(cardFollows: true) {
+                PickerRow(title: "Default text encoding", selection: .constant(Self.textEncoding), options: [(Self.textEncoding, Self.textEncoding)],
+                          target: "settings text encoding")
+            }
+            SettingsSection {
+                PickerRow(title: "Default line endings", selection: .constant(Self.lineEndings), options: [(Self.lineEndings, Self.lineEndings)],
+                          target: "settings line endings")
                 CheckRow(title: "Convert existing files on save", isOn: setting(\.convertExistingFilesOnSave), target: "settings convert on save")
             }
             SettingsSection("When Editing") {

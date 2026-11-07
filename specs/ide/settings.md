@@ -13,8 +13,9 @@ pane as grouped cards under its title and the back/forward capsule
 (R3.1–R3.3 below give the measured layout). Panes, in order: General,
 Appearance, Accounts, Coding Assistant, Behaviors, Navigation,
 Notifications, Editing, Shortcuts, Source Control, Components, Locations
-(the reference's twelve, in its order), then Simulators (Ycode's own, at
-the end; council round 3). Accounts is
+(the reference's twelve, in its order). Simulators (Ycode's own) is a page
+reached from a navigation row at the top of Components (council round 4,
+"Ycode implementation (round 4)"). Accounts is
 informational only. Coding Assistant (the reference's Intelligence
 position, in Ycode's own words) holds the assistant's back ends, the
 OpenAI sign-in or API key, agent-tool paths, context options and the
@@ -357,6 +358,144 @@ Both IDEs implement R3.1–R3.3 (`SettingsChrome.swift` in YcodeUI,
 - The switch's on state and size precisely (only one switch, off, was
   visible); the pop-up button's pressed state and its menu.
 
+## Council round 4: the Editing pane and General's details (2026-11-06)
+
+Measured from one Retina still each of the reference's Settings window on
+the General pane (step 20) and on the Editing pane (step 21, titled
+"Editing" in the sidebar of both apps), active, **dark appearance**, and
+the same panes in Ycode (`45c676aa`). The window is 710 × 452 in both.
+Values are in points from the window's top-left corner, half-point
+precision. Checklist rows 89–96 in `fidelity-council.md`. R3.1–R3.3 stay
+valid for geometry; R4.3 gives the dark colours.
+
+### R4.1 The Editing pane
+
+The reference's pane, top to bottom (cards x 200/201–689/690, 490 wide,
+as in R3.3):
+
+| Card | y | Rows |
+|---|---|---|
+| 1, navigation rows | **72–206** | Display, Completion, Indentation: **44 tall** each, with 1-point separators (pitch 45) |
+| 2 | **216–253.5** | Default text encoding: one 37.5 row with a pop-up |
+| 3 | **263.5–338** | Default line endings (pop-up), separator, Convert existing files on save (switch): 37 + 1 + 36.5 |
+| header "When Editing" | ink y 371–383.5, x 210.5 | — |
+| 4 | from **394** | Automatically trim trailing whitespace (switch, on), Trim whitespace-only lines (switch), … (continues below the window) |
+
+- **No header** between card 1 and card 2 and none between cards 2 and
+  3: the cards are 10 apart. Text encoding is alone in its card; line
+  endings and the convert switch share the next card.
+- **Navigation rows** (card 1) each lead with a **row icon**: a rounded
+  square **24 × 24**, its left edge 10 inside the card (x 210–234),
+  vertically centred in the 44-point row (10 above and below), corner
+  radius about 4–5 (a continuous corner: the fill reaches the edge 2–2.5
+  points from the corner along each side), filled with a **vertical
+  gradient**, lighter at the top, and a white symbol. The label starts at
+  **x 245** (11 after the icon), regular, #DEDEDE. A disclosure chevron
+  pointing right, about 5 wide and 9 tall, #5C5C5C, at x 674–679 (11
+  inside the card). The separators run from **x 210 to 680** (they start
+  under the icon's left edge, not under the label).
+
+| Row | Icon fill, top → bottom (median) | Symbol, in words (Ycode draws its own) |
+|---|---|---|
+| Display | blue, #2BAFFF → #0091FE (#139CFF) | a white rounded rectangle outline with a filled bar along its right side (a window with a side panel) |
+| Completion | cyan, #63E3FF → #3BD3FE (#4EDAFF) | the lowercase letters "abc" in white, regular weight, filling about two thirds of the width |
+| Indentation | periwinkle, #94A1FF → #6D7CFF (#7B89FF) | a white arrow pointing right into a vertical bar |
+
+- **Pop-up rows** (cards 2 and 3): the value text right-aligned, #DEDEDE
+  (the label's colour, not grey), ending **12.5–13 before** a **20 × 20
+  round well** (fill #363636, up and down chevrons in light grey) whose
+  right edge is **13.5 inside** the card (x 656.5–676.5). This is R3.3's
+  pop-up in dark.
+- **Switch**: track **36 × 16** (x 644–680, 10 inside the card), off
+  #3B3B3B with a white pill knob about 21 × 12 at the leading end; on: the
+  accent #0679F7 with the knob at the trailing end.
+- Header "When Editing": bold, #DDDDDD, its ink 33 below card 3's bottom
+  and 10.5 above card 4's top.
+
+**Ycode now** (the same window):
+
+| Element | Ycode now | Change |
+|---|---|---|
+| Card 1 | y 73–187.5, rows **37.5** + separators, **no icons**, labels at x 211 | rows 44 tall; the three icons; labels at x 245 |
+| Header "Files" | present (ink y 220–230.5) | remove it |
+| Encoding, line endings, convert | one card y 243–357.5 | two cards (216–253.5 and 263.5–338), 10 apart, no header |
+| Pop-up values | plain grey text #9F9F9F ending at x 678.5, **no well** | #DEDEDE text, the round well, the value ending 12.5–13 before it |
+| Switch | 44 × 20 (x 636–680, y 329–349), off #3F3F3F, knob 26 × 14 | 36 × 16, knob about 21 × 12 |
+| "When Editing" | ink y 390–403, card at 413 (19–20 lower) | ink 371–383.5, card at 394 |
+
+### R4.2 General: the remaining differences
+
+The General pane's card rhythm now matches (cards at 98–167 and from 223,
+rows 37.5 with separators, within 0.5 in Ycode). What remains:
+
+| Element | Reference | Ycode now |
+|---|---|---|
+| Sidebar rows | **12** (General … Locations), 32-point pitch from y 52; the last row ends at y 436, 16 above the window's bottom; **no scroller** | **13** (adds Simulators): the list overflows the 452-point window, shows a permanent scroller (thumb x 165.5–176.5, #A4A4A4, track to y 444) and the 13th row is cut off at the bottom |
+| Selection | **x 10–170** (160 × 32), y 52–84 for General; fill **#007AFF** in dark (R3.2: #0070F5 in light) | x 10–162.5 (its right end clipped by the scroller), fill **#0A62D9** |
+| Pane title | "General", "Editing": cap top y 20, cap height 12 (about 17 points), **#E8E8E8**, **semibold** (the G's stem 2.3 points) | the same place and size, **#C4C4C4**, regular (stem 1.8) |
+| Pop-up well | present; value ends **12.5** before the 20-point well | present in General now, but the value text ends about **2–3 points** before the well (it is not moved left to make room) |
+| Well fill | #363636 on the #262626 card | #434343 on the #2A2A2A card |
+| Switch | 36 × 16 (knob about 21 × 12) | 44 × 20 (knob 26 × 14) |
+| Sidebar fill / divider | #262627, a 0.5-point divider #414142 at x 179.5 | #2B2B2B, divider #111111 |
+
+**Simulators.** The reference has no Simulators row: its 12 rows fit the
+window without scrolling. Where Ycode's simulator settings go is the
+implementer's decision (for example inside an existing pane, such as
+Components or Locations, or reached from elsewhere); the constraint is
+that the sidebar shows at most 12 rows at 32 points in the 452-point
+window, with no scroller.
+
+### R4.3 Dark colours (measured)
+
+| Element | Reference | Ycode now |
+|---|---|---|
+| Detail pane (window) background | #1F1F1F | #1E1E1E |
+| Card fill | **#262626** | #2A2A2A |
+| Row separator | **#303030**, x 210–680 | #3A3A3A |
+| Labels and values | #DEDEDE | labels #DFDFDF; values #9F9F9F (Editing) |
+| Section header | #DDDDDD, bold | #DEDEDE, bold |
+| Content scroller (both apps) | thumb #9F9F9F at x 696–707 | the same |
+| Sidebar | #262627, selection #007AFF, symbols accent-tinted (about #118BFF) | #2B2B2B, #0A62D9, symbols about #007BFF |
+
+### Ycode implementation (round 4)
+
+Both IDEs implement R4.1–R4.3 from the shared `SettingsLayout`,
+`SettingsRowIcon` and `SettingsPaletteHex` (YcodeIDECore):
+
+- Editing's main page starts with a card 20 under the title area (y 72):
+  Display, Completion and Indentation as **navigation rows**, 44 tall,
+  each led by a 24 × 24 rounded square (radius 5) filled with the
+  measured vertical gradient and a white symbol that Ycode draws with
+  paths and text from the descriptions above (no system artwork on either
+  platform), the label's ink at x 245, a drawn 5 × 9 disclosure chevron
+  ending 11 inside the card. Then Default text encoding alone in a card
+  and Default line endings with Convert existing files on save in the
+  next, 10 apart with no header; "When Editing" follows at the usual
+  header rhythm (its card at about 394). Cards with no header between
+  them are 10 apart in every pane. Ycode reads and writes UTF-8 with LF
+  only, so each of the two pop-ups offers that one value.
+- Pop-ups everywhere draw the value in the label colour, ending 12.5
+  before the 20-point well; the switch is Ycode's own drawing, a 36 × 16
+  track with a 21 × 12 knob (on: #0679F7 dark, #0070F5 light).
+- The sidebar lists the reference's twelve panes and has no scroller
+  (the last row ends at y 436); the selection band is x 10–170.
+- **Simulators** (Ycode's remote simulator host, boot and camera
+  settings) is not a sidebar row: it is a navigation row, "Ycode
+  Simulator" (a green icon with two stacked bars), at the top of
+  Components, because Components is where the simulator runtimes it runs
+  are listed and managed (Simulator Runtimes…). The page shows Components
+  selected in the sidebar and as the title, with a way back ("‹
+  Components"); every command that opened the Simulators pane (Add
+  Simulator, the destination menu, the canvas) opens this page. The Linux
+  IDE does not offer it.
+- The title is 17-point semibold in both appearances (R3.1's light still
+  read regular to medium; R4.2's dark still semibold: one weight is kept).
+- The dark palette is R4.3's: detail #1F1F1F, cards #262626, separators
+  #303030, sidebar #262627 with the #414142 divider, selection #007AFF,
+  labels and values #DEDEDE, headers #DDDDDD, title #E8E8E8, wells
+  #363636, the switch off #3B3B3B, the disclosure #5C5C5C. The light
+  disclosure (#B0B0B0) and the Simulator icon's green are Ycode's own.
+
 ## Evidence
 
 - Correction 2026-10-19: General, Navigation and Editing ▸ Display rows and
@@ -378,6 +517,9 @@ Both IDEs implement R3.1–R3.3 (`SettingsChrome.swift` in YcodeUI,
   release (Xcode puts some of it in File ▸ Workspace Settings); the
   reference's default behaviors; its theme format (deliberately not
   matched); key-binding sets; Components' download actions (not offered).
+- Round 4 implementation: where Simulators goes, the light disclosure
+  colour, the Simulator icon, the single-value encoding and line-ending
+  pop-ups and the title's weight in light are Ycode's own.
 - Round 3 implementation: the palette's dark values, the help texts, the
   card rows for non-control content, the Linux symbols' drawings and the
   Components empty state are Ycode's own.
@@ -388,3 +530,8 @@ Both IDEs implement R3.1–R3.3 (`SettingsChrome.swift` in YcodeUI,
   General, active, and Ycode's matching still; colour runs and ink boxes
   measured in the dirty room (level 3). The window size is the capture
   manifest's window frame.
+- Council round 4 measurements (R4.1–R4.3): one Retina still each of the
+  reference's Settings window on General and on Editing (dark, active)
+  and Ycode's matching stills; colour runs, ink boxes, the icons' boxes
+  from saturated pixels, stem widths from intensity profiles; measured
+  in the dirty room (level 3). Symbols are described in words only.

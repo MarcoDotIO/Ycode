@@ -139,7 +139,8 @@ struct NavigatorFilterBar: View {
                     Image(systemName: "line.3.horizontal.decrease.circle").font(.system(size: 13))
                     Image(systemName: "chevron.down").font(.system(size: 6))
                 }
-                .foregroundStyle(c.secondaryLabel)
+                // #ABABAC in dark (editor-area.md F.9, row 110).
+                .foregroundStyle(scheme == .dark ? Color(.sRGB, red: 0xAB / 255.0, green: 0xAB / 255.0, blue: 0xAC / 255.0) : c.secondaryLabel)
                 TextField("Filter", text: $text)
                     .textFieldStyle(.plain)
                     .font(ShellFonts.row)
@@ -156,7 +157,8 @@ struct NavigatorFilterBar: View {
             .frame(height: h)
             .background { Capsule(style: .continuous).stroke(c.capsuleStroke, lineWidth: 1) }
         }
-        .padding(.horizontal, CGFloat(WorkspaceChrome.selectorInset))
+        .padding(.leading, CGFloat(WorkspaceChrome.filterBarLeading))
+        .padding(.trailing, CGFloat(WorkspaceChrome.filterBarTrailing))
         .padding(.bottom, CGFloat(WorkspaceChrome.filterBarBottomInset))
         .padding(.top, 4)
     }

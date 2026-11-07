@@ -101,6 +101,11 @@ struct NewProjectSheet: View {
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { model.select(e.templateID); model.next() }
         .onTapGesture { model.select(e.templateID) }
+        // A template tile is a button to accessibility (merge-sheet.md §13.2's rule).
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(e.title)
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { model.select(e.templateID) }
         .shellTarget("template \(e.title)")
     }
 

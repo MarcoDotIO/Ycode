@@ -34,6 +34,9 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
     public var showsLineNumbers = true { didSet { needsDisplay = true } }
     /// The insertion point's line: its number is drawn brighter.
     public var caretLine: Int? { didSet { if oldValue != caretLine { needsDisplay = true } } }
+    /// Whether the pane has focus: a split's other pane draws a fainter
+    /// current-line band (`editor-area.md` F.3).
+    public var bandFocused = true { didSet { if oldValue != bandFocused { needsDisplay = true } } }
     public var lineIndex = LineIndex("") { didSet { needsDisplay = true } }
     public var onClick: ((Int) -> Void)?
     public var onMove: ((Int, Int) -> Void)?
@@ -135,7 +138,7 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
     }
 
     public override func drawHashMarksAndLabels(in rect: NSRect) {
-        NSColor.textBackgroundColor.setFill()
+        Theme.backgroundColor.setFill()
         bounds.fill()
         let numberWidth = ruleThickness - Self.ribbonWidth
         // The gutter has no background or column of its own (§C.2); the
@@ -148,7 +151,7 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
         // The current-line band starts 14 after the editor's edge, under the
         // numbers, and continues in the text view (§C.2).
         if let l = caretLine, let r = rows.first(where: { $0.line == l })?.rect {
-            Theme.currentLineBandColor.setFill()
+            Theme.currentLineBandColor(focused: bandFocused).setFill()
             let x = authorsInset + CGFloat(EditorMetrics.currentLineBandStart)
             let band = NSRect(x: x, y: r.minY, width: bounds.width - x, height: Theme.lineHeight)
             let radius = CGFloat(EditorMetrics.currentLineBandRadius)

@@ -438,7 +438,8 @@ extension SourceEditorController {
         let b = buffer
         let o = min(max(0, offset), b.length)
         let n = b.document.line(containing: o)
-        return CGPoint(x: textOrigin + layout.x(ofOffset: o, line: n, in: b) - left, y: lineTop(n) - top)
+        let p = position(ofOffset: o, line: n)   // wrapped rows (+Wrap.swift)
+        return CGPoint(x: textOrigin + p.x - left, y: lineTop(n) + CGFloat(p.row) * lineHeight - top)
     }
 }
 

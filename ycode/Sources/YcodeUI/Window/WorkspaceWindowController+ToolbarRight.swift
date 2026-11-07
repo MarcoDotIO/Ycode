@@ -135,7 +135,8 @@ extension WorkspaceWindowController {
     /// Fits the toolbar on the next turn of the run loop (changes come in
     /// bursts: a build's activity text, issue counts).
     func scheduleToolbarFit() {
-        guard !toolbarControls.fitScheduled else { return }
+        // The inspector's slide fits the toolbar once, at its end (row 106).
+        guard !toolbarControls.fitScheduled, !isInspectorSliding else { return }
         toolbarControls.fitScheduled = true
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
@@ -170,12 +171,20 @@ extension WorkspaceWindowController {
     /// priority and the editor modes the lowest, so the system's overflow
     /// takes them first.
     public func fitToolbar() {
-        guard let window, let frame = window.contentView?.superview, window.toolbar != nil, !toolbarControls.fitting else { return }
+        guard let window, let frame = window.contentView?.superview, window.toolbar != nil, !toolbarControls.fitting, !isInspectorSliding else { return }
         toolbarControls.fitting = true
+        toolbarControls.fitRuns += 1
         defer { toolbarControls.fitting = false }
+        // The first try lays out the whole frame (the toolbar's room follows
+        // the areas' dividers); the steps only change toolbar items, so later
+        // tries lay out the title bar alone, not the editor's text again
+        // (`editor-area.md` F.6, row 107: the resize call blocked 264 ms).
+        let titlebar = window.standardWindowButton(.closeButton)?.superview?.superview
+        var laidOut = false
         func fits(_ f: ToolbarFit) -> Bool {
             apply(f)
-            frame.layoutSubtreeIfNeeded()
+            if laidOut, let titlebar, titlebar !== frame { titlebar.layoutSubtreeIfNeeded() } else { frame.layoutSubtreeIfNeeded() }
+            laidOut = true
             return f.accepts(overflowed: overflowedToolbarItems)
         }
         let steps = ToolbarFit.steps(activityNatural: activityView.naturalWidth)

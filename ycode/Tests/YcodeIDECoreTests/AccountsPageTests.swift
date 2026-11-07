@@ -48,10 +48,12 @@ import YcodeIDECore
     }
 
     @Test func paneOrder() {
-        #expect(SettingsPaneOrder.all.count == 13)
+        // The reference's twelve in its order (R4.2: at most twelve rows);
+        // Simulators (Ycode's own, macOS only) is a page of Components.
+        #expect(SettingsPaneOrder.all.count == SettingsLayout.sidebarMaxRows)
         #expect(Array(SettingsPaneOrder.all.prefix(4)) == ["General", "Appearance", "Accounts", "Coding Assistant"])
-        // The reference's twelve in its order, then Simulators (Ycode's own, macOS only).
-        #expect(SettingsPaneOrder.all.last == "Simulators")
+        #expect(SettingsPaneOrder.all.last == "Locations" && !SettingsPaneOrder.all.contains("Simulators"))
+        #expect(SettingsPaneOrder.subPages == ["Simulators": "Components"])
         #expect(SettingsPaneOrder.linux == ["General", "Appearance", "Accounts", "Coding Assistant", "Behaviors", "Navigation",
                                             "Notifications", "Editing", "Shortcuts", "Source Control", "Components", "Locations"])
     }

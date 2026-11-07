@@ -89,6 +89,7 @@ struct JumpBar: View {
         let c = ShellColors(scheme)
         HStack(spacing: 4) {
             Image(systemName: "square.grid.2x2").font(.system(size: 11)).foregroundStyle(c.secondaryLabel)
+                .frame(width: CGFloat(JumpBarEmpty.gridWidth))
                 .help("Navigate to Related Items")
             if model.document != nil {
                 ForEach(Array(model.jumpPath.enumerated()), id: \.offset) { pair in
@@ -108,7 +109,15 @@ struct JumpBar: View {
                 // The declaration at the insertion point; its menu lists the file's (LanguageViews.swift).
                 DocumentItemsMenu(model: model)
             } else {
-                Text("No Selection").font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.secondaryLabel)
+                // No file open: a 1-point divider after the grid button, then
+                // "No Selection" in the bar's text colour from 47.5 in
+                // (editor-area.md F.10, row 111).
+                HStack(spacing: 0) {
+                    Rectangle().fill(c.separator).frame(width: 1, height: 14)
+                        .padding(.leading, CGFloat(JumpBarEmpty.dividerX) - 6 - 4 - CGFloat(JumpBarEmpty.gridWidth))
+                    Text("No Selection").font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.label)
+                        .padding(.leading, CGFloat(JumpBarEmpty.textX - JumpBarEmpty.dividerX - 1))
+                }
             }
             Spacer(minLength: 0)
             if let path = model.document?.path, StructuredEditor.hasSourceView(path) { OpenAsSwitch(model: model) }
@@ -231,8 +240,10 @@ struct Minimap: View {
                 // What the editor shows.
                 if content > viewport.height {
                     let lh = c.lineHeight
-                    let bandTop = 4 + (top / lh - CGFloat(first)) * Self.pitch
-                    let bandHeight = viewport.height / lh * Self.pitch
+                    // Lines, not wrapped rows (+Wrap.swift): the band spans the lines shown.
+                    let shown = c.visibleLines(height: viewport.height)
+                    let bandTop = 4 + (CGFloat(shown.lowerBound) - CGFloat(first)) * Self.pitch
+                    let bandHeight = max(CGFloat(shown.count), viewport.height / lh / 3) * Self.pitch
                     ctx.fill(Path(CGRect(x: 0, y: bandTop, width: size.width, height: bandHeight)), with: .color(colors.minimapText.opacity(0.22)))
                 }
             }
@@ -242,7 +253,8 @@ struct Minimap: View {
                 // The line under the pointer goes to the middle of the editor.
                 let (first, _) = window(height: geo.size.height, top: c.top)
                 let line = CGFloat(first) + (v.location.y - 4) / Self.pitch
-                c.scroll(x: c.left, y: line * c.lineHeight - c.viewport.height / 2)
+                let n = min(max(0, Int(line)), max(0, c.buffer.lineCount - 1))
+                c.scroll(x: c.left, y: c.lineTop(n) - c.viewport.height / 2)
             })
         }
         .frame(width: width)
@@ -282,4 +294,12 @@ struct CaretPositionLabel: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Insertion Point")
     }
+}
+
+/// The empty jump bar's layout from the bar's leading edge (`editor-area.md`
+/// F.10): the grid button, the divider, "No Selection" from 47.5.
+enum JumpBarEmpty {
+    static let gridWidth = 14.0
+    static let dividerX = 33.5
+    static let textX = 47.5
 }

@@ -60,11 +60,70 @@ public class EditorBlurBackdrop: NSView {
         }
         Theme.backgroundColor.setFill()
         dirtyRect.intersection(bounds).fill(using: .copy)
-        let views = sources()
-        for (rect, share) in regions() where share > 0 && rect.intersects(dirtyRect) {
-            guard let image = StructureBlur.image(of: rect, in: self, sources: views, background: Theme.backgroundColor) else { continue }
-            StructureBlur.draw(image, for: rect, in: self, share: share)
-        }
+        let shown = regions().filter { $0.share > 0 && $0.rect.intersects(dirtyRect) }
+        guard let union = shown.map(\.rect).reduce(nil, { r, x in r.map { $0.union(x) } ?? x }), let image = blurredImage(of: union) else { return }
+        // One render of the content serves every band; each band shows it
+        // at its own share (council round 4, row 106: the bands were each
+        // rendered on their own, every frame).
+        for (rect, share) in shown { StructureBlur.draw(image, for: union, in: self, share: share, clip: rect) }
+    }
+
+    /// The last render: the image, the rect it was made for, and the
+    /// content's scroll position then.
+    private var cached: (image: CGImage, rect: NSRect)?
+    /// Renders made (tests).
+    public private(set) var renderCount = 0
+
+    /// The blurred content under `rect`: rendered now, or, while the
+    /// window's layout is in motion (`EditorBlurMotion`: the inspector's
+    /// slide, a live resize), the last render stretched to the new rect.
+    /// A held image is replaced by one render when the motion ends.
+    private func blurredImage(of rect: NSRect) -> CGImage? {
+        if EditorBlurMotion.isHolding || inLiveResize, let cached, cached.rect.height == rect.height { return cached.image }
+        guard let image = StructureBlur.image(of: rect, in: self, sources: sources(), background: Theme.backgroundColor) else { return nil }
+        renderCount += 1
+        cached = (image, rect)
+        return image
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { EditorBlurMotion.register(self) }
+    }
+
+    public override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        needsDisplay = true
+    }
+}
+
+/// Motion of the window's layout during which the bars keep their last
+/// blurred image instead of rendering the content again every frame
+/// (`editor-area.md` F.5, checklist row 106: a render of the text under
+/// the bars cost several milliseconds per bar, so the inspector's slide
+/// drew 5–6 frames instead of a new one on every display refresh). The
+/// blur is σ 6 at 8.5–18 % of the content's darkness, so a held image is
+/// not told apart while the text re-wraps under it; one render follows
+/// when the motion ends.
+@MainActor
+public enum EditorBlurMotion {
+    private static var holds = 0
+    private static let backdrops = NSHashTable<EditorBlurBackdrop>.weakObjects()
+
+    /// Whether the bars hold their image (an inspector slide runs; a live
+    /// resize holds its own window's bars).
+    public static var isHolding: Bool { holds > 0 }
+
+    static func register(_ b: EditorBlurBackdrop) { backdrops.add(b) }
+
+    /// Starts a motion.
+    public static func begin() { holds += 1 }
+
+    /// Ends a motion: the bars render the content beneath them again.
+    public static func end() {
+        holds = max(0, holds - 1)
+        guard holds == 0 else { return }
+        for b in backdrops.allObjects { b.needsDisplay = true }
     }
 }
 

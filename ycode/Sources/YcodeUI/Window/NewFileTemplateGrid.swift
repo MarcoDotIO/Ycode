@@ -35,9 +35,20 @@ final class TemplateTile: NSView {
             label.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 4),
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4), label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
         ])
+        // A button to accessibility: pressing it chooses the template, as a
+        // click does (merge-sheet.md §13.2's rule for Ycode's drawn
+        // controls in sheets).
+        setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel(entry.title)
     }
+
+    override func accessibilityPerformPress() -> Bool {
+        onClick?(entry)
+        return true
+    }
+
+    override func isAccessibilitySelected() -> Bool { isSelected }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }

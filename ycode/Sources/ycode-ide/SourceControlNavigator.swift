@@ -112,7 +112,9 @@ struct TextSegments: View {
                 let on = pair.offset == selected
                 Button { select(pair.offset) } label: {
                     Text(verbatim: pair.element)
-                        .font(on && accentHeight == nil ? ShellFonts.small.weight(.semibold) : ShellFonts.small)
+                        // The accent control: 10-point titles (row 114).
+                        .font(accentHeight != nil ? Font.system(size: CGFloat(RepositoriesViewStyle.modeControlFontSize))
+                              : on ? ShellFonts.small.weight(.semibold) : ShellFonts.small)
                         .foregroundStyle(on && accentHeight != nil ? Color.white : c.label)
                         .lineLimit(1)
                         .padding(.horizontal, 10)
@@ -127,7 +129,8 @@ struct TextSegments: View {
                 .shellTarget("\(target) \(pair.offset)")
             }
         }
-        .padding(2)
+        // The accent control is its segments' height overall (16, row 114).
+        .padding(accentHeight != nil ? 0 : 2)
         .background { Capsule(style: .continuous).stroke(c.capsuleStroke, lineWidth: 1) }
     }
 }

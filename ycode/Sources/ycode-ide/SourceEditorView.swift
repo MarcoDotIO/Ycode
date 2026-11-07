@@ -277,8 +277,21 @@ struct SourceEditorPainter {
             let line = c.layout.displayLine(n, in: b, columns: columns)
             let y = top(n) + c.textDrop
             let x = textX + CGFloat(line.firstColumn) * c.layout.advance
+            let starts = c.rowStarts(n)
             if b.hasMarkedText, n == currentLine {
                 drawComposing(&ctx, line, y: y, x: x)
+            } else if !starts.isEmpty {
+                // A wrapped line: each row from its start column (+Wrap.swift).
+                var rest = line.runs
+                var at = 0
+                for (k, end) in (starts + [Int.max]).enumerated() {
+                    let (row, after) = EditorDisplayLine(runs: rest).split(atColumn: end == Int.max ? Int.max / 2 : end - at)
+                    if !row.isEmpty {
+                        drawRuns(&ctx, row, at: textX + c.rowIndent(n, row: k), y: y + CGFloat(k) * lh, font: f)
+                    }
+                    rest = after
+                    at = end
+                }
             } else if !line.runs.isEmpty {
                 drawRuns(&ctx, line.runs, at: x, y: y, font: f)   // +CellGlyphs.swift
             }
@@ -301,11 +314,13 @@ struct SourceEditorPainter {
 
         // The caret.
         if b.selection.isEmpty || b.hasMarkedText, caretOn, c.isFocused {
-            var x = textX + c.layout.x(ofOffset: b.caret, line: currentLine, in: b)
+            let p = c.position(ofOffset: b.caret, line: currentLine)
+            var x = textX + p.x
             if b.hasMarkedText {
                 x += markedPrefixWidth(c)
             }
-            ctx.fill(Path(CGRect(x: x - 0.5, y: top(currentLine), width: 1.5, height: lh)), with: .color(palette.foreground.color))
+            ctx.fill(Path(CGRect(x: x - 0.5, y: top(currentLine) + CGFloat(p.row) * lh, width: 1.5, height: lh)),
+                     with: .color(palette.foreground.color))
         }
 
         // The scroll indicator, for a second after scrolling (Linux; the
@@ -446,11 +461,17 @@ struct SourceEditorPainter {
             let r = doc.lineRange(n)
             let lo = max(range.lowerBound, r.lowerBound), hi = min(range.upperBound, r.upperBound)
             guard lo <= hi else { continue }
-            let x0 = c.layout.x(ofOffset: lo, line: n, in: b)
-            var x1 = c.layout.x(ofOffset: hi, line: n, in: b)
-            if range.upperBound > r.upperBound { x1 += c.layout.advance }
-            guard x1 > x0 else { continue }
-            ctx.fill(Path(CGRect(x: textX + x0, y: c.lineTop(n) - c.top, width: x1 - x0, height: c.lineHeight)), with: .color(color))
+            // Wrapped lines: a rectangle per row (+Wrap.swift).
+            let p0 = c.position(ofOffset: lo, line: n), p1 = c.position(ofOffset: hi, line: n)
+            let rowEnd = c.viewport.width - c.textOrigin
+            for k in p0.row...max(p0.row, p1.row) {
+                let x0 = k == p0.row ? p0.x : c.rowIndent(n, row: k)
+                var x1 = k == p1.row ? p1.x : rowEnd
+                if k == p1.row, range.upperBound > r.upperBound { x1 += c.layout.advance }
+                guard x1 > x0 else { continue }
+                let y = c.lineTop(n) + CGFloat(k) * c.lineHeight - c.top
+                ctx.fill(Path(CGRect(x: textX + x0, y: y, width: x1 - x0, height: c.lineHeight)), with: .color(color))
+            }
         }
     }
 

@@ -101,12 +101,18 @@ public class SettingsPane: NSViewController {
             switch (lastKind, kind) {
             case (.card, .header): gap = SettingsMetrics.cardToHeader - 3
             case (.header, .card): gap = SettingsMetrics.headerToCard + 3 - 16
-            case (.card, .card): gap = 20
+            case (.card, .card): gap = SettingsMetrics.cardGap
             case (.card, .footnote): gap = 6
             case (.footnote, .header): gap = SettingsMetrics.cardToHeader - 3
             default: gap = 12
             }
             stack.setCustomSpacing(gap, after: last)
+        } else {
+            // A pane that starts with a card has it 20 under the title area
+            // (R4.1); one that starts with a header has the header's cap top
+            // 24 under it.
+            stack.edgeInsets.top = kind == .card ? SettingsMetrics.firstCardTop - SettingsMetrics.titleAreaHeight
+                : SettingsMetrics.firstHeaderCapTop - SettingsMetrics.titleAreaHeight - 3
         }
         v.translatesAutoresizingMaskIntoConstraints = false
         stack.addArrangedSubview(v)
@@ -159,13 +165,11 @@ public class SettingsPane: NSViewController {
         card.add(r)
     }
 
-    /// A row that opens a sub-page: its title and a chevron; the whole row
-    /// is the button.
-    func drill(_ title: String, _ action: @escaping () -> Void) {
-        let chevron = NSTextField(labelWithString: "\u{203A}")
-        chevron.font = .systemFont(ofSize: 17)
-        chevron.textColor = .tertiaryLabelColor
-        let r = SettingsRowView(label: title, controls: [chevron])
+    /// A row that opens a sub-page: its title and a disclosure chevron; the
+    /// whole row is the button. With an icon it is a navigation row (R4.1):
+    /// 44 tall, the icon at the leading edge, the label after it.
+    func drill(_ title: String, icon: SettingsRowIcon? = nil, _ action: @escaping () -> Void) {
+        let r = SettingsRowView(label: title, controls: [SettingsDisclosureView()], icon: icon)
         r.onClick = action
         r.setAccessibilityRole(.button)
         r.setAccessibilityLabel(title)
@@ -311,6 +315,31 @@ final class ClosurePopUp: NSPopUpButton {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
     @objc func fire() { onChange?(titleOfSelectedItem ?? "") }
+
+    // A card pop-up is as wide as its cell (the value, the 12.5 gap and the
+    // well): AppKit's own sizing takes the bezel's margins off, which put
+    // the value against the well (R4.2).
+    override var intrinsicContentSize: NSSize {
+        guard let c = cell as? SettingsCardPopUpCell else { return super.intrinsicContentSize }
+        return NSSize(width: c.cellSize.width, height: SettingsMetrics.popUpCircle)
+    }
+
+    override var alignmentRectInsets: NSEdgeInsets { cell is SettingsCardPopUpCell ? NSEdgeInsetsZero : super.alignmentRectInsets }
+
+    override func select(_ item: NSMenuItem?) {
+        super.select(item)
+        invalidateIntrinsicContentSize()
+    }
+
+    override func selectItem(at index: Int) {
+        super.selectItem(at: index)
+        invalidateIntrinsicContentSize()
+    }
+
+    override func selectItem(withTitle title: String) {
+        super.selectItem(withTitle: title)
+        invalidateIntrinsicContentSize()
+    }
 }
 
 final class ClosureButton: NSButton {
@@ -935,6 +964,9 @@ public final class TextEditingSettingsPane: SettingsPane {
     public enum Page: String { case main = "Editing", display = "Display", completion = "Completion", indentation = "Indentation" }
     public var page: Page = .main { didSet { if isViewLoaded { rebuild() } } }
     public init(prefs: Preferences = .shared) { super.init("Editing", prefs: prefs) }
+    /// The default encoding and line endings (the only ones Ycode writes).
+    public static let textEncoding = "Unicode (UTF-8)"
+    public static let lineEndings = "macOS / Unix (LF)"
     /// Predictive completion's Test result and download progress
     /// (TextEditingSettingsPane+Prediction.swift).
     public internal(set) var predictionProbe: BackendProbe?
@@ -944,10 +976,17 @@ public final class TextEditingSettingsPane: SettingsPane {
     override func build() {
         switch page {
         case .main:
-            for p in [Page.display, .completion, .indentation] { drill(p.rawValue) { [weak self] in self?.page = p } }
-            heading("Files")
-            row("Default text encoding:", value("Unicode (UTF-8)"))
-            row("Default line endings:", value("macOS / Unix (LF)"))
+            // R4.1: the navigation rows' card, then text encoding alone in a
+            // card, then line endings and the convert switch, 10 apart with
+            // no header. Ycode reads and writes UTF-8 with LF only, so each
+            // pop-up offers the one value.
+            for p in [Page.display, .completion, .indentation] {
+                drill(p.rawValue, icon: SettingsRowIcon.forEditingPage(p.rawValue)) { [weak self] in self?.page = p }
+            }
+            endCard()
+            row("Default text encoding", popUp([Self.textEncoding], selected: Self.textEncoding) { _ in })
+            endCard()
+            row("Default line endings", popUp([Self.lineEndings], selected: Self.lineEndings) { _ in })
             row("", check("Convert existing files on save", prefs.convertExistingFilesOnSave) { [prefs] in prefs.convertExistingFilesOnSave = $0 })
             heading("When Editing")
             row("", check("Automatically trim trailing whitespace", prefs.trimTrailingWhitespace) { [prefs] in prefs.trimTrailingWhitespace = $0 })
@@ -1168,6 +1207,12 @@ public final class ComponentsSettingsPane: SettingsPane {
     public private(set) var components: [Component]
     public private(set) var loading: Task<Void, Never>?
     private var loaded: Bool
+    /// Opens the Simulators page (Ycode's own; R4.2 keeps the sidebar to
+    /// the reference's twelve rows, so it is a navigation row here, next
+    /// to the simulator runtimes it runs). Nil: no row.
+    public var onOpenSimulators: (() -> Void)? { didSet { if isViewLoaded { rebuild() } } }
+    /// The navigation row's title.
+    public static let simulatorsRowTitle = "Ycode Simulator"
 
     public init(prefs: Preferences = .shared, components: [Component]? = nil) {
         self.components = components ?? []
@@ -1225,6 +1270,9 @@ public final class ComponentsSettingsPane: SettingsPane {
     }
 
     override func build() {
+        if let open = onOpenSimulators {
+            drill(Self.simulatorsRowTitle, icon: .simulator, open)
+        }
         heading("Installed (read-only)")
         if components.isEmpty && loaded { note("None found") }
         for c in components { row("\(c.kind):", value("\(c.name)  \(c.version)")) }
@@ -1243,6 +1291,9 @@ public final class ComponentsSettingsPane: SettingsPane {
 @MainActor
 public final class SimulatorsSettingsPane: SettingsPane {
     public init(prefs: Preferences = .shared) { super.init("Simulators", prefs: prefs) }
+    /// The way back to Components (the page is reached from its
+    /// navigation row; nil when the pane stands alone).
+    public var onBack: (() -> Void)? { didSet { if isViewLoaded { rebuild() } } }
     /// The text fields' width (the labels keep the rest of the card).
     static let fieldWidth: CGFloat = 250
 
@@ -1257,6 +1308,7 @@ public final class SimulatorsSettingsPane: SettingsPane {
     }
 
     override func build() {
+        if let onBack { backRow("Components", onBack) }
         heading("Ycode Simulator (\(ExperimentalNotice.label))")
         note(ExperimentalNotice.simulator + " Runs apps on the Ycode iOS simulator on an arm64 Linux host over SSH (keys only; Ycode never asks for a password). These values stay in your user settings.")
         endCard()

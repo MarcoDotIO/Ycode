@@ -1,0 +1,241 @@
+{
+  "name": "council-r4-conflict",
+  "issue": 81,
+  "title": "Council round 4 (#81): the conflict editor. Merge feature into main in the Merger test repository (two conflicts in Greeting.swift), both apps through their own UI: the branch row's context menu, the confirmation alert (the -alert still), then the merge sheet.",
+  "targets": [
+    "xcode",
+    "ycode"
+  ],
+  "compare_order": [
+    "xcode",
+    "ycode"
+  ],
+  "project": {
+    "generator": "make-conflict-project.py",
+    "path": "Merger/Merger.xcodeproj"
+  },
+  "window": {
+    "size": [
+      1400,
+      880
+    ],
+    "display": "builtin",
+    "title": "{project}",
+    "timeout": 90
+  },
+  "focus": "foreground",
+  "launch_settle": 3.0,
+  "record": {
+    "fps": 120,
+    "codec": "prores4444",
+    "pre": 0.4,
+    "post": 1.2
+  },
+  "steps": [
+    {
+      "id": "scm-repositories",
+      "note": "The Source Control navigator's Repositories view with Merger's branches shown (cmd+2, Repositories).",
+      "do": [
+        {
+          "key": "cmd+2"
+        },
+        {
+          "wait": 1.0
+        },
+        {
+          "press": {
+            "role": "AXRadioButton",
+            "label": "Repositories"
+          }
+        },
+        {
+          "wait": 1.0
+        },
+        {
+          "set": {
+            "role": "AXRow",
+            "text": "project|Merger"
+          },
+          "attr": "AXDisclosing",
+          "value": true
+        },
+        {
+          "wait": 0.6
+        },
+        {
+          "set": {
+            "role": "AXRow",
+            "text": "Branches"
+          },
+          "attr": "AXDisclosing",
+          "value": true
+        },
+        {
+          "wait": 0.6
+        }
+      ],
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "merge-start",
+      "note": "Start the merge of feature into main through the app's UI, the same way in both apps: the feature row's context menu, Merge “feature” into “main”…, the confirmation alert (still 02-merge-start-alert.png, taken before Merge is pressed), Merge, then Greeting.swift in the merge sheet. Ycode's alert buttons are not in the accessibility tree (the alert is an AXSheet with two static texts only), so its default button, Merge, is pressed with Return; the reference's Merge is pressed through AX.",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "click": {
+                "role": "AXRow",
+                "text": "feature"
+              },
+              "button": "right"
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "click": [
+                227,
+                294
+              ]
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "snap": "alert",
+              "mode": "app"
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "title": "Merge",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 3.0
+            },
+            {
+              "click": {
+                "role": "AXRow",
+                "text": "Greeting.swift|Greeting"
+              }
+            },
+            {
+              "wait": 2.0
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "click": {
+                "role": "AXRow",
+                "text": "feature"
+              },
+              "button": "right"
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "press": {
+                "role": "AXMenuItem",
+                "title~": "into “main”",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "snap": "alert",
+              "mode": "app"
+            },
+            {
+              "key": "return"
+            },
+            {
+              "wait": 3.0
+            },
+            {
+              "click": {
+                "role": "AXRow",
+                "text": "Greeting.swift|Greeting"
+              }
+            },
+            {
+              "wait": 2.0
+            }
+          ]
+        }
+      },
+      "record": {
+        "video": true,
+        "mode": "app",
+        "post": 1.5
+      },
+      "still": "none"
+    },
+    {
+      "id": "conflict-at-rest",
+      "note": "The conflict view at rest on Greeting.swift: two conflicts and one change that does not conflict.",
+      "record": {
+        "video": false,
+        "mode": "app"
+      },
+      "still": "after"
+    },
+    {
+      "id": "conflict-choose-right",
+      "note": "Choose the right side (feature) for the first conflict: the first conflict's token in the centre gutter, then Choose Right, in both apps (round 4: Ycode has the same merge sheet and Choose menu).",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "click": [
+                791,
+                281
+              ]
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "click": [
+                848,
+                321
+              ]
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "click": [
+                791,
+                281
+              ]
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "click": [
+                848,
+                321
+              ]
+            }
+          ]
+        }
+      },
+      "record": {
+        "video": true,
+        "mode": "app",
+        "post": 1.5
+      },
+      "still": "after"
+    }
+  ]
+}

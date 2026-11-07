@@ -58,11 +58,11 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(near(cap, SettingsMetrics.capsuleFrame, px(w)), "capsule at \(cap)")
         #expect(wc.backButton.superview === wc.capsule && wc.forwardButton.superview === wc.capsule)
         #expect(!wc.backButton.isEnabled && !wc.forwardButton.isEnabled)
-        // The title: regular 17 points, #4D4D4D, its text 12.5 after the capsule, centred on y 26.
+        // The title: semibold 17 points (R4.2), #4D4D4D, its text 12.5 after the capsule, centred on y 26.
         let title = rect(wc.titleLabel, in: w)
         #expect(abs(title.minX + 3.5 - SettingsMetrics.titleX) <= px(w) && abs(title.midY - 26) <= 1, "title at \(title)")
         #expect(wc.titleLabel.font?.pointSize == 17)
-        #expect(NSFontManager.shared.weight(of: wc.titleLabel.font!) == NSFontManager.shared.weight(of: .systemFont(ofSize: 17)))
+        #expect(NSFontManager.shared.weight(of: wc.titleLabel.font!) == NSFontManager.shared.weight(of: .systemFont(ofSize: 17, weight: .semibold)))
         var light: NSColor?
         NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance { light = wc.titleLabel.textColor?.usingColorSpace(.sRGB) }
         #expect(light.map { Int(($0.redComponent * 255).rounded()) } == 0x4D)
@@ -76,10 +76,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let t = TestDefaults("r3-sidebar")
         defer { t.remove() }
         let (wc, w) = try makeWindow(t)
-        // The reference's twelve panes in order, then Simulators (Ycode's own).
+        // The reference's twelve panes in order (Simulators is a page of Components, R4.2).
         #expect(SettingsWindowController.paneTitles == ["General", "Appearance", "Accounts", "Coding Assistant", "Behaviors", "Navigation",
                                                         "Notifications", "Editing", "Shortcuts", "Source Control", "Components",
-                                                        "Locations", "Simulators"])
+                                                        "Locations"])
         // Flush: from the top edge to the bottom, 179.5 wide, then the divider.
         let side = try #require(wc.sidebar.enclosingScrollView?.superview)
         let s = rect(side, in: w)

@@ -71,7 +71,9 @@ public enum ViewerAppearance: String, Sendable, CaseIterable {
 /// The window's colours (§11.1 for the light glass: fill #FAFAFA–#FDFCFC,
 /// rim #EBEBEB at the top and #E7E7E7 at the bottom, black glyphs, the
 /// divider #E9E9E9, the current pose #007AFF on #BFDDFE, the other poses
-/// filled #BEBEBE; dark: Ycode's equivalents).
+/// filled #BEBEBE; §12.1 for the dark glass: fill #3B3B3D over the canvas
+/// #1E1E1F, a lighter rim #79797C, white glyphs, the divider #505052, the
+/// current pose #007AFF; the dark accent fill and pose fill are Ycode's).
 public struct ViewerPalette: Equatable, Sendable {
     public var canvas: ViewerColor
     public var glassTop: ViewerColor, glassBottom: ViewerColor
@@ -93,10 +95,10 @@ public struct ViewerPalette: Equatable, Sendable {
         menuHighlightText: ViewerColor(0xFFFFFF), disabledAlpha: 0.3)
 
     public static let dark = ViewerPalette(
-        canvas: ViewerColor(0x1E1E1E), glassTop: ViewerColor(0x3A3A3C), glassBottom: ViewerColor(0x333335),
-        rimTop: ViewerColor(0x545456), rimBottom: ViewerColor(0x29292B), shadow: ViewerColor(0x000000, alpha: 0.22),
-        glyph: ViewerColor(0xFFFFFF), accent: ViewerColor(0x0A84FF), accentFill: ViewerColor(0x0A3D73), poseFill: ViewerColor(0x6E6E73),
-        divider: ViewerColor(0x545456), text: ViewerColor(0xFFFFFF), secondaryText: ViewerColor(0x98989D),
+        canvas: ViewerColor(0x1E1E1F), glassTop: ViewerColor(0x3B3B3D), glassBottom: ViewerColor(0x3B3B3D),
+        rimTop: ViewerColor(0x79797C), rimBottom: ViewerColor(0x79797C), shadow: ViewerColor(0x000000, alpha: 0.22),
+        glyph: ViewerColor(0xFFFFFF), accent: ViewerColor(0x007AFF), accentFill: ViewerColor(0x0A3D73), poseFill: ViewerColor(0x6E6E73),
+        divider: ViewerColor(0x505052), text: ViewerColor(0xFFFFFF), secondaryText: ViewerColor(0x98989D),
         menuFill: ViewerColor(0x2C2C2E, alpha: 0.98), menuRim: ViewerColor(0x48484A), menuHighlight: ViewerColor(0x0A84FF),
         menuHighlightText: ViewerColor(0xFFFFFF), disabledAlpha: 0.3)
 

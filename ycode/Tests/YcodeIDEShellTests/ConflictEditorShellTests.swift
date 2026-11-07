@@ -101,7 +101,8 @@ import Testing
         #expect(st.stepperText == "1/2" && st.primaryTitle == "Merge" && !st.canMerge)
         #expect(st.token(forHunk: 0)?.glyph == "?" && st.token(forHunk: 0)?.isSelected == true)
         #expect(st.leftFooter?.branch == "main" && st.leftFooter?.isHead == true && st.leftFooter?.commitText.hasSuffix("(HEAD)") == true)
-        #expect(st.rightFooter?.branch == "feature" && st.rightFooter?.isHead == false)
+        // Both footers name the current branch (merge-sheet.md §13.7); the right one's commit is the incoming one.
+        #expect(st.rightFooter?.branch == "main" && st.rightFooter?.isHead == false && st.rightFooter?.shortHash != st.leftFooter?.shortHash)
         #expect(editor.fileRows.map(\.title) == ["DemoCore", "Colors.swift", "Greeting.swift"])
         editor.isFlat = true
         #expect(editor.fileRows.map(\.title) == ["Colors.swift", "Greeting.swift"])

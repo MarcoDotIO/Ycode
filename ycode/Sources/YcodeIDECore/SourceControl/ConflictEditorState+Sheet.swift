@@ -146,12 +146,20 @@ extension ConflictEditorState {
         return out
     }
 
-    /// The jump bar's path (§4.1): the repository's folder, the shown
-    /// file's folders, and the file's name without its extension.
-    public func jumpPath(root: String) -> [String] {
+    /// The jump bar's path (§4.1, §13.7): the workspace's project (else the
+    /// repository's folder), the shown file's folders below the project's
+    /// folder (else the repository's), and the file's name without its
+    /// extension — as the main window's jump bar starts at the project.
+    public func jumpPath(root: String, project: MergeSheetProject? = nil) -> [String] {
         guard let f = currentFile else { return [] }
-        var parts = [URL(fileURLWithPath: root).lastPathComponent]
-        let rel = f.hasPrefix(root + "/") ? String(f.dropFirst(root.count + 1)) : URL(fileURLWithPath: f).lastPathComponent
+        var base = root, first = URL(fileURLWithPath: root).lastPathComponent
+        if let project {
+            first = project.name
+            let folder = project.folder.hasSuffix("/") ? String(project.folder.dropLast()) : project.folder
+            if f.hasPrefix(folder + "/") { base = folder }
+        }
+        var parts = [first]
+        let rel = f.hasPrefix(base + "/") ? String(f.dropFirst(base.count + 1)) : URL(fileURLWithPath: f).lastPathComponent
         let comps = rel.split(separator: "/").map(String.init)
         parts += comps.dropLast()
         if let last = comps.last { parts.append((last as NSString).deletingPathExtension) }

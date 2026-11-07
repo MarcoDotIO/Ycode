@@ -287,24 +287,24 @@ enum HostClone {
     static let ficlone: UInt = 0x4004_9409
     #endif
 
-    /// Copies the data of `from` into the empty file `to` (both open).
+    /// Copies the data of `from` into the empty file `to` (both open). The
+    /// copy uses explicit offsets, so neither descriptor's file offset moves:
+    /// `from` may be a guest's open file (fclonefileat).
     static func copyData(from: Int32, to: Int32) throws {
         #if os(Linux)
         if let ioctlInt, ioctlInt(to, ficlone, from) == 0 { return }
         if let copyFileRange {
+            var inOffset: Int64 = 0, outOffset: Int64 = 0
             while true {
-                let n = copyFileRange(from, nil, to, nil, 1 << 30, 0)
+                let n = copyFileRange(from, &inOffset, to, &outOffset, 1 << 30, 0)
                 if n > 0 { continue }
                 if n == 0 { return }
                 if errno == EINTR { continue }
                 if errno == EXDEV || errno == ENOSYS || errno == EINVAL || errno == EOPNOTSUPP { break }
                 throw DarwinErrnoError(hostErrno())
             }
-            // Start over with plain reads (nothing was copied, or the
-            // offsets moved: rewind both).
+            // Start over with plain reads.
             guard ftruncate(to, 0) == 0 else { throw DarwinErrnoError(hostErrno()) }
-            _ = lseek(from, 0, SEEK_SET)
-            _ = lseek(to, 0, SEEK_SET)
         }
         #endif
         var buffer = [UInt8](repeating: 0, count: 1 << 20)
@@ -330,14 +330,15 @@ enum HostClone {
     }
 
     /// The guest's extended attributes of `from` (host names `user.ycode.*`)
-    /// copied to `to` (paths, links not followed).
-    static func copyGuestAttributes(from: String, to: String) {
+    /// copied to `to` (paths, links not followed). With `fromFD` they are
+    /// read from that open file instead of the path `from`.
+    static func copyGuestAttributes(from: String, fromFD: Int32? = nil, to: String) {
         func list(_ path: String) -> [String] {
             var buffer = [CChar](repeating: 0, count: 65536)
             #if canImport(Darwin)
-            let n = listxattr(path, &buffer, buffer.count, XATTR_NOFOLLOW)
+            let n = fromFD.map { flistxattr($0, &buffer, buffer.count, 0) } ?? listxattr(path, &buffer, buffer.count, XATTR_NOFOLLOW)
             #else
-            let n = LinuxXattr.llist(path, &buffer, buffer.count)
+            let n = fromFD.map { LinuxXattr.flist($0, &buffer, buffer.count) } ?? LinuxXattr.llist(path, &buffer, buffer.count)
             #endif
             guard n > 0 else { return [] }
             return buffer.prefix(n).map { UInt8(bitPattern: $0) }.split(separator: 0).map { String(decoding: $0, as: UTF8.self) }
@@ -345,9 +346,9 @@ enum HostClone {
         for name in list(from) where name.hasPrefix(DarwinFileSystem.xattrPrefix) {
             var value = [UInt8](repeating: 0, count: 65536)
             #if canImport(Darwin)
-            let n = getxattr(from, name, &value, value.count, 0, XATTR_NOFOLLOW)
+            let n = fromFD.map { fgetxattr($0, name, &value, value.count, 0, 0) } ?? getxattr(from, name, &value, value.count, 0, XATTR_NOFOLLOW)
             #else
-            let n = LinuxXattr.lget(from, name, &value, value.count)
+            let n = fromFD.map { LinuxXattr.fget($0, name, &value, value.count) } ?? LinuxXattr.lget(from, name, &value, value.count)
             #endif
             guard n >= 0 else { continue }
             _ = value.withUnsafeBytes { v -> Int32 in
@@ -507,8 +508,13 @@ extension DarwinFileSystem {
         guard let prefix = lookupPrefix(f.guestPath)?.prefix else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
         var st = try hostFStat(f.hostFD)
         st.dev = f.stat.dev
+        // xnu clones the open file's vnode, not its name: the file may have
+        // been renamed or unlinked since it was opened (biomed hands out
+        // temporary files it unlinked at once, then clones them into
+        // place; boot-profile.md §16), so a regular file is copied from
+        // the descriptor.
         try cloneResolved(guestPath: f.guestPath, hostPath: f.hostPath, prefix: prefix, st: st, device: false,
-                          to: to, flags: flags)
+                          to: to, flags: flags, sourceFD: f.hostFD)
     }
 
     private func checkCloneFlags(_ flags: UInt32) throws {
@@ -517,7 +523,7 @@ extension DarwinFileSystem {
     }
 
     private func cloneResolved(guestPath: String, hostPath: String, prefix: Prefix, st: DarwinStat, device: Bool,
-                               to: String, flags: UInt32) throws {
+                               to: String, flags: UInt32, sourceFD: Int32? = nil) throws {
         // The source: a file, link or directory with a host object behind
         // it; a directory that is a volume root or mount point is EINVAL.
         guard !device, !hostPath.isEmpty, st.isRegularFile || st.isSymbolicLink || st.isDirectory else {
@@ -535,7 +541,7 @@ extension DarwinFileSystem {
         let targetDevice = (try? stat(parent.isEmpty ? "/" : parent, followSymlinks: true))?.dev
         guard targetDevice == st.dev else { throw DarwinErrnoError(18) }  // EXDEV
         let watched = VnodeNotes.capture(b.hostPath)
-        try HostClone.cloneTree(from: hostPath, to: b.hostPath, st: st)
+        try HostClone.cloneTree(from: hostPath, to: b.hostPath, st: st, sourceFD: sourceFD)
         // xnu VNOP_CLONEFILE: the target's directory gets a new entry
         // (and a new link for a cloned directory, as mkdir).
         watched?.post(directory: VnodeNote.write | (st.isDirectory ? VnodeNote.link : 0))
@@ -574,13 +580,34 @@ enum LinuxRename {
 extension HostClone {
     /// Clones the host object `from` (stat data `st`, links not followed
     /// below it) to the new name `to`; on failure nothing is left at `to`.
-    static func cloneTree(from: String, to: String, st: DarwinStat) throws {
+    /// With `sourceFD` (a regular file) the contents and attributes come
+    /// from that open file, which may have been renamed or unlinked since
+    /// it was opened (fclonefileat clones the open object, not a name).
+    static func cloneTree(from: String, to: String, st: DarwinStat, sourceFD: Int32? = nil) throws {
         do {
-            try cloneOne(from: from, to: to, st: st)
+            if let sourceFD, st.isRegularFile {
+                try cloneFile(fd: sourceFD, to: to, st: st)
+            } else {
+                try cloneOne(from: from, to: to, st: st)
+            }
         } catch {
             removeTree(to)
             throw error
         }
+    }
+
+    private static func cloneFile(fd source: Int32, to: String, st: DarwinStat) throws {
+        let mode = st.mode & 0o7777
+        let target = try hostOpen(to, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, mode)
+        defer { hostClose(target) }
+        try copyData(from: source, to: target)
+        _ = fchmod(target, mode_t(mode))
+        copyGuestAttributes(from: "", fromFD: source, to: to)
+        var record = VolumeMetadata.read(fd: source)
+        record.flags &= ~VolumeMetadata.ufDataVault
+        record.documentID = 0
+        if !record.isEmpty { try? VolumeMetadata.write(record, fd: target) }
+        _ = hostSetTimes(path: nil, fd: target, st.atime, st.mtime, follow: false)
     }
 
     private static func cloneOne(from: String, to: String, st: DarwinStat) throws {

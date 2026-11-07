@@ -2,7 +2,8 @@ import AppKit
 import YcodeIDECore
 
 // The Settings window's chrome and its grouped-card form
-// (`specs/ide/settings.md`, "Council round 3", R3.1–R3.3): the window's
+// (`specs/ide/settings.md`, "Council round 3", R3.1–R3.3, and round 4,
+// R4.1–R4.3): the window's
 // metrics and colours, the back/forward capsule, the sidebar's rows, and the
 // cards, rows, separators, help text, pop-ups and switches of the panes.
 // Everything is drawn by Ycode (paths and fills); the sidebar's symbols are
@@ -11,7 +12,7 @@ import YcodeIDECore
 /// The measured geometry, shared with the Linux IDE (`SettingsLayout`).
 public typealias SettingsMetrics = SettingsLayout
 
-/// The colours (light as measured; dark is Ycode's, R3.4 leaves it open).
+/// The colours (light as measured in round 3, dark in round 4).
 @MainActor
 public enum SettingsColors {
     static func rgb(_ v: UInt32, _ a: CGFloat = 1) -> NSColor {
@@ -37,12 +38,19 @@ public enum SettingsColors {
     public static let chevronDisabled = dynamic(SettingsPaletteHex.chevronDisabled)
     public static let popUpCircle = dynamic(SettingsPaletteHex.popUpCircle)
     public static let popUpChevron = dynamic(SettingsPaletteHex.popUpChevron)
+    public static let label = dynamic(SettingsPaletteHex.label)
+    public static let header = dynamic(SettingsPaletteHex.header)
+    public static let switchOff = dynamic(SettingsPaletteHex.switchOff)
+    public static let switchOn = dynamic(SettingsPaletteHex.switchOn)
+    public static let disclosure = dynamic(SettingsPaletteHex.disclosure)
 }
 
 /// A view filled with one (dynamic) colour.
 final class SettingsFillView: NSView {
     var color: NSColor { didSet { needsDisplay = true } }
     var cornerRadius: CGFloat = 0
+    /// A divider drawn along the trailing edge (the sidebar's, 0.5 wide).
+    var trailingEdge: NSColor? { didSet { needsDisplay = true } }
 
     init(_ color: NSColor, cornerRadius: CGFloat = 0) {
         self.color = color
@@ -61,6 +69,10 @@ final class SettingsFillView: NSView {
             NSBezierPath(roundedRect: bounds, xRadius: cornerRadius, yRadius: cornerRadius).fill()
         } else {
             bounds.intersection(dirtyRect).fill()
+        }
+        if let trailingEdge {
+            trailingEdge.setFill()
+            NSRect(x: bounds.maxX - SettingsMetrics.dividerWidth, y: bounds.minY, width: SettingsMetrics.dividerWidth, height: bounds.height).fill()
         }
     }
 }
@@ -151,7 +163,8 @@ final class SettingsNavigationCapsule: NSView {
 
 // MARK: The sidebar
 
-/// A pane row: the rounded selection band, 160 × 32 inset 10, #0070F5.
+/// A pane row: the rounded selection band, 160 × 32 from x 10, #0070F5
+/// (#007AFF dark).
 final class SettingsSidebarRowView: NSTableRowView {
     // The window's selection stays the accent band (R3.4: the inactive
     // colour is not settled).
@@ -161,7 +174,8 @@ final class SettingsSidebarRowView: NSTableRowView {
     }
 
     override func drawSelection(in dirtyRect: NSRect) {
-        let r = bounds.insetBy(dx: SettingsMetrics.selectionInset, dy: 0)
+        // x 10–170: 160 wide (R4.2).
+        let r = NSRect(x: SettingsMetrics.selectionInset, y: bounds.minY, width: SettingsMetrics.selectionWidth, height: bounds.height)
         SettingsColors.selection.setFill()
         NSBezierPath(roundedRect: r, xRadius: SettingsMetrics.selectionRadius, yRadius: SettingsMetrics.selectionRadius).fill()
     }
@@ -212,7 +226,7 @@ final class SettingsSidebarCellView: NSTableCellView {
 
 // MARK: The cards
 
-/// A section header over a card: bold, the label colour, its ink 10 inside
+/// A section header over a card: bold, #272727 (#DDDDDD dark), its ink 10 inside
 /// the card's edge.
 final class SettingsHeaderView: NSView {
     let label: NSTextField
@@ -221,7 +235,7 @@ final class SettingsHeaderView: NSView {
         label = NSTextField(labelWithString: title)
         super.init(frame: .zero)
         label.font = .boldSystemFont(ofSize: SettingsMetrics.fontSize)
-        label.textColor = .labelColor
+        label.textColor = SettingsColors.header
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
         NSLayoutConstraint.activate([
@@ -304,23 +318,40 @@ public final class SettingsRowView: NSView {
     public let isContent: Bool
     /// Called when the row is clicked (drill-down rows).
     var onClick: (() -> Void)?
+    /// A navigation row's icon (R4.1), at the row's leading edge.
+    public private(set) var iconView: NSView?
 
-    init(label title: String, controls: [NSView]) {
+    init(label title: String, controls: [NSView], icon: SettingsRowIcon? = nil) {
         label = NSTextField(labelWithString: title)
         self.controls = controls
         controlStack = controls.isEmpty ? nil : NSStackView(views: controls)
         isContent = false
         super.init(frame: .zero)
         label.font = .systemFont(ofSize: SettingsMetrics.fontSize)
-        label.textColor = .labelColor
+        label.textColor = SettingsColors.label
         label.lineBreakMode = .byTruncatingTail
         label.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
+        // A navigation row: 44 tall, the icon 10 inside, the label's ink 45
+        // inside (a label's ink starts 1 point after its alignment rect).
+        let labelInset = icon == nil ? SettingsMetrics.labelInset : SettingsMetrics.navigationLabelInset - 1
         var cs: [NSLayoutConstraint] = [
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: SettingsMetrics.labelInset),
-            heightAnchor.constraint(greaterThanOrEqualToConstant: SettingsMetrics.rowHeight),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: labelInset),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: icon == nil ? SettingsMetrics.rowHeight : SettingsMetrics.navigationRowHeight),
         ]
+        if let icon {
+            let v = SettingsRowIconView(icon)
+            v.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(v)
+            iconView = v
+            cs += [
+                v.leadingAnchor.constraint(equalTo: leadingAnchor, constant: SettingsMetrics.rowIconInset),
+                v.centerYAnchor.constraint(equalTo: centerYAnchor),
+                v.widthAnchor.constraint(equalToConstant: SettingsMetrics.rowIconSize),
+                v.heightAnchor.constraint(equalToConstant: SettingsMetrics.rowIconSize),
+            ]
+        }
         if let s = controlStack {
             s.orientation = .horizontal
             s.spacing = 8
@@ -405,6 +436,12 @@ public final class SettingsRowView: NSView {
     public override func mouseUp(with event: NSEvent) {
         if let onClick { onClick() } else { super.mouseUp(with: event) }
     }
+
+    public override func accessibilityPerformPress() -> Bool {
+        guard let onClick else { return false }
+        onClick()
+        return true
+    }
 }
 
 // MARK: Controls
@@ -438,10 +475,10 @@ final class SettingsCardPopUpCell: NSPopUpButtonCell {
         p.lineJoinStyle = .round
         SettingsColors.popUpChevron.withAlphaComponent(alpha).setStroke()
         p.stroke()
-        // The value, ending 13 before the circle.
+        // The value, ending 12.5 before the circle.
         let text = NSAttributedString(string: titleOfSelectedItem ?? "", attributes: [
             .font: NSFont.systemFont(ofSize: SettingsMetrics.fontSize),
-            .foregroundColor: isEnabled ? NSColor.labelColor : NSColor.disabledControlTextColor,
+            .foregroundColor: isEnabled ? SettingsColors.label : NSColor.disabledControlTextColor,
         ])
         let size = text.size()
         let x = circle.minX - SettingsMetrics.popUpTextGap - size.width
@@ -455,7 +492,9 @@ final class SettingsCardPopUpCell: NSPopUpButtonCell {
     }
 }
 
-/// A switch with the row's title (the label beside it is the row's).
+/// A switch with the row's title (the label beside it is the row's),
+/// drawn by Ycode at the card's size: a 36 × 16 track with a 21 × 12 knob
+/// (R4.1, `SettingsSwitchDrawing`).
 final class ClosureSwitch: NSSwitch {
     /// The row's title.
     let title: String
@@ -474,4 +513,45 @@ final class ClosureSwitch: NSSwitch {
     required init?(coder: NSCoder) { fatalError() }
 
     @objc func fire() { onChange?(self) }
+
+    override var intrinsicContentSize: NSSize { SettingsMetrics.switchSize }
+    override var wantsUpdateLayer: Bool { false }
+    override var state: NSControl.StateValue { didSet { needsDisplay = true } }
+    override var isEnabled: Bool { didSet { needsDisplay = true } }
+
+    override func draw(_ dirtyRect: NSRect) {
+        SettingsSwitchDrawing.draw(on: state == .on, enabled: isEnabled, in: bounds)
+    }
+
+    // The system's switch is drawn by a hosted subview: Ycode hides it and
+    // draws its own (the measured size is not one of the system's).
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        subview.isHidden = true
+    }
+
+    override func layout() {
+        super.layout()
+        for v in subviews where !v.isHidden { v.isHidden = true }
+    }
+
+    /// A click flips the switch (no drag; the knob moves at once).
+    override func mouseDown(with event: NSEvent) {
+        guard isEnabled else { return }
+        flip()
+    }
+
+    func flip() {
+        state = state == .on ? .off : .on
+        sendAction(action, to: target)
+    }
+
+    // Still a switch to accessibility (the hidden subview was its element).
+    override func accessibilityRole() -> NSAccessibility.Role? { .checkBox }
+    override func accessibilitySubrole() -> NSAccessibility.Subrole? { .switch }
+    override func accessibilityPerformPress() -> Bool {
+        guard isEnabled else { return false }
+        flip()
+        return true
+    }
 }

@@ -150,6 +150,41 @@ import YcodeDarwinABI
         #expect(try String(contentsOfFile: env.root + "/r", encoding: .utf8) == "payload")
     }
 
+    /// fclonefileat clones the open file, not its name: biomed creates a
+    /// temporary file, unlinks it at once, has a client fill it and then
+    /// clones it into place (boot-profile.md §16).
+    @Test func fdClonesCopyTheOpenFileNotItsName() throws {
+        let temp = env.root + "/.tmp.segment", placed = env.root + "/placed"
+        let fd = open(temp, 0xA02)                                          // O_RDWR | O_CREAT | O_EXCL
+        #expect(env.bsd(k, 10, [put(temp, At.out + 0x100)]) == 0)          // unlink
+        pwrite(fd, "biome segment")
+        #expect(env.bsd(k, 199, [fd, 5, 0]) == 5)                           // lseek SEEK_SET
+        #expect(env.bsd(k, 517, [fd, Self.cwd, put(placed, At.out + 0x500), 0]) == 0)
+        #expect(try String(contentsOfFile: placed, encoding: .utf8) == "biome segment")
+        #expect(env.bsd(k, 199, [fd, 0, 1]) == 5)                           // the offset did not move
+        // A source renamed since it was opened.
+        let a = env.root + "/before", b = env.root + "/after"
+        let rfd = open(a, 0xA02)
+        pwrite(rfd, "renamed")
+        #expect(rename(a, b) == 0)
+        #expect(env.bsd(k, 517, [rfd, Self.cwd, put(env.root + "/copy", At.out + 0x500), 0]) == 0)
+        #expect(try String(contentsOfFile: env.root + "/copy", encoding: .utf8) == "renamed")
+    }
+
+    /// A path that starts with `/.nofollow/` is looked up without following
+    /// any symbolic link (nsurlsessiond's download folders, boot-profile.md §16).
+    @Test func noFollowPrefixLooksUpWithoutLinks() throws {
+        let dir = env.root + "/plain"
+        #expect(env.bsd(k, 136, [put("/.nofollow" + dir, At.out + 0x100), 0o755]) == 0)          // mkdir
+        var isDir: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: dir, isDirectory: &isDir) && isDir.boolValue)
+        #expect(env.bsd(k, 136, [put("/.nofollow" + dir, At.out + 0x100), 0o755]) == -17)        // EEXIST
+        #expect(symlink(dir, env.root + "/link") == 0)
+        #expect(env.bsd(k, 136, [put("/.nofollow" + env.root + "/link/sub", At.out + 0x100), 0o755]) == -62)  // ELOOP
+        #expect(env.bsd(k, 136, [put(env.root + "/link/sub", At.out + 0x100), 0o755]) == 0)     // followed without it
+        #expect(env.bsd(k, 136, [put("/.nofollowx" + dir, At.out + 0x100), 0o755]) == -2)        // not the prefix
+    }
+
     @Test func exclusiveAndSwappingRenames() throws {
         let a = env.root + "/a", b = env.root + "/b"
         try Data("A".utf8).write(to: URL(fileURLWithPath: a))

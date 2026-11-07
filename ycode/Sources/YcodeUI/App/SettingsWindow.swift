@@ -7,7 +7,7 @@ import YcodeXcodebuild
 /// System pop-up.
 @MainActor
 public final class SettingsController: NSViewController {
-    public let buildSystemPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
+    public let buildSystemPopUp: NSPopUpButton = ClosurePopUp(frame: .zero, pullsDown: false, card: true)
     let defaults: UserDefaults
     public var onChange: ((BuildSystemPreference) -> Void)?
 
@@ -36,10 +36,6 @@ public final class SettingsController: NSViewController {
             buildSystemPopUp.addItem(withTitle: p == BuildSystemPreference.defaultValue ? "\(p.title) (Default)" : p.title)
             buildSystemPopUp.lastItem?.representedObject = p.rawValue
         }
-        let cell = SettingsCardPopUpCell(textCell: "", pullsDown: false)
-        cell.isBordered = false
-        cell.menu = buildSystemPopUp.menu
-        buildSystemPopUp.cell = cell
         buildSystemPopUp.selectItem(at: BuildSystemPreference.allCases.firstIndex(of: .current(defaults)) ?? 0)
         buildSystemPopUp.target = self
         buildSystemPopUp.action = #selector(chosen)
@@ -123,28 +119,35 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
     final class History { var back: [Int] = []; var forward: [Int] = [] }
     let history = History()
 
-    /// Pane titles in order: the reference's, then Simulators (Ycode's own).
+    /// The sidebar's panes in order: the reference's twelve (R4.2: twelve
+    /// rows fit the window with no scroller).
     public static let paneTitles = SettingsPaneOrder.all
+    /// Every page the window shows: the sidebar's panes, then the pages
+    /// reached from a pane's navigation row (Simulators, from Components).
+    public static let tabTitles = SettingsPaneOrder.all + SettingsPaneOrder.subPages.keys.sorted()
     /// The system's symbols, as the spec describes them (looked up at run
     /// time; none depicts a product).
     static let paneSymbols = ["gearshape", "circle.lefthalf.filled", "at.circle", "sparkles", "rectangle.on.rectangle",
                               "arrow.triangle.turn.up.right.diamond", "bell", "square.and.pencil", "keyboard", "arrow.triangle.branch",
-                              "square.3.layers.3d", "externaldrive", "server.rack"]
+                              "square.3.layers.3d", "externaldrive"]
 
     public init(prefs: Preferences = .shared, components: [ComponentsSettingsPane.Component]? = nil) {
         tabs.tabStyle = .unspecified
         let locations = SettingsController()
+        let componentsPane = ComponentsSettingsPane(prefs: prefs, components: components)
+        let simulatorsPane = SimulatorsSettingsPane(prefs: prefs)
         let panes: [NSViewController] = [
             GeneralSettingsPane(prefs: prefs), ThemesSettingsPane(prefs: prefs), AccountsSettingsPane(prefs: prefs),
             CodingAssistantSettingsPane(prefs: prefs), BehaviorsSettingsPane(prefs: prefs), NavigationSettingsPane(prefs: prefs),
             NotificationsSettingsPane(prefs: prefs), TextEditingSettingsPane(prefs: prefs), KeyBindingsSettingsPane(prefs: prefs),
-            SourceControlSettingsPane(prefs: prefs), ComponentsSettingsPane(prefs: prefs, components: components),
-            locations, SimulatorsSettingsPane(prefs: prefs),
+            SourceControlSettingsPane(prefs: prefs), componentsPane, locations, simulatorsPane,
         ]
         for (i, p) in panes.enumerated() {
             let item = NSTabViewItem(viewController: p)
-            item.label = Self.paneTitles[i]
-            item.image = NSImage(systemSymbolName: Self.paneSymbols[i], accessibilityDescription: Self.paneTitles[i])
+            item.label = Self.tabTitles[i]
+            if i < Self.paneSymbols.count {
+                item.image = NSImage(systemSymbolName: Self.paneSymbols[i], accessibilityDescription: Self.tabTitles[i])
+            }
             tabs.addTabViewItem(item)
         }
         tabs.selectedTabViewItemIndex = 0
@@ -163,19 +166,22 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
         scroll.drawsBackground = false
         scroll.automaticallyAdjustsContentInsets = false
         scroll.contentInsets = NSEdgeInsetsZero
-        // Thirteen rows are taller than the window: the list scrolls.
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
+        // Twelve rows fit the window: no scroller, the selection band's
+        // full 160 points (R4.2).
+        scroll.hasVerticalScroller = false
+        scroll.verticalScrollElasticity = .none
 
         // The window: the sidebar flush from the top edge to the bottom,
         // a 0.5-point divider, the white detail pane with the capsule and
         // the title in its title area and the pane under it.
         let size = SettingsMetrics.windowSize
         let root = NSView(frame: NSRect(origin: .zero, size: size))
+        // The sidebar draws the divider along its trailing edge, so that it
+        // shows whatever the layout's pixel rounding (R3.2, R4.2).
         let side = SettingsFillView(SettingsColors.sidebar)
-        let divider = SettingsFillView(SettingsColors.divider)
+        side.trailingEdge = SettingsColors.divider
         let detail = SettingsFillView(SettingsColors.detail)
-        for v in [side, divider, detail] as [NSView] {
+        for v in [side, detail] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
@@ -187,19 +193,19 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
             v.translatesAutoresizingMaskIntoConstraints = false
             detail.addSubview(v)
         }
-        titleLabel.font = .systemFont(ofSize: SettingsMetrics.titleFontSize)
+        // Semibold (R4.2).
+        titleLabel.font = .systemFont(ofSize: SettingsMetrics.titleFontSize, weight: SettingsMetrics.titleIsSemibold ? .semibold : .regular)
         titleLabel.textColor = SettingsColors.title
         let cap = SettingsMetrics.capsuleFrame
         let detailX = SettingsMetrics.detailX
         NSLayoutConstraint.activate([
             side.leadingAnchor.constraint(equalTo: root.leadingAnchor), side.topAnchor.constraint(equalTo: root.topAnchor),
-            side.bottomAnchor.constraint(equalTo: root.bottomAnchor), side.widthAnchor.constraint(equalToConstant: SettingsMetrics.sidebarWidth),
-            divider.leadingAnchor.constraint(equalTo: side.trailingAnchor), divider.topAnchor.constraint(equalTo: root.topAnchor),
-            divider.bottomAnchor.constraint(equalTo: root.bottomAnchor), divider.widthAnchor.constraint(equalToConstant: SettingsMetrics.dividerWidth),
-            detail.leadingAnchor.constraint(equalTo: divider.trailingAnchor), detail.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            side.bottomAnchor.constraint(equalTo: root.bottomAnchor), side.widthAnchor.constraint(equalToConstant: SettingsMetrics.detailX),
+            detail.leadingAnchor.constraint(equalTo: side.trailingAnchor), detail.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             detail.topAnchor.constraint(equalTo: root.topAnchor), detail.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             scroll.topAnchor.constraint(equalTo: side.topAnchor, constant: SettingsMetrics.sidebarTop),
-            scroll.leadingAnchor.constraint(equalTo: side.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: side.trailingAnchor),
+            scroll.leadingAnchor.constraint(equalTo: side.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: side.trailingAnchor, constant: -SettingsMetrics.dividerWidth),
             scroll.bottomAnchor.constraint(equalTo: side.bottomAnchor),
             capsule.leadingAnchor.constraint(equalTo: detail.leadingAnchor, constant: cap.minX - detailX),
             capsule.topAnchor.constraint(equalTo: detail.topAnchor, constant: cap.minY),
@@ -239,6 +245,9 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
         sidebar.reloadData()
         sidebar.selectRowIndexes([0], byExtendingSelection: false)
         updateTitle()
+        // Simulators: a page of Components, with a way back.
+        componentsPane.onOpenSimulators = { [weak self] in self?.show(page: "Simulators") }
+        simulatorsPane.onBack = { [weak self] in self?.show(page: "Components") }
         locations.onChange = { p in
             // Open workspaces switch engines for their next build.
             for doc in NSDocumentController.shared.documents {
@@ -253,15 +262,28 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    public var selectedPane: String { Self.paneTitles[tabs.selectedTabViewItemIndex] }
+    /// The page shown (a sidebar pane, or a page such as Simulators).
+    public var selectedPane: String { Self.tabTitles[tabs.selectedTabViewItemIndex] }
 
-    /// Selects a pane (recorded for back/forward).
+    /// The sidebar row of a page: its own, or its parent pane's.
+    static func sidebarRow(forPage index: Int) -> Int {
+        guard index >= paneTitles.count, let parent = SettingsPaneOrder.subPages[tabTitles[index]] else { return index }
+        return paneTitles.firstIndex(of: parent) ?? 0
+    }
+
+    /// Selects a page (recorded for back/forward).
     public func select(_ index: Int, recording: Bool = true) {
-        guard Self.paneTitles.indices.contains(index), index != tabs.selectedTabViewItemIndex else { return }
+        guard Self.tabTitles.indices.contains(index), index != tabs.selectedTabViewItemIndex else { return }
         if recording { history.back.append(tabs.selectedTabViewItemIndex); history.forward = [] }
         tabs.selectedTabViewItemIndex = index
-        if sidebar.selectedRow != index { sidebar.selectRowIndexes([index], byExtendingSelection: false) }
+        let row = Self.sidebarRow(forPage: index)
+        if sidebar.selectedRow != row { sidebar.selectRowIndexes([row], byExtendingSelection: false) }
         updateTitle()
+    }
+
+    /// Shows a page in the window without bringing the window forward.
+    func show(page title: String) {
+        if let i = Self.tabTitles.firstIndex(of: title) { select(i) }
     }
 
     @objc public func goBack() {
@@ -277,8 +299,9 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
     }
 
     func updateTitle() {
-        titleLabel.stringValue = selectedPane
-        window?.title = selectedPane
+        // A page under a pane is titled with the pane (as Editing's pages).
+        titleLabel.stringValue = Self.paneTitles[Self.sidebarRow(forPage: tabs.selectedTabViewItemIndex)]
+        window?.title = titleLabel.stringValue
         backButton.isEnabled = !history.back.isEmpty
         forwardButton.isEnabled = !history.forward.isEmpty
     }
@@ -292,12 +315,15 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
     public func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SettingsSidebarRowView() }
 
     public func tableViewSelectionDidChange(_ notification: Notification) {
-        if sidebar.selectedRow >= 0 { select(sidebar.selectedRow) }
+        let row = sidebar.selectedRow
+        // The row of the page shown (a page's parent) keeps the page.
+        guard row >= 0, row != Self.sidebarRow(forPage: tabs.selectedTabViewItemIndex) else { return }
+        select(row)
     }
 
-    /// Shows the window on the named pane.
+    /// Shows the window on the named pane or page.
     public func show(pane title: String) {
-        if let i = Self.paneTitles.firstIndex(of: title) { select(i) }
+        show(page: title)
         showWindow(nil)
     }
 

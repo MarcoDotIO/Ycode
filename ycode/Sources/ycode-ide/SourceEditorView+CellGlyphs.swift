@@ -1,11 +1,16 @@
 import Foundation
 import SwiftUI
 import YcodeEditorKit
+import YcodeIDECore
 
 /// Cell characters on the editor's grid (`editor-area.md` E.7, checklist
 /// row 75): a box-drawing, block, shape or braille character takes one
 /// cell whatever its face's advance; a narrower glyph is centred in the
-/// cell and a wider one clipped to it. Other text draws as before.
+/// cell and a wider one clipped to it. Other text draws as before. Solid
+/// block elements are filled shapes, a run of full blocks one rectangle
+/// per row, with their ink where `editor-area.md` F.1 measured it (13.5 of
+/// an 18-point row, from 3.5 below its top), so neighbours join with no
+/// seam (F.4, checklist row 87).
 extension SourceEditorPainter {
     /// The rectangle (and ink strength) a Block Elements character fills in
     /// its cell `c` (the glyph's box): eighths, halves, the full block and
@@ -45,7 +50,14 @@ extension SourceEditorPainter {
         var cx = x
         var pending: [EditorRun] = []
         var pendingX = x
+        // Block shapes waiting to be filled: neighbours of one shape and
+        // colour grow one rectangle.
+        var shapes: [(rect: CGRect, color: Color)] = []
+        let rowTop = y - controller.textDrop
+        let ink = EditorTextGeometry.blockInk(rowHeight: Double(height))
         func flush(_ ctx: inout GraphicsContext) {
+            for s in shapes { ctx.fill(Path(s.rect), with: .color(s.color)) }
+            shapes = []
             guard !pending.isEmpty else { return }
             ctx.draw(text(pending).font(f), at: CGPoint(x: pendingX, y: y), anchor: .topLeading)
             pending = []
@@ -60,12 +72,31 @@ extension SourceEditorPainter {
                     continue
                 }
                 if !chunk.isEmpty { pending.append(EditorRun(chunk, role: r.role)); chunk = "" }
+                if let v = ch.unicodeScalars.first?.value, EditorTextGeometry.isSolidBlock(v),
+                   let s = EditorTextGeometry.blockShape(v, x: Double(cx), width: Double(cell), top: Double(rowTop) + ink.top, height: ink.height) {
+                    // Text before the block first, then the shape.
+                    if !pending.isEmpty {
+                        let waiting = shapes
+                        shapes = []
+                        flush(&ctx)
+                        shapes = waiting
+                    }
+                    let rect = CGRect(x: s.x, y: s.y, width: s.width, height: s.height)
+                    let color = palette.color(r.role).color
+                    if let last = shapes.last, last.color == color, abs(last.rect.maxX - rect.minX) < 0.01,
+                       last.rect.minY == rect.minY, last.rect.height == rect.height {
+                        shapes[shapes.count - 1].rect = last.rect.union(rect)
+                    } else {
+                        shapes.append((rect, color))
+                    }
+                    cx += cell
+                    continue
+                }
                 flush(&ctx)
                 let glyph = ctx.resolve(text([EditorRun(String(ch), role: r.role)]).font(f))
                 let measured = glyph.measure(in: CGSize(width: CGFloat.infinity, height: .infinity))
                 let w = measured.width
-                // Block elements are drawn as the shapes they name, a hair
-                // over their cell, so a row of them is one solid band.
+                // The shades are drawn as the patterns' strength over the cell.
                 if let v = ch.unicodeScalars.first?.value,
                    let (rect, alpha) = Self.blockShape(v, in: CGRect(x: cx, y: y, width: cell, height: measured.height)) {
                     ctx.fill(Path(rect), with: .color(palette.color(r.role).color.opacity(alpha)))

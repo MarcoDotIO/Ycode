@@ -218,7 +218,8 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
             if let g = item as? NSToolbarItemGroup, g.subitems.count == 2 { g.subitems[1].isEnabled = false }
             return owner.selected != nil
         case Self.zoom, Self.more: return owner.selected != nil
-        case Self.open: return owner.selected?.state == "Booted" && owner.selected?.isYcodeRemote == true
+        // Enabled whenever the window shows a device (§12.2).
+        case Self.open: return owner.selected != nil && owner.multipleSelection.count <= 1
         case Self.headset:
             let title = owner.headsetCommandTitle(for: owner.selected)
             item.label = title
@@ -243,7 +244,7 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
         owner.canvas.perform(commands[sender.selectedIndex])
     }
 
-    @objc func openClicked(_ sender: Any?) { owner.openInNewWindow() }
+    @objc func openClicked(_ sender: Any?) { owner.openCompactWindowFromToolbar() }
     @objc func headsetClicked(_ sender: Any?) { owner.toggleHeadset() }
 
     @objc func tabChosen(_ sender: NSToolbarItemGroup) {

@@ -8,9 +8,10 @@ import YcodeIDECore
 /// "Open with Preview" under it. No gutter, minimap, frame or scroll area.
 /// A file of ordinary size decodes before the viewer is shown, so the
 /// image replaces the old content in one frame (`editor-area.md` E.3,
-/// checklist row 72); a large one decodes off the main thread, and
-/// "Loading…" is centred in its place only if it is still not ready after
-/// `ImageViewerLayout.loadingDelay`.
+/// checklist row 72); a large one is shown at once as the empty canvas
+/// with its button, decodes off the main thread and is drawn when ready,
+/// and "Loading…" is centred in its place only if it is still not ready
+/// after `ImageViewerLayout.loadingDelay` (F.8, row 109).
 @MainActor
 public final class ImageViewerController: NSViewController {
     public let url: URL
@@ -27,17 +28,15 @@ public final class ImageViewerController: NSViewController {
     private var decodedEarly: ImageFileProperties.Decoded?
     /// Whether the image has decoded (or failed to).
     public private(set) var isReady = false
-    /// Called once a file decoded off the main thread is ready (the window
-    /// swaps the viewer in then).
-    public var onReady: (() -> Void)?
 
-    /// `synchronousLimit`: files up to this many bytes decode here, before
+    /// `synchronousLimit`: files up to this many bytes, and of at most
+    /// `ImageViewerLayout.synchronousPixelLimit` pixels, decode here, before
     /// the viewer is shown.
     public init(url: URL, synchronousLimit: Int = ImageViewerLayout.synchronousDecodeLimit) {
         self.url = url
         super.init(nibName: nil, bundle: nil)
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? Int.max
-        if size <= synchronousLimit {
+        if size <= synchronousLimit, ImageViewerLayout.decodesQuickly(url) {
             decodedEarly = ImageFileProperties.decode(url)
             properties = decodedEarly?.properties
             isReady = true
@@ -99,7 +98,6 @@ public final class ImageViewerController: NSViewController {
             guard let self, !Task.isCancelled else { return }
             self.isReady = true
             self.show(decoded)
-            self.onReady?()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + ImageViewerLayout.loadingDelay) { [weak self] in
             MainActor.assumeIsolated {
@@ -148,6 +146,18 @@ public enum ImageViewerLayout {
     /// Files up to this size decode before the viewer is shown (a few
     /// milliseconds), so the swap is one frame with the image in it.
     public static let synchronousDecodeLimit = 24 * 1024 * 1024
+    /// Images of at most this many pixels decode before the viewer is
+    /// shown; a larger one would hold the switch (F.8: the switch is at once).
+    public static let synchronousPixelLimit = 4_000_000
+
+    /// Whether `url`'s image is small enough to decode before the switch
+    /// (its header names its size; an unreadable header decodes later).
+    static func decodesQuickly(_ url: URL) -> Bool {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+              let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int else { return false }
+        return w * h <= synchronousPixelLimit
+    }
     public static let topMargin: CGFloat = 20
     public static let bottomMargin: CGFloat = 60
     public static let sideMargin: CGFloat = 20

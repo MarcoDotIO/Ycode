@@ -17,6 +17,13 @@ public final class MergeOverlayView: NSView {
     public var toolbarBottom: CGFloat = 52
     /// Reduce Motion: the sheet fades only (tests set it).
     public var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    /// The window behind, drawn disabled while the overlay is up (§13.1).
+    public private(set) var parentState: ModalParentDimming?
+    /// The window buttons' circles (overlay coordinates): the veil leaves
+    /// them uncovered and clicks there reach them (§13.1: minimize and zoom
+    /// in colour above the veil, close disabled).
+    public private(set) var windowButtonHoles: [NSRect] = []
+    private let veilMask = CAShapeLayer()
     /// Called once the overlay has gone.
     var onClose: (() -> Void)?
 
@@ -25,6 +32,8 @@ public final class MergeOverlayView: NSView {
         wantsLayer = true
         veil.backgroundColor = NSColor.black.cgColor
         veil.opacity = 0
+        veilMask.fillRule = .evenOdd
+        veil.mask = veilMask
         layer?.addSublayer(veil)
         autoresizingMask = [.width, .height]
         setAccessibilityElement(false)
@@ -43,9 +52,19 @@ public final class MergeOverlayView: NSView {
 
     public override func layout() {
         super.layout()
+        windowButtonHoles = Self.windowButtonCircles(in: window, overlay: self)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         veil.frame = bounds
+        veilMask.frame = veil.bounds
+        let path = CGMutablePath()
+        path.addRect(veil.bounds)
+        // The layer tree may not be flipped: map the holes into it.
+        let flip = !(veil.superlayer?.isGeometryFlipped ?? false) && isFlipped
+        for h in windowButtonHoles {
+            path.addEllipse(in: flip ? CGRect(x: h.minX, y: bounds.height - h.maxY, width: h.width, height: h.height) : h)
+        }
+        veilMask.path = path
         CATransaction.commit()
         if let a = alert {
             let f = MergeSheetMetrics.alertFrame(window: (bounds.width, bounds.height), chooser: a.chooser != nil)
@@ -58,10 +77,24 @@ public final class MergeOverlayView: NSView {
     }
 
     // Every click lands on the overlay while it is up (the window is modal
-    // to it); clicks on the veil do nothing.
+    // to it); clicks on the veil do nothing. The window buttons stay usable.
     public override func hitTest(_ point: NSPoint) -> NSView? {
         guard !isHidden else { return nil }
+        let local = convert(point, from: superview)
+        if windowButtonHoles.contains(where: { $0.contains(local) }) { return nil }
         return super.hitTest(point) ?? (frame.contains(point) ? self : nil)
+    }
+
+    /// The circles of `window`'s close, minimize and zoom buttons in the
+    /// overlay's coordinates.
+    static func windowButtonCircles(in window: NSWindow?, overlay: NSView) -> [NSRect] {
+        guard let window else { return [] }
+        return [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { t in
+            guard let b = window.standardWindowButton(t), !b.isHidden, b.window === window else { return nil }
+            let r = b.convert(b.bounds, to: overlay)
+            let d = min(r.width, r.height)
+            return NSRect(x: r.midX - d / 2, y: r.midY - d / 2, width: d, height: d)
+        }
     }
 
     public override func mouseDown(with event: NSEvent) {}
@@ -81,8 +114,15 @@ public final class MergeOverlayView: NSView {
 
     // MARK: Veil
 
-    /// Darkens (or clears) the window over `duration`, ease-out.
+    /// Darkens (or clears) the window over `duration`, ease-out, drawing it
+    /// disabled under the veil while it is on (§13.1).
     func setVeil(on: Bool, duration: Double) {
+        if on {
+            if parentState == nil, let w = window { parentState = ModalParentDimming(window: w) }
+            parentState?.apply(duration: duration)
+        } else {
+            parentState?.restore(duration: duration)
+        }
         let to: Float = on ? veilOpacity : 0
         let from = veil.presentation()?.opacity ?? veil.opacity
         veil.opacity = to
@@ -205,6 +245,8 @@ extension NSColor {
 
 /// A push button drawn as the sheet's and the alert's buttons are
 /// (§1.2, §9): a rounded fill, the label centred; the default one accent.
+/// It is an accessibility button (§13.2): its label is its title, and
+/// pressing it through accessibility clicks it.
 @MainActor
 public final class MergeButton: NSControl {
     public var title: String { didSet { needsDisplay = true } }
@@ -216,8 +258,7 @@ public final class MergeButton: NSControl {
     public init(title: String) {
         self.title = title
         super.init(frame: .zero)
-        setAccessibilityRole(.button)
-        setAccessibilityLabel(title)
+        setAccessibilityElement(true)
     }
 
     @available(*, unavailable)
@@ -262,5 +303,19 @@ public final class MergeButton: NSControl {
     public override func performClick(_ sender: Any?) {
         guard isEnabled, let action else { return }
         NSApp.sendAction(action, to: target, from: self)
+    }
+
+    // MARK: Accessibility (§13.2)
+
+    public override func isAccessibilityElement() -> Bool { true }
+    public override func accessibilityRole() -> NSAccessibility.Role? { .button }
+    public override func accessibilityTitle() -> String? { title }
+    public override func accessibilityLabel() -> String? { title }
+    public override func isAccessibilityEnabled() -> Bool { isEnabled }
+
+    public override func accessibilityPerformPress() -> Bool {
+        guard isEnabled, action != nil else { return false }
+        performClick(nil)
+        return true
     }
 }

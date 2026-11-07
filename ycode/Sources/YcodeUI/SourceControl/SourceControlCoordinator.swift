@@ -79,6 +79,7 @@ public final class SourceControlCoordinator {
         mode = m
         owner.navigator.sourceControlMode.selectedSegment = m.rawValue
         refresh()
+        owner.navigator.onShownViewChange?()
     }
 
     /// Rebuilds the navigator tree for the current mode from the last

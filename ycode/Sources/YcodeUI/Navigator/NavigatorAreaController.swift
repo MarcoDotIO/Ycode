@@ -268,6 +268,11 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     /// Source Control navigator: Changes | Repositories (reference-ui-4.md §2).
     public let sourceControlMode = NSSegmentedControl(labels: SourceControlNavigatorModel.modeTitles, trackingMode: .selectOne, target: nil, action: nil)
     public var onSourceControlMode: ((SourceControlNavigatorModel.Mode) -> Void)?
+    /// The shown navigator or the Source Control navigator's view changed
+    /// (the inspector's empty text follows, `editor-area.md` F.10).
+    public var onShownViewChange: (() -> Void)?
+    /// Whether the Source Control navigator's Repositories view is shown.
+    public var showsRepositoriesView: Bool { selectedIndex == 1 && sourceControlMode.selectedSegment == 1 }
     /// A Source Control navigator row was clicked (its scmKey).
     public var onSourceControlRow: ((String) -> Void)?
     /// Files opened in this window (the Recent files toggle).
@@ -426,7 +431,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         filterOptions.item(at: 0)?.image = NavigatorFilterField.optionsGlyph
         (filterOptions.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
         filterOptions.imagePosition = .imageOnly
-        filterOptions.contentTintColor = .secondaryLabelColor
+        filterOptions.contentTintColor = NavigatorBarColors.optionsGlyph
         filterOptions.setAccessibilityLabel("Filter options")
         rebuildFilterOptionsMenu()
         for (i, b) in toggleButtons.enumerated() {
@@ -543,11 +548,12 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             findScope.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 4),
             reportScopeTop,
             reportScope.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            sourceControlMode.topAnchor.constraint(equalTo: reportScope.topAnchor),
-            // Across the navigator, 9 from each side (navigators.md round 3 §2).
+            // Across the navigator, 9 from each side, 16 tall, centred in
+            // the header row (navigators.md round 3 §2; row 114).
+            sourceControlMode.centerYAnchor.constraint(equalTo: reportScope.centerYAnchor),
             sourceControlMode.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Self.modeControlInset),
             sourceControlMode.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Self.modeControlInset),
-            sourceControlMode.heightAnchor.constraint(equalTo: reportScope.heightAnchor),
+            sourceControlMode.heightAnchor.constraint(equalToConstant: CGFloat(RepositoriesViewStyle.modeControlHeight)),
             testHeader.topAnchor.constraint(equalTo: reportScope.topAnchor),
             testHeader.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 4),
             testHeader.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -4),
@@ -559,7 +565,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             emptyLabel.centerXAnchor.constraint(equalTo: scrollClip.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: scrollClip.centerYAnchor),
             emptyLabel.widthAnchor.constraint(lessThanOrEqualTo: scrollClip.widthAnchor, constant: -24),
-            addBreakpointButton.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: glass ? 6 : 4),
+            addBreakpointButton.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: glass ? Self.plusLeading : 4),
             addBreakpointButton.centerYAnchor.constraint(equalTo: filter.centerYAnchor),
             addBreakpointButton.widthAnchor.constraint(equalToConstant: glass ? Self.plusSize.width : 34),
             filterAfterLeftButton,
@@ -568,7 +574,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             filterOptions.leadingAnchor.constraint(equalTo: filter.leadingAnchor, constant: NavigatorFilterField.optionsLeading),
             filterOptions.centerYAnchor.constraint(equalTo: filter.centerYAnchor),
             filterOptions.widthAnchor.constraint(equalToConstant: NavigatorFilterField.optionsWidth),
-            filter.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: glass ? -6 - Self.filterInset : -6),
+            filter.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: glass ? -Self.filterTrailing - Self.filterInset : -6),
             toggleStack.trailingAnchor.constraint(equalTo: filter.trailingAnchor, constant: -4),
             toggleStack.centerYAnchor.constraint(equalTo: filter.centerYAnchor),
         ])
@@ -595,7 +601,9 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         reportScope.controlSize = .small
         reportScope.isHidden = true
         configureTestHeader()
-        sourceControlMode.controlSize = .small
+        // 16 tall with 10-point titles ("Changes" ink 45 wide; row 114).
+        sourceControlMode.controlSize = .mini
+        sourceControlMode.font = .systemFont(ofSize: CGFloat(RepositoriesViewStyle.modeControlFontSize))
         sourceControlMode.segmentDistribution = .fillEqually
         sourceControlMode.selectedSegmentBezelColor = .controlAccentColor
         sourceControlMode.selectedSegment = 0
@@ -1478,6 +1486,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         outline.reloadData()
         if index == 1 { expandSourceControlRows(keeping: nil) } else if index != 0 { outline.expandItem(nil, expandChildren: true) } else if projectFilterActive { outline.expandItem(nil, expandChildren: true) } else { restoreProjectExpansion() }
         updateEmpty()
+        onShownViewChange?()
     }
 
     /// The navigator's empty state (reference-ui-5.md §5.2): a title and,
@@ -1649,9 +1658,11 @@ extension NavigatorAreaController: NSMenuDelegate {
         menu.removeAllItems()
         if selectedIndex == 0 { rebuildProjectRowMenu(menu); return }
         if selectedIndex == 1 {
-            // The Source Control navigator: by the clicked row's key.
+            // The Source Control navigator: by the clicked row's key. The
+            // row only gets the context-click ring, not the selection, so no
+            // highlight stays on it behind the merge alert (merge-sheet.md
+            // §1.1, §13.1).
             let clicked = outline.clickedRow
-            if clicked >= 0, !outline.selectedRowIndexes.contains(clicked) { outline.selectRowIndexes([clicked], byExtendingSelection: false) }
             let row = clicked >= 0 ? clicked : outline.selectedRow
             guard row >= 0, let key = (outline.item(atRow: row) as? OutlineItem)?.scmKey else { return }
             for item in sourceControlRowMenu?(key) ?? [] { menu.addItem(item) }

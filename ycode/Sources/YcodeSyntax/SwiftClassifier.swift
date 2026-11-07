@@ -1,3 +1,4 @@
+import Foundation
 import SwiftIDEUtils
 import SwiftParser
 import SwiftSyntax
@@ -29,13 +30,77 @@ final class SwiftClassifier {
         let range = AbsolutePosition(utf8Offset: bytes.lowerBound)..<AbsolutePosition(utf8Offset: bytes.upperBound)
         for c in tree.classifications(in: range) {
             let a = c.range.lowerBound.utf8Offset, b = c.range.upperBound.utf8Offset
-            guard b > a, let kind = Self.kind(c.kind, firstByte: source[a]) else { continue }
-            // A module name after `import` is plain text, not a type
-            // (`editor-area.md` §D.1).
-            if kind == .typeName, c.kind == .identifier,
-               tree.token(at: AbsolutePosition(utf8Offset: a))?.parent?.is(ImportPathComponentSyntax.self) == true { continue }
+            guard b > a else { continue }
+            // Names: declarations and references inside interpolations
+            // (`editor-area.md` F.3) need the token's place in the tree.
+            if c.kind == .identifier || c.kind == .type, let token = tree.token(at: AbsolutePosition(utf8Offset: a)) {
+                if let d = Self.declarationKind(of: token) { out.append((d, a, b)); continue }
+                // A module name after `import` is plain text, not a type
+                // (`editor-area.md` §D.1).
+                if c.kind == .identifier, token.parent?.is(ImportPathComponentSyntax.self) == true { continue }
+            }
+            guard let kind = Self.kind(c.kind, firstByte: source[a]) else { continue }
             out.append((kind, a, b))
         }
+    }
+
+    /// The names that declare a type, and the other declared names.
+    nonisolated(unsafe) static let typeDeclarationNames: Set<AnyKeyPath> = [
+        \StructDeclSyntax.name, \ClassDeclSyntax.name, \EnumDeclSyntax.name, \ProtocolDeclSyntax.name, \ActorDeclSyntax.name,
+        \TypeAliasDeclSyntax.name, \AssociatedTypeDeclSyntax.name,
+    ]
+    nonisolated(unsafe) static let otherDeclarationNames: Set<AnyKeyPath> = [
+        \FunctionDeclSyntax.name, \EnumCaseElementSyntax.name, \MacroDeclSyntax.name, \IdentifierPatternSyntax.identifier,
+    ]
+
+    /// What a name token is: a type declaration's name, another
+    /// declaration's, a property named inside a string interpolation, or
+    /// nil (a use, coloured as before).
+    static func declarationKind(of token: TokenSyntax) -> SyntaxTokenKind? {
+        guard let path = token.keyPathInParent else { return nil }
+        if typeDeclarationNames.contains(path) { return .typeDeclaration }
+        if otherDeclarationNames.contains(path) { return .declaration }
+        if path == \DeclReferenceExprSyntax.baseName, isPropertyInInterpolation(token) { return .propertyReference }
+        return nil
+    }
+
+    /// A lower-case name in `\( … )` that is not called, and that a
+    /// stored or computed property of an enclosing type (or a file-level
+    /// variable) declares, unless a parameter of the enclosing function
+    /// has the same name.
+    static func isPropertyInInterpolation(_ token: TokenSyntax) -> Bool {
+        guard case .identifier(let name) = token.tokenKind, let first = name.unicodeScalars.first,
+              !CharacterSet.uppercaseLetters.contains(first), let ref = token.parent else { return false }
+        if let call = ref.parent?.as(FunctionCallExprSyntax.self), call.calledExpression.id == ref.id { return false }
+        // Inside an interpolation, not counting the closures and nested
+        // declarations on the way.
+        var node: Syntax? = ref.parent
+        var inSegment = false
+        while let n = node {
+            if n.is(ExpressionSegmentSyntax.self) { inSegment = true; break }
+            if n.is(CodeBlockSyntax.self) || n.is(MemberBlockSyntax.self) || n.is(SourceFileSyntax.self) { break }
+            node = n.parent
+        }
+        guard inSegment else { return false }
+        var scope: Syntax? = node
+        while let n = scope {
+            if let f = n.as(FunctionDeclSyntax.self),
+               f.signature.parameterClause.parameters.contains(where: { ($0.secondName ?? $0.firstName).text == name }) { return false }
+            if let members = n.asProtocol((any DeclGroupSyntax).self)?.memberBlock.members {
+                if members.contains(where: { declares(name, $0.decl) }) { return true }
+            }
+            if let file = n.as(SourceFileSyntax.self) {
+                return file.statements.contains { $0.item.as(DeclSyntax.self).map { declares(name, $0) } ?? false }
+            }
+            scope = n.parent
+        }
+        return false
+    }
+
+    /// Whether a variable declaration declares `name`.
+    static func declares(_ name: String, _ decl: DeclSyntax) -> Bool {
+        guard let v = decl.as(VariableDeclSyntax.self) else { return false }
+        return v.bindings.contains { $0.pattern.as(IdentifierPatternSyntax.self)?.identifier.text == name }
     }
 
     /// The token kind for a classification; nil for no color.

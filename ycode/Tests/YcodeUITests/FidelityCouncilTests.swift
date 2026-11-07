@@ -122,7 +122,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         wc.open(path: dir.appendingPathComponent("GlassScroll/Long.swift").path, line: nil)
         let e = wc.editor
         e.view.layoutSubtreeIfNeeded()
-        #expect(abs(Theme.advance - 8) < 0.01)
+        // The cell at the display's scale (8.0 at 1x, 8.04 at 2x: round 4, F.2).
+        let own = ("0" as NSString).size(withAttributes: [.font: Theme.baseFont]).width
+        let cell = EditorTextGeometry.cellAdvance(fontAdvance: Double(own), backingScale: Double(Theme.backingScale))
+        #expect(abs(Theme.advance - CGFloat(cell)) < 0.01)
         #expect(Theme.lineHeight == 18)
         // The code column at the editor's edge + 51; numbers end at + 38.
         let codeX = e.textView.convert(NSPoint(x: e.textView.textContainerOrigin.x, y: 0), to: e.view).x
@@ -269,8 +272,9 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             #expect(hex(Theme.color(for: .typeName)) == "#9D31CF")
             #expect(hex(Theme.textColor) == "#322529")
             #expect(hex(Theme.lineNumberColor) == "#B8B3B4")
-            // The dark appearance keeps the system colours.
-            #expect(hex(Theme.color(for: .keyword), dark: true) == hex(NSColor.systemPink, dark: true))
+            // The dark appearance has its own measured values (round 4,
+            // CouncilRound4EditorTests).
+            #expect(hex(Theme.color(for: .keyword), dark: true) == "#FF83B4")
             // The same colour each time (attributes compare equal).
             #expect(Theme.color(for: .keyword) === Theme.color(for: .keyword))
             // Declaration names.

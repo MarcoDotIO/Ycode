@@ -30,6 +30,8 @@ public final class WorkspaceShellModel {
 
     public private(set) var root: NavigatorItem
     public var expanded: Set<String>
+    /// The workspace's user data file (WorkspaceShellModel+UserState.swift).
+    @ObservationIgnored let userStateURL: URL?
     /// The selected row's id.
     public var selection: String? {
         didSet { if selection != oldValue, let id = selection, let item = root.find(id: id), item.isFile, let p = item.path { open(p) } }
@@ -145,12 +147,15 @@ public final class WorkspaceShellModel {
     public init(session: WorkspaceSession) {
         self.session = session
         debug = ShellDebugModel(session: session)
-        sourceControl = SourceControlShellModel(folder: SourceControlShellModel.folder(for: session.model.url))
+        let scm = SourceControlShellModel(folder: SourceControlShellModel.folder(for: session.model.url))
+        scm.mergeProject = MergeSheetProject(workspace: session.model)   // the merge sheet's jump bar
+        sourceControl = scm
         testing = TestShellModel(session: session)
         symbols = SymbolNavigatorModel()
         let root = NavigatorItem(session.model.root)
         self.root = root
-        expanded = Set(NavigatorTree.initiallyExpanded(session.model.root))
+        userStateURL = Self.stateFileURL(for: session.model)
+        expanded = Self.initialExpansion(for: session.model, stateURL: userStateURL)
         schemes = session.model.schemeNames
         let groups = ShellBuildSetup.destinationGroups(for: session.model) + Self.remoteGroups(for: session.model)
         session.model.destinationGroups = groups
@@ -256,6 +261,7 @@ public final class WorkspaceShellModel {
 
     public func setExpanded(_ id: String, _ on: Bool) {
         if on { expanded.insert(id) } else { expanded.remove(id) }
+        saveExpansion()   // +UserState.swift (row 113)
     }
 
     /// Navigate ▸ Reveal in Project Navigator: shows the project navigator

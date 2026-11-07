@@ -248,12 +248,29 @@ public final class Preferences {
 
     /// Built-in themes, then user themes (by name).
     public var themes: [EditorTheme] {
+        // Read again only when the folder changed (its modification date)
+        // or Ycode wrote to it: the editor asks for the theme's font for
+        // every line it draws, and reading the folder each time cost
+        // milliseconds per frame (`fidelity-council.md` rows 106, 108).
+        // The folder's date is looked at no more than once a second.
+        let now = ProcessInfo.processInfo.systemUptime
+        if let cached = themeCache, now - cached.checked < 1 { return cached.themes }
+        let stamp = (try? FileManager.default.attributesOfItem(atPath: themesDirectory.path))?[.modificationDate] as? Date
+        if let cached = themeCache, cached.stamp == stamp {
+            themeCache?.checked = now
+            return cached.themes
+        }
         let user = ((try? FileManager.default.contentsOfDirectory(at: themesDirectory, includingPropertiesForKeys: nil)) ?? [])
             .filter { $0.pathExtension == "ycodetheme" }
             .compactMap { try? EditorTheme.read($0) }
             .sorted { $0.name < $1.name }
-        return EditorTheme.builtIns + user.filter { u in !EditorTheme.builtIns.contains { $0.name == u.name } }
+        let all = EditorTheme.builtIns + user.filter { u in !EditorTheme.builtIns.contains { $0.name == u.name } }
+        themeCache = (stamp, now, all)
+        return all
     }
+    /// The themes last read, the folder's modification date then, and when
+    /// that date was last looked at (system uptime).
+    private var themeCache: (stamp: Date?, checked: TimeInterval, themes: [EditorTheme])?
 
     /// The selected theme; falls back to the first built-in when
     /// `themeName` names no theme.
@@ -263,7 +280,9 @@ public final class Preferences {
     public func save(_ t: EditorTheme) throws {
         guard !EditorTheme.builtIns.contains(where: { $0.name == t.name }) else { throw CocoaError(.fileWriteNoPermission) }
         try FileManager.default.createDirectory(at: themesDirectory, withIntermediateDirectories: true)
+        themeCache = nil
         try t.write(to: themesDirectory.appendingPathComponent(t.fileName))
+        themeCache = nil
         themeName = t.name
     }
 
@@ -283,6 +302,7 @@ public final class Preferences {
     public func deleteTheme(named name: String) {
         guard let t = themes.first(where: { $0.name == name }), !EditorTheme.builtIns.contains(where: { $0.name == name }) else { return }
         try? FileManager.default.removeItem(at: themesDirectory.appendingPathComponent(t.fileName))
+        themeCache = nil
         if themeName == name { themeName = EditorTheme.builtIns[0].name } else { changed() }
     }
 

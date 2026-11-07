@@ -31,14 +31,15 @@ import Testing
         """, .swift)
         #expect(t == [
             "docComment /// Doc",
-            "attribute @MainActor", "keyword public", "keyword final", "keyword class", "typeName A", "typeName B",
-            "keyword static", "keyword let", "string \"a", "string b\"", "comment // c",
-            "keyword func", "typeName Int", "typeName String", "keyword return", "keyword nil",
+            // Declared names have kinds of their own (editor-area.md F.3).
+            "attribute @MainActor", "keyword public", "keyword final", "keyword class", "typeDeclaration A", "typeName B",
+            "keyword static", "keyword let", "declaration s", "string \"a", "string b\"", "comment // c",
+            "keyword func", "declaration f", "typeName Int", "typeName String", "keyword return", "keyword nil",
             "preprocessor #if", "preprocessor DEBUG",
-            "keyword let", "number 0x1F", "number 2.5e3",
+            "keyword let", "declaration n", "number 0x1F", "number 2.5e3",
             "preprocessor #endif",
-            "keyword let", "regex /a+b/",
-            "keyword let", "placeholder <#value#>",
+            "keyword let", "declaration r", "regex /a+b/",
+            "keyword let", "declaration p", "placeholder <#value#>",
         ])
     }
 
@@ -51,8 +52,8 @@ import Testing
         @objc func `default`() {}
         """, .swift, parser: false)
         #expect(t == [
-            "comment /* a /* nested */ still */", "keyword let", "string #\"raw \"q\"\"#",
-            "keyword let", "string \"\"\"",
+            "comment /* a /* nested */ still */", "keyword let", "declaration s", "string #\"raw \"q\"\"#",
+            "keyword let", "declaration m", "string \"\"\"",
             "string   two \\(lines)",
             "string   \"\"\"",
             "attribute @objc", "keyword func",

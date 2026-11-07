@@ -62,11 +62,11 @@ struct MergeComparisonView: View {
                     .background(alignment: .topLeading) {
                         // The gutter and its rules run the whole height.
                         HStack(spacing: 0) {
-                            Color(mergeHex: p.sheet).frame(width: leftWidth)
-                            Rectangle().fill(Color(mergeHex: p.columnRule)).frame(width: 1)
+                            Color(mergeHex: p.pane).frame(width: leftWidth)
+                            Rectangle().fill(Color(mergeHex: p.gutterRule)).frame(width: 1)
                             Color(mergeHex: p.gutter).frame(width: CGFloat(M.gutterWidth))
-                            Rectangle().fill(Color(mergeHex: p.columnRule)).frame(width: 1)
-                            Color(mergeHex: p.sheet).frame(width: rightWidth)
+                            Rectangle().fill(Color(mergeHex: p.gutterRule)).frame(width: 1)
+                            Color(mergeHex: p.pane).frame(width: rightWidth)
                         }
                         .frame(minHeight: height)
                     }
@@ -168,7 +168,7 @@ struct MergeComparisonView: View {
         TextEditor(text: Binding(get: { editor.editedText }, set: { editor.editedText = $0 }))
             .font(ShellFonts.editor(MergeCodeFont.size))
             .scrollContentBackground(.hidden)
-            .background(Color(mergeHex: p.sheet))
+            .background(Color(mergeHex: p.pane))
             .overlay { Rectangle().stroke(Color(mergeHex: p.selectedRule), lineWidth: 1) }
             .shellTarget("merge hand editor")
     }
@@ -290,8 +290,8 @@ struct MergeRowPainter {
         let h = CGFloat(MergeSheetLayout.height(row, columns: layout.columns))
         let lh = CGFloat(M.lineHeight)
         func fill(_ r: CGRect, _ hex: UInt32) { ctx.fill(Path(r), with: .color(Color(mergeHex: hex))) }
-        fill(CGRect(x: 0, y: 0, width: lw, height: h), p.sheet)
-        fill(CGRect(x: rx, y: 0, width: rw, height: h), p.sheet)
+        fill(CGRect(x: 0, y: 0, width: lw, height: h), p.pane)
+        fill(CGRect(x: rx, y: 0, width: rw, height: h), p.pane)
         fill(CGRect(x: gx, y: 0, width: CGFloat(M.gutterWidth), height: h), p.gutter)
         // Shading: full width, through the gutter (§6).
         if row.kind != .same {
@@ -312,8 +312,8 @@ struct MergeRowPainter {
                          with: .color(Color(mergeHex: p.currentLine)))
             }
         }
-        fill(CGRect(x: lw, y: 0, width: 1, height: h), p.columnRule)
-        fill(CGRect(x: rx - 1, y: 0, width: 1, height: h), p.columnRule)
+        fill(CGRect(x: lw, y: 0, width: 1, height: h), p.gutterRule)
+        fill(CGRect(x: rx - 1, y: 0, width: 1, height: h), p.gutterRule)
         let font = MergeCodeFont.font(ctx)
         if let l = row.left { side(&ctx, l, runs: layout.leftRuns, x: 0, current: currentLeft, font: font) }
         if let r = row.right { side(&ctx, r, runs: layout.rightRuns, x: rx, current: currentRight, font: font) }
@@ -364,10 +364,10 @@ struct MergeRowPainter {
     }
 }
 
-/// A change's token (§5): a 38.5 × 14 capsule, #575757 (the selected
-/// change #6D2A2D with a red rim), the glyph ("?" undecided, a digit once
-/// decided) left of centre, then a down-chevron, in a circle once a choice
-/// is in effect.
+/// A change's token (§5, §13.5): a 38.5 × 14 capsule, #575757 with a
+/// 0.5-point lighter rim (the selected change #6D2A2D with a 1-point red
+/// rim), the glyph ("?" undecided, a digit once decided) left of centre,
+/// then a light, thin down-chevron, in a circle once a choice is in effect.
 struct MergeTokenView: View {
     var token: ConflictEditorState.Token
     var palette: MergeSheetPalette
@@ -379,9 +379,8 @@ struct MergeTokenView: View {
         let w = CGFloat(M.tokenWidth), h = CGFloat(M.tokenHeight)
         ZStack(alignment: .topLeading) {
             Capsule(style: .continuous).fill(Color(mergeHex: token.isSelected ? p.selectedToken : p.token))
-            if token.isSelected {
-                Capsule(style: .continuous).strokeBorder(Color(mergeHex: p.selectedTokenRim), lineWidth: 1)
-            }
+            Capsule(style: .continuous).strokeBorder(Color(mergeHex: token.isSelected ? p.selectedTokenRim : p.tokenRim),
+                                                     lineWidth: CGFloat(token.isSelected ? MergeSheetToken.selectedRimWidth : MergeSheetToken.rimWidth))
             Text(verbatim: token.glyph).font(.system(size: 11, weight: .bold)).foregroundStyle(Color(mergeHex: p.tokenInk))
                 .frame(width: 14, height: h)
                 .offset(x: 21.5 - 7)
@@ -391,11 +390,13 @@ struct MergeTokenView: View {
                     .offset(x: 33.5 - CGFloat(M.chevronCircle) / 2, y: (h - CGFloat(M.chevronCircle)) / 2)
             }
             Path { path in
-                path.move(to: CGPoint(x: 30.5, y: h / 2 - 1.5))
-                path.addLine(to: CGPoint(x: 33.5, y: h / 2 + 1.75))
-                path.addLine(to: CGPoint(x: 36.5, y: h / 2 - 1.5))
+                let hw = CGFloat(MergeSheetToken.chevronHalfWidth), ch = CGFloat(MergeSheetToken.chevronHeight)
+                path.move(to: CGPoint(x: 33.5 - hw, y: h / 2 - ch / 2))
+                path.addLine(to: CGPoint(x: 33.5, y: h / 2 + ch / 2))
+                path.addLine(to: CGPoint(x: 33.5 + hw, y: h / 2 - ch / 2))
             }
-            .stroke(Color(mergeHex: p.tokenInk), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+            .stroke(Color(mergeHex: p.tokenInk),
+                    style: StrokeStyle(lineWidth: CGFloat(MergeSheetToken.chevronLineWidth), lineCap: .round, lineJoin: .round))
         }
         .frame(width: w, height: h)
         .contentShape(Capsule())
@@ -414,7 +415,7 @@ struct MergeRuler: View {
         let p = palette
         GeometryReader { geo in
             Canvas { ctx, size in
-                ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(mergeHex: p.sheet)))
+                ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(mergeHex: p.pane)))
                 for m in marks {
                     ctx.fill(Path(CGRect(x: CGFloat(MergeSheetMetrics.rulerMarkX), y: (CGFloat(m.position) * size.height).rounded(.down),
                                          width: CGFloat(MergeSheetMetrics.rulerMarkWidth), height: 1)),

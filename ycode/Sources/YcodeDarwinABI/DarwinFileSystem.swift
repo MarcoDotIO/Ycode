@@ -968,6 +968,12 @@ public final class DarwinFileSystem {
                         stat: kind.map { DarwinDevice.stat(of: $0) }, device: kind)
     }
 
+    /// The path after a leading `/.nofollow` (keeping its `/`), or nil.
+    static func noFollowPrefixed(_ path: String) -> String? {
+        guard path.hasPrefix("/.nofollow/") else { return nil }
+        return String(path.dropFirst(10))
+    }
+
     /// Resolves a guest path: normalizes it, checks the allowlist, and
     /// follows symbolic links below the prefix (the last one only when
     /// `followFinal`). A missing final component is not an error (`stat` is
@@ -975,9 +981,13 @@ public final class DarwinFileSystem {
     /// `noFollowAny` (NAMEI_NOFOLLOW_ANY, `RENAME_NOFOLLOW_ANY`): a symbolic
     /// link that would be followed in any component ends the lookup with
     /// ELOOP; a final component that is not followed is still returned.
+    /// A path that starts with `/.nofollow/` is the rest of it looked up
+    /// with NAMEI_NOFOLLOW_ANY (xnu `namei`; Foundation's URLs carry the
+    /// prefix: nsurlsessiond's download folders, `boot-profile.md` §16).
     func resolve(_ path: String, followFinal: Bool, noFollowAny: Bool = false) throws -> Resolved {
         guard !path.isEmpty else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
         guard path.utf8.count < Self.maxPathLength else { throw DarwinErrnoError(DarwinErrnoCode.ENAMETOOLONG) }
+        if let rest = Self.noFollowPrefixed(path) { return try resolve(rest, followFinal: followFinal, noFollowAny: true) }
         var current = normalize(path, cwd: cwdStorage)
         var linksFollowed = 0
 

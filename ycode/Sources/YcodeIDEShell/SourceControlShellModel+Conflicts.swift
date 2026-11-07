@@ -13,6 +13,10 @@ extension SourceControlShellModel {
     /// Whether the merge sheet is up (the view's overlay shows it).
     public var isMergeSheetShown: Bool { conflictEditor != nil }
 
+    /// Whether the merge alert or sheet is up over the window: the window
+    /// behind draws as disabled (`merge-sheet.md` §13.1).
+    public var isMergeModalShown: Bool { mergeAlert != nil || isMerging || conflictEditor != nil }
+
     /// Shows the merge sheet on `path` (else the first conflicted file).
     /// `fresh`: an operation stopped (again), so the sheet reads everything
     /// anew instead of keeping the choices it had.
@@ -27,6 +31,7 @@ extension SourceControlShellModel {
         }
         saveEditors?()
         let editor = ConflictEditorShellModel(repository: repo, focus: path)
+        editor.project = mergeProject
         editor.onResolved = { [weak self] in self?.refresh() }
         conflictEditor = editor
         editor.reload()

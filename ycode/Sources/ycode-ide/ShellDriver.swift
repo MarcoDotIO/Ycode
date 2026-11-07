@@ -47,6 +47,8 @@ import OVPlatform
 //
 //   YCODE_IDE_SCM=<p>       source control's walk (ShellDriver+SourceControl.swift)
 //   YCODE_IDE_GLASS4=<p>    council round 3's main-window rows (ShellDriver+Glass4.swift)
+//   YCODE_IDE_R4EDITOR=<p>  council round 4's editor rows (ShellDriver+EditorR4.swift)
+//   YCODE_IDE_MOTION4=<p>   council round 4's chrome rows (ShellDriver+Motion4.swift)
 //   YCODE_IDE_ORGANIZER=<p> Window ▸ Organizer's walk (OrganizerDriver.swift)
 //   YCODE_IDE_CONFLICT=<p>  the merge alert and merge sheet walk (ShellDriver+Conflicts.swift)
 //   YCODE_IDE_TESTS=<p>     testing's walk (ShellDriver+Tests.swift)
@@ -91,7 +93,7 @@ enum ShellDriver {
                         "YCODE_IDE_SETTINGS_VERIFY", "YCODE_IDE_EDITORS", "YCODE_IDE_LSP",
                         "YCODE_IDE_IME", "YCODE_IDE_POLISH", "YCODE_IDE_DEBUG2", "YCODE_IDE_ASSISTANT",
                         "YCODE_IDE_DOWNLOAD_WALK", "YCODE_IDE_ACCOUNTS", "YCODE_IDE_CONFLICT", "YCODE_IDE_SIMDEBUG", "YCODE_IDE_SIMUX", "YCODE_IDE_ORGANIZER", "YCODE_IDE_IB", "YCODE_IDE_PREVIEWS",
-                        "YCODE_IDE_GLASS4"]
+                        "YCODE_IDE_GLASS4", "YCODE_IDE_R4EDITOR", "YCODE_IDE_MOTION4"]
         guard switches.contains(where: { env[$0] != nil }) else { return }
         await pause(0.4)
         say("backend \(OpenViewsAutomation.backendName)")
@@ -118,6 +120,14 @@ enum ShellDriver {
         if let prefix = env["YCODE_IDE_DEBUG2"] { await DebugEditingDriver.run(app, prefix: prefix) }   // DebugEditingDriver.swift
         if let prefix = env["YCODE_IDE_SIMDEBUG"] { await SimDebugDriver.run(app, prefix: prefix) }   // SimDebugDriver.swift
         if let prefix = env["YCODE_IDE_PREVIEWS"] { await PreviewsDriver.run(app, prefix: prefix) }   // PreviewsDriver.swift
+        if let prefix = env["YCODE_IDE_R4EDITOR"] {   // ShellDriver+EditorR4.swift
+            await editorR4Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_MOTION4"] {   // ShellDriver+Motion4.swift
+            await motion4Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
         if let prefix = env["YCODE_IDE_GLASS4"] {   // ShellDriver+Glass4.swift
             await glass4Walk(app, prefix: prefix)
             OpenViewsAutomation.terminate()

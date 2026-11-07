@@ -111,7 +111,7 @@ public final class KernelLock: @unchecked Sendable {
 
     @inline(__always) fileprivate static func signal(_ wakes: [WaitQueue.Waiter]?) {
         guard let wakes else { return }
-        for w in wakes { pthread_cond_signal(w.cond) }
+        for w in wakes { w.sendSignal() }
     }
 
     /// Profiling (`profileProcesses`): from a waiter's wakeup (`finish`) to
@@ -823,11 +823,19 @@ public struct WaitQueue: @unchecked Sendable {
         static let recordStacks = getenv("YCODE_DEBUG_WAIT_STACKS").map { String(cString: $0) == "1" } ?? false
         /// Profiling: when `finish` woke it (monotonic ns).
         var wokenAt: UInt64 = 0
+        /// The direct hand-off (`SyncHandoff`, `YCODE_SYNC_HANDOFF=1`): the
+        /// waiting host thread's Linux id, whether its waker hands it its
+        /// CPU (set under the queue's lock before `finish`), and the state
+        /// word the two sides share.
+        let hostTID: Int32
+        var wantsHandoff = false
+        let handoffState = Atomic<Int>(0)
 
         init(lock: KernelLock, context: ThreadContext?, tag: UInt64) {
             self.lock = lock
             self.context = context
             self.tag = tag
+            hostTID = SyncHandoff.enabled || SyncHandoff.pinHook != nil ? SyncHandoff.currentTID() : 0
             cond = .allocate(capacity: 1)
             var attr = pthread_condattr_t()
             pthread_condattr_init(&attr)
@@ -843,6 +851,17 @@ public struct WaitQueue: @unchecked Sendable {
             cond.deallocate()
         }
 
+        /// Signals the sleeping host thread (after a hand-off's pin).
+        @inline(__always) func sendSignal() {
+            if wantsHandoff { SyncHandoff.pin(tid: hostTID, state: handoffState) }
+            pthread_cond_signal(cond)
+        }
+
+        /// The waiter's side once its wait returned.
+        @inline(__always) func waitReturned() {
+            if wantsHandoff { SyncHandoff.waitReturned(tid: hostTID, state: handoffState) }
+        }
+
         /// Records the result, leaves the queue, and wakes the host thread.
         func finish(_ r: WaitResult) {
             guard result == nil else { return }
@@ -853,7 +872,7 @@ public struct WaitQueue: @unchecked Sendable {
                 pthread_mutex_lock(lock.mutex)
                 result = r
                 storage?.remove(self)
-                pthread_cond_signal(cond)
+                sendSignal()
                 pthread_mutex_unlock(lock.mutex)
                 return
             }
@@ -868,7 +887,7 @@ public struct WaitQueue: @unchecked Sendable {
             if KernelLock.wakeAfterUnlock, lock.isHeldByCurrentThread {
                 lock.deferSignal(self)
             } else {
-                pthread_cond_signal(cond)
+                sendSignal()
             }
         }
     }
@@ -928,6 +947,7 @@ public struct WaitQueue: @unchecked Sendable {
             }
         }
         lock.unregister(w)
+        w.waitReturned()
         if w.wokenAt != 0, w.result == .woken { KernelLock.wakeLatency.add(KernelClock.now() &- w.wokenAt) }
         if let context, context.blockedInKernel {
             context.blockedInKernel = false
@@ -957,6 +977,21 @@ public struct WaitQueue: @unchecked Sendable {
     /// Wakes every waiter. Returns how many it woke.
     @discardableResult
     public func wakeAll() -> Int { wake(count: Int.max) }
+
+    /// Wakes every waiter, each with a direct hand-off of the waker's host
+    /// CPU when `YCODE_SYNC_HANDOFF=1` (`SyncHandoff`; a workloop sync wake).
+    @discardableResult
+    public func wakeAllHandingOff() -> Int { wakeHandingOff(count: Int.max) }
+
+    /// As `wake(count:)`, with the hand-off of `wakeAllHandingOff`.
+    @discardableResult
+    public func wakeHandingOff(count: Int) -> Int {
+        if SyncHandoff.enabled || SyncHandoff.pinHook != nil {
+            checkBound()
+            for w in storage.waiters.prefix(count) where w.hostTID > 0 { w.wantsHandoff = true }
+        }
+        return wake(count: count)
+    }
 
     /// Wakes up to `limit` waiters for which `match(context, tag)` holds.
     @discardableResult
@@ -1467,6 +1502,7 @@ extension WaitQueue {
             storage.remove(w)
         }
         lock.unregister(w)
+        w.waitReturned()
         if w.wokenAt != 0, w.result == .woken { KernelLock.wakeLatency.add(KernelClock.now() &- w.wokenAt) }
         if let context, context.blockedInKernel {
             context.blockedInKernel = false

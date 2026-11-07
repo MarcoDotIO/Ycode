@@ -32,6 +32,9 @@ struct WorkspaceView: View {
                     .background(c.sidebar)
             }
         }
+        // Under the merge alert and sheet the window draws disabled (§13.1).
+        .opacity(model.sourceControl.isMergeModalShown ? MergeModalTone.text : 1)
+        .animation(.easeOut(duration: MergeSheetMotion.veilIn), value: model.sourceControl.isMergeModalShown)
         .overlay { BuildBezelOverlay(notifier: model.notifier) }
         .overlay { BreakpointEditorLayer(model: model) }   // DebugEditors.swift
         .overlay { MergeOverlayLayer(scm: model.sourceControl, app: app) }   // MergeOverlay.swift: the merge alert and sheet

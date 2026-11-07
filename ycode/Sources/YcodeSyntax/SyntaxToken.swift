@@ -8,10 +8,16 @@ public enum SyntaxTokenKind: UInt8, Sendable, CaseIterable, Hashable {
     case regex, escape, variable, placeholder
     // Data and markup
     case key, tagName, attributeName, entity, heading, emphasis, strong, codeSpan, link, url, listMarker, quote
+    // Declarations (`editor-area.md` F.3): the name a type declaration
+    // declares (`struct Greeting`), any other declared name (`let value`,
+    // `func describe`), and a property named inside a string
+    // interpolation (`"\(name)"`).
+    case typeDeclaration, declaration, propertyReference
 
     /// The editor theme's color roles (`EditorTheme.tokens` keys).
     public enum Role: String, Sendable, CaseIterable, Hashable {
         case keyword, comment, docComment, string, number, preprocessor, attribute, typeName, identifier
+        case typeDeclaration, otherDeclaration, propertyReference
     }
 
     /// The color role a kind is drawn with.
@@ -26,6 +32,9 @@ public enum SyntaxTokenKind: UInt8, Sendable, CaseIterable, Hashable {
         case .attribute, .attributeName, .key, .strong, .emphasis: .attribute
         case .typeName, .variable, .link: .typeName
         case .identifier, .placeholder: .identifier
+        case .typeDeclaration: .typeDeclaration
+        case .declaration: .otherDeclaration
+        case .propertyReference: .propertyReference
         }
     }
 

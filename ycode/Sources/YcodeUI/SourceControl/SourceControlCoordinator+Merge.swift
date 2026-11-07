@@ -42,6 +42,7 @@ extension SourceControlCoordinator {
         }
         guard let overlay = MergeOverlayView.install(in: w) else { return nil }
         let sheet = MergeSheetController(repository: repo, focus: path)
+        sheet.project = MergeSheetProject(workspace: owner.session.model)
         sheet.onMerge = { [weak self, weak sheet] in
             guard let self, let sheet else { return }
             Task { await self.completeMerge(sheet) }

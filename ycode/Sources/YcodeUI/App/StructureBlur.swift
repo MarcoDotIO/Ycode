@@ -35,7 +35,10 @@ enum StructureBlur {
         for v in sources where v.window === window && !v.isHiddenOrHasHiddenAncestor {
             let r = v.convert(area, from: target)
             let visible = r.intersection(v.bounds)
-            guard !visible.isEmpty, let part = v.bitmapImageRepForCachingDisplay(in: visible) else { continue }
+            // Drawn straight at the blurred bitmap's resolution, not at the
+            // screen's and then scaled down (a sixteenth of the pixels at 2x;
+            // row 106).
+            guard !visible.isEmpty, let part = lowResolutionRep(for: visible) else { continue }
             v.cacheDisplay(in: visible, to: part)
             // Where the part sits in the area, from the area's bottom left.
             let inTarget = target.convert(visible, from: v)
@@ -48,6 +51,15 @@ enum StructureBlur {
         guard let data = rep.bitmapData else { return nil }
         blur(data, width: w, height: h, rowBytes: rep.bytesPerRow, sigma: sigma * pixelsPerPoint)
         return rep.cgImage
+    }
+
+    /// A bitmap for `rect` (points) at `pixelsPerPoint`.
+    static func lowResolutionRep(for rect: NSRect) -> NSBitmapImageRep? {
+        let w = max(1, Int(ceil(rect.width * pixelsPerPoint))), h = max(1, Int(ceil(rect.height * pixelsPerPoint)))
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                   isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: w * 4, bitsPerPixel: 32)
+        rep?.size = rect.size
+        return rep
     }
 
     /// A separable Gaussian blur in place (edges extended).

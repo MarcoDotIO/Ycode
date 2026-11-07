@@ -115,8 +115,38 @@ enum SettingsDriver {
         let cardEnd = SettingsLayout.windowSize.width - SettingsLayout.cardInset
         near(frame("settings navigator size")?.maxX, cardEnd - SettingsLayout.controlInset, "pop-up end")
         near(frame("settings sidebar widths")?.maxX, cardEnd - SettingsLayout.controlInset, "switch end")
-        near(frame("settings sidebar widths")?.width, 36, "switch width")
+        near(frame("settings sidebar widths")?.width, SettingsLayout.switchSize.width, "switch width")
+        near(frame("settings sidebar widths")?.height, SettingsLayout.switchSize.height, "switch height")
         say(failures.isEmpty ? "settings layout: ok" : "settings layout: FAILED \(failures)")
+    }
+
+    /// Checks the Editing pane's cards (R4.1): the navigation rows 44 tall
+    /// from y 72, text encoding alone in a card at 216, line endings and the
+    /// convert switch in the next at 263.5, When Editing's card at 394.
+    /// Prints "settings editing layout: ok" or "… FAILED …".
+    static func checkEditingLayout() {
+        var failures: [String] = []
+        func near(_ a: CGFloat?, _ b: CGFloat, _ what: String, _ tolerance: CGFloat = 0.6) {
+            let ok = a.map { abs($0 - b) <= tolerance } ?? false
+            say("settings editing layout: \(what) \(a.map { "\($0)" } ?? "missing") (\(b)) \(ok ? "yes" : "NO")")
+            if !ok { failures.append(what) }
+        }
+        let row = SettingsLayout.navigationRowHeight + SettingsLayout.separatorHeight
+        for (i, name) in ["display", "completion", "indentation"].enumerated() {
+            let f = frame("settings editing \(name)")
+            near(f?.minY, SettingsLayout.firstCardTop + CGFloat(i) * row, "\(name) row top")
+            near(f?.height, SettingsLayout.navigationRowHeight, "\(name) row height")
+            near(f?.minX, SettingsLayout.detailX + SettingsLayout.cardInset, "\(name) row x")
+        }
+        let line = SettingsLayout.rowHeight
+        near(frame("settings text encoding")?.midY, 216 + line / 2, "text encoding card")
+        near(frame("settings line endings")?.midY, 263.5 + line / 2, "line endings card")
+        near(frame("settings convert on save")?.midY, 263.5 + line + 1 + line / 2, "convert row", 1)
+        near(frame("settings trim whitespace")?.midY, 394 + line / 2, "When Editing card", 1.5)
+        near(frame("settings convert on save")?.width, SettingsLayout.switchSize.width, "switch width")
+        let controlEnd = SettingsLayout.windowSize.width - SettingsLayout.cardInset - SettingsLayout.controlInset
+        near(frame("settings text encoding")?.maxX, controlEnd, "pop-up end")
+        say(failures.isEmpty ? "settings editing layout: ok" : "settings editing layout: FAILED \(failures)")
     }
 
     static func run(_ app: ShellAppModel, prefix: String) async {
@@ -187,6 +217,7 @@ enum SettingsDriver {
 
         // Editing and its pages.
         await open(.editing)
+        checkEditingLayout()
         await shot(prefix, "editing")
         await click("settings editing display")
         await click("settings line numbers")
@@ -243,6 +274,7 @@ enum SettingsDriver {
         await shot(prefix, "dark-accounts")
         await open(.editing)
         await shot(prefix, "dark-editing")
+        checkEditingLayout()
 
         // The changed shortcut works in the workspace window's menus.
         if let w = app.workspace {

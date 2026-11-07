@@ -47,7 +47,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(ImageViewerLayout.loadingDelay == 0.45)
     }
 
-    @Test func largeImageKeepsTheOldContentUntilReady() async throws {
+    @Test func largeImageDecodesOffTheMainThread() async throws {
         let (wc, dir) = try window("image-large")
         defer { wc.window?.close() }
         let long = dir.appendingPathComponent("GlassScroll/Long.swift")
@@ -177,9 +177,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
 
     // MARK: Rows 75, 76: text layout
 
-    /// "// " and a 110-block band: the band starts on the comment's row and
-    /// breaks at the container's edge (editor-area.md E.7 item 1).
-    @Test func overlongWordStaysOnTheRowItStartsOn() throws {
+    /// "// " and a 110-block band: every block one cell, whatever face
+    /// draws it (E.7 item 2). Where the band breaks is round 4's rule
+    /// (F.1, `CouncilRound4EditorTests`): "//" alone, then the run.
+    @Test func blockRunTakesOneCellPerBlock() throws {
         let band = "// " + String(repeating: "\u{2588}", count: 110)
         let g = CouncilRound2Glass3Tests()
         let (wc, e) = try g.editor("import Foundation\n\n" + band + "\nlet x = 1\n", name: "Bands.swift")
@@ -192,21 +193,14 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             if start == 19 { rows = f.textLineFragments.map { ($0.characterRange, $0.typographicBounds.width) } }
             return true
         }
-        #expect(rows.count == 2, "\(rows)")
-        // The first row holds "// " and as many blocks as fit, each one cell.
-        let first = try #require(rows.first)
-        #expect(first.0.location == 0 && first.0.length > 3)
-        let cells = CGFloat(first.0.length) * 8
-        #expect(abs(first.1 - cells) < 0.5, "\(first)")
-        let columns = Int((e.textView.textContainer?.size.width ?? 0) / 8)
-        #expect(first.0.length == columns, "\(first.0.length) of \(columns)")
-        // Every block advances one cell (8.0), fallback faces included.
-        let total: CGFloat = rows.map(\.1).reduce(0, +)
-        #expect(abs(total - 904) < 1, "\(total)")
-        // Words that fit still wrap whole.
-        #expect(!EditorLineBreaks.allowsBreak(before: 3, in: band as NSString, columns: 80))
-        #expect(EditorLineBreaks.allowsBreak(before: 3, in: "// word" as NSString, columns: 80))
-        #expect(EditorLineBreaks.allowsBreak(before: 2, in: "//xx" as NSString, columns: 80))
+        #expect(rows.count == 3, "\(rows)")
+        #expect(rows.first?.0.length == 3)
+        // Every block advances one cell, fallback faces included.
+        let blocks = rows.dropFirst()
+        let total: CGFloat = blocks.map(\.1).reduce(0, +)
+        // (the last row's range holds the line's end too)
+        let cells = CGFloat(blocks.map(\.0.length).reduce(0, +) - 1)
+        #expect(cells == 110 && abs(total - cells * Theme.advance) < 1, "\(total)")
     }
 
     /// The editor starts with the scroll bar style as it will settle, so

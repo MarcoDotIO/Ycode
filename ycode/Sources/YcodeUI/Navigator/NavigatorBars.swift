@@ -202,3 +202,17 @@ final class BookmarkBox: NSObject {
     let bookmark: Bookmark
     init(_ b: Bookmark) { bookmark = b }
 }
+
+/// Colours of the navigator's bottom bar.
+enum NavigatorBarColors {
+    /// The filter-options glyph (funnel lines and chevron): in dark #ABABAC
+    /// on the capsule (`editor-area.md` F.9, checklist row 110; it was the
+    /// secondary label colour, #807F7F there); in light the secondary label
+    /// colour (`metrics.md` §15).
+    static let optionsGlyph = NSColor(name: "NavigatorOptionsGlyph") { a in
+        a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(srgbRed: CGFloat((WorkspaceChrome.filterGlyphDark >> 16) & 0xFF) / 255,
+                                                                    green: CGFloat((WorkspaceChrome.filterGlyphDark >> 8) & 0xFF) / 255,
+                                                                    blue: CGFloat(WorkspaceChrome.filterGlyphDark & 0xFF) / 255, alpha: 1)
+            : .secondaryLabelColor
+    }
+}

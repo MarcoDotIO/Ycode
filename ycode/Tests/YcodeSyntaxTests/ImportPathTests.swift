@@ -34,7 +34,7 @@ import Testing
     }
 
     @Test func lexerImportPathRule() {
-        let t = snapshot("return Foo\ncase let Bar\nimport  A . B\n", .swift, parser: false)
+        let t = snapshot("return Foo\nif Bar\nimport  A . B\n", .swift, parser: false)
         #expect(t.contains("typeName Foo") && t.contains("typeName Bar"), "\(t)")
         #expect(!t.contains("typeName A") && !t.contains("typeName B"), "\(t)")
     }

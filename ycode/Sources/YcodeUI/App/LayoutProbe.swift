@@ -198,9 +198,10 @@ public enum LayoutProbe {
         }
         if glass {
             let h = Double(r.root.bounds.height)
-            r.edges("navigator.plus", r.frame("navigator.plus", nav.plusGlass), x: 6, maxY: h - 7, w: 31, h: 30, source: "\(src) §2")
-            r.edges("navigator.filterCapsule", r.frame("navigator.filterCapsule", nav.filterGlass), x: 42, maxX: 284, maxY: h - 7, h: 30,
-                    source: "\(src) §2")
+            // Council round 4 (editor-area.md F.9, row 110).
+            r.edges("navigator.plus", r.frame("navigator.plus", nav.plusGlass), x: 7, maxY: h - 8, w: 28, h: 28, source: "editor-area.md F.9")
+            r.edges("navigator.filterCapsule", r.frame("navigator.filterCapsule", nav.filterGlass), x: 42.5, maxX: 282.5, maxY: h - 8, h: 28,
+                    source: "editor-area.md F.9")
         }
         for i in 0..<CommandTable.navigators.count {
             nav.select(i)

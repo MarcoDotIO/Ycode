@@ -654,6 +654,294 @@ about 2 characters later than the reference's. The scroll lane (x 1126–
    covers every visual line of a wrapped line (also in the merge sheet,
    `merge-sheet.md` §4.2); Ycode's covers only the first.
 
+## Council round 4 measurements (2026-11-06)
+
+Round 4 captured both apps at **Retina (2x)**, foreground, key window,
+120 fps, 1400 × 880 (1100 × 880 after the narrow-window step), with the
+same grid as rounds 1–3 (editor x 290–1139, content from y 86). The Mac
+was in the **dark appearance** and both apps followed it, so this round
+gives the default dark theme; round 1's light values (C.4) stay valid for
+light. Ycode was `45c676aa`. Values are in points with half-point
+precision. Load was lower than in round 3 (Ycode's first scroll steps at
+a 1-minute load of about 100–190, the reference's at about 45). Checklist
+rows 83–88 and 106–113 in `fidelity-council.md`. These values supersede §C–§E where
+they differ.
+
+### F.1 A run that does not fit moves to the next row (Bands.swift)
+
+Each band line of the test file is "// " followed by 110 full-block
+characters (U+2588) with no space between them.
+
+| | Reference | Ycode now |
+|---|---|---|
+| Visual rows per band line | **3**: "//" alone on the first row; the whole block run starts on the **second** row at the continuation indent (x 373, column 4), fills it to the container edge (76 blocks, x 373–984), and its last 34 blocks take the **third** row (x 373–646.5) | **2**: "// " and the first 77 blocks on the first row (x 365–981), 33 blocks on the second (x 373–637) |
+| Pitch of one band line | **54** (3 × 18) | 36 (2 × 18) |
+| Lines visible at rest (step 07) | 1–18 | 1–29 |
+| Top line after the 1200-point scroll (step 08) | 36 | 45 |
+| Block ink in its 18-point row | 13.5 tall, its top **3.5** below the row's top, 1 above the row's bottom; 4.5 of background between rows | 13.5 tall, its top 4.5 below the row's top (1 lower) |
+
+**Rule (target).** Treat a run with no break opportunity as one word. A
+run of full blocks has none: Unicode line breaking (UAX #14) gives U+2588
+the class AL, and AL × AL does not break. When a word does not fit in the
+space left on the current visual row, **start it on the next row** at the
+continuation indent. Only when it does not fit even an empty continuation
+row, break it after the last character that fits and continue on the
+following rows, each at the continuation indent. Ycode breaks inside the
+word on the row where it starts, which keeps "// " and the run together
+and saves a row per line.
+
+The same rule holds for ordinary words; §F.6 adds one observation about
+the space after a word.
+
+### F.2 Cell advance at Retina scale (refines C.1)
+
+At 2x the reference's cell is **8.04**, not 8.0:
+
+- The two block rows above start at the same x and hold 76 and 34
+  blocks; their right edges differ by 337.5 for 42 cells (8.036 each).
+  110 blocks span 884.5 (8.04 each), as round 3 measured (E.7).
+- The continuation row "so that text passes under the toolbar as the
+  editor scrolls." (60 characters from column 5) spans x 382–860.5 in the
+  reference and x 382–858 in Ycode: 2.5 more over 59 advances.
+
+Round 1's exact 8.0 was measured at 1x, where the advance is rounded to
+whole pixels. At 2x the reference uses the unrounded advance (about 16.07
+pixels), so glyph edges fall between device pixels. Ycode uses 8.0 at 2x.
+Target: use the font's own advance at the backing scale (8.04 at the
+default size on Retina), and keep the 80-column container of C.1, whose
+edge then sits at about x 984–986. The code column (x 341.5–342) and the
+18-point line pitch are unchanged and match.
+
+### F.3 The default dark theme's colours
+
+**Method.** Colours of fully covered glyph pixels: for each token, the
+median of the five pixels farthest from the background inside the token's
+cell box, on several lines. Antialiased edges are never used. The method
+is checked against flat fills: the comment colour sampled from text
+(#ABB4CE) and from the full-block runs, which are solid rectangles of the
+comment colour (#ABB3CD over about 500,000 pixels), agree within one
+unit; the string colour from text (#FF8E7B) and from the string bands
+(#FF8D7A) agree within one unit. Values are sRGB as captured.
+
+| Token (examples in the test files) | Reference | Ycode now |
+|---|---|---|
+| Editor background | **#262626** (with ±1 dither in the capture) | #1E1E1E |
+| Plain text (`Foundation` after `import`, braces, `->`, `\(` and `)` of an interpolation) | **#FAF1F3** | #FFFFFF |
+| Keyword (`import`, `struct`, `let`, `func`, `static`) | **#FF83B4** | #FF3860 |
+| Comment, line and block, and the full-block runs after `//` | **#ABB3CD** | #9A9A9A (#A0A0A0 on line 1) |
+| String literal and string bands | **#FF8E7B** (bands #FF8D7A) | #FF4346 (bands #FF4245) |
+| Number (`7`, `100`) | **#ECA900** | #0092FF |
+| Type name in use (`Int`, `String`) | **#D997FF** | #DC34F3 |
+| Type declaration name (`Section01` after `struct`, `Greeting`) | **#00CAFB** | #FFFFFF in the editor; #DC35F2 (the type-in-use colour) in the merge sheet |
+| Other declaration name (`value07` after `let`, `describe`, `farewell`, `defaultName`) | **#27A7C1** | #FFFFFF |
+| A property used inside a string interpolation (`name` in `"\(name)"`) | **#20AD9D** | #FFFFFF |
+| Line number | **#706D6E** | #9A9A9A |
+| Current line's number | **#FAF1F3** (the plain-text colour) | #FFFFFF |
+| Current-line band, focused pane | **#353535** | #2D2D2D |
+| Current-line band, the unfocused pane of a split | **#2A2A2A** (faint, 4 above the background) | #2D2D2D (same as focused) |
+
+1. The judges' "number about #D9C97C" and "comment bands about #C0C4E6 /
+   #929CB0" were edge-blended samples from reduced sheets; the table's
+   values are the cores. GPT's "Ycode's cyan identifiers are more
+   saturated" is wrong in direction: Ycode has no declaration colour.
+2. Three declaration colours are distinct in the reference: type
+   declarations bright cyan (#00CAFB), other declarations teal
+   (#27A7C1), and a property **reference** inside an interpolation
+   green-teal (#20AD9D). Ycode should classify all three in both the
+   editor and the merge sheet, with the same colours in both.
+3. Whether Ycode's default dark theme takes these values is the owner's
+   decision, as for the light theme (C.4); the checklist marks it.
+
+### F.4 Full blocks join without seams
+
+| | Reference | Ycode now |
+|---|---|---|
+| A row of blocks | reads as **one solid bar** of #ABB3CD; a one-device-pixel line (0.5 point), at most 22 levels darker (#979FB5 at its darkest), shows at cell edges only in alternating spans of about 7 cells, where the 8.04 advance puts the edge mid-pixel | a **1-point lighter seam** (#A9A9A9 and #AEAEAE on #9A9A9A) at **every** cell edge: each glyph is drawn slightly wider than its cell and the overlapping antialiased edges add up |
+| Between rows | a clean 4.5-point gap of background | the same |
+
+Target: neighbouring full blocks share an edge, with no overlap and no
+gap. Either snap each block's left and right edges to the same device
+pixel as its neighbour's, or fill a run of full blocks on one visual row
+as a single rectangle in the run's colour. Never draw a lighter seam.
+
+### F.5 Hiding and showing the inspector (step 10, 11): a regression
+
+The press is an accessibility press on the toolbar's Hide Inspector /
+Show Inspector button. Times are from the start of the press. The
+position is the inspector panel's left edge at y 700, where its fill
+meets the editor: x 1168 when shown, 1399.5 when hidden (231.5 points of
+travel); progress is the share of that travel.
+
+**Reference, hide** (button state changes at 24 ms):
+
+| ms | 48 | 86 | 109 | 141 | 154 | 174 | 193 | 209 | 222 | 249 | 262 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| progress | 0.03 | 0.18 | 0.21 | 0.41 | 0.48 | 0.65 | 0.76 | 0.90 | 0.92 | 1.00 | 1 |
+
+**Reference, show** (the first content change at 116 ms):
+
+| ms | 129 | 154 | 167 | 190 | 216 | 231 | 257 | 269 | 294 | 308 | 334 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| progress | 0.03 | 0.12 | 0.24 | 0.29 | 0.44 | 0.55 | 0.75 | 0.79 | 0.83 | 0.97 | 1 |
+
+| | Reference hide | Reference show | Ycode hide | Ycode show |
+|---|---|---|---|---|
+| Press to first motion | **48 ms** | **116–129 ms** | 78 ms | 102 ms (jump bar), 132 ms (edge) |
+| Motion (first to last moving frame) | **214 ms** | **218 ms** | 245 ms (78–323) | 261 ms (102–363) |
+| Changed frames during the motion | **11**, 13–37 ms apart (mean 21) | **12**, 12–26 ms apart | **5**, 41–88 ms apart (71, 88, 45, 41) | **6**, 30–68 ms apart |
+| Curve | ease-in-out (0.42, 0, 0.58, 1) over about 226 ms, RMSE 0.035; free fit (0.65, 0.35, 0.60, 0.95), RMSE 0.019 | ease-in-out over about 217 ms, RMSE 0.057 | ease-in shaped: 0.02 at 78, 0.11 at 149, 0.70 at 237, 1 at 282; text re-wraps in a further frame at 323 | ease-out shaped: 0.05 at 132, 0.37 at 177, 0.72 at 232, 0.91 at 300, 1 at 363 |
+| Whole-change segment (capture tool) | 305 ms | 292 ms | 414 ms | 395 ms |
+
+1. The reference matches round 2 (D.5: 43 ms and 222 ms for hide; 118
+   ms and 216 ms for show). The recorder delivered a frame about every
+   12–15 ms; the reference changed on nearly every one.
+2. **Ycode regressed.** In round 3 its segments were 321 and 295 ms
+   against 323 and 296 with the same curve shape. Now it draws only 5–6
+   frames, each held 40–90 ms (about 14 per second), and finishes 60–100
+   ms later. The editor re-wraps Long.swift progressively in both apps,
+   so each Ycode frame is a full relayout; round 3 ran at far higher load
+   and matched, so load does not explain the drop. Look for per-frame
+   work that grew since `0c3ae33f` (text layout of the whole file per
+   frame, a synchronous minimap or jump-bar update, or an animation that
+   is no longer driven by the display link).
+3. Target: start the motion within 50 ms of the press (hide) and within
+   120 ms (show); animate the inspector's edge with ease-in-out over
+   about 220 ms; update the editor's width, re-wrap and the minimap on
+   every display frame (at least 60 per second; the reference reaches
+   about 75 in this recording).
+
+### F.6 The narrow-window step (17): one frame, then the toolbar's overflow morph
+
+The step sets the window's size to 1100 × 880 with one accessibility
+call; it is not a live drag, so neither app runs a live resize.
+
+| | Reference | Ycode now |
+|---|---|---|
+| Content relayout | **one frame**, 105 ms after the request (the call itself returned at 201 ms) | one frame, 274 ms after the request (its call blocked 264 ms) |
+| Toolbar | the overflow capsule ("»") appears at the place of the items it absorbs, **wide**, and shrinks to its circle: its left edge stays at x 798.5, its right edge moves 918.5 → 831 over 155 ms (table) | the scheme capsule is drawn merged with the next group for one frame (x 560–727), then splits (560–636 and 636.5–710) 11 ms later; the "»" circle appears at once |
+| What the judges called a "299 ms progressive live resize" | the content frame plus the 12 frames of the overflow morph | — |
+
+Overflow capsule width (right edge − 798.5), ms from the content frame:
+
+| ms | 0 | 13 | 28 | 42 | 57 | 71 | 86 | 99 | 114 | 128 | 142 | 155 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| width | 120 | 105.5 | 83 | 73 | 64 | 50 | 45.5 | 39 | 37 | 34.5 | 33 | 32.5 |
+
+The curve is a fast ease-out (half the change by about 35 ms), like the
+other glass shape morphs in `liquid-glass.md`. Target: relayout the
+content in one frame as now, but within about 100 ms of the size change;
+morph a newly shown overflow capsule from the absorbed items' extent to
+its circle over about 150 ms; never draw two capsules merged for a frame.
+
+**Widths at 1100 with the split editor** (the after stills):
+
+| | Reference | Ycode now |
+|---|---|---|
+| Left pane's minimap | x 487.5–549.5 (**62**), then the 11-point scroll lane 549.5–560.5 | x 488.5–551 (62.5), lane 551–562 |
+| Right pane's minimap | x 764–826 (62) | about 62.5 |
+| Rightmost text ink in each pane | 476.5 and 753 | 476.5 and 752.5 |
+
+The minimap floor (E.6) is now met; the judges' "61 against 52" is not
+borne out. The remaining wrap difference is one line: on line 6's second
+visual row the reference breaks "0: a" / "comment" and Ycode keeps "0: a
+comment". Both "0: a comment" (from column 5) and "import Foundation"
+(from column 0) end at column 17; the reference keeps "import Foundation"
+on one row. The observation is reproduced if **the space after a word
+must also fit** before the next word may start on that row (at the end
+of a logical line there is no space, so "import Foundation" fits). With
+F.2's 8.04 cell the space would end at x 486.7, past the container. This
+is a single observation: see the open question in `fidelity-council.md`.
+
+### F.7 Momentum flick (step 04)
+
+From the capture tool's segment (the first moved frame is time 0; the
+start latency after the gesture is 49 ms in the reference and 56 ms in
+Ycode, so round 3's 85–98 ms hold is gone):
+
+| | Reference | Ycode now |
+|---|---|---|
+| Passes the end of the travel | **55–60 ms** | about 210 ms |
+| Overshoot peak | **140–150 ms**, 11 % of the measured travel | 310–350 ms, 10 % |
+| Settled | **700 ms** | 818 ms, plus one stray repaint about 930 ms after the start |
+| Frame changes | every **13.3 ms** on average | every 31.7 ms (each frame held about 30 ms) |
+
+Ycode's overshoot now matches; its rise is about four times slower and
+its frame rate about a third. Step 03 (linear scroll) shows the same
+cadence gap (Ycode about every other recorded frame). Ycode's main
+session ran at a higher load (100–190 against 45), so weigh the rate
+lightly, but the rise time is a curve difference: keep E.1's momentum
+(content follows the gesture's velocity from the first event) and make
+the rise reach the end in about 60 ms for this flick.
+
+### F.8 Selecting an image (step 05): refines E.3
+
+The reference this round, from the click on Stripes.png:
+
+| ms | What changes |
+|---|---|
+| 148 | the editor, jump bar and status bar switch to the image editor in one frame: an **empty** canvas with only the "Open with Preview" button at its bottom |
+| 212 | the inspector switches to the image's inspector; Dimensions, Resolution, Color Space and Alpha Channel all read **"--"** |
+| 608 | "Loading…" appears centred in the canvas (460 ms after the canvas cleared) |
+| 689 | the image appears, in one frame |
+
+The properties still read "--" in the after still. Ycode now: one frame
+at 229 ms with the image and filled properties (800 × 1800, RGB, No).
+
+Rounds 2–4 together: the reference switches to the image editor at once
+and **does not keep the old text** (this supersedes E.3's "keep the old
+content"); it draws the image when it is decoded (in one frame when that
+is fast, as in round 3); it shows "Loading…" only once the image has
+taken about 450 ms; and it shows "--" for any property it has not read
+yet (round 2 showed real values). Target: Ycode's single frame is
+correct when the image is ready; when it is not, show the empty canvas
+with its button, then "Loading…" after about 450 ms. Showing values
+immediately is acceptable: "--" is the reference's not-yet-known state,
+not a value to copy.
+
+### F.9 The bottom bars
+
+Window points of step 02's after stills, at rest in the active window.
+
+| Element | Reference | Ycode now |
+|---|---|---|
+| Navigator "+" circle | about **28 × 28** (x 7–35.5, y 844–872), glyph #E3E3E3 | about 31 × 30 (x 6.5–37.5, y 843–873) |
+| Filter capsule | x **42.5–282.5** (240 wide), y **844–872** (28 tall) | x 41.5–284.5 (243), y 843–873 (30) |
+| Filter-menu glyph (funnel and chevron) | #ABABAC | #807F7F (dimmer) |
+| Editor's bottom-left item | a **filled** accent-blue (#007AFF) shape, x 304–321.5, y 856.5–868 (17.5 × 11.5): a rounded rectangle with its right end drawn to a point, like a filled label tag | an outline tag glyph, light grey |
+
+Icons stay Ycode's own: match the filled style, the size and the accent
+fill, not the artwork.
+
+### F.10 Empty states and jump-bar text
+
+| Element | Reference | Ycode now |
+|---|---|---|
+| Inspector, no file selected in the project navigator | "Not Applicable", centred on (1270, 480), **cap height 12** (about 17 points), #757677 | "Not Applicable", cap height 9.5 (about 13.5 points), #717274 |
+| Inspector, Source Control navigator's Repositories view with nothing selected | **"No Selection"**, same size and place | "Not Applicable" |
+| Jump bar with no file open | the grid button, a 1-point divider, then "No Selection" from **x 337.5** in **#DEDFDE** (the jump bar's normal text colour), cap top 61.5 | no divider; "No Selection" from about x 313.5, dimmed (#565656) |
+
+### F.11 The Welcome window (step 18)
+
+| | Reference | Ycode now |
+|---|---|---|
+| Frame (in the capture's coordinates, the same for both apps) | x 460–940 (**480**), y **51.5–680.5** (629) | x 460–939.5 (479.5), y 43.5–672.5: the **same size, 8 points higher** |
+| First recent row's path | the full path as recorded, "/private/tmp/ycode-council-r4/council-r4/xcode/project" (the symlink-resolved form; it fits the row) | "…D/tmp/ycode-council-r4/council-r4/ycode/project": a longer stored path, truncated at its head |
+
+The judges' "about 11 points narrower" is not borne out. Target: place
+the window 8 points lower (centre it as the reference does) and show the
+stored path in full when it fits. The reference's truncation mode for a
+path that does not fit is not settled.
+
+### F.12 Items raised by one judge, checked
+
+- **Session start.** The reference restores the Plain group expanded:
+  13 navigator rows at rest in step 01 (Zeta, Sub, alpha, Beta under
+  Plain); Ycode shows 9 (Plain collapsed). Restore each group's
+  expanded state with the workspace.
+- **The unfocused split pane's current line** keeps a faint band in the
+  reference (#2A2A2A on #262626; the focused pane's is #353535); Ycode
+  draws the focused band in both panes (F.3).
+
 ## Evidence
 
 - Commands, shortcuts and the assistant/counterparts behavior: Apple's
@@ -693,3 +981,13 @@ about 2 characters later than the reference's. The scroll lane (x 1126–
   colours from colour runs and ink boxes on the stills. The band length
   per character uses the test project's own generator (110 blocks per
   row). Measured in the dirty room; prose only here.
+- Council round 4 (F.1–F.12), level 3: the round 4 session's Retina
+  stills and 120 fps recordings of both apps (foreground, key window,
+  dark appearance). Token colours are glyph-core samples (the five
+  pixels farthest from the background per token, median), checked
+  against the flat full-block and string-band fills; run geometry from
+  colour runs and ink boxes; animation keyframes from per-frame edge
+  positions in the recordings (frame times from the recorder's frame
+  list, the press time from the session manifest) and least-squares
+  Bezier fits; the flick from the capture tool's timing segments.
+  Measured in the dirty room; prose only here.

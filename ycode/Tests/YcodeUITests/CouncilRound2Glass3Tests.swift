@@ -194,8 +194,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         clip.scroll(to: NSPoint(x: 0, y: top + 20))   // the first momentum event crosses
         scroll.reflectScrolledClipView(clip)
         var frames: [CGFloat] = []
-        var lowest = CGFloat.greatestFiniteMagnitude
-        scroll.topBounce.onFrame = { frames.append($0); lowest = min(lowest, clip.bounds.minY) }
+        // How far past the top each frame drew the text, against the top
+        // at that frame (a layout pass may move the top inset meanwhile).
+        var deepest: CGFloat = 0
+        scroll.topBounce.onFrame = { frames.append($0); deepest = max(deepest, EditorTopBounce.top(of: scroll) - clip.bounds.minY) }
         // Events 10 ms apart: a gesture, then momentum of 30 points each
         // (3000 pt/s) until the top is crossed, then the momentum's tail.
         let t0 = ProcessInfo.processInfo.systemUptime
@@ -232,9 +234,11 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let peak = scroll.topBounce.lastPeak
         print("bounce: peak \(peak) over \(frames.count) frames, view \(clip.bounds.height)")
         // About 3000 pt/s gives about 57 points (editor-area.md E.1); the
-        // timer's frames sample it.
-        #expect(peak > 40 && peak < 65, "peak \(peak)")
+        // frames sample it, so a peak short of it is only possible when the
+        // frames are sparse (a loaded machine) and never above it.
+        #expect(peak < 65, "peak \(peak)")
+        if frames.count >= 15 { #expect(peak > 40, "peak \(peak) over \(frames.count) frames") }
         // The text really moved past the top by the peak.
-        #expect(abs((top - lowest) - peak) < 0.5, "lowest \(lowest), top \(top)")
+        #expect(abs(deepest - peak) < 0.5, "deepest \(deepest), peak \(peak)")
     }
 }

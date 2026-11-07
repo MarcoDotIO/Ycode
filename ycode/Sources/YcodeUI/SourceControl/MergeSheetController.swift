@@ -14,6 +14,8 @@ public final class MergeSheetController: NSViewController, NSTextViewDelegate {
     /// File list: Flat instead of Hierarchical.
     public private(set) var isFlat = false
     public private(set) var filterText = ""
+    /// The workspace's project: the jump bar starts with it (§13.7).
+    public var project: MergeSheetProject? { didSet { jumpBar.needsDisplay = true } }
 
     public let sheetView = MergeSheetView()
     public let fileList = MergeFileListView()
@@ -228,14 +230,25 @@ public final class MergeSheetController: NSViewController, NSTextViewDelegate {
         render()
     }
 
+    /// Where the Choose menu of change `h` opens (canvas coordinates): its
+    /// top-left at the token's centre, 3 below the token's bottom, then 6
+    /// higher (§7; §13.6 measured Ycode's menu 6 points lower than the
+    /// reference's).
+    public func chooseMenuOrigin(forHunk h: Int) -> NSPoint? {
+        guard let t = canvas.tokenRect(forHunk: h) else { return nil }
+        return NSPoint(x: t.midX, y: t.maxY + 3 - MergeChooseMenuTracking.menuTopOffset)
+    }
+
     /// Clicking a token: selects its change and opens the Choose menu below
-    /// it, its top-left at the token's centre and 3 below its bottom.
+    /// it; the item under the pointer is highlighted from its first frame
+    /// (§13.6).
     func showChooseMenu(forHunk h: Int) {
         selectHunk(h)
         let menu = chooseMenu(forHunk: h)
+        menu.delegate = MergeChooseMenuTracking.shared
         lastChooseMenu = menu
-        guard let t = canvas.tokenRect(forHunk: h), view.window?.isVisible == true else { return }
-        menu.popUp(positioning: nil, at: NSPoint(x: t.midX, y: t.maxY + 3), in: canvas)
+        guard let p = chooseMenuOrigin(forHunk: h), view.window?.isVisible == true else { return }
+        menu.popUp(positioning: nil, at: p, in: canvas)
     }
 
     /// Hand editing (Ycode's choice): the selected change's text.
@@ -352,7 +365,6 @@ public final class MergeSheetController: NSViewController, NSTextViewDelegate {
         mergeButton.title = state.primaryTitle
         mergeButton.isEnabled = state.canMerge
         mergeButton.isDefaultLook = state.canMerge
-        mergeButton.setAccessibilityLabel(state.primaryTitle)
         sheetView.needsLayout = true
     }
 
@@ -390,7 +402,12 @@ public final class MergeSheetView: NSView {
         setAccessibilityElement(true)
         setAccessibilityRole(.sheet)
         setAccessibilityLabel("Merge")
+        setAccessibilityModal(true)
     }
+
+    // Merge is the sheet's default button and Cancel its cancel button (§13.2).
+    public override func accessibilityDefaultButton() -> Any? { controller?.mergeButton }
+    public override func accessibilityCancelButton() -> Any? { controller?.cancelButton }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
@@ -406,8 +423,15 @@ public final class MergeSheetView: NSView {
         controller?.layoutSheet()
     }
 
+    // Escape cancels; Return merges once Merge is enabled (the default
+    // button; the window can cut the button row, §13.3).
     public override func keyDown(with event: NSEvent) {
-        if event.charactersIgnoringModifiers == "\u{1b}" { controller?.cancel(nil) } else { super.keyDown(with: event) }
+        switch event.charactersIgnoringModifiers {
+        case "\u{1b}": controller?.cancel(nil)
+        case "\r", "\u{3}":
+            if controller?.mergeButton.isEnabled == true { controller?.merge(nil) } else { super.keyDown(with: event) }
+        default: super.keyDown(with: event)
+        }
     }
 
     public override func cancelOperation(_ sender: Any?) { controller?.cancel(sender) }
@@ -611,6 +635,16 @@ public final class MergeFileListView: NSView, NSTextFieldDelegate {
 
     public func controlTextDidChange(_ obj: Notification) { controller?.setFilter(filterField.stringValue) }
 
+    /// "Hierarchical | Flat" as radio buttons (§13.2).
+    lazy var segmentElements: [DrawnControlElement] = [
+        DrawnControlElement(in: self, label: { MergeSheetText.hierarchical }, rect: { [unowned self] in segmentFrames.hierarchical },
+                            selected: { [unowned self] in controller?.isFlat == false }, press: { [unowned self] in controller?.setFlat(false) }),
+        DrawnControlElement(in: self, label: { MergeSheetText.flat }, rect: { [unowned self] in segmentFrames.flat },
+                            selected: { [unowned self] in controller?.isFlat == true }, press: { [unowned self] in controller?.setFlat(true) }),
+    ]
+
+    public override func accessibilityChildren() -> [Any]? { segmentElements + [filterField] }
+
     // A context menu on a file: Mark as Resolved (Ycode's choice).
     public override func menu(for event: NSEvent) -> NSMenu? {
         guard let c = controller else { return nil }
@@ -661,7 +695,7 @@ public final class MergeJumpBarView: NSView {
         MergeDraw.symbol("chevron.left", in: NSRect(x: 44.5, y: 0, width: 6.5, height: h), color: ink, pointSize: 10)
         MergeDraw.symbol("chevron.right", in: NSRect(x: 64, y: 0, width: 6.5, height: h), color: ink, pointSize: 10)
         var x: CGFloat = 82
-        let path = c.state.jumpPath(root: c.repository.root.path)
+        let path = c.state.jumpPath(root: c.repository.root.path, project: c.project)
         for (i, part) in path.enumerated() {
             let fileName = c.state.currentFile.map { URL(fileURLWithPath: $0).lastPathComponent } ?? part
             let symbol = i == 0 ? "shippingbox" : i == path.count - 1 ? WorkspaceChrome.fileSymbol(fileName) : "folder.fill"
@@ -696,6 +730,18 @@ public final class MergeJumpBarView: NSView {
         if nav.previous.insetBy(dx: -4, dy: 0).contains(pt) { controller?.previousHunk(nil) }
         if nav.next.insetBy(dx: -4, dy: 0).contains(pt) { controller?.nextHunk(nil) }
     }
+
+    // The conflict navigator's chevrons are buttons (§13.2).
+    public override func isAccessibilityElement() -> Bool { true }
+    public override func accessibilityRole() -> NSAccessibility.Role? { .group }
+    public override func accessibilityLabel() -> String? { controller?.state.jumpPath(root: controller?.repository.root.path ?? "", project: controller?.project).joined(separator: " › ") }
+    lazy var navigatorElements: [DrawnControlElement] = [
+        DrawnControlElement(in: self, label: { "Previous Conflict" }, rect: { [unowned self] in navigatorFrames.previous },
+                            press: { [unowned self] in controller?.previousHunk(nil) }),
+        DrawnControlElement(in: self, label: { "Next Conflict" }, rect: { [unowned self] in navigatorFrames.next },
+                            press: { [unowned self] in controller?.nextHunk(nil) }),
+    ]
+    public override func accessibilityChildren() -> [Any]? { navigatorElements }
 }
 
 /// The footer row under both panes (§8): each side's repository › branch ›
@@ -750,4 +796,19 @@ public final class MergeFooterView: NSView {
         guard st.contains(pt) else { return }
         if pt.x < st.minX + 18 { controller?.previousHunk(nil) } else if pt.x > st.maxX - 18 { controller?.nextHunk(nil) }
     }
+
+    // The stepper's chevrons are buttons; "n/m" its value (§13.2).
+    public override func isAccessibilityElement() -> Bool { true }
+    public override func accessibilityRole() -> NSAccessibility.Role? { .group }
+    public override func accessibilityLabel() -> String? { "Changes" }
+    public override func accessibilityValue() -> Any? { controller?.state.stepperText }
+    lazy var stepperElements: [DrawnControlElement] = [
+        DrawnControlElement(in: self, label: { "Previous Change" },
+                            rect: { [unowned self] in NSRect(x: stepperFrame.minX, y: stepperFrame.minY, width: 18, height: stepperFrame.height) },
+                            press: { [unowned self] in controller?.previousHunk(nil) }),
+        DrawnControlElement(in: self, label: { "Next Change" },
+                            rect: { [unowned self] in NSRect(x: stepperFrame.maxX - 18, y: stepperFrame.minY, width: 18, height: stepperFrame.height) },
+                            press: { [unowned self] in controller?.nextHunk(nil) }),
+    ]
+    public override func accessibilityChildren() -> [Any]? { stepperElements }
 }

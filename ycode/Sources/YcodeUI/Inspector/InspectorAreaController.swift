@@ -39,6 +39,15 @@ public final class InspectorAreaController: NSViewController {
     /// The centered placeholder ("Not Applicable", "No History"); empty when none.
     public var centeredText: String { _ = view; return centerLabel.isHidden ? "" : centerLabel.stringValue }
     private let centerLabel = NSTextField(labelWithString: "")
+    /// The placeholder's size: cap height 12, about 17 points
+    /// (`editor-area.md` F.10, checklist row 111; it was 13).
+    public static let placeholderFontSize: CGFloat = 17
+    /// The File inspector's text with no file: "Not Applicable", or "No
+    /// Selection" while the Source Control navigator's Repositories view
+    /// is shown (F.10).
+    public var noFileText = "Not Applicable" {
+        didSet { if oldValue != noFileText, file == nil, selectedIndex == 0 { refresh() } }
+    }
     /// The section headings of the shown inspector, in order (tests).
     public private(set) var sectionTitles: [String] = []
     /// The rows of the shown inspector: (key, value) for text rows (tests).
@@ -154,7 +163,7 @@ public final class InspectorAreaController: NSViewController {
         content.edgeInsets = NSEdgeInsets(top: Self.contentTopInset, left: Self.leadingInset, bottom: Self.contentTopInset, right: Self.trailingInset)
         centerLabel.textColor = .secondaryLabelColor
         centerLabel.alignment = .center
-        centerLabel.font = .systemFont(ofSize: 13)
+        centerLabel.font = .systemFont(ofSize: Self.placeholderFontSize)
         centerLabel.isHidden = true
         // liquid-glass.md §2.1: a 1-point line between the editor and the
         // inspector, the area's full height.
@@ -421,7 +430,7 @@ public final class InspectorAreaController: NSViewController {
 
     private func fileInspector() {
         guard let file else {
-            showCentered("Not Applicable")   // §7.2
+            showCentered(noFileText)   // §7.2, F.10
             return
         }
         // reference-ui.md §6.

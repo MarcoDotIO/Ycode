@@ -427,6 +427,29 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         return w
     }
 
+    /// The toolbar's compact-window button (§12.2: enabled whenever the
+    /// window shows a device). A running Ycode simulator opens in its
+    /// compact window; a stopped one starts first, then opens; a device
+    /// Ycode does not run says so on the canvas (Ycode's choice).
+    @discardableResult
+    public func openCompactWindowFromToolbar() -> Task<Void, Never>? {
+        guard let r = selected, multipleSelection.count <= 1 else { NSSound.beep(); return nil }
+        if link(for: r) != nil { openInNewWindow(r); return nil }
+        if canStart(r), let started = start(r) {
+            let id = r.identifier
+            return Task { [weak self] in
+                await started.value
+                guard let self, let again = self.allRows.first(where: { $0.identifier == id }), again.state == "Booted" else { return }
+                self.openInNewWindow(again)
+            }
+        }
+        canvas.showBanner(r.isYcodeRemote ? Self.compactWindowUnavailable : Self.compactWindowNotOperated, seconds: 3)
+        return nil
+    }
+
+    static let compactWindowNotOperated = "Ycode doesn\u{2019}t run this device, so it has no window of its own."
+    static let compactWindowUnavailable = "This simulator\u{2019}s display isn\u{2019}t available yet."
+
     @objc func openInNewWindowChosen(_ sender: Any?) {
         if let item = sender as? NSMenuItem, let id = item.representedObject as? String, let r = allRows.first(where: { $0.identifier == id }) {
             openInNewWindow(r)

@@ -12,7 +12,8 @@ council. The generic recorder, timing measurer and sheet maker are in
 | `targets.json` | The apps: Ycode (the `swift build` binary, SDK-stamped and wrapped as a bundle with its own ID) and Xcode |
 | `make-test-project.py` | Writes the GlassScroll test project (our own content) |
 | `make-conflict-project.py` | Writes Merger: GlassScroll cut down, in a git repository whose `feature` branch conflicts with `main` in `Greeting.swift` (fixed test identity and dates) |
-| `scripts/*.json` | Session scripts: `council-r2.json` (the review council's round 2, `specs/ide/fidelity-council.md`), `council-r3.json` (round 3: round 2's steps, then Settings ▸ General), `council-r3-conflict.json` (the conflict editor), `council-r3-device.json` (the device window: Device Hub against Ycode's Device Hub), `glass-scroll-edges.json` (#57) |
+| `scripts/*.json` | Session scripts: `council-r2.json` (the review council's round 2, `specs/ide/fidelity-council.md`), `council-r3.json` (round 3: round 2's steps, then Settings ▸ General), `council-r3-conflict.json` (the conflict editor), `council-r3-device.json` (the device window: Device Hub against Ycode's Device Hub), `council-r4*.json` (round 4: round 3's steps and ids, plus Settings ▸ Text Editing, a navigator bottom-bar crop and the merge alert; Ycode's merge now goes through its own UI), `glass-scroll-edges.json` (#57) |
+| `extra_sheets.py` | Sheets for `snap` stills and `crop` details (see Round 4 additions) |
 
 ## Procedure
 
@@ -138,6 +139,14 @@ Round 3 additions:
 - Targets launch with `-ApplePersistenceIgnoreState YES`, so no window from
   an earlier session is restored. The `devicehub` target is Xcode's Device
   Hub (`YCODE_REFERENCE_DEVICEHUB`); it needs `--owner-approved`.
+
+Round 4 additions:
+- Action `{"snap": "<name>", "mode": "app"}` takes a still in the middle of a
+  step (an alert before its button is pressed): `NN-step-<name>.png`, listed
+  under the step's `snaps` in the manifest.
+- Step field `"crop": [x, y, w, h]` (window points) is copied to the
+  manifest; `extra_sheets.py OUT MANIFEST...` then makes `NN-step-crop.png`,
+  that region of both after stills enlarged 2x, and the `snap` sheets.
 
 `{app}` (the target's app name, "Xcode" or "Ycode") and `{project}` are
 replaced in every string. After the setup actions the session picks the

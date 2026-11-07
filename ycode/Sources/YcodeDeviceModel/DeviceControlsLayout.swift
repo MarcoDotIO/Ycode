@@ -33,6 +33,8 @@ public enum DeviceControlsLayout {
     public static let bottomMargin: Double = 8
     /// The width the divider after Rotate adds (the pitch from Rotate to the first pose is 37.5).
     public static let dividerExtra: Double = 3.5
+    /// The divider's height, centred in the capsule (§12.1: y 769–784).
+    public static let dividerHeight: Double = 15
     /// The width of one control's hit area.
     public static let buttonWidth: Double = 34
 

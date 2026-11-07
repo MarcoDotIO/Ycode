@@ -172,7 +172,9 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
         let bar = NSStackView()
         bar.orientation = .horizontal
         bar.spacing = 10
-        bar.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 8)
+        // The breakpoints tag starts 14 from the editor's edge (x 304 with
+        // the editor at 290; editor-area.md F.9).
+        bar.edgeInsets = NSEdgeInsets(top: 0, left: Self.breakpointsToggleLeading, bottom: 0, right: 8)
         for (symbol, tip, action) in Self.barButtons {
             let b = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: tip)!, target: nil, action: Selector(action))
             b.isBordered = false
@@ -184,6 +186,14 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
                 b.action = nil
                 b.target = nil
                 b.isEnabled = false
+            }
+            if action == "toggleBreakpointsActive:" {
+                // A filled accent tag while breakpoints are active (row 110),
+                // as wide as its glyph.
+                breakpointsToggle = b
+                b.imagePosition = .imageOnly
+                b.widthAnchor.constraint(equalToConstant: BreakpointsToggleGlyph.size.width).isActive = true
+                setBreakpointsActive(true)
             }
             barButtonViews.append(b)
             bar.addArrangedSubview(b)
@@ -614,6 +624,21 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
         applyTheme()
         highlightKilledLine()
         consoleView.scrollToEndOfDocument(nil)
+    }
+
+    /// The breakpoints tag's distance from the editor's leading edge.
+    static let breakpointsToggleLeading: CGFloat = 14
+    /// The debug bar's first item, Activate / Deactivate Breakpoints.
+    public internal(set) var breakpointsToggle: NSButton?
+
+    /// The breakpoints toggle shows the state: a filled accent tag while
+    /// breakpoints are active, an outline while they are not
+    /// (`editor-area.md` F.9, checklist row 110).
+    public func setBreakpointsActive(_ active: Bool) {
+        guard let b = breakpointsToggle else { return }
+        b.image = BreakpointsToggleGlyph.image(active: active)
+        b.contentTintColor = active ? .controlAccentColor : .secondaryLabelColor
+        b.state = active ? .on : .off
     }
 
     /// Pause becomes Continue while stopped.

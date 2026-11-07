@@ -1818,7 +1818,26 @@ public final class DarwinKernel {
                 return kr(KernReturn.success, " [TASK_AUDIT_TOKEN pid \(target.pid)]")
             }
             guard a[1] & 0xFFFF_FFFF == Self.taskDyldInfo else {
-                return kr(KernReturn.invalidArgument, " [flavor not supported]")
+                // The CPU-time flavors (TaskInfoFlavors.swift).
+                let flavor = UInt32(truncatingIfNeeded: a[1])
+                guard Self.taskInfoTimes(flavor: flavor, count: .max, user: 0, system: 0, frequency: 0) != .unsupported else {
+                    return kr(KernReturn.invalidArgument, " [flavor not supported]")
+                }
+                guard let target = taskInfoTarget(UInt32(truncatingIfNeeded: a[0])) else {
+                    return kr(KernReturn.invalidArgument, " [not a live task port]")
+                }
+                do {
+                    let count = try mem.read(va: a[3], count: 4).readLE(UInt32.self, at: 0)
+                    let times = target.processCPUTimes?() ?? (user: 0, system: 0)
+                    guard case let .reply(bytes, words) = Self.taskInfoTimes(flavor: flavor, count: count, user: times.user,
+                                                                             system: times.system, frequency: counterFrequency)
+                    else { return kr(KernReturn.invalidArgument, " [count \(count) too small]") }
+                    try mem.write(va: a[2], bytes: bytes)
+                    try writeU32(a[3], words, mem)
+                    return kr(KernReturn.success, " [flavor \(flavor), pid \(target.pid)]")
+                } catch {
+                    return kr(KernReturn.invalidAddress)
+                }
             }
             do {
                 let count = try mem.read(va: a[3], count: 4).readLE(UInt32.self, at: 0)

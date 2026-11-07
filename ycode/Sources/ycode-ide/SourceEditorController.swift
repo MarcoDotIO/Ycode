@@ -66,6 +66,8 @@ final class SourceEditorController {
     var fontSize: CGFloat = 12
     private(set) var measured = false
     var lineHeight: CGFloat = 15
+    /// Wrapped rows (+Wrap.swift).
+    let wrap = EditorWrapState()
     /// How far the text's top sits under the line's top, to center it.
     var textDrop: CGFloat = 0
     static let topInset: CGFloat = 4
@@ -118,6 +120,7 @@ final class SourceEditorController {
         fontSize = CGFloat(ShellPreferences.fontSize)
         lineHeight = (fontSize * 1.25).rounded()
         appliedRevision = ShellPreferences.shared.revision
+        wrap.readPreferences()
     }
 
     /// The controller of `document`, kept with it.
@@ -137,15 +140,21 @@ final class SourceEditorController {
     var numberRight: CGFloat { gutterWidth - 22 }
     var textOrigin: CGFloat { gutterWidth + CGFloat(WorkspaceChrome.textInset) }
 
-    var contentHeight: CGFloat { CGFloat(buffer.lineCount) * lineHeight + Self.topInset + Self.bottomInset }
-    var contentWidth: CGFloat { max(viewport.width, textOrigin + longestLine + 40) }
+    // Lines are counted in visual rows: a wrapped line takes several
+    // (+Wrap.swift).
+    var contentHeight: CGFloat { CGFloat(visualRowCount) * lineHeight + Self.topInset + Self.bottomInset }
+    var contentWidth: CGFloat { wrapColumns != nil ? viewport.width : max(viewport.width, textOrigin + longestLine + 40) }
 
-    func lineTop(_ n: Int) -> CGFloat { Self.topInset + CGFloat(n) * lineHeight }
+    func lineTop(_ n: Int) -> CGFloat { Self.topInset + CGFloat(firstRow(of: n)) * lineHeight }
 
     /// The visible lines.
     func visibleLines(height: CGFloat) -> Range<Int> {
-        let first = max(0, Int((top - Self.topInset) / lineHeight))
-        let last = min(buffer.lineCount, Int((top + height - Self.topInset) / lineHeight) + 1)
+        let rows = visualRowCount
+        guard rows > 0 else { return 0..<0 }
+        let firstVisible = max(0, Int((top - Self.topInset) / lineHeight))
+        let lastVisible = Int((top + height - Self.topInset) / lineHeight)
+        let first = line(atRow: min(firstVisible, rows - 1))
+        let last = min(buffer.lineCount, line(atRow: min(lastVisible, rows - 1)) + 1)
         return first..<max(first, last)
     }
 
@@ -153,17 +162,18 @@ final class SourceEditorController {
     func offset(at p: CGPoint) -> Int {
         let y = p.y + top - Self.topInset
         if y < 0 { return 0 }
-        let n = Int(y / lineHeight)
-        if n >= buffer.lineCount { return buffer.length }
-        return layout.offset(atX: p.x + left - textOrigin, line: n, in: buffer)
+        let row = Int(y / lineHeight)
+        if row >= visualRowCount { return buffer.length }
+        let n = line(atRow: row)
+        return offset(atX: p.x + left - textOrigin, line: n, row: row - firstRow(of: n))
     }
 
     /// The caret in viewport points.
     var caretRect: CGRect {
         let b = buffer
         let n = b.caretLine
-        let x = textOrigin + layout.x(ofOffset: b.caret, line: n, in: b) - left
-        return CGRect(x: x, y: lineTop(n) - top, width: 2, height: lineHeight)
+        let p = position(ofOffset: b.caret, line: n)
+        return CGRect(x: textOrigin + p.x - left, y: lineTop(n) + CGFloat(p.row) * lineHeight - top, width: 2, height: lineHeight)
     }
 
     /// The preferences the metrics were made for.
@@ -177,6 +187,7 @@ final class SourceEditorController {
         fontSize = CGFloat(ShellPreferences.fontSize)
         lineHeight = (fontSize * 1.25).rounded()
         layout.tabWidth = Preferences.shared.tabWidth
+        wrap.readPreferences()
         measured = false
     }
 
@@ -269,10 +280,11 @@ final class SourceEditorController {
         guard measured else { return }
         let n = buffer.caretLine
         var y = top, x = left
-        let lt = lineTop(n)
+        let p = position(ofOffset: buffer.caret, line: n)
+        let lt = lineTop(n) + CGFloat(p.row) * lineHeight
         if lt < top { y = lt - Self.topInset }
         if lt + lineHeight > top + viewport.height { y = lt + lineHeight + Self.bottomInset - viewport.height }
-        let cx = textOrigin + layout.x(ofOffset: buffer.caret, line: n, in: buffer)
+        let cx = textOrigin + p.x
         let margin = layout.advance * 4
         if cx - margin < left + gutterWidth { x = max(0, cx - gutterWidth - margin) }
         if cx + margin > left + viewport.width { x = cx + margin - viewport.width }
@@ -283,9 +295,10 @@ final class SourceEditorController {
     func centerCaret() {
         guard measured else { return }
         let n = buffer.caretLine
-        let cx = textOrigin + layout.x(ofOffset: buffer.caret, line: n, in: buffer)
+        let p = position(ofOffset: buffer.caret, line: n)
+        let cx = textOrigin + p.x
         let x = cx + 40 > viewport.width ? cx + 40 - viewport.width : 0
-        scroll(x: x, y: lineTop(n) - (viewport.height - lineHeight) / 2)
+        scroll(x: x, y: lineTop(n) + CGFloat(p.row) * lineHeight - (viewport.height - lineHeight) / 2)
     }
 
     // MARK: After a change
@@ -401,8 +414,8 @@ final class SourceEditorController {
     func lineNumber(at p: CGPoint) -> Int? {
         let y = p.y + top - Self.topInset
         guard y >= 0 else { return nil }
-        let n = Int(y / lineHeight)
-        return n < buffer.lineCount ? n + 1 : nil
+        let row = Int(y / lineHeight)
+        return row < visualRowCount ? line(atRow: row) + 1 : nil
     }
 
     /// A press in the gutter ended at `p`: a click, or a breakpoint's drag
@@ -649,11 +662,13 @@ final class SourceEditorController {
         let rows = min(Self.completionRows, c.shown.count)
         let width = min(420, max(200, size.width - 20))
         let n = buffer.document.line(containing: c.wordStart)
-        var x = textOrigin + layout.x(ofOffset: c.wordStart, line: n, in: buffer) - left - 6
+        let p = position(ofOffset: c.wordStart, line: n)
+        var x = textOrigin + p.x - left - 6
         x = max(gutterWidth, min(x, size.width - width - 4))
-        var y = lineTop(n) - top + lineHeight + 2
+        let rowTop = lineTop(n) + CGFloat(p.row) * lineHeight - top
+        var y = rowTop + lineHeight + 2
         let h = CGFloat(rows) * rowH + 6
-        if y + h > size.height, lineTop(n) - top - h - 2 > 0 { y = lineTop(n) - top - h - 2 }
+        if y + h > size.height, rowTop - h - 2 > 0 { y = rowTop - h - 2 }
         let first = max(0, min(c.selected - rows / 2, c.shown.count - rows))
         return (CGRect(x: x, y: y, width: width, height: h), first, rowH)
     }

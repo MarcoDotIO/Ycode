@@ -386,7 +386,13 @@ extension DarwinKernel {
                 case let .workloop(wl): bindWorker(worker, to: wl, bucket: nil)
                 case .plain: break
                 }
-                w.park.wake(count: 1)
+                // `YCODE_SYNC_HANDOFF=2`: work given by a thread of this
+                // image hands the parked thread the waker's host CPU.
+                if SyncHandoff.parkWakes, KernelThreadLocks.current.inheritedContext?.kernel === self {
+                    w.park.wakeHandingOff(count: 1)
+                } else {
+                    w.park.wake(count: 1)
+                }
                 continue
             }
             guard let mem = mem ?? lastMemory else { returnWorkRequest(request); return }

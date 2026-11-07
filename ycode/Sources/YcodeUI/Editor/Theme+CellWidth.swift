@@ -7,10 +7,10 @@ import YcodeIDECore
 /// fallback face whose own advance can be half the editor's (a run of 34
 /// full blocks measured 136 points instead of 272). They get that
 /// fallback face with the editor's advance fixed, as the font itself has
-/// (`editor-area.md` §C.1: 8.0 at 13 points).
+/// (`editor-area.md` F.2: 8.04 at 13 points on a 2x display, 8.0 at 1x).
 extension Theme {
     /// Box Drawing, Block Elements, Geometric Shapes; Braille Patterns.
-    static func isCellCharacter(_ u: UInt16) -> Bool {
+    nonisolated static func isCellCharacter(_ u: UInt16) -> Bool {
         (0x2500...0x25FF).contains(u) || (0x2800...0x28FF).contains(u)
     }
 
@@ -20,7 +20,8 @@ extension Theme {
         let text = storage.string as NSString
         let end = min(NSMaxRange(range), text.length)
         var i = max(0, range.location)
-        let advance = CGFloat(EditorMetrics.advance(fontAdvance: Double(Theme.advance)))
+        // The source font's cell (F.2: the font's own advance at 2x).
+        let advance = Theme.advance
         var cache: [String: NSFont] = [:]
         while i < end {
             let u = text.character(at: i)

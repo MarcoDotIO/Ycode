@@ -101,7 +101,7 @@ import YcodeDisplayStream
         c.showStopped(spec: .iPhone18Pro, name: "iPhone 18 Pro (Ycode)", os: "iOS 27.1", action: nil, busy: true)
         c.layoutSubtreeIfNeeded()
         #expect(Self.visibleTexts(in: c) == ["Starting…"] && !c.statusActionCapsule.isHidden)
-        // A simulator Ycode does not operate: the picture alone.
+        // A simulator Ycode does not operate: no Start (round 4: its capsules disabled, DeviceCanvasR4Tests).
         c.showStopped(spec: .iPhone18Pro, name: "iPhone 17", os: "iOS 26.4", action: nil)
         c.layoutSubtreeIfNeeded()
         #expect(Self.visibleTexts(in: c).isEmpty && c.statusActionCapsule.isHidden)

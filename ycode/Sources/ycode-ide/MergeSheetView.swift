@@ -30,6 +30,11 @@ struct MergeSheetView: View {
                 RoundedRectangle(cornerRadius: CGFloat(M.cornerRadius), style: .continuous)
                     .fill(Color(mergeHex: p.sheet))
                     .shadow(color: Color.black.opacity(scheme == .dark ? 0.55 : 0.28), radius: 16, x: 0, y: 8)
+                // The rim a step lighter than the fill (§13.3; none in light).
+                if p.sheetRim != p.sheet {
+                    RoundedRectangle(cornerRadius: CGFloat(M.cornerRadius), style: .continuous)
+                        .strokeBorder(Color(mergeHex: p.sheetRim), lineWidth: 1)
+                }
                 MergeContentBox(scm: scm, editor: editor, palette: p, width: CGFloat(box.width), height: CGFloat(box.height))
                     .frame(width: CGFloat(box.width), height: CGFloat(box.height))
                     .offset(x: CGFloat(box.x), y: CGFloat(box.y))
@@ -39,6 +44,8 @@ struct MergeSheetView: View {
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
+                .accessibilityLabel(MergeSheetText.cancel)
+                .accessibilityHint("Cancel button (Escape)")
                 .offset(x: CGFloat(box.maxX) - mergeWidth - CGFloat(M.buttonSpacing + M.buttonWidth), y: buttonY)
                 .shellTarget("merge cancel")
                 Button { if !isClosing { Task { await scm.completeMerge() } } } label: {
@@ -48,6 +55,8 @@ struct MergeSheetView: View {
                 .buttonStyle(.plain)
                 .disabled(!state.canMerge)
                 .keyboardShortcut(.defaultAction)
+                .accessibilityLabel(state.primaryTitle)
+                .accessibilityHint("Default button (Return)")
                 .offset(x: CGFloat(box.maxX) - mergeWidth, y: buttonY)
                 .shellTarget("merge merge")
                 if let error = state.lastError {
@@ -58,6 +67,9 @@ struct MergeSheetView: View {
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Merge")
+        .accessibilityAddTraits(.isModal)
         .shellTarget("merge sheet")
     }
 }
@@ -222,6 +234,11 @@ struct MergeFileList: View {
         .background { if selected { Rectangle().fill(Color(mergeHex: p.selection)) } }
         .contentShape(Rectangle())
         .onTapGesture { if let path = r.path { editor.showFile(path) } }
+        // A file row is a button to accessibility (§13.2).
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(r.title + (r.isConflicted ? ", conflicted" : ""))
+        .accessibilityAddTraits(r.path == nil ? [] : (selected ? [.isButton, .isSelected] : .isButton))
+        .accessibilityAction { if let path = r.path { editor.showFile(path) } }
         .contextMenu {
             if let path = r.path {
                 Button("Mark as Resolved") {

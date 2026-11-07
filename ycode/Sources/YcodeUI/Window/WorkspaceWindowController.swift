@@ -38,6 +38,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         var fit = ToolbarFit()
         var fitting = false
         var fitScheduled = false
+        /// Fits done (tests).
+        var fitRuns = 0
         init() {
             // reference-ui-5.md §4.1.4, §4.2.3.
             // liquid-glass.md §2.2: the drawn capsules are 78 and 125
@@ -347,6 +349,11 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         navigator.setProjectTree(session.model.root, packages: packageSection())
         navigator.addMenuItems = { [weak self] in self?.navigatorAddMenu($0) ?? [] }
         wireProjectNavigatorOperations()
+        // The empty inspector reads "No Selection" in the Repositories view (F.10).
+        navigator.onShownViewChange = { [weak self] in
+            guard let self else { return }
+            self.inspector.noFileText = self.navigator.showsRepositoriesView ? "No Selection" : "Not Applicable"
+        }
         inspector.onRename = { [weak self] u, n in self?.renameFromInspector(u, to: n) }
         wireInspector()
         _ = bookmarks
@@ -1673,6 +1680,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
 
     private func refreshEditorMarks() {
         refreshJumpBarIssues()
+        debugArea.setBreakpointsActive(session.breakpoints.isActive)
         guard let path = editor.fileURL?.path else { return }
         var lines: [Int: Bool] = [:]
         var customized = Set<Int>()
@@ -1887,7 +1895,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         navigator.onShowCodingAssistant = { [weak self] in _ = self?.codingAssistant }
         let token = NotificationCenter.default.addObserver(forName: NSSplitView.didResizeSubviewsNotification, object: mainSplit.splitView,
                                                            queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.updateToolbarState() }
+            // Not on each frame of the inspector's slide: once at its end.
+            MainActor.assumeIsolated { if self?.isInspectorSliding == false { self?.updateToolbarState() } }
         }
         let kvo = navigatorItem.observe(\.isCollapsed, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated { self?.updateToolbarState() }
@@ -2266,7 +2275,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     @objc public func stepOver(_ sender: Any?) { Task { await session.step("over") } }
     @objc public func stepInto(_ sender: Any?) { Task { await session.step("in") } }
     @objc public func stepOut(_ sender: Any?) { Task { await session.step("out") } }
-    @objc public func toggleBreakpointsActive(_ sender: Any?) { session.breakpoints.isActive.toggle() }
+    @objc public func toggleBreakpointsActive(_ sender: Any?) {
+        session.breakpoints.isActive.toggle()
+        debugArea.setBreakpointsActive(session.breakpoints.isActive)
+    }
 
     @objc public func toggleBreakpointAtCurrentLine(_ sender: Any?) {
         guard let path = editor.fileURL?.path else { return }

@@ -11,7 +11,9 @@ UI path's CPUs against the reference's logging path (§13), and finds a
 2026-10-27. §14 (agent B3-BOOT2, 2026-11-06) finds that networking's share
 was apsd reconnecting to the push courier about three times a second
 (a missing host-side name; Ycode now registers it) and that the inner
-panel's is SpringBoard's own work for a second display.
+panel's is SpringBoard's own work for a second display. §15 (agent
+B3-SIMOBS2, 2026-11-06) observes the reference's identity service and the
+guest programs behind Ycode's excess log volume.
 
 This is Ycode's own design. It names no Apple internals. The Linux facts
 (KVM memslots, `mremap`, transparent huge pages, `/proc` accounting) come
@@ -2024,7 +2026,9 @@ Profile `p-tree` (the tree, home 34.2 s) against `p-on` (§14.2):
 | T2 (tree) | default (identity service on) | 5 | **33.93** | 33.74 ± 0.75 | 32.43–34.33 | 6.6 s | 4–5 |
 | T2 | `YCODE_SIM_IDENTITY_SERVICE=0` | 5 | 35.95 | 35.78 ± 0.67 | 35.03–36.68 | 6.8 s | 3–4 |
 | T2 | `YCODE_FOLD_DISPLAYS=0` | 5 | 32.35 | 32.26 ± 0.60 | 31.35–32.97 | 6.6 s | 3–6 |
-TBD-T3
+
+B3-BOOT2 also ran a series T3, but it was stopped before writing T3 into
+this table; §16's U1 and U2 series supersede it.
 
 - **The identity service: −2.0 s by the median** (T2: 33.93 against 35.95,
   ranges apart), every service on, networking and the inner panel on.
@@ -2104,6 +2108,815 @@ Next, in order of size:
    exists, or confirm that leaving the request unanswered is the closest
    behaviour on a host without one.
 
+## 15. Reference: guest log sources and the identity service (agent B3-SIMOBS2, 2026-11-06)
+
+Black-box answers to §14.8 item 4 (what `com.apple.CoreSimulator.SimIdentityService`
+is asked and answers on the reference, and what apsd does afterwards) and to
+§14.8 item 1 (whether the reference logs the patterns behind Ycode's excess
+in SpringBoard, mobileassetd, dasd and biomed).
+
+### 15.1 Conditions
+
+| Item | Value |
+|---|---|
+| Host | as §13.1 (arm64 Mac, macOS 27.2, Xcode 27.1) |
+| Runtime and device | iOS 27.1 (24A94401), iPhone Duo |
+| Boots | 5 new devices (`ycode-test-simobs2-1` … `-5`): first boot (to the home-screen icons, then 60 s), `simctl shutdown`, 3 s, then the measured **second boot**, headless, with §13's end point and screenshot polling; deleted afterwards. A sixth device (`ycode-test-simobs2-probe`) for untimed probe boots |
+| Window | 125 s from the second boot's start |
+| Guest | `simctl spawn … log show --info --debug --style ndjson` of the whole window. The simulator's log system already runs with private data shown (`log config --status`: `INFO STREAM_LIVE PRIVATE_DATA`), so nothing more is visible with a changed mode |
+| Host | `log stream --info --debug` of `com.apple.CoreSimulator.CoreSimulatorService` and `mobileactivationd` during the second boot; the persisted host log afterwards |
+| Counted boots | no sampler attached to a guest process; `sample` and `lsmp` of apsd only in the probe boots |
+| Host load | very high, as in §13: 1-minute load 435–550 at the second boots' starts. home_s 25.8 s median (24.2–39.2) |
+| Ycode, for comparison | §14.8's counts (profile `p-tree`, before home, all levels) and B3-BOOT2's guest `log stream` one-shots `diag-tree-sb` (SpringBoard, biomed, mobileassetd) and `diag-tree-busy` (dasd), level Info, counted over the first 30 s of the stream |
+| §13's boots | re-read with the same counters (their log windows end at 64–92 s) as a second set of five |
+
+Counts in §15.5–§15.7 cover the first 30 s from boot start (all levels,
+Debug included) unless a row says otherwise. The Ycode streams carry no
+Debug messages; for the four programs the reference's Debug share in the
+first 30 s is under 0.1 % except mobileassetd (about 5 %).
+
+### 15.2 Who connects to the identity service
+
+- **Only apsd**, one XPC connection per boot, in all ten second boots
+  (these five and §13's five): its "activating connection … name=
+  com.apple.CoreSimulator.SimIdentityService" is the only one any process
+  logs, and launchd_sim logs no failed look-up of the name.
+- **When:** 5–21 ms after apsd's "Connected to courier" and its "Sending
+  presence message" (courier connected at 5.0–6.7 s, median 5.8 s).
+- **First boots:** in the first boot of a new device apsd does not enable
+  its couriers within the observed 100–110 s ("we have not yet enabled
+  couriers") and does not contact the service; one probe device's first
+  boot contacted it about 130 s after the boot started.
+- **The host end** is `com.apple.CoreSimulator.CoreSimulatorService` (the
+  per-user host service): the name resolves to an anonymous XPC listener in
+  it, which logs a peer connection named after apsd's pid within 1 ms of
+  apsd's activation. `lsmp` cannot see that process's ports without root,
+  and apsd cancels its connection after the exchange, so no port of the
+  service was observed.
+
+### 15.3 What crosses the connection
+
+Request and reply keys are not visible on the reference: neither apsd nor
+the host service logs them, the message bodies do not appear in any log,
+and `sample` of apsd at 1 ms (15 s from its start, probe boot) caught none
+of the 10–15 ms exchange. What the logs on both sides show:
+
+| t (s, median of 5) | Guest (apsd) | Host |
+|---|---|---|
+| 0 | activates the connection (presence pending) | accepts the peer connection |
+| +0.53 (0.52–0.66) | — | asks the host's activation daemon (`mobileactivationd`) for a client certificate, because the device has none yet (§15.4) |
+| +1.44 (1.30–3.69) | — | issuance done (0.77–3.03 s: a new SEP-held P-256 key, attested by the system key, certified by an Apple server over HTTPS); the host then reads its monotonic clock and RTC reset count from the same daemon |
+| +1.48 (1.33–3.78) | "Generating nonce with timestamp T", "Signature input is 17 bytes" | — |
+| nonce + 5–6 ms | — | signs with the device's SEP key: ECDSA, X9.62 encoding, SHA-256 |
+| nonce + 6–13 ms | "APSSimulatorSupport generate nonce and sig success? YES" | — |
+| success + 50–150 ms | "Connected response ok for user courier token? YES" | — |
+
+- **Two exchanges.** The nonce is generated only after the host's
+  certificate work finishes, and the host signs 5–6 ms after the nonce
+  exists. So apsd first asks for the identity (certificate) and waits for
+  it, then sends the bytes to sign and gets the signature. When the device
+  already has an identity (probe boots of one device), the whole exchange
+  takes 12–19 ms and the host only signs.
+- **The bytes signed** (from apsd's own log line): 17 bytes, byte 0 = 0x00,
+  bytes 1–8 = T as a big-endian count of milliseconds since 1970, a whole
+  second (the value in "Generating nonce with timestamp"), bytes 9–16 = 8
+  further bytes that differ every time (the nonce).
+- **The identity** (host log): a leaf certificate for the new key issued by
+  "Basic Attestation User Sub CA1", returned with that intermediate
+  (chained to "Basic Attestation User Root CA"), valid from one day before
+  issuance for about 350 days, plus a server timestamp. The leaf's subject
+  is an identifier, not recorded here.
+- So the reply to the first request most likely carries a certificate
+  chain (and possibly the clock values); the reply to the second, a
+  signature over the 17 bytes. Key names and value types remain unobserved.
+- Ycode's own service logged the first request's keys `operation` and
+  `version` (§14.3); nothing on the reference contradicts or confirms them.
+
+### 15.4 Lifetime of the identity
+
+- **One key and certificate per device.** Each of the five devices got a new
+  key (a different key id) and a new certificate at its first request.
+  The probe device's later boots reused its key (same key id), and the
+  host asked for no certificate.
+- The issuance needs the host's SEP, its activation identity and a
+  connection to an Apple server. A host without these has no identity to
+  give; this Mac could not be made into one with the tools allowed here.
+
+### 15.5 apsd and the push courier, 0–125 s
+
+| Run | courier connected (s) | connections | identity: activation to success | "Could not get certificate" | disconnects after connecting | apsd messages, 30 s |
+|---|---|---|---|---|---|---|
+| 1 | 6.60 | 1 | 1.33 s | 0 | 0 | 1 725 |
+| 2 | 5.24 | 1 | 1.40 s | 0 | 0 | 1 870 |
+| 3 | 6.73 | 1 | 1.58 s | 0 | 0 | 1 895 |
+| 4 | 5.83 | 1 | 3.78 s | 0 | 0 | 1 995 |
+| 5 | 5.03 | 1 | 1.49 s | 0 | 0 | 1 690 |
+
+- apsd connects to the courier **once and stays connected**: no disconnect,
+  no reconnect and no certificate failure in 125 s in any run (§13's five
+  boots agree over their 64–92 s windows). The two disconnects each boot
+  logs (reason 2, at 3–4 s) come before the first connection.
+- apsd's volume matches Ycode's after the change of §14.3 (1 921 before
+  home, §14.5): reference 1 870 (1 690–1 995) in 30 s.
+
+**Ycode's unanswered requests against the reference.** The reference
+answers both requests (1.3–3.8 s for a new device, about 15 ms afterwards)
+because this host has an identity; a host without one could not be observed
+(§15.9). Leaving requests unanswered reproduces what the reference shows
+during a boot: one courier connection, no reconnects, apsd at its
+reference volume. It differs in what never completes: in B3-BOOT2's stream of
+such a boot apsd generates no nonce, logs no "Connected response ok" and
+gets no push token. A
+reply that reports an error is not a safer choice on present evidence: a
+failed certificate request (the missing name, §14.2) made apsd abort and
+reconnect at once without back-off.
+
+### 15.6 Log volume of the four programs
+
+| Program | Reference, first 30 s: median (range), n = 5 | §13's boots, same count | Reference, boot start to home | Ycode, before home (§14.8) | Ycode stream, first 30 s (Info) |
+|---|---|---|---|---|---|
+| SpringBoard | **10 528** (9 333–12 021) | 11 525 (10 980–12 287) | 10 744 (8 944–12 059) | 21 800 | 16 737 |
+| mobileassetd | **1 343** (1 257–1 845) | 1 804 (1 535–1 965) | 1 343 (1 249–1 571) | 8 400 | 8 054 |
+| dasd | **287** (250–290) | 294 (277–312) | 287 (250–290) | 7 200 | 7 201 |
+| biomed | **743** (736–769) | 726 (706–897) | 716 (713–760) | 4 300 | 4 148 |
+| all programs | 76 687 (67 072–91 954) | 87 128 (77 510–99 396) | — | 129 500 | — |
+
+### 15.7 Message patterns, reference against Ycode
+
+Top 5 patterns of the reference (first 30 s, median per boot and range),
+then the patterns of Ycode's stream that the reference does not log in its
+first 30 s. "Absent" means no message of that pattern from any process in
+the whole 125 s window of all five boots.
+
+**SpringBoard.** Reference: RunningBoard monitor "Received state update
+for … (…)" 363 (229–380); "Update skipped for …" 352 (0–648);
+"observedProcessStatesDidChange" 306 (176–310); XPC "activating
+connection … name=…" 218 (194–223); UIKit backlight environment "Updated
+traitOverrides: …" 163.
+
+| Ycode pattern (subsystem: category) | Ycode, 30 s | Reference |
+|---|---|---|
+| "constructing bundle record for file:…" (launchservices: privacy) | 1 599 | **absent** |
+| "application record search init. Node: …" (launchservices: datasep) | 590 | **absent** |
+| "Display Content Mode Transition Resolution for participant …" (SpringBoard: ZStack) | 144 | **absent** |
+| "elapsedCPUTimeForFrontBoard task_info failed with …" (runningboard: process) | 64 | **absent** |
+| "No data found at …" / "Saving file at … with N items" (UserNotifications: DataStore) | 381 / 115 | 0 in 30 s; 405 / 150 per boot at 70–107 s, in 3 of 5 boots |
+| "kExcludedFromBackupXattrName set on path: …" (FileURL) | 112 | 5 in 30 s; 125–129 per boot in 3 of 5 boots (5 in the other two) |
+| "Calcualate [sic] topics because user notification settings …" (UserNotifications) | 54 | 0 in 30 s; 54 after 30 s, in 3 of 5 boots |
+
+The reference's own top patterns appear in Ycode's stream too, less often
+(observedProcessStatesDidChange 130 against 306).
+
+**mobileassetd.** Reference: network TLS "… handshake state: …" 48
+(48–64); network "[C…] event: …" 36 (36–49); XPC "activating connection"
+33 (31–37); "{flushPersistedStateCacheAndSetCachingBehaviour} | Flushing
+persisted state …" 31; "assetType: … client: …, command: …" 26 (25–32).
+**The reference does not log Biome's "Replace failed"**: "Failed to move
+temporary segment … into segment list" is absent, as is the rest of the
+chain Ycode logs about 99–151 times each in 30 s:
+
+| Ycode pattern (Biome storage, in mobileassetd) | Ycode, 30 s | Reference |
+|---|---|---|
+| "Successfully mapped file: … address: … size: …" | 302 | 2 in 30 s, 2–4 per boot |
+| "Attempted to open … for writing but the file is already full, and has an EOF" | 151 | **absent** |
+| "Failed to instantiate framestore with path: …" | 151 | **absent** |
+| "lastFrameStoreOrCreateWithTimestamp: Attempting to create new frame store" / "… to acquire lockfile" / "Unable to … and creation also failed" | 99 each | **absent** |
+| "Failed to move temporary segment … into segment list with error" | 99 | **absent** |
+| "Failed to assign a frameStore for: …", "Error saving biome store event" | 99 each | **absent** |
+| "Activity for state dumps" | 113 | **absent** in mobileassetd |
+| "[PallasNonce:…] Params details for SetElement …" (mobileassetd: Download) | 109 | 27 in 30 s; 126–323 per boot in 3 of 5 boots |
+
+**biomed.** Reference: XPC "activating connection … name=com.apple.biome.
+access…" 83 (81–92); "-fileHandleForFileAtPath:flags:protection:reply:
+called with subpath: …" 76 (71–84); "Incoming connection from …(pid)" 61
+(59–71); XPC "invalidated because the client process … cancelled the
+connection or exited" 52 (45–62); "Wrote new active subscription marker
+with success: …" 43 (43–45).
+
+| Ycode pattern (Biome) | Ycode, 30 s | Reference |
+|---|---|---|
+| "Found log with eventBootUUID: …, at eventDate: …" | 500 | **absent** |
+| "fclonefileat() failed: [2: No such file or directory]" | 129 | **absent** |
+| "bm_replace_file() failed" | 129 | **absent** |
+| "-temporaryFileHandleWithProtection:reply: called" | 129 | 4 in 30 s; 4–37 per boot |
+| "-replaceFileAtPath:withFileHandle:protection:flags:reply: called …" | 100 | 4 in 30 s; 4–37 per boot, none failing |
+| "-fileHandleForFileAtPath:… called" | 332 | 76 |
+
+The reference's clients ask biomed for the same temporary-file-and-replace
+operation (4 times in 30 s) and it never fails; in Ycode biomed's
+`fclonefileat` fails with ENOENT on every replace, and each failure sets off the
+client-side retry chain of the mobileassetd table (about ten lines per
+failure). `fclonefileat` is the public clone call (`clonefile(2)`).
+
+**dasd.** Reference: XPC "activating connection" 27 (25–28); "CoreDuet:
+ClientContext objectForContextualKeyPath:" 12 (12–13); coreduet: context
+"error getting value for …" (its error names `com.apple.coreduetd.context`
+and look-up error 3) 11 (11–12); triald "Namespace resolver file not
+present: …" 9; "Loaded immediate runtime config for …" 9.
+
+- **The reference logs the same look-up failure.** launchd_sim logs one
+  failed look-up of `com.apple.coreduetd.context` per requesting process
+  (dasd, sleepd), and dasd logs the error for each context key path it
+  reads: 19–20 times in the first 30 s (all of them in the first 10 s),
+  and **139–3 244 per boot in the 125 s window** (median 1 083), mostly for
+  `/device/keybag/isLocked`, then `/device/system/isPluggedIn` and
+  `/device/system/batterySaver`. Ycode's mix of key paths is the same.
+- **When.** On the reference dasd logs 250–290 messages in its first 10 s,
+  then **nothing from 10 to 30 s in all five boots**, and resumes at 32–49 s
+  (median 41 s; 7–17 s after home) with "Running activities", activations
+  of `com.apple.bg.system.task` and context reads, at a rate that grows to
+  up to 3 700 messages in 10 s by 110–120 s. Ycode's dasd has no quiet
+  phase: its context reads come in bursts at 5–10 s, 25–30 s and 40–45 s of
+  the stream, 1 466 failures in the first 30 s, before home.
+- The late wave is strong in three boots (1, 4, 5: 1 083–3 244 context
+  errors in dasd, SpringBoard's data-store lines of the table above) and
+  weak in two (2, 3: 139 and 334 context errors, no data-store lines)
+  within the 125 s window.
+- Ycode-only in dasd: "Failed to read file …" (duetactivityscheduler: plist),
+  21 in 30 s, absent on the reference.
+
+### 15.8 Ycode-caused failures against reference behaviour
+
+| Lead | Same as the reference? | Ycode's excess in 30 s |
+|---|---|---|
+| Biome replace: `fclonefileat` ENOENT in biomed, "Replace failed" chain in mobileassetd and other clients | **No: Ycode only.** The reference performs the same replaces without failure | about 1 500 in mobileassetd, 500 in biomed |
+| LaunchServices bundle-record construction and record searches in SpringBoard | **No: Ycode only** (absent in 125 s) | about 2 200 |
+| RunningBoard `task_info` failure, ZStack transitions (SpringBoard), activity-scheduler plist read (dasd) | **No: Ycode only** | about 230 |
+| "Found log with eventBootUUID" (biomed) | Absent on the reference, but may depend on the device's history (§15.9) | 500 |
+| dasd's `com.apple.coreduetd.context` look-up errors and activity runs | **Yes, the reference fails the same way**; it does this work only after home (from 32–49 s), Ycode within its first 30 s | about 4 400 |
+| SpringBoard's UserNotifications data-store work, backup-exclusion xattrs, topic recalculation | **Yes**, at 70–107 s on the reference; within the first 30 s in Ycode | about 650 |
+
+So two kinds of excess: failures of calls Ycode serves differently (the
+first three rows, about 4 400 messages in 30 s across the four programs,
+`fclonefileat` the clearest), and reference work that Ycode runs before
+home instead of after it (the last two rows). The second kind is not a
+failure to fix in a call; it is a question of what lets dasd and
+SpringBoard start that work early (§15.9).
+
+### 15.9 Open questions
+
+1. **A host without an identity.** What the reference's host service
+   answers when it cannot issue a certificate (no network to the issuing
+   server, no SEP): an error reply, no reply, or a closed connection, and
+   what apsd then does. Needs a reference host without an identity (for
+   example a macOS virtual machine with Xcode and the iOS 27.1 runtime),
+   which was not available here.
+2. **The request and reply dictionaries.** Keys and value types were not
+   visible at levels 3 and 4; the timing gives two exchanges (certificate,
+   then a signature over 17 bytes).
+3. **Why dasd and SpringBoard start their post-home work early in Ycode.**
+   The reference's dasd is quiet from 10 to about 40 s; the trigger that
+   ends the quiet phase was not identified. One candidate is the device's
+   history: Ycode's golden device has been booted many times, the
+   reference devices here were new (second boot), so overdue background
+   activities or stored notification state could explain an immediate
+   start. A reference boot of an aged device (or a Ycode boot of a new
+   device) would separate the two.
+4. **"Found log with eventBootUUID"** in Ycode's biomed: absent on new
+   reference devices; the same device-history question as item 3.
+5. LaunchServices "constructing bundle record" in Ycode's SpringBoard: the
+   reference never takes that path; why Ycode's LaunchServices client does
+   (its database or registration state) is for the clean side.
+
+## 16. Excess guest work and the log path's hand-offs (agent B3-BOOT3, 2026-11-06)
+
+§14.8's steps 1 and 2, with §15's reference patterns: the guest work Ycode
+causes and the reference does not do, and a direct hand-off for the log
+path. Target: home_s ≤ 21.4 s, full boot, every service on (networking and
+the Duo's inner panel included).
+
+### 16.1 Conditions
+
+- Thor; a copy of the golden device in the agent's own folder (iPhone Duo,
+  iOS 27.1), booted three times at that path before the first series; full
+  boot, default switches, `YCODE_HOME_WATCH`, stopped 5 s after home, no
+  save.
+- Timed series under the shared boot-timing lock, every boot started only
+  when no other `ycode-simd` ran and the 1-minute load was under 4 (it was
+  3.50–3.97), arms rotated each round, n = 5 per arm.
+- Builds: *base* = `016506aa` (§14's change included); *tree* = base with
+  §16.2 and §16.5; *tree2* = this branch with §16.2–§16.5 and §15 merged.
+  Arms of one build differ only by switches.
+- Guest log lines from `log stream` one-shots and Ycode's trap traces
+  (`--trace-name`) in separate, untimed boots; log messages per program
+  from frame-profile windows (`YCODE_FRAME_PROFILE_BOOT=120`, send-only
+  `mach_msg2` of id 0x10000000 up to the profile's own home); started
+  programs with `scripts/ycode-launchd-spawns` over 700 s (§12.7).
+
+### 16.2 Biome's "Replace failed": `fclonefileat` of an unlinked file
+
+biomed hands its clients (mobileassetd, SpringBoard, dasd and others) a
+temporary file for a Biome segment: it creates
+`Library/Biome/tmp/.tmp.<random>` with `O_CREAT|O_EXCL`, **unlinks it at
+once**, and sends the descriptor as a file port. The client fills it and
+sends it back with `replaceFileAtPath:withFileHandle:`, and biomed clones
+the descriptor into place with `fclonefileat(fd, AT_FDCWD, "<dir>/.tmp.<new>", …)`
+and renames the clone over the segment. Ycode's `fclonefileat` copied the
+source by its **host path** (`HostClone.cloneTree(from: hostPath …)`), which
+no longer existed: ENOENT on every replace (152 in a boot), "Failed to move
+temporary segment … Replace failed" in the client and §15.7's retry chain
+(about ten lines a failure, 1 200 of mobileassetd's lines).
+
+clonefile(2) clones the open file, not a name. The change: for a regular
+file `fclonefileat` copies from the descriptor (contents with explicit
+offsets, so the descriptor's offset does not move; the guest's extended
+attributes, flags and times from the descriptor). Test
+`fdClonesCopyTheOpenFileNotItsName` (an unlinked and a renamed source; the
+offset unchanged). In a log stream of the tree, "fclonefileat() failed",
+"bm_replace_file() failed" and "Replace failed" no longer appear.
+
+### 16.3 mobileassetd's downloads: the `/.nofollow/` path prefix
+
+mobileassetd's other excess is network work: its asset downloads (Pallas
+catalog requests, then the assets themselves through nsurlsessiond's
+background sessions, 3–57 MB each) all failed in every boot — "Task finished
+with error … MADownloadNetworkingError", underlying "SZExtractorErrorDomain
+Code=3 extractionPath was nil" and NSURLErrorDomain −1 — and were retried at
+the next boot. nsurlsessiond names its download folders as
+`/.nofollow/<data>/Library/Caches/com.apple.nsurlsessiond/Downloads/<client>/`
+("Couldn't create directory at file:///.nofollow/… NSCocoaErrorDomain
+Code=4", "__NSCFLocalDownloadFile: error 2 creating temp file", 128 such
+paths in one boot). On xnu a path that starts with `/.nofollow/` is the rest
+of the path looked up with NAMEI_NOFOLLOW_ANY; Ycode treated `.nofollow` as
+a directory name, so every such call was ENOENT.
+
+The change: `DarwinFileSystem.resolve` strips the prefix and looks the rest
+up with no-follow-any (a symbolic link in any component is ELOOP). Test
+`noFollowPrefixLooksUpWithoutLinks`.
+
+### 16.4 SpringBoard, dasd, biomed: the other leads of §15.8
+
+- **`task_info`** (SpringBoard, §15.7): FrontBoard's
+  `elapsedCPUTimeForFrontBoard` asks for **TASK_THREAD_TIMES_INFO (3)** and
+  **TASK_BASIC_INFO_64_2 (18)** of the processes it watches (a trap trace of
+  SpringBoard: 50 calls of each by home, all KERN_INVALID_ARGUMENT). The
+  private task_info trap answered only TASK_DYLD_INFO and TASK_AUDIT_TOKEN.
+  It now answers the CPU-time flavors of `osfmk/mach/task_info.h` (1, 2, 3, 5,
+  18, 20, 21, 26) for any live task, from the target process's host CPU
+  (as getrusage); counters Ycode does not keep are zero. Tests
+  `TaskInfoFlavorTests`.
+- **LaunchServices in SpringBoard** ("constructing bundle record" 1 682,
+  "application record search init" 1 327 in one boot; absent on the
+  reference): not fixed. What was seen (a log stream of lsd and a trap
+  trace of lsd): lsd opens and maps its store
+  (`var/db/lsd/com.apple.LaunchServices-33554481-v2.csstore`, 7 MB) and copies
+  it, then logs "Cleaning new database object", registers CoreTypes, the
+  extension points, canonical names and framework strings and starts
+  `com.apple.lsd.rebuild`; SpringBoard's records are built from bundle
+  URLs meanwhile (the lines above, 2.6 s of lsd on the critical path of the
+  tree's profile). The store on the golden device was written by its first
+  boot (2026-10-13) and **never again**, also not after a 700 s boot that
+  ended with launchd_sim's clean teardown (lsd exited with 0). Whether lsd
+  rejects the stored database (device state written by an old build) or
+  never gets to save it is open. A fresh device (§16.6) behaves the same:
+  its first boot by today's build wrote the store 40 s into the boot, its
+  copies' boots leave it untouched, and their SpringBoard logs as much, so
+  the golden device's age is not the cause.
+- **dasd**: §15.7 found the reference fails the same
+  `com.apple.coreduetd.context` look-up, so nothing was changed. Its
+  "Failed to read file /System/Library/DuetActivityScheduler/Scheduler/
+  Resources/com.apple.dasd.features.plist" (and `….config.plist`,
+  `….allowlist.activities.plist`, 21 in all): the runtime has no such
+  folder; the path is absolute and not under the runtime root, so on the
+  Mac it is read from the host's own `/System` (macOS has the folder). Ycode
+  cannot supply Apple's file; left as is.
+- **"Display Content Mode Transition Resolution"** (SpringBoard ZStack,
+  144): not investigated.
+- **biomed's "Found log with eventBootUUID"** (500): device history (§15.9);
+  the fresh device's biomed logs more before home, not less (§16.7).
+
+### 16.5 The log path: a direct hand-off for workloop wakes
+
+`YCODE_SYNC_HANDOFF` (`SyncHandoff.swift`, off by default; Linux): when a
+thread wakes another through a workloop sync wake (`=1`), or gives a parked
+workqueue thread of its own image work (`=2`), the waker restricts the woken
+host thread to the CPU it runs on before it signals; the woken thread gets
+its CPUs back (the process's mask) as soon as its wait returns. The host
+then queues the woken thread behind the waker instead of anywhere, and its
+wake-up preemption decides between them, the nearest Linux gets to xnu's
+hand-off of the processor. A state word orders the two sides (pin, then
+mark; a waiter that already returned is restored by the waker). Tests
+`SyncHandoffTests` (every pin undone, no wake lost, plain wakes never pin).
+
+In a boot about 105 000 hand-offs are made (`=2`), 26–36 of them after the
+waiter had returned, 0.4–0.5 s of pinning calls in all. In the profiled
+boots diagnosticd's share of the boot's critical path (`--boot`, by
+program) fell from 9.3 s (tree) to 1.5 s (`=2`); the path then runs
+through other programs' guest code and run-queue waits (icloudmailagent,
+assistantd, dmd), the throughput-bound picture of §12.6.
+
+### 16.6 Timed series
+
+| Series | Arm | n | median home_s | mean ± sd | range | kernel lock held at home, median | CPU s at home, median | guest fatal |
+|---|---|---|---|---|---|---|---|---|
+| U1 | base (`016506aa`) | 5 | **36.48** | 37.05 ± 2.63 | 33.70–40.48 | 7.1 s | 427 | 2–4 |
+| U1 | tree (§16.2) | 5 | **36.10** | 35.97 ± 0.88 | 35.00–36.85 | 6.9 s | 421 | 1–3 |
+| U1 | tree, `YCODE_SYNC_HANDOFF=1` | 5 | 35.81 | 35.78 ± 0.64 | 34.97–36.44 | 6.9 s | 418 | 1–4 |
+| U1 | tree, `YCODE_SYNC_HANDOFF=2` | 5 | **35.09** | 35.03 ± 0.38 | 34.52–35.40 | 6.7 s | 410 | 1–4 |
+| U2 | tree2 (§16.2–§16.4) | 5 | **36.37** | 36.24 ± 2.00 | 33.08–38.08 | 7.7 s | 445 | 1–5 |
+| U2 | tree2, a fresh device (each boot a copy's second boot) | 5 | 42.42 | 41.25 ± 2.33 | 37.77–43.26 | 8.0 s | 447 | 3 |
+| U2 | tree | 5 | 38.38 | 37.97 ± 2.20 | 34.36–40.40 | 7.6 s | 445 | 1–3 |
+| U2 | tree2, `YCODE_SYNC_HANDOFF=2` | 5 | 36.53 | 36.64 ± 1.72 | 34.26–38.87 | 7.1 s | 428 | 1–4 |
+
+- **The fixes of §16.2–§16.4 together: −2.0 s by the median** in U2
+  (tree2 36.37 against tree 38.38; means 36.24 against 37.97, sd 2.0–2.2,
+  so inside about one standard deviation). The fclonefileat fix alone
+  (U1, tree against base) is −0.4 s by the median and narrows the spread
+  (sd 0.88 against 2.63).
+- **The hand-off: −1.0 s in U1** (`=2` 35.09 against 36.10, the narrowest
+  range of all eight arms, 0.9 s; CPU at home 410 against 421 s) **and
+  nothing in U2** (36.53 against 36.37). It moves diagnosticd off the
+  critical path (§16.5) but, as §12.4 found for the log back-pressure, the
+  time comes back as other programs' work on a saturated host. It stays
+  off by default.
+- **A fresh device is not faster: +6 s** (42.42 against 36.37). Its second
+  boot still does first-boot follow-up work (the fresh profile: 166 000
+  log messages before home against 140 000; runningboardd, biomed and
+  modelcatalogd more, dasd and mobileassetd less). The golden device's age
+  is not what keeps Ycode from 21.4 s; §15.9's question of the reference's
+  aged devices stays open.
+- U2's medians are about 2 s above U1's for the same binary (tree 38.38
+  against 36.10): the host got noisier through the evening (other users'
+  load between boots; every boot still started under load 4). Compare arms
+  within a series.
+
+### 16.7 Log messages per program and service fidelity
+
+Log messages (send-only `mach_msg2`, id 0x10000000) from the boot's start
+to its home screen, one profiled boot each, against the reference's
+boot-start-to-home counts (§15.6, §13.3):
+
+| Program | base | tree | tree2 | tree2 fresh | tree, `=2` | Reference |
+|---|---|---|---|---|---|---|
+| home_s of the profiled boot | 40.3 | 38.6 | 37.8 | 42.9 | 35.3 | 21.4 |
+| SpringBoard | 22 344 | 22 538 | 21 647 | 22 365 | 21 676 | 10 744 |
+| runningboardd | 12 328 | 11 876 | 10 690 | 13 179 | 10 910 | 12 404 |
+| dasd | 9 600 | 9 452 | 7 153 | 5 829 | 9 464 | 287 |
+| mobileassetd | 7 959 | 6 976 | **4 503** | 3 874 | 6 721 | 1 343 |
+| biomed | 3 979 | 3 536 | **3 038** | 4 815 | 3 001 | 716 |
+| nsurlsessiond | about 2 000 | about 2 000 | 3 543 | — | — | — |
+| all programs | 142 636 | 137 556 | 139 510 | 165 991 | 128 543 | about 89 000 |
+
+- mobileassetd fell by 43 % (7 959 → 4 503) and biomed by 24 %: the Biome
+  retry chain is gone (§16.2) and the downloads now complete (§16.3: in a
+  log stream of tree2, 7 "MADownloadSuccessful" and no "Couldn't create
+  directory"); nsurlsessiond now does those downloads during the boot
+  (3 543 messages, against about 2 000 when each failed at once), so the
+  total barely moves. Whether the assets stay installed across boots, so
+  that later boots skip the downloads as the reference's second boot does,
+  needs a boot of the same device after a longer hold.
+- SpringBoard is unchanged (about 22 000 against 10 700): the
+  LaunchServices record construction of §16.4 (about 3 000 lines) and
+  §15.8's early UserNotifications work remain; the `task_info` failures
+  (122 lines) are gone.
+- dasd's excess is §15.7's timing difference (its context reads before
+  home), not a Ycode call.
+
+Started programs (`scripts/ycode-launchd-spawns`, 700 s):
+
+| | base | tree | tree2 |
+|---|---|---|---|
+| all starts | 511 (236 labels) | 506 (234 labels) | 510 (237 labels) |
+| restart loops (facetimemessagestored, managedappdistributiond, mlhostd, proactiveeventtrackerd, intelligencetasksd, fileindexerd) | 67, 67, 64, 68, 9, 1 | 67, 66, 63, 68, 8, 1 | 67, 67, 64, 68, 7, 1 |
+| other daemons and agents | 174 | 172 | 174 |
+| per-process domains | 58 | 58 | 59 |
+| apps | 3 | 3 | 3 |
+
+Each boot followed a boot of the same build (§12.7: a boot by another
+build changes the device's caches; a first count of base right after tree
+boots gave 592 starts, PosterBoard's extensions and 20 Metal compiler
+instances again). base against tree2 differ by one or two starts per label:
+intelligencetasksd −2 (the throttle loop's phase), parsec-fbf −1,
+imageplaygroundd +1, and **`STExtractionService` +1**, the streaming-zip
+extraction of a download that now completes (§16.3). Fidelity is
+unchanged.
+
+### 16.8 How far from 21.4 s, and the next steps
+
+- With every service on, guest networking and the inner panel on, the
+  quiet median is **35.1–36.4 s** for this branch (U1 `=2` and tree,
+  U2 tree2): **1.64–1.70 ×** the reference's 21.4 s, about 14 s short.
+  §14's 33.9 s (1.59 ×) was measured on a quieter evening; within one
+  series the fixes here are worth about 2 s (U2) and the hand-off 0–1 s.
+- The boot is still throughput-bound: 410–447 CPU seconds before home
+  (`cpu_s_at_home` above) at 11–12 busy cores. Removing guest work the
+  reference does not do is the lever that works (§14: 2 s; §16: 2 s), but
+  the measured excess is now mostly *timing* (dasd, SpringBoard's
+  notifications, §15.8) and LaunchServices, not failing calls.
+- Next, in order of size:
+  1. **LaunchServices in SpringBoard** (about 3 000 lines, lsd 2.6 s on
+     the critical path): find why SpringBoard builds records from bundle
+     URLs (`application record search init`, "constructing bundle record")
+     where the reference reads them from lsd's database; the database
+     handle (`com.apple.lsd.mapdb`) and what SpringBoard does with lsd's
+     reply are the next thing to trace. The dirty room could say whether
+     the reference's lsd rewrites its store at boot (Ycode's never does
+     after the first boot).
+  2. **What starts dasd's and SpringBoard's post-home work before home**
+     (§15.9 item 3): about 4 400 dasd messages and 650 SpringBoard lines
+     in the first 30 s. A trigger Ycode delivers early (a timer, a
+     notification, a keybag or power state) is the candidate; the fresh
+     device shows it is not only the device's age.
+  3. **The log path's per-trap CPU** (§14.8 item 3), not attempted here.
+
+## 17. Reference: LaunchServices at boot and the post-home work (agent B3-SIMOBS3, 2026-11-06)
+
+Black-box answers to §16.8 items 1 and 2: whether the reference's lsd
+rewrites its store at boot, what lsd and SpringBoard log about
+LaunchServices, what tells lsd its store is current, and what starts
+dasd's and SpringBoard's post-home work (§15.9 item 3).
+
+### 17.1 Conditions
+
+| Item | Value |
+|---|---|
+| Host | as §13.1 (arm64 Mac, macOS 27.2, Xcode 27.1); 1-minute load 90–660 at the boot starts (other agents' builds), so times are rough; counts and order are the result |
+| Runtime and device | iOS 27.1 (24A94401), iPhone Duo |
+| Devices | `ycode-test-simobs3-a`: boots 1–3 as created (first, second, third boot), then boots 4–7 each after one change to `DEV/data/var/db/lsd` (§17.5); `ycode-test-simobs3-b`: boots 1–3 as created. All headless (`simctl bootstatus -b`), deleted afterwards |
+| Per boot | a listing of the whole `DEV/data` folder (path, size, modification time, inode) before the boot, at the end of the window (still booted) and after `simctl shutdown`; `DEV/data/var/db/lsd` polled every 0.25 s; `lsof` of lsd at 20 s and at the end; `simctl spawn … log show --info --debug` of the window (150 s; 265 s and 424 s in two boots); the device's `launchd.log` |
+| Probes | `sample` of dasd at 20 s (boots a5, a6, a7, b2, b3) and 45 s (a6), of SpringBoard at 60 s (b3); `ps -M` of dasd every second (b1–b3); `lsmp` of dasd and launchd_sim (b3). The other boots carry no sampler |
+| Also re-read | the ten second boots of §13 and §15 (`log show` and `launchd.log`, no file listings) |
+| Times | seconds from the `simctl boot` call; home_s as §13 |
+
+"Clean boot" below means a second or later boot of a device whose previous
+shutdown was normal and whose `var/db/lsd` was not touched: a2, a3, b2, b3
+and the ten boots of §13/§15.
+
+### 17.2 What lsd writes, first boot and later boots
+
+A new device's data folder holds 86 entries and no `var/db/lsd`. Files
+under the device's data folder that LaunchServices writes:
+
+| File (under `DEV/data/`) | Size | First boot: written at (a1 / b1) | Clean boots |
+|---|---|---|---|
+| `var/db/lsd/com.apple.LaunchServices-33554481-v2.csstore` (the store; 33554481 is the schema version lsd logs) | 7 831 552 | 28.7 / 19.7 s | not written: same inode and modification time as the first boot's, at the end of the window and after shutdown |
+| `var/db/lsd/SystemDataOnly-com.apple.LaunchServices-33554481-v2.csstore` | 7 674 332 | 28.7 / 19.7 s | not written |
+| `var/db/lsd/com.apple.LaunchServices.unregisteredtypes-501.db` | 12 288 | 28.8 / 19.9 s | not written |
+| `var/db/lsd/com.apple.LaunchServicesAppProtectionStore.plist` | 264 | 8.6 / 5.8 s | not written |
+| `var/db/lsd/com.apple.LaunchServices.error` (empty marker, §17.5) | 0 | present 6.4–11.5 / 3.9–8.2 s, then removed | created when lsd starts loading and removed 50–80 ms later (lsd's own lines; the 0.25 s poller caught it once, a3) |
+| `tmp/ls-<16 random characters>` (lsd's working copy while it builds the store; mapped by lsd) | 4.6 MB at 20 s | during the build only | none: lsd maps the store file itself (`lsof`: the `.csstore` and the `.db`, nothing in `tmp/`) |
+| `Library/MobileInstallation/LaunchServicesOperations` (folder, installd) | — | 14.5 / 8.3 s | not written |
+
+- **Writes happen once, at the end of the build**, both `.csstore` files
+  within 20 ms, then the `.db`; the whole `tmp/` folder is emptied at
+  shutdown. A normal shutdown writes nothing under `var/db/lsd` (the
+  listings at the window's end and after shutdown are equal in all clean
+  boots).
+- **Only the first boot builds.** lsd logs `_CSStoreCreateWithURL failed`
+  (no such file), registers CoreTypes and the extension points in memory,
+  starts its services, then "#LSDatabaseBuilder Seeding database",
+  enumerates the system content and writes the store. lsd's own statistics
+  line: `numApplications = 162`, `numPlugins = 456`,
+  `rebuildReasonFlags = 9`, `migration = 1`, `totalRebuildTime` 11.6–17.5 s
+  (scan of the system content 11.5–17.3 s, save 0.1 s), followed by
+  "posting LSNotificationDatabaseSeedingComplete".
+- **Every boot, including clean ones, re-registers a small fixed set in
+  memory**, without writing the file: after loading the store lsd logs
+  "Cleaning new database object", "Registering CoreTypes bundle",
+  "Registering extension points" … "Done reregistering extension points"
+  (about 20 ms), "Registering canonical names", "Registering framework
+  bundle localized strings", "No persisted cache on this platform", removes
+  its `.error` marker and logs "Starting services". From "lsd starting" to
+  "Starting services" takes 0.28–0.52 s in clean boots (n = 14). Apps and
+  plug-ins are not re-registered.
+- So the reference's lsd does not rewrite its store at boot, as Ycode's
+  (§16.4). The store being stale in Ycode is not the difference.
+
+### 17.3 Log volume, first 30 s
+
+| Program, lines | First boot (a1, b1) | Clean boots (n = 14) | Rebuild boots (a4, a7) |
+|---|---|---|---|
+| lsd, all lines | 17 120, 14 816 | median 207 (133–224) | 14 304, 14 293 |
+| SpringBoard, subsystem `com.apple.launchservices` | 8, 5 | 10–17 | 13, 13 |
+| SpringBoard, "constructing bundle record for file:…" | 0 | 0 | 0 |
+| SpringBoard, "application record search init. Node: …" | 0 | 0 | 0 |
+
+The two Ycode patterns are absent from every reference boot of this
+section and of §13/§15 (19 boots, whole windows, first boots and rebuilds
+included).
+
+**lsd's lines in a clean boot**, by pattern (a2, a3, b2, b3): XPC
+connection activations 43–104 (mostly incoming client connections, `peer=true`,
+and its 8 listeners); "LSInstallProgress: adding observer …" 17–24;
+"Sending journalled notifications to newly connecting observer …" 9–12;
+container look-ups of its own containers about 10; "Failed to read LS
+preferences (secure? …) from …" 3; the 14 `com.apple.launchservices:db`
+start-up lines of §17.2; `xpc_activity` registrations of two analytics
+activities 6–9. A first boot adds per-bundle registration lines (the
+`appinstallation:TransactionLog` pattern 2 960, container queries about
+6 000, icon cache evictions 619, …).
+
+**SpringBoard's lines in a clean boot** (subsystem `com.apple.launchservices`,
+17 in b3): "registering for distributed notification … in this process" 8
+(application state, install-progress controls, plug-ins registered and
+unregistered); "LSApplicationWorkspace: adding observer …" 3–5;
+"Establishing xpc connection to lsd" 1; "Received LSWorkspaceObserverPing,
+xpc connection established" 1; "LaunchServices database schema version:
+33554481" 1 (logged by the client side once it has the database);
+"reloading all DMF policies for N identifiers" 1. Besides these, 2 lines
+"No LSApplicationRecord found for bundleId: …" per boot.
+
+### 17.4 Who connects to lsd, and in what order
+
+| t (s), clean boot a3 | Event |
+|---|---|
+| 2.46 | runningboardd connects to `com.apple.lsd.mapdb`; launchd_sim spawns lsd for it ("launching: ipc (mach)"): lsd is started on demand by its first client |
+| 2.70 | lsd: "lsd starting with schema version 33554481" |
+| 2.93 | mobiletimerd connects to `com.apple.lsd.xpc` (still before lsd's listeners) |
+| 3.01–3.07 | lsd: store loaded, "Cleaning new database object", the in-memory registrations, `.error` removed |
+| 3.07–3.17 | lsd: "Starting services"; listeners in this order: `com.apple.lsd.mapdb`, `.modifydb`, `.open`, `.advertisingidentifiers`, `.icons`, `.rebuild`, `.appprotection`, then `com.apple.lsd.xpc` |
+| 6.8 (5.5–7.6 over n = 14) | SpringBoard connects to `com.apple.lsd.mapdb` 0.08–0.15 s after its first log line, then to `com.apple.lsd.xpc` 20–100 ms later, then logs the schema-version line and "Received LSWorkspaceObserverPing" |
+
+- **SpringBoard connects to lsd 3.1–4.3 s after lsd finished starting**
+  (n = 14), with exactly two client connections: `com.apple.lsd.mapdb`
+  first, `com.apple.lsd.xpc` second. In a clean boot 71–101 client
+  connections reach `mapdb`, 19–29 `lsd.xpc`, one `lsd.icons`
+  (fileproviderd), 0–2 `lsd.advertisingidentifiers`; the other listeners
+  get no client.
+- **While lsd is building the store** (first boots, a4, a7), "Starting
+  services" comes only after the in-memory registrations (5–7 s after
+  "lsd starting") and the build runs after it. SpringBoard's `mapdb`
+  request, sent earlier, is answered within 5 ms of "Starting services";
+  SpringBoard logs "Database was seeding; client will retry and block …"
+  and waits until lsd's
+  "LSNotificationDatabaseSeedingComplete" (17.5 s in a1, 11.8 s in b1,
+  10.7 s in a4, 9.9 s in a7); then it logs the schema-version line and
+  "LaunchServices observer: databaseWasRebuilt". Even then it constructs no
+  bundle records itself.
+
+### 17.5 What tells lsd its store is current (experiments on device a)
+
+| Boot | Change made before the boot | What lsd did | Store files |
+|---|---|---|---|
+| a4 | empty `var/db/lsd/com.apple.LaunchServices.error` created | "_LSCreateStoreWithFileContents found a recovery file, so creating a new empty store"; full build, `rebuildReasonFlags = 5`, `migration = 0`, 10.7 s | both `.csstore` rewritten at 19.3 s: written as `<name>(<8 hex digits>~).csstore`, then renamed over the old file (new inode, same size) |
+| a5 | empty `com.apple.LaunchServices.syncInterrupted` created | "Previous sync was interrupted …"; no build; instead "Syncing with MobileInstallation once in-flight installation activity is quiesced", asks installd to enumerate the installed apps ("Enumerate installed apps requested by lsd") and checks each one ("Checking if … needs to be registered", "Skipping …"). `.error` exists during the sync | not written in 150 s; the sync had not finished at shutdown: shutdown left a new `.syncInterrupted` and an empty `…(<hex>~).csstore` |
+| a6 | both `.csstore` modification times set to 2000-01-01 (and a5's leftovers present) | loaded the store without a build (the old time made no difference); a5's `.syncInterrupted` made it sync again | after the sync finished (about 354 s, during the log read-out), the main `.csstore` was rewritten (new inode, same size) and `.error` removed |
+| a7 | main `com.apple.LaunchServices-33554481-v2.csstore` deleted, `SystemDataOnly-…` kept | `_CSStoreCreateWithURL failed` (no file); full build (`rebuildReasonFlags = 9`, 9.9 s); `SystemDataOnly-…` was not used to avoid it | both rewritten at 19.8 s |
+
+- **lsd's notion of "current"**: the store file with the schema version in
+  its name exists and opens, and no `.error` marker is present.
+  `.error` is lsd's own "load in progress" marker: created before the
+  store is loaded, removed when the in-memory registrations are done (and,
+  during a sync, kept until the sync is saved). A leftover `.error` means
+  the previous load did not complete, and the next boot discards the store
+  and rebuilds it. `.syncInterrupted` means a sync with installd did not
+  complete; it triggers a sync, not a rebuild, and clears `.error`.
+- No timestamp comparison was seen (a6), and lsd logs no build or system
+  version check; the only version it logs is the schema version, which is
+  also in the file names. The build check that exists belongs to installd:
+  its `Library/MobileInstallation/LastBuildInfo.plist` (399 bytes, written
+  on the first boot) and the line "Current build version (24A94401 / …)
+  equal to last version recorded …; skipping upgrade" in the sync boot. It
+  could not be exercised (the runtime build cannot be changed).
+- A clean shutdown leaves neither marker; every clean boot of this section
+  found none.
+
+### 17.6 dasd's quiet phase and what ends it
+
+| Boot | home_s | dasd silent from → to (s) | First dasd line after the silence |
+|---|---|---|---|
+| a2 | 51.0 | 8.2 → 76.5 | activity scoring ("WARNING NO POLICIES APPLY TO Activity …") |
+| a3 | 26.3 | 7.6 → none (silent until the window's end, 265 s) | — |
+| b2 | 28.3 | 7.0 → 39.6 | "error getting value for /device/system/isPluggedIn : … com.apple.coreduetd.context … lookup with error 3" |
+| b3 | 32.9 | 13.8 → 44.2 | the same error for `/device/system/batterySaver` |
+| §13/§15 (10) | 24.2–39.2 | 6.2–8.1 → 26.8–76.8 | the same error in 9 of 10; activity scoring in 1 |
+| first and changed boots (a1, b1, a4–a7) | 35.8–57.0 | 4.9–13.1 → 19.6–78.0 | the same error in 2; a new client connection or "Running activities" in the others |
+
+- **The silence is not idle time and not a wait for a signal.** The
+  samples (a5, a6, a7, b2, b3 at 20 s; a6 at 45 s) show the same state each
+  time: one dasd thread, serving a request, reads a CoreDuet context key
+  (`-[_CDClientContext objectForContextualKeyPath:synchronous:…]`) and waits
+  in a synchronous XPC send for the reply from `com.apple.coreduetd.context`,
+  a name that is not registered in the simulator (launchd_sim logs one
+  "failed lookup … error = 3" for dasd at 2.7 s). Meanwhile dasd's listener
+  thread waits for a lock, every client-connection thread waits for one
+  serial queue, and dasd's own submissions (`-[BGSystemTaskScheduler
+  submitTaskRequest:error:]` and `-[_DASScheduler submitActivity:inGroup:error:]`,
+  the latter from the XPC event publisher's subscription callback) wait for
+  synchronous replies from dasd's own scheduler service. In a5 two
+  background threads were also busy: activity evaluation (date
+  formatting) and the battery-temperature recorder, which logs the host's
+  power-source dictionary (about 24 KB) as "Unable to get valid battery
+  temperature: {…}".
+- `ps -M` (b2): during the silence dasd has 8–9 threads, all sleeping
+  except 1–2 runnable threads at priority 4 (background); no thread above
+  priority 37.
+- **The end:** in 13 of the 19 silences that ended the first line afterwards is that
+  read's failure, "error getting value for /device/system/isPluggedIn" (or
+  `batterySaver`) "… Connection init failed at lookup with error 3 - No
+  such process", on the thread whose last line started the read ("Fetching
+  uncached value for …" or "CoreDuet: ClientContext
+  objectForContextualKeyPath:"). Within the next 0.1 s dasd accepts the
+  queued client connections ("Creating restricted client for connection …
+  from pid …", many `duetactivityscheduler.peer[pid]` activations at the
+  same millisecond) and logs the queued "SUBMITTED …" lines, then scoring,
+  "Running activities" and the context reads of §15.7. In the three boots
+  checked, launchd_sim logs nothing about dasd, a look-up or its domain's
+  state in the second before the end.
+- **How long a read waits varies**: the median read fails in 0.1–94 ms
+  (per boot, four boots), but 1–16 reads per boot wait 1 s or longer, and the one that starts the silence waits 20–71 s (a2 68.4 s,
+  b2 34.8 s, b3 30.5 s; §13/§15 26–71 s). The wait is not a constant, so
+  not a fixed timeout; whether it depends on the host's load (all boots
+  here ran at load 90–660, dasd's runnable threads at background priority)
+  is open (§17.9).
+- Relative to home: in clean boots the silence ends between 1 s before and
+  48 s after home (median 11 s after, n = 13); in the first and changed
+  boots it ended 0–26 s *before* home. It does not wait for home.
+- No timer, notification name, keybag or power state change, first
+  unlock or "boot complete" line precedes the end in dasd's or in
+  launchd_sim's log.
+
+### 17.7 SpringBoard's notification work waits for dasd
+
+| Boot | home_s | dasd "SUBMITTED com.apple.usernotificationsd.BundleLibrarianVacuumBackgroundSystemTaskHandler.Recurring:…" | SpringBoard "notificationSourcesDidInstall: N sources, initialLoad=1" |
+|---|---|---|---|
+| a4, a5, a6, a7 | 35.8–52.1 | 90.4, 85.2, 68.6, 57.9 | 91.6, 87.1, 72.3, 58.3 |
+| b1, b2, b3 | 28.3–57.0 | 132.3, 118.5, 132.5 | 133.4, 119.2, 139.2 |
+| §15 runs 1, 4, 5 | 24.2–32.0 | 94.4, 104.1, 62.6 | 106.4, 106.6, 70.2 |
+| a1, a2, a3, §15 runs 2, 3, §13's five | 24.2–51.0 | not within the window (125–424 s; §13's 64–92 s) | not within the window |
+
+- SpringBoard's sample at 60 s (b3) shows why: the thread running
+  `UNSUserNotificationServerRun` is inside `-[UNSUserNotificationServer init]`,
+  which submits that background system task through `-[BGSystemTaskScheduler
+  submitTaskRequest:error:]` and waits for dasd's synchronous reply. The
+  notification server finishes initialising only after dasd has accepted
+  the task: in all 10 boots with both events, dasd's "SUBMITTED" line comes
+  0.4–12 s before SpringBoard's "initialLoad=1", and in the 10 boots
+  without the first, the second is absent too.
+- After "initialLoad=1" SpringBoard runs the work §15.7 lists:
+  "Application installed using default data provider" for each source (89
+  sources), "No data found at …" (372–411 per boot), "Saving file at …"
+  (113–143), "kExcludedFromBackupXattrName set on path" (111–122),
+  "Calcualate [sic] topics …" (53–54).
+- So **the event before SpringBoard's notification work is dasd's reply to
+  SpringBoard's task submission**, and dasd's ability to reply depends on
+  its queue being free (§17.6). The reply comes 31–98 s after dasd's
+  silence ends, while dasd works through its backlog (with further context
+  reads of 1–8 s each in b2).
+
+### 17.8 Consequences for Ycode
+
+1. **lsd's store is not the lead.** The reference's lsd also never writes
+   its store after the first boot; every boot re-registers CoreTypes,
+   extension points, canonical names and framework strings in memory only
+   (about 50 ms), from "lsd starting" to "Starting services" in 0.28–0.52 s.
+   Ycode's lsd spending 2.6 s there (§16.4) is worth a look, but the
+   rewrite is not missing.
+2. **What to compare in Ycode's SpringBoard**: on the reference,
+   SpringBoard's first two lsd connections are `com.apple.lsd.mapdb` then
+   `com.apple.lsd.xpc`, 0.08–0.15 s after its first line; it then logs "LaunchServices
+   database schema version: 33554481" (the client has the database) and
+   never constructs bundle records or runs application-record searches,
+   not even while lsd is building the store (then it blocks until the
+   build ends). A Ycode SpringBoard that logs "constructing bundle record"
+   has not got usable records from `mapdb`'s reply: check that the reply
+   arrives, that the schema-version line appears, and that the client can
+   map what the reply hands it.
+3. **Markers**: Ycode should leave `var/db/lsd` as the reference does after
+   a clean shutdown (no `com.apple.LaunchServices.error`, no
+   `com.apple.LaunchServices.syncInterrupted`, no `(…~).csstore`). A
+   leftover `.error` makes every boot rebuild (about 14 300 lsd lines and
+   a 10–17 s build with SpringBoard blocked); a leftover `.syncInterrupted`
+   makes every boot sync with installd, and a sync that does not finish
+   before shutdown leaves the store untouched and the marker in place
+   again (a5): an untouched store, as on Ycode's golden device since
+   2026-10-13 (§16.4), is consistent with such a loop. Check the folder's
+   listing after a Ycode boot and look for lsd's "Previous sync was
+   interrupted" and "Syncing with MobileInstallation" lines. Also compare
+   the working copy: the reference's lsd maps the store file in place and
+   writes a copy under `tmp/` only while it builds.
+4. **dasd and SpringBoard's notification server**: on the reference both
+   are held back by dasd's synchronous read of `com.apple.coreduetd.context`
+   (an unregistered name) that takes 20–71 s to fail on this host, and
+   SpringBoard's notification server waits for dasd's reply to its task
+   submission. Ycode's dasd gets the same look-up failure (§15.7) but
+   logs 1 466 failed reads in its first 30 s, so its reads are not held
+   back this way, and dasd's backlog and SpringBoard's notification
+   initial load run before home. The behaviour to reproduce is not
+   a timer: it is the latency of a synchronous request on a connection
+   whose name look-up failed. Until it is known whether that latency is
+   the reference's own or this host's load (§17.9 item 1), do not delay
+   Ycode's replies artificially; measure first.
+
+### 17.9 Open questions
+
+1. **What makes the reference's failed context read wait 20–71 s.** The
+   look-up failure is logged by launchd_sim at 2.7 s, yet one later read
+   waits tens of seconds; no launchd_sim line marks its end. Repeating
+   b2/b3 on a quiet host (load under 4, as `parity-ladder.md` §3.1) would
+   show whether the wait is load (dasd's runnable threads sit at
+   priority 4) or a property of the look-up path. `lsmp` without root
+   cannot name the holder of the reply right (one probe at 58 s in b3,
+   after the silence: launchd_sim held 115 send-once rights, one of them
+   to a dasd receive right).
+2. **Why some boots never accept SpringBoard's task within 125–265 s**
+   (a2, a3, §15 runs 2 and 3, §13): dasd's backlog order and further
+   blocked reads; a longer window would tell whether it always comes.
+3. **lsd's 0.28–0.52 s against Ycode's 2.6 s** (§16.4) on the critical
+   path: a per-phase comparison needs the same lines from Ycode's lsd.
+4. installd's build check (`LastBuildInfo.plist`) was not exercised; what
+   it triggers on a build change is unknown.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -2153,6 +2966,23 @@ Next, in order of size:
 | The reference's host registers `com.apple.CoreSimulator.SimIdentityService`; apsd is its guest user (§14.2) | 3 | `launchd-sim.md` §6.3, §6.4 (OBS-FSEVENTS's recorder) |
 | XPC connection hand-shake and request framing of the identity service (§14.3) | 3 | as Ycode's Metal host (`metal-sim-protocol.md` §2.1); the request's key names from Ycode's own log of the guest's request |
 | Timed series T1, T2, T3 and service counts (§14.6, §14.7) | 3 | B3-BOOT2's Thor runs (`ab-T1`, `ab-T2`, `ab-T3`, `runs/fid-base`, `runs/fid-tree`; `scripts/ycode-launchd-spawns`) |
+| The identity service's only guest client, its timing, apsd's courier connections, the 17 bytes signed, "Connected response ok" (§15.2, §15.3, §15.5) | 3 | `research/dirty/simobs2` boots: `simctl spawn … log show --info --debug --style ndjson` of apsd and every process, 10 second boots (5 new, §13's 5 re-read) |
+| The host end in CoreSimulatorService, certificate issuance through `mobileactivationd`, the SEP key and ECDSA signing, the certificate chain's issuer names and validity, one key per device (§15.2–§15.4) | 3 | host `log stream --info --debug` of `com.apple.CoreSimulator.CoreSimulatorService` and `mobileactivationd` during the boots; the persisted host log |
+| No key names visible; no port of the host end visible; no sample of the exchange (§15.3) | 4 | `lsmp` of apsd and the device's processes (the host service refuses `task_for_pid` without root), `sample` of apsd at 1 ms |
+| Message counts and patterns of SpringBoard, mobileassetd, dasd, biomed; onset times; the absent patterns (§15.6, §15.7) | 3 | the same `log show` output, patterns from format strings and normalised message text |
+| Ycode's counts and patterns (§15.6–§15.8) | 3 | §14.8; B3-BOOT2's guest `log stream` one-shots `diag-tree-sb`, `diag-tree-busy` of Ycode's own simulator |
+| `fclonefileat` is the public clone call (§15.7) | 1 | clonefile(2) |
+| biomed's temporary files: create, unlink, file port, `fclonefileat` ENOENT; nsurlsessiond's `/.nofollow/` folder paths; FrontBoard's task_info flavors 3 and 18; lsd's store reads and recovery files (§16.2–§16.4) | 3 | Thor runs of Ycode's own simulator: trap traces (`--trace-name biomed` from B3-BOOT2's `diag-biomed`; `SpringBoard`, `lsd` from B3-BOOT3), guest `log stream` one-shots (`diag-tree-biome`, `diag-nsurl`, `diag-ls`, `diag-tree2`) |
+| clonefile(2) clones the open file; a `/.nofollow/` prefix means NAMEI_NOFOLLOW_ANY; task_info structure layouts (§16.2–§16.4) | 1 | clonefile(2); apple-oss-distributions/xnu `bsd/vfs/vfs_lookup.c` (`namei`), `osfmk/mach/task_info.h` |
+| dasd's plist paths are absent from the runtime (§16.4) | 2 | directory listing of the runtime copy |
+| Hand-off counts, critical path by program, log messages per program, timed series U1 and U2, service counts (§16.5–§16.7) | 3 | B3-BOOT3's Thor runs (`ab-U1`, `ab-U2`, profiles `fp/p-base`, `p-tree`, `p-hand2`, `p-tree2`, `p-fresh`; `runs/fid-*`; `scripts/ycode-frame-profile`, `scripts/ycode-launchd-spawns`) |
+| Files lsd writes under the device's data folder, sizes, times, inodes; no writes in clean boots or at shutdown (§17.2, §17.5) | 3 | `research/dirty/simobs3` boots: listings of `DEV/data` before, at the window's end and after shutdown; a 0.25 s poller of `var/db/lsd`; `lsof` of lsd |
+| lsd's start-up, build and recovery-marker lines, rebuild statistics, sync with installd; installd's build-version line (§17.2, §17.5) | 3 | `simctl spawn … log show --info --debug` of each boot; experiments a4–a7 on the observer's own device (marker files created, modification times changed, one store file deleted) |
+| Log counts and patterns of lsd and SpringBoard; the two Ycode patterns absent (§17.3) | 3 | the same `log show` output, 9 boots here and the 10 boots of §13/§15 re-read |
+| lsd started on demand by its first client; client connections and their order (§17.4) | 3 | the device's `launchd.log`; XPC connection lines in `log show` |
+| dasd's and SpringBoard's blocked threads: the context read, the self-submissions, `UNSUserNotificationServer init` waiting in `submitTaskRequest:error:` (§17.6, §17.7) | 4 | `sample` of dasd (6 samples) and SpringBoard (1 sample); public symbol names only |
+| dasd's thread states and priorities; port rights (§17.6, §17.9) | 3 | `ps -M` every second; `lsmp` of dasd and launchd_sim (no root) |
+| dasd's silences, the read that ends them, read latencies; dasd's acceptance of SpringBoard's task against SpringBoard's initial load (§17.6, §17.7) | 3 | `log show` timestamps and thread ids, 19 boots |
 
 Level 5 was not used. `.claude/Xcode.app`, `research/dirty/` and Ghidra
 were not opened.
@@ -2165,3 +2995,21 @@ the git-ignored `research/dirty/simobs/`.
 (on the Thor, with the runtime copy as a black box), and only `specs/`,
 Ycode's code and the runtime's launchd plists (read as property lists)
 were read.
+§15 is a dirty-room observation (agent B3-SIMOBS2): Apple's simulator ran
+headless and only through `simctl`, `log`, `lsmp` and `sample` on devices
+named `ycode-test-simobs2-*`, deleted afterwards; the host's own log was
+read with `log`. No binary was disassembled or decompiled, Ghidra was not
+opened, and the Simulator app's window and Xcode's GUI were not used. Its
+raw data stays in the git-ignored `research/dirty/simobs2/`.
+§16 (agent B3-BOOT3) is clean-room work: only Ycode's own simulator ran
+(on the Thor, with the runtime copy as a black box), and only `specs/`,
+Ycode's code, public xnu interfaces (as cited) and the runtime's directory listing were
+read.
+§17 is a dirty-room observation (agent B3-SIMOBS3): Apple's simulator ran
+headless and only through `simctl`, `log`, `lsof`, `ps`, `lsmp` and
+`sample` on devices named `ycode-test-simobs3-*`, deleted afterwards; files
+in those devices' data folders were listed, and in four boots one lsd file
+was created, re-dated or deleted beforehand. No binary was disassembled or
+decompiled, Ghidra was not opened, and the Simulator app's window and
+Xcode's GUI were not used. Its raw data stays in the git-ignored
+`research/dirty/simobs3/`.

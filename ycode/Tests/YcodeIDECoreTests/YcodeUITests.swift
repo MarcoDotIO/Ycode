@@ -13,8 +13,10 @@ private let worktreeYcode = URL(fileURLWithPath: #filePath).deletingLastPathComp
 
     @Test func swift() {
         let t = kinds("/// Doc\n@MainActor func f() -> Int { let s = \"a\\\"b\" // c\n return 42 } /* x /* y */ z */", .swift)
-        #expect(t.map(\.0) == [.docComment, .attribute, .keyword, .typeName, .keyword, .string, .comment, .keyword, .number, .comment])
-        #expect(t[5].1 == "\"a\\\"b\"")
+        #expect(t.map(\.0) == [.docComment, .attribute, .keyword, .otherDeclaration, .typeName, .keyword, .otherDeclaration, .string, .comment,
+                                .keyword, .number, .comment])
+        #expect(t[3].1 == "f" && t[6].1 == "s")
+        #expect(t[7].1 == "\"a\\\"b\"")
         #expect(t.last?.1 == "/* x /* y */ z */") // Swift block comments nest
     }
 

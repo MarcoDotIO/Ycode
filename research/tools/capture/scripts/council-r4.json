@@ -1,0 +1,498 @@
+{
+  "name": "council-r4",
+  "issue": 81,
+  "title": "Council round 4 (#81): round 3's steps in the same order and ids (step 02 adds a detail crop of the navigator's bottom bar), then Settings ▸ General and Settings ▸ Text Editing. The conflict editor and the device window are council-r4-conflict.json and council-r4-device.json.",
+  "targets": [
+    "xcode",
+    "ycode"
+  ],
+  "compare_order": [
+    "xcode",
+    "ycode"
+  ],
+  "project": {
+    "generator": "make-test-project.py",
+    "path": "GlassScroll/GlassScroll.xcodeproj"
+  },
+  "window": {
+    "size": [
+      1400,
+      880
+    ],
+    "display": "builtin",
+    "title": "{project}",
+    "timeout": 90
+  },
+  "focus": "foreground",
+  "launch_settle": 3.0,
+  "record": {
+    "fps": 120,
+    "codec": "prores4444",
+    "pre": 0.4,
+    "post": 1.2
+  },
+  "steps": [
+    {
+      "id": "select-long",
+      "note": "Open Long.swift by selecting its row in the project navigator (council row 2: row selection, jump bar, inspector and editor change in one frame).",
+      "do": [
+        {
+          "select": {
+            "role": "AXRow",
+            "text": "Long|Long.swift"
+          }
+        }
+      ],
+      "per_focus": {
+        "foreground": {
+          "do": [
+            {
+              "click": {
+                "role": "AXRow",
+                "text": "Long|Long.swift"
+              }
+            }
+          ]
+        }
+      },
+      "record": {
+        "post": 1.0
+      }
+    },
+    {
+      "id": "editor-at-rest",
+      "note": "Long.swift at the top, window active: toolbar, jump bar and navigator glass at rest. Width 1 for the minimap rule (navigator 290, inspector 260 shown). Round 4: also a detail of the navigator's bottom bar at rest (the + circle and the filter capsule): the crop sheet.",
+      "record": false,
+      "still": "after",
+      "crop": [
+        0,
+        790,
+        320,
+        90
+      ]
+    },
+    {
+      "id": "editor-scroll-down",
+      "note": "Linear trackpad drag of 600 pt down over 1 s (120 events, 8.33 ms apart): text under the toolbar and jump bar, the scroll-edge effect.",
+      "do": [
+        {
+          "scroll": {
+            "at": [
+              715,
+              450
+            ]
+          },
+          "dy": -600,
+          "steps": 120,
+          "interval": 0.008333
+        }
+      ],
+      "record": {
+        "post": 1.0
+      }
+    },
+    {
+      "id": "editor-flick-up",
+      "note": "A flick up: 8 gesture events of 40 pt, then momentum events decaying with a 0.33 s time constant (about 800 pt more). Momentum needs the foreground; in a background session this is a fast AX scroll.",
+      "do": [
+        {
+          "scroll": {
+            "at": [
+              715,
+              450
+            ]
+          },
+          "dy": 320,
+          "steps": 8,
+          "interval": 0.008333,
+          "momentum": true,
+          "momentum_tau": 0.33
+        }
+      ],
+      "record": {
+        "post": 2.0
+      }
+    },
+    {
+      "id": "select-stripes",
+      "note": "Select Stripes.png in the navigator (council rows 2 and 3): the image viewer, scaled to fit, and the image inspector.",
+      "do": [
+        {
+          "select": {
+            "role": "AXRow",
+            "text": "Stripes|Stripes.png"
+          }
+        }
+      ],
+      "per_focus": {
+        "foreground": {
+          "do": [
+            {
+              "click": {
+                "role": "AXRow",
+                "text": "Stripes|Stripes.png"
+              }
+            }
+          ]
+        }
+      },
+      "record": {
+        "post": 1.5
+      }
+    },
+    {
+      "id": "open-stripes-document",
+      "note": "The open-document path (issue #71): open Stripes.png with `open -a`. It should show in the same window, unchanged.",
+      "do": [
+        {
+          "open": "GlassScroll/Stripes.png"
+        }
+      ],
+      "record": {
+        "post": 1.5
+      }
+    },
+    {
+      "id": "select-bands",
+      "note": "Open Bands.swift: bands of full-block characters in the comment and string colours, between blank bands.",
+      "do": [
+        {
+          "select": {
+            "role": "AXRow",
+            "text": "Bands|Bands.swift"
+          }
+        }
+      ],
+      "per_focus": {
+        "foreground": {
+          "do": [
+            {
+              "click": {
+                "role": "AXRow",
+                "text": "Bands|Bands.swift"
+              }
+            }
+          ]
+        }
+      },
+      "record": {
+        "post": 0.8
+      }
+    },
+    {
+      "id": "bands-scroll",
+      "note": "Scroll the bands up under the toolbar, the jump bar and past the bottom bar slowly: 1200 pt over 2 s. The glass tint over dark and light content.",
+      "do": [
+        {
+          "scroll": {
+            "at": [
+              715,
+              450
+            ]
+          },
+          "dy": -1200,
+          "steps": 240,
+          "interval": 0.008333
+        }
+      ],
+      "record": {
+        "post": 1.0
+      }
+    },
+    {
+      "id": "select-long-again",
+      "note": "Back to Long.swift for the inspector toggle.",
+      "do": [
+        {
+          "select": {
+            "role": "AXRow",
+            "text": "Long|Long.swift"
+          }
+        }
+      ],
+      "per_focus": {
+        "foreground": {
+          "do": [
+            {
+              "click": {
+                "role": "AXRow",
+                "text": "Long|Long.swift"
+              }
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "none",
+      "settle": 1.0
+    },
+    {
+      "id": "inspector-hide",
+      "note": "Hide the inspector with its toolbar button, Long.swift open, at 120 fps (council row 9: about 215 ms, when the text re-wraps). The after still is width 2 for the minimap rule.",
+      "do": [
+        {
+          "press": {
+            "role": "AXButton",
+            "label": "Hide Inspector"
+          }
+        }
+      ],
+      "record": {
+        "post": 1.2
+      }
+    },
+    {
+      "id": "inspector-show",
+      "note": "Show the inspector again.",
+      "do": [
+        {
+          "press": {
+            "role": "AXButton",
+            "label": "Show Inspector"
+          }
+        }
+      ],
+      "record": {
+        "post": 1.2
+      }
+    },
+    {
+      "id": "inspector-scroll",
+      "note": "Scroll the file inspector (long Full Path) 200 pt under its tab bar.",
+      "do": [
+        {
+          "scroll": {
+            "at": [
+              1270,
+              520
+            ]
+          },
+          "dy": -200,
+          "steps": 60,
+          "interval": 0.008333
+        }
+      ],
+      "record": {
+        "post": 1.0
+      }
+    },
+    {
+      "id": "plain-group",
+      "note": "Expand the plain group Plain and its subgroup Sub: the navigator's order for a PBXGroup whose children are listed Zeta.swift, Sub, alpha.swift, Beta.swift.",
+      "do": [
+        {
+          "set": {
+            "role": "AXRow",
+            "text": "Plain"
+          },
+          "attr": "AXDisclosing",
+          "value": true
+        },
+        {
+          "wait": 0.5
+        },
+        {
+          "set": {
+            "role": "AXRow",
+            "text": "Sub"
+          },
+          "attr": "AXDisclosing",
+          "value": true
+        }
+      ],
+      "record": {
+        "post": 0.8
+      }
+    },
+    {
+      "id": "navigator-expand",
+      "note": "Expand the Models folder so the navigator has more rows than fit (council row 32: rows appear in one frame).",
+      "do": [
+        {
+          "set": {
+            "role": "AXRow",
+            "text": "Models"
+          },
+          "attr": "AXDisclosing",
+          "value": true
+        }
+      ],
+      "record": {
+        "post": 0.8
+      }
+    },
+    {
+      "id": "navigator-scroll",
+      "note": "Scroll the navigator 500 pt over 0.6 s under the navigator selector bar and above the filter bar.",
+      "do": [
+        {
+          "scroll": {
+            "at": [
+              145,
+              450
+            ]
+          },
+          "dy": -500,
+          "steps": 72,
+          "interval": 0.008333
+        }
+      ],
+      "record": {
+        "post": 1.0
+      }
+    },
+    {
+      "id": "split-editor",
+      "note": "Add an editor pane on the right from the toolbar's Add Editor menu: width 3 for the minimap rule (needs the foreground).",
+      "do": [
+        {
+          "click": {
+            "role": "AXMenuButton",
+            "description": "Add Editor"
+          }
+        },
+        {
+          "wait": 0.5
+        },
+        {
+          "press": {
+            "role": "AXMenuItem",
+            "title": "Editor Pane On Right|Add Editor Pane on Right|Add Editor on Right",
+            "scope": "app"
+          }
+        }
+      ],
+      "record": {
+        "post": 1.2
+      }
+    },
+    {
+      "id": "narrow-window",
+      "note": "Resize the window to 1100 x 880: width 4 for the minimap rule, and the live resize.",
+      "do": [
+        {
+          "resize": [
+            1100,
+            880
+          ]
+        }
+      ],
+      "record": {
+        "post": 1.2
+      }
+    },
+    {
+      "id": "welcome-window",
+      "note": "Window > Welcome (needs the foreground). Recorded in app mode, so the Welcome window shows over the workspace window. Round 3: still only, and the recent-projects list is painted over in both apps' stills afterwards (it lists other projects on this Mac).",
+      "do": [
+        {
+          "menu": "Window > Welcome to {app}"
+        }
+      ],
+      "record": {
+        "video": false,
+        "mode": "app"
+      }
+    },
+    {
+      "id": "settings-open",
+      "note": "Open Settings (cmd+comma) and choose General in its sidebar at once. Not recorded or still-captured: the reference reopens on the last pane used. The General window is then moved onto the session's display, so both apps' Settings are captured at the same scale.",
+      "do": [
+        {
+          "key": "cmd+,"
+        },
+        {
+          "wait": 1.5
+        },
+        {
+          "select": {
+            "role": "AXRow",
+            "text": "General",
+            "scope": "app"
+          }
+        },
+        {
+          "wait": 1.0
+        },
+        {
+          "move": [
+            326,
+            160
+          ],
+          "window": "General"
+        }
+      ],
+      "per_target": {
+        "ycode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "move": [
+                326,
+                160
+              ],
+              "window": "General"
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "none",
+      "settle": 0.8
+    },
+    {
+      "id": "settings-general",
+      "note": "The Settings window's General pane, window active (the only pane captured; never Accounts). The still is taken only of a window titled General.",
+      "capture_title": "General",
+      "record": false,
+      "still": "after",
+      "settle": 0.5
+    },
+    {
+      "id": "settings-text-editing",
+      "note": "The Settings window's Text Editing pane (Xcode 27 titles it Editing in the sidebar), window active. Chosen in the sidebar, then the window is moved to the same position as General.",
+      "do": [
+        {
+          "select": {
+            "role": "AXRow",
+            "text": "Text Editing|Editing",
+            "scope": "app"
+          }
+        },
+        {
+          "wait": 1.2
+        },
+        {
+          "move": [
+            326,
+            160
+          ],
+          "window": "Editing"
+        },
+        {
+          "wait": 0.5
+        }
+      ],
+      "capture_title": "Editing",
+      "record": false,
+      "still": "after",
+      "settle": 0.5
+    },
+    {
+      "id": "settings-close",
+      "note": "Close Settings.",
+      "do": [
+        {
+          "key": "cmd+w"
+        }
+      ],
+      "record": false,
+      "still": "none"
+    }
+  ]
+}

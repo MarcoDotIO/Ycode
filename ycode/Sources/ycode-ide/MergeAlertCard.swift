@@ -77,6 +77,8 @@ struct MergeAlertCard: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
+            .accessibilityLabel(MergeSheetText.cancel)
+            .accessibilityHint("Cancel button (Escape)")
             .offset(x: cancelX, y: buttonY)
             .shellTarget("merge alert cancel")
             Button { if !isLeaving { scm.confirmMergeAlert() } } label: {
@@ -85,11 +87,18 @@ struct MergeAlertCard: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.defaultAction)
+            .accessibilityLabel(MergeSheetText.merge)
+            .accessibilityHint("Default button (Return)")
             .offset(x: mergeX, y: buttonY)
             .shellTarget("merge alert merge")
         }
         .frame(width: w, height: h, alignment: .topLeading)
         .contentShape(Rectangle())
+        // A modal container (§13.2): the title and message are static texts,
+        // Cancel and Merge buttons with their titles and press actions.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(alert.title)
+        .accessibilityAddTraits(.isModal)
         .shellTarget("merge alert")
     }
 }

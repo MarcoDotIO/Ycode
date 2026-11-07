@@ -113,7 +113,7 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
         super.init(window: window)
         build()
         reload()
-        window.center()
+        placeOnScreen()
         recentsObserver = NotificationCenter.default.addObserver(forName: RecentProjects.didChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.reload() }
         }
@@ -271,10 +271,26 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
         if !entries.isEmpty { table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false) }
     }
 
+    /// How much lower than AppKit's `center()` the window sits
+    /// (`editor-area.md` F.11, checklist row 112: the same 480 × 629
+    /// frame, 8 points lower).
+    public static let belowSystemCentre: CGFloat = 8
+
+    /// Centres the window as the reference does: AppKit's centring, 8
+    /// points lower, kept on the screen.
+    func placeOnScreen() {
+        guard let window else { return }
+        window.center()
+        var origin = window.frame.origin
+        origin.y -= Self.belowSystemCentre
+        if let visible = window.screen?.visibleFrame { origin.y = max(origin.y, visible.minY) }
+        window.setFrameOrigin(origin)
+    }
+
     /// Shows the window (centered the first time) and refreshes the list.
     public func present() {
         reload()
-        if window?.isVisible != true { window?.center() }
+        if window?.isVisible != true { placeOnScreen() }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
     }

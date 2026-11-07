@@ -51,7 +51,8 @@ struct InspectorColumn: View {
                 } else if tab != 0 {
                     centered("No Quick Help", c)
                 } else if model.document == nil {
-                    centered("Not Applicable", c)
+                    // "No Selection" in the Repositories view (editor-area.md F.10).
+                    centered(model.navigator == .sourceControl && model.sourceControl.mode == .repositories ? "No Selection" : "Not Applicable", c)
                 } else {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(model.fileInspector.enumerated()), id: \.offset) { pair in
@@ -88,7 +89,8 @@ struct InspectorColumn: View {
     /// An empty inspector's message, centered on the whole column (as the
     /// AppKit inspector centers it), 13 points.
     func centered(_ s: String, _ c: ShellColors) -> some View {
-        Text(verbatim: s).font(Font.system(size: 13)).foregroundStyle(c.secondaryLabel)
+        // About 17 points, cap height 12 (editor-area.md F.10, row 111).
+        Text(verbatim: s).font(Font.system(size: 17)).foregroundStyle(c.secondaryLabel)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.top, -(CGFloat(WorkspaceChrome.toolbarHeight) + CGFloat(WorkspaceChrome.selectorHeight)))
     }

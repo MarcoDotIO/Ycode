@@ -18,4 +18,7 @@ public enum RepositoriesViewStyle {
     /// The mode control's inset from each side of the navigator, and its height.
     public static let modeControlInset = 9.0
     public static let modeControlHeight = 16.0
+    /// The segments' title size: "Changes" 45 wide in ink (`fidelity-council.md`
+    /// row 114; at 11 points it was 49.5).
+    public static let modeControlFontSize = 10.0
 }

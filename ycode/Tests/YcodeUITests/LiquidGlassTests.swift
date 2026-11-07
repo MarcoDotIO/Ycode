@@ -47,8 +47,11 @@ import Testing
         #expect(sel.size == NSSize(width: 278, height: 30) && sel.minX == 6, "\(sel)")
         #expect(!nav.selectorPill.isHidden && nav.selectorPill.frame.size == NavigatorAreaController.selectorPillSize)
         let plus = nav.plusGlass.frame, field = nav.filterGlass.frame
-        #expect(plus.size == NavigatorAreaController.plusSize && abs(plus.minX - 6) <= 0.5, "\(plus)")
-        #expect(field.height == 30 && abs(field.minY - 7) <= 0.5 && abs(field.minX - plus.maxX - NavigatorAreaController.plusToFilter) <= 0.5 && field.width == 242 && abs(nav.view.bounds.maxX - field.maxX - 6) <= 0.5, "\(field)")
+        // Round 4 (editor-area.md F.9, row 110): a 28 × 28 circle at x 7–35,
+        // a 240 × 28 capsule at x 42.5–282.5, both 8 above the bottom.
+        #expect(plus.size == NSSize(width: 28, height: 28) && abs(plus.minX - 7) <= 0.5 && abs(plus.minY - 8) <= 0.5, "\(plus)")
+        #expect(field.height == 28 && abs(field.minY - 8) <= 0.5 && abs(field.minX - 42.5) <= 0.5 && field.width == 240
+                && abs(nav.view.bounds.maxX - field.maxX - 7.5) <= 0.5, "\(field)")
         // Under the bars: the outline's scroll view runs from the selector
         // capsule's top (nothing shows above it) to the area's bottom.
         let scroll = nav.scrollView

@@ -36,12 +36,20 @@ public enum WorkspaceChrome {
     /// x (source-list layout; `metrics.md` §11 item 1).
     public static let indentationPerLevel: Double = 12
     public static let disclosureX: Double = 12
-    /// The bottom bar: the "+" circle and the filter capsule, 30 tall, 7
-    /// above the window's bottom edge.
-    public static let filterBarHeight: Double = 30
-    public static let filterBarBottomInset: Double = 7
-    public static let plusCircleWidth: Double = 31
-    public static let plusToFilter: Double = 5
+    /// The bottom bar (`editor-area.md` F.9, checklist row 110): the "+"
+    /// circle 28 × 28 at x 7–35 and the filter capsule 240 × 28 at
+    /// x 42.5–282.5 of a 290-point navigator, 8 above the window's bottom
+    /// edge (y 844–872 of 880). They were 31 × 30 and 243 × 30, 7 above.
+    public static let filterBarHeight: Double = 28
+    public static let filterBarBottomInset: Double = 8
+    public static let plusCircleWidth: Double = 28
+    public static let plusToFilter: Double = 7.5
+    /// The bar's room at the navigator's leading and trailing edges.
+    public static let filterBarLeading: Double = 7
+    public static let filterBarTrailing: Double = 7.5
+    /// The filter-options glyph in dark (#ABABAC; the secondary label
+    /// colour in light).
+    public static let filterGlyphDark: UInt32 = 0xABABAC
 
     /// The navigators in selector order (`CommandTable.navigators`).
     public static let navigatorSymbols = [
@@ -223,11 +231,13 @@ public enum WorkspaceChrome {
 
 extension WorkspaceChrome {
     /// "Ycode Default" (the first built-in theme) has no colors of its own:
-    /// the AppKit IDE draws it with the system's dynamic colors. A toolkit
-    /// without those draws it with these values, read from the AppKit IDE's
-    /// own windows (`LinuxParityProbeTests` captures; `docs/PARITY.md`
-    /// §5.10): the editor's background, text, current line, line numbers
-    /// and the role colors, in light and dark appearance.
+    /// the AppKit IDE draws it with the measured reference values where the
+    /// council measured them (`editor-area.md` §C.2 and §C.4 for light, F.3
+    /// for dark; `fidelity-council.md` rows 10, 85, 86) and the system's
+    /// dynamic colors elsewhere. A toolkit without those draws it with
+    /// these values (the unmeasured roles as read from the AppKit IDE's own
+    /// windows, `docs/PARITY.md` §5.10): the editor's background, text,
+    /// current line, line numbers and the role colors, in light and dark.
     public struct DefaultThemeColors: Equatable, Sendable {
         public var background: ThemeColor
         public var foreground: ThemeColor
@@ -242,15 +252,17 @@ extension WorkspaceChrome {
         func c(_ hex: String) -> ThemeColor { ThemeColor(hex: hex)! }
         if dark {
             return DefaultThemeColors(
-                background: c("#1E1E1E"), foreground: c("#FFFFFF"), currentLine: c("#292929"), lineNumber: c("#9A9A9A"),
+                background: c("#262626"), foreground: c("#FAF1F3"), currentLine: c("#353535"), lineNumber: c("#706D6E"),
                 selection: c("#3F638B"),
-                tokens: ["keyword": c("#EB4B63"), "comment": c("#8C8C8C"), "docComment": c("#68CE67"), "string": c("#EB534E"),
-                         "number": c("#0A84FF"), "preprocessor": c("#FF9F0A"), "attribute": c("#AC8E68"), "typeName": c("#CA43EA")])
+                tokens: ["keyword": c("#FF83B4"), "comment": c("#ABB3CD"), "docComment": c("#68CE67"), "string": c("#FF8E7B"),
+                         "number": c("#ECA900"), "preprocessor": c("#FF9F0A"), "attribute": c("#AC8E68"), "typeName": c("#D997FF"),
+                         "typeDeclaration": c("#00CAFB"), "otherDeclaration": c("#27A7C1"), "propertyReference": c("#20AD9D")])
         }
         return DefaultThemeColors(
-            background: c("#FFFFFF"), foreground: c("#000000"), currentLine: c("#F2F2F2"), lineNumber: c("#A6A6A6"),
+            background: c("#FFFFFF"), foreground: c("#322529"), currentLine: c("#EEEEEE"), lineNumber: c("#B8B3B4"),
             selection: c("#B3D7FF"),
-            tokens: ["keyword": c("#EB445A"), "comment": c("#808080"), "docComment": c("#67C468"), "string": c("#EB4C46"),
-                     "number": c("#007AFF"), "preprocessor": c("#FF9500"), "attribute": c("#A2845E"), "typeName": c("#BB3ED9")])
+            tokens: ["keyword": c("#C4246E"), "comment": c("#6A7084"), "docComment": c("#67C468"), "string": c("#CA2B1C"),
+                     "number": c("#0178B8"), "preprocessor": c("#FF9500"), "attribute": c("#A2845E"), "typeName": c("#9D31CF"),
+                     "typeDeclaration": c("#007D9E"), "otherDeclaration": c("#006178")])
     }
 }
