@@ -455,6 +455,20 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         VCPUPool.runEndedHook = { BackgroundBand.stopped() }
         BackgroundBand.startSampler()
     }
+    // The host class of a thread start (scheduling-policy.md §4.15).
+    // Off, the start hook only counts starts by the host thread's class.
+    if HostSched.backend != .none {
+        VCPUPool.runStartHook = { HostSched.applyAtStart($0) }
+    }
+    if HostSched.startClassEnabled, HostSched.backend != .none {
+        let bandEnded = VCPUPool.runEndedHook
+        VCPUPool.runEndedHook = {
+            bandEnded?()
+            HostSched.applyAtPark()
+        }
+        VCPUPool.creatorStartHook = { HostSched.applyOnCreatorThread() }
+        stderrLine("ycode-simd: sched: start class on (starts take their thread's host class, parked host threads wait at df, creator threads at ui)")
+    }
     if config.trace || !config.options.tracePIDs.isEmpty || !config.options.traceNames.isEmpty {
         MachIPC.traceMessageStrings = true
     }

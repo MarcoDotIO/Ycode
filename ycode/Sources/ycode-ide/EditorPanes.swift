@@ -253,17 +253,18 @@ struct IssueStepperView: View {
     var body: some View {
         let counts = model.issueCounts
         if let kind = IssueStepper.kind(errors: counts.errors, warnings: counts.warnings) {
-            let c = ShellColors(scheme)
+            // H.5 (row 161): #7F7F7F in light, #9D9D9D in dark.
+            let chevron = IssueSymbol.color(IssueStepper.chevronColor(dark: scheme == .dark))
             HStack(spacing: CGFloat(IssueStepper.spacing)) {
                 Button { model.perform(.previousIssue) } label: {
-                    Image(systemName: "chevron.left").font(.system(size: 11)).foregroundStyle(c.secondaryLabel)
+                    Image(systemName: "chevron.left").font(.system(size: 11)).foregroundStyle(chevron)
                         .frame(width: CGFloat(IssueStepper.chevronWidth), height: CGFloat(IssueStepper.chevronHeight))
                 }
                 .buttonStyle(.plain).help("Show Previous Issue")
                 IssueKindSymbol(kind: kind)
                     .help(kind == .error ? "Errors" : "Issues")
                 Button { model.perform(.nextIssue) } label: {
-                    Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(c.secondaryLabel)
+                    Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(chevron)
                         .frame(width: CGFloat(IssueStepper.chevronWidth), height: CGFloat(IssueStepper.chevronHeight))
                 }
                 .buttonStyle(.plain).help("Show Next Issue")
@@ -279,13 +280,14 @@ struct IssueStepperView: View {
 /// the fill, so white shows through it).
 struct IssueKindSymbol: View {
     let kind: IssueStepper.Kind
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let w = CGFloat(IssueStepper.symbolWidth), h = CGFloat(IssueStepper.symbolHeight)
         ZStack {
             Rectangle().fill(Color.white).frame(width: w * 0.45, height: h * 0.55).offset(y: kind == .warning ? h * 0.12 : 0)
             Image(systemName: kind.symbol).resizable()
-                .foregroundStyle(kind == .error ? Color(red: 1, green: 0x42 / 255, blue: 0x45 / 255) : Color(red: 1, green: 0xE0 / 255, blue: 0x15 / 255))
+                .foregroundStyle(IssueSymbol.color(IssueStepper.symbolFill(kind, dark: scheme == .dark)))
                 .frame(width: w, height: h)
         }
         .frame(width: w, height: h)

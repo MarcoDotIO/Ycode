@@ -147,27 +147,20 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
     // MARK: Row 40: the top bounce
 
     @Test func bounceSpringMatchesTheReference() {
-        // Round 3 (editor-area.md E.1) superseded round 2's single spring:
-        // a run past the top (peak about 67 ms after the crossing), then
-        // the critically damped return at round 2's ω 12.6.
-        #expect(TopBounce.omega == 12.6)
-        // The reference's 48-point overshoot: a crossing at about 2470 pt/s.
+        // Round 6 (editor-area.md H.1, row 157) superseded rounds 2 and 3:
+        // a run past the top (peak about 71 ms after the crossing), then
+        // the critically damped return at ω 13.5 (`CouncilRound6ChromeTests`).
+        #expect(TopBounce.omega == 13.5)
         let v = TopBounce.velocity(forPeak: 48)
-        #expect(abs(v - 2470) < 60, "\(v)")
-        #expect(abs(TopBounce.peakTime - 0.067) < 0.001)
+        #expect(abs(TopBounce.peakTime - 1 / 14) < 0.001)
         #expect(abs(TopBounce.overscroll(velocity: v, at: TopBounce.peakTime) - 48) < 0.01)
         // From the peak it is the critically damped spring peak·(1+ωt)e^(−ωt).
         for t in stride(from: 0.0, through: 0.6, by: 0.05) {
-            let spring = 48 * (1 + 12.6 * t) * exp(-12.6 * t)
+            let spring = 48 * (1 + 13.5 * t) * exp(-13.5 * t)
             #expect(abs(TopBounce.overscroll(velocity: v, at: TopBounce.peakTime + t) - spring) < 0.01)
         }
-        // Half gone about 140 ms after the peak; within a point 440 ms after it.
-        #expect(TopBounce.overscroll(velocity: v, at: TopBounce.peakTime + 0.15) < 24)
-        #expect(TopBounce.overscroll(velocity: v, at: TopBounce.peakTime + 0.44) < 1.3)
-        let d = TopBounce.duration(velocity: v)
-        #expect(d > 0.55 && d < 0.75, "\(d)")
-        // A very fast flick is limited to a quarter of the view.
-        #expect(abs(TopBounce.peak(velocity: TopBounce.effectiveVelocity(50_000, visibleHeight: 800)) - 200) < 0.01)
+        // A very fast flick is limited to 0.16 of the view.
+        #expect(abs(TopBounce.peak(velocity: TopBounce.effectiveVelocity(50_000, visibleHeight: 800)) - 128) < 0.01)
         #expect(TopBounce.effectiveVelocity(v, visibleHeight: 800) == v)
     }
 
@@ -233,11 +226,11 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(abs(clip.bounds.minY - top) < 0.5, "rests at \(clip.bounds.minY), top \(top)")
         let peak = scroll.topBounce.lastPeak
         print("bounce: peak \(peak) over \(frames.count) frames, view \(clip.bounds.height)")
-        // About 3000 pt/s gives about 57 points (editor-area.md E.1); the
-        // frames sample it, so a peak short of it is only possible when the
-        // frames are sparse (a loaded machine) and never above it.
-        #expect(peak < 65, "peak \(peak)")
-        if frames.count >= 15 { #expect(peak > 40, "peak \(peak) over \(frames.count) frames") }
+        // About 3000 pt/s gives about 87–100 points (editor-area.md H.1's
+        // gain; the tracker weights the latest events); the frames sample
+        // it, so a peak well short of it means sparse frames (a loaded machine).
+        #expect(peak < 110, "peak \(peak)")
+        if frames.count >= 15 { #expect(peak > 60, "peak \(peak) over \(frames.count) frames") }
         // The text really moved past the top by the peak, within a device
         // pixel: the clip view's origin snaps to the backing (whole points on
         // a 1x CI runner: 55.0 drawn for a 54.497 peak).

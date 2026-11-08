@@ -708,8 +708,153 @@ Both IDEs draw rows 117–124 from the shared `SettingsAppearanceLayout`,
   cards' edge, on both IDEs.
 - Dark values not captured are Ycode's own (`SettingsR5Palette`).
 
+## Council round 6: the Foreground row, Choose…, Components' details, row heights (2026-11-07)
+
+Both apps were captured with the **system in Light** (round 5: Dark), so
+steps 20–22 are light; each app's own Appearance was set to Light for
+23–26 and to Dark for a supplement (General, Editing, Components and
+Appearance in dark). One Retina still each, the 710 × 452 window,
+active; values in points from the window's top-left corner. Ycode
+`0f1408a4` (a fresh instance; the Settings area scored 9.00, up from
+7.33). Checklist rows 149–153 in `fidelity-council.md`.
+
+**Owner's design rules:** where the reference has the element, match it;
+where Ycode has an element the reference lacks, design it to the
+platform's human interface guidelines in the OS 26+ glass language; and
+Ycode's macOS and Linux IDEs look one to one.
+
+Settled from the stills: the sidebar's base colour is the **same** in both
+apps (#EDEDED light, #262627 dark; a judge's "translucent against opaque"
+is not borne out); the scroll bars match (R5.4); the pane title's size,
+Appearance's top card, preview and segments, and Components' card
+structure now match (rows 117–119, 121–122).
+
+### R6.1 Appearance: the Theme row and the Foreground row (light, step 23)
+
+| Part | Reference | Ycode now |
+|---|---|---|
+| List card A | from y 305; Theme row to the separator at 344.5 | the same |
+| Theme row's content | **5.5 below the card's top**: the label's cap top **317.5**, the button y **310.5–334.5**, so the content sits about 2.25 above the row's centre | 2.5 lower: label 320, button 313–337 (centred in the row) |
+| Choose… button | x 599.5–680 (80.5 × 24), fill #E4E4E4, label #232323; a **rounded rectangle, corner radius about 6** (at its top edge the fill spans 603.5–675.5; 1.5 lower, 601–678) | the same box and colours, but a **capsule** (radius 12: the column 1.5 inside its end starts 4.5 below its top) |
+| Name row | label cap top 359, the name right-aligned | the same |
+| Foreground: slider track | x **421.5–624**, y 412.5–426.5 (14 tall), a gradient in **one hue** from a pale tint at the left (#EED3DB) through #F1C4D1, #ECA6BC, #DD84A2, #EA719D to the **full colour at the right (#E5538E)**, a 1-point darker edge (#CD4379) | x 425.5–621, a **grey** gradient #EAE8E9 → #A59FA1 |
+| Foreground: knob | about 28 across, a white rim around **the colour at its position (#F09AB6)**, centred on x **522**: the track's middle (**50 %**) | at the right end (x 597–621), fill #7F787A |
+| Foreground: colour well | a capsule x **632–680**, y 405.5–433.5 (**48 × 28**), a **3-point rim #DFDFDF** around the colour **#EF98B4** (the knob's colour), with a darker inner edge (#CF7894) | x 635–677, y 408.5–430.5 (42 × 22), **no rim**, #948D8F |
+
+The judges saw the same pink row in the dark supplement (D02). What the
+row controls was not captured (no control was moved); by its look the
+slider sets how strong the theme's foreground colour is, from a pale
+tint to the full colour, and the well shows the result. **Target:** the
+reference's anatomy; the gradient in the theme's own foreground hue
+(Ycode's default theme takes its own hue, never grey), the knob at the
+theme's stored value (50 % for the default), the well showing the colour
+under the knob inside a 3-point light rim; Choose… a rounded rectangle
+of radius 6; the Theme row's content 2.5 higher than centred.
+
+### R6.2 Components: the subtitle and "Last used" (light, steps 22, 26; refines R5.2)
+
+| Part | Reference | Ycode now |
+|---|---|---|
+| Title | x 251 (ink from 250–251), cap top 13.5 below the row's top | the same |
+| Subtitle "Built-in" | ink from **251**, aligned with the title | the same |
+| Subtitle with a size ("15.94 GB", "3.81 GB") | ink from **253.5–254.5**: **3 to 3.5 right of the title** (a "3" has almost no left bearing, so this is an inset, not the glyph's shape) | ink from 250.5–251, aligned with the title |
+| "Last used …" | the **subtitle's size** (cap height 8; "Last used" 36 wide), #7C7C7C, right-aligned to x 655, centred on the row | about 13 points (cap 9.5; "Last used" 39 wide), the same colour and end |
+| Info button | 13 × 13, x 665.5–678.5 | the same |
+
+R5.2's "about 13 points" for "Last used" was wrong: it is the subtitle's
+size. **Target:** a size subtitle starts 3–3.5 right of the title
+("Built-in" does not); "Last used" at the subtitle's size. The rows'
+names and sizes are data.
+
+### R6.3 Row heights: the "drift" (light, steps 20–21, 24–25)
+
+Row tops (the separators) and label ink tops in two panes; the cards
+start at the same y in both apps:
+
+| Pane, row | Reference | Ycode now |
+|---|---|---|
+| General, card "Navigation and Files" | from 223; separators **260.5, 298.5, 337, 375**: pop-up rows of 37.5, 37, 37.5, 37 (**about 37.25 + 1**) | separators 260.5, 299, 337.5, 376: every row **37.5 + 1** |
+| Their labels | 236, 274.5, 312.5, 351: **13** below each row's top | 237, 275.5, 314, 352.5: 14 below |
+| General, the switch row with a two-line description | 376–442 (66): title cap top 389, description from **406.5** (17.5 below the title's top) | 377–446 (69): title 389, description from 409.5 (20.5 below) |
+| Editing, single pop-up row card | 216–253.5 (37.5) | the same |
+| Editing, pop-up row then switch row | 263.5–300.5 (**37**), 301.5–338 (**36.5**) | 263.5–301, 302–339.5 (37.5 each) |
+| Editing, next card's switch row | 394–430.5 (36.5) | 395–432.5 (37.5) |
+
+So the reference's rows are **content-sized**: about 37.25 for a pop-up
+row (drawn as 37 or 37.5 on the half-point grid), 36.5 for a switch row,
+66 for a switch with a two-line description; Ycode uses 37.5 for all,
+and its labels sit 1 lower in each row, which adds up to the 1–3.5
+points the judge saw further down. **Target:** those heights, the label
+13 below the row's top, a description 17.5 below its title's top.
+
+### R6.4 Items raised by one judge, checked
+
+- **Description lengths (Sol).** Ycode's descriptions are its own words
+  (the clean-room rule), so their lengths differ. Only General shows
+  descriptions in the captured panes, and each takes the **same number
+  of lines** as the reference's (two lines each in both apps).
+  Target: keep each description to the reference's line count at the
+  window's default width; no change is needed in the captured panes.
+- **Sidebar "translucent" (Opus):** not borne out (above).
+
+### R6.5 Not settled by round 6
+
+- What the Foreground slider changes, and the rows below it; the Fonts
+  and Editor segments.
+- Whether the Theme row's raised content is a rule for every row whose
+  card starts a scrolling list, or for this row only.
+
+### Ycode implementation (round 6)
+
+Both IDEs draw rows 149–153 from `SettingsRowMetrics`,
+`SettingsAppearanceR6`, `SettingsComponentsR6` and the `ThemeColorRows`
+hue and strength functions (YcodeIDECore `SettingsRound6.swift`); YcodeUI
+`SettingsChrome.swift`, `SettingsR5Views.swift`,
+`SettingsAppearancePane.swift`; ycode-ide `SettingsCards.swift`,
+`SettingsR5Controls.swift`, `SettingsPaneAppearance.swift`.
+
+- **Foreground and the colour rows (row 149).** Each row shows a **full
+  colour** and a **strength**. The track runs from a pale tint (a quarter
+  of the full colour over white) to the full colour, edged 1 point in the
+  same gradient scaled to 0.88; the knob (28 across, a 3-point white rim)
+  sits at the strength; the well (48 × 28, a 3-point #DFDFDF rim, the
+  colour edged 1 point at 0.86) shows the colour under the knob. A theme
+  colour with a hue is its own full colour at full strength; a system
+  colour (the default theme) or a grey is shown at **50 %**, in its own
+  hue or, for a grey, in **Ycode's hue for the row** (Foreground #E35590;
+  the other rows' hues are listed in `ThemeColorRows.fallbackHues`), so no
+  track is grey. In a user theme, moving the knob writes the knob's colour
+  as the row's colour and stores the strength in the theme file
+  (`strengths`, per row; absent in older files); a typed colour becomes
+  the row's full colour and drops the stored strength. A built-in theme's
+  rows are read-only but **drawn in full** (no dimming). What the
+  reference's slider changes stays open (R6.5); this is Ycode's meaning.
+- **Choose… (row 150).** The card push buttons (Choose… and the theme
+  file's) are rounded rectangles of radius 6.
+- **Theme row (row 151).** Its label and button sit 2.25 above the row's
+  centre (the button 310.75–334.75 in a 39.5 row from 305). Name stays
+  centred.
+- **Components (row 152).** A subtitle that is a size (it starts with a
+  digit) starts 3.25 right of the title; "Built-in", "Not installed" and
+  the other words stay aligned. "Last used …" is 11 points.
+- **Row heights (row 153).** A card row is 37.25 (a pop-up, a value, a
+  button) or 36.5 (a switch); the label's cap top is 13 under the row's
+  top and the controls are centred on the label's line; a description's
+  cap top is 17.5 under the label's, and the row ends 13.75 under the
+  description's last baseline (a switch with two lines: 66). A pop-up row
+  with a description ends 3.5 lower (Ycode's choice: General's first card
+  keeps 69.5, so the cards after it start where the reference's do, y 223).
+  Navigation rows stay 44. Row edges fall on the device-pixel grid when
+  laid out (`SettingsRowMetrics.snappedSeparatorTops` gives the
+  reference's 260.5, 298.5, 337, 375 for General's card from 223).
+
 ## Evidence
 
+- Round 6 implementation: the colour rows' strength and full colour, the
+  pale tint (a quarter over white), the edge factors, the fallback hues,
+  the 50 % for system colours, the stored `strengths`, the pop-up
+  description row's extra 3.5 and the size-subtitle test (a leading digit)
+  are Ycode's own (from R6.1–R6.3 and the owner's rules).
 - Round 5 implementation: the thumbnails' drawing, the slider's meaning,
   the colour popover, the push button's padding, the platform symbols, the
   "Last used" and size wording, the info buttons' targets, the host row's
@@ -762,3 +907,9 @@ Both IDEs draw rows 117–124 from the shared `SettingsAppearanceLayout`,
 - R5.5: where the reference keeps simulator settings is from the same
   stills and the capture's notes on the reference's menus (level 3); the
   placement of Ycode's host page is the owner's rule and Ycode's choice.
+- Round 6 (R6.1–R6.4): the council round 6 Settings stills of both apps
+  (710 × 452, 2x; light 20–26, the dark supplement), measured in the
+  dirty room with colour runs along rows and columns (separators, button
+  ends, the slider's gradient, the well's rim), ink boxes and per-row
+  ink tops (level 3). The Foreground row's meaning is inferred from its
+  look only.

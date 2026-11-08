@@ -1,6 +1,7 @@
 // Where a portable viewer draws the device (display-stream.md §13.2): the
 // device's frame (DeviceFrameGeometry, in device points) scaled into the
-// window. Fit scales the drawing to the window less a margin; Point
+// window. Fit scales the drawing to the window less a margin (in the device
+// window with its toolbar and inspector, the macOS hub's rule instead); Point
 // Accurate shows one device point per window unit; Pixel Accurate one
 // device pixel per output pixel (on a 1× output, the device's scale times
 // larger than Point Accurate).
@@ -42,12 +43,18 @@ public struct ViewerLayout: Equatable, Sendable {
     /// units. `pixelDensity`: output pixels per window unit; `deviceScale`:
     /// the panel's pixels per point.
     public init(geometry: DeviceFrameGeometry, mode: ViewerScaleMode, windowWidth: Double, windowHeight: Double,
-                pixelDensity: Double = 1, deviceScale: Double = 3, controls: Bool = true) {
+                pixelDensity: Double = 1, deviceScale: Double = 3, controls: Bool = true, hubFit: Bool = false) {
         self.geometry = geometry
         let gw = Double(geometry.size.width), gh = Double(geometry.size.height)
         let availW = max(1, windowWidth - 2 * Self.margin)
         let availH = max(1, windowHeight - 2 * Self.margin - (controls ? Self.controlBar : 0))
         switch mode {
+        case .fit where hubFit:
+            // The device window with its toolbar and inspector: the macOS
+            // hub's Zoom to Fit (device-hub.md §14.3, row 154), in the canvas
+            // above the capsules.
+            let free = CGSize(width: windowWidth, height: max(1, windowHeight - (controls ? Self.controlBar : 0)))
+            scale = DeviceZoom.hubFit(frame: geometry.outerBox.size, in: free)
         case .fit: scale = max(0.05, min(availW / gw, availH / gh))
         case .point: scale = 1
         case .pixel: scale = deviceScale / max(pixelDensity, 0.1)

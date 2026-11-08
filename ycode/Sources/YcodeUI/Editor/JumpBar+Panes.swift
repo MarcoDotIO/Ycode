@@ -36,21 +36,16 @@ extension JumpBar {
     /// The path's text colour: #262626 focused, #7F7F7F not.
     var pathTextColor: NSColor { isActivePane ? .labelColor : .secondaryLabelColor }
 
-    func chevronLabel() -> NSTextField {
-        let l = NSTextField(labelWithString: "›")
-        l.font = .systemFont(ofSize: 11)
-        l.textColor = .secondaryLabelColor
-        return l
-    }
-
-    /// A path component's name; a middle one truncates first, with a fade.
-    func pathLabel(_ title: String, middle: Bool) -> NSTextField {
+    /// A path component's name or the last item, in the path's colour;
+    /// `applyPathFit` hides or cuts it (JumpBar+Path.swift).
+    func pathLabel(_ title: String) -> FadingTruncationLabel {
         let l = FadingTruncationLabel(labelWithString: title)
         l.font = .systemFont(ofSize: 11)
         l.textColor = pathTextColor
         l.lineBreakMode = .byClipping
         l.cell?.truncatesLastVisibleLine = false
-        l.setContentCompressionResistancePriority(middle ? .defaultLow - 1 : .defaultHigh, for: .horizontal)
+        l.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        l.setContentHuggingPriority(.required, for: .horizontal)
         return l
     }
 
@@ -126,10 +121,42 @@ final class JumpBarPaneState {
 }
 
 /// A label that, when cut, fades out over its last
-/// `JumpBar.truncationFade` points instead of ending in an ellipsis.
+/// `JumpBar.truncationFade` points of ink instead of ending in an ellipsis.
+/// The jump bar's path cuts it to a width of ink (`show(inkWidth:)`).
 final class FadingTruncationLabel: NSTextField {
     /// Whether the text is wider than the label (tests).
-    var isTruncated: Bool { intrinsicContentSize.width > bounds.width + 0.5 }
+    var isTruncated: Bool { intrinsicContentSize.width > bounds.width - alignmentRectInsets.left - alignmentRectInsets.right + 0.5 }
+    /// The ink shown when cut (nil: all of it).
+    private(set) var inkCut: CGFloat?
+    private var cutWidth: NSLayoutConstraint?
+
+    /// The text's ink from the alignment rect's leading edge (where the text
+    /// starts): its side bearing and width.
+    var ink: NSRect {
+        let font = self.font ?? .systemFont(ofSize: 11)
+        let r = NSAttributedString(string: stringValue, attributes: [.font: font])
+            .boundingRect(with: NSSize(width: 10_000, height: 100), options: [.usesLineFragmentOrigin, .usesDeviceMetrics])
+        return NSRect(x: max(0, r.minX), y: 0, width: r.width, height: 0)
+    }
+
+    /// The alignment rect's width with the whole text.
+    var alignmentWidth: CGFloat { intrinsicContentSize.width }
+
+    /// Shows `inkWidth` of the ink (nil: hidden; the whole ink or more: all).
+    func show(inkWidth w: CGFloat?) {
+        guard let w else { isHidden = true; return }
+        isHidden = false
+        if w >= ink.width - 0.01 {
+            inkCut = nil
+            cutWidth?.isActive = false
+        } else {
+            inkCut = w
+            let width = ink.minX + w
+            if let c = cutWidth { c.constant = width } else { cutWidth = widthAnchor.constraint(equalToConstant: width) }
+            cutWidth?.isActive = true
+        }
+        updateFade()
+    }
 
     override func layout() {
         super.layout()
@@ -143,13 +170,16 @@ final class FadingTruncationLabel: NSTextField {
 
     private func updateFade() {
         wantsLayer = true
-        guard isTruncated, bounds.width > JumpBar.truncationFade else { layer?.mask = nil; return }
+        let fade = JumpBar.truncationFade
+        // The ink's end in the label's own frame.
+        let end = inkCut.map { alignmentRectInsets.left + ink.minX + $0 } ?? (isTruncated ? bounds.width - alignmentRectInsets.right : nil)
+        guard let end, end > fade, bounds.width > 0 else { layer?.mask = nil; return }
         let mask = (layer?.mask as? CAGradientLayer) ?? CAGradientLayer()
         mask.frame = bounds
         mask.startPoint = CGPoint(x: 0, y: 0.5)
         mask.endPoint = CGPoint(x: 1, y: 0.5)
-        mask.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
-        mask.locations = [0, NSNumber(value: Double((bounds.width - JumpBar.truncationFade) / bounds.width)), 1]
+        mask.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor, NSColor.clear.cgColor]
+        mask.locations = [0, NSNumber(value: Double((end - fade) / bounds.width)), NSNumber(value: Double(min(end, bounds.width) / bounds.width)), 1]
         layer?.mask = mask
     }
 }

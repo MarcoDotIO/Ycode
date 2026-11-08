@@ -87,13 +87,14 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
     // MARK: Row 70: flick
 
     @Test func flickBounceMatchesRoundThree() {
-        // 48 points past the end of a flick crossing at about 2470 pt/s,
-        // peaking about 67 ms after the crossing; at rest about 600 ms after it.
-        let v = 2470.0
-        #expect(abs(TopBounce.peak(velocity: v) - 48) < 1)
-        #expect(abs(TopBounce.peakTime - 0.067) < 0.001)
+        // Round 6 (H.1) supersedes round 3's 48 points: a crossing at about
+        // 4300 pt/s runs about 120 past the top, peaking about 71 ms after
+        // the crossing; at rest about 640 ms after it (`CouncilRound6ChromeTests`).
+        let v = 4300.0
+        #expect(abs(TopBounce.peak(velocity: v) - 124) < 2)
+        #expect(abs(TopBounce.peakTime - 0.0714) < 0.001)
         let d = TopBounce.duration(velocity: v)
-        #expect(d > 0.5 && d < 0.7, "\(d)")
+        #expect(d > 0.55 && d < 0.72, "\(d)")
         // A bounce that takes over already past the top keeps going down from there.
         #expect(TopBounce.overscroll(from: 20, velocity: v, at: 0) == 20)
         #expect(TopBounce.overscroll(from: 20, velocity: v, at: 0.03) > 20)
@@ -348,13 +349,9 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let labels = { (e: SourceEditorController) in e.jumpBar.stack.arrangedSubviews.compactMap { $0 as? FadingTruncationLabel } }
         #expect(labels(first).allSatisfy { $0.textColor == .secondaryLabelColor })
         #expect(labels(second).allSatisfy { $0.textColor == .labelColor })
-        // The middle component gives way first; the file keeps its name.
-        let mids = labels(second)
-        #expect(mids.count >= 3)
-        if mids.count >= 3 {
-            #expect(mids[1].contentCompressionResistancePriority(for: .horizontal) < mids[0].contentCompressionResistancePriority(for: .horizontal))
-            #expect(mids[1].contentCompressionResistancePriority(for: .horizontal) < mids[mids.count - 1].contentCompressionResistancePriority(for: .horizontal))
-        }
+        // The path gives way by the shared order (H.4, row 144; the order
+        // itself is CouncilRound6EditorTests'): every component has a title.
+        #expect(labels(second).count >= 3)
         // Focus back on the first pane swaps the colours.
         wc.editorArea.focus(first)
         #expect(first.jumpBar.isActivePane && !second.jumpBar.isActivePane)

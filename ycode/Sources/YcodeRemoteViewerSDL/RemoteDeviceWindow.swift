@@ -146,6 +146,7 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         frame = hasChrome ? DeviceWindowFrame(width: Double(w), height: Double(h), inspectorShown: inspectorShown)
             : DeviceWindowFrame(width: Double(w), height: Double(h), inspectorShown: false)
         let canvas = canvasRect
+        session.hubFit = hasChrome
         session.windowWidth = canvas.width
         session.windowHeight = canvas.height
         session.pixelDensity = w > 0 ? Double(pw) / Double(w) : 1
@@ -871,7 +872,22 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         defer { origin = (0, 0) }
         let body = l.window(g.body), screen = l.screen
         let framed = session.bezels && session.spec.hasFrame
-        if framed {
+        if framed, g.innerBand != nil {
+            // The macOS frame's drawing (DeviceFrameView, device-hub.md
+            // §14.2): a foldable cover's hinge step under everything, the
+            // buttons, the band mid grey outside and black next to the screen.
+            typealias P = DeviceFrameGeometry.Palette
+            if let step = g.hingeStep {
+                polygon(ViewerLayout.roundedPolygon(l.window(step), radii: g.hingeStepRadii, scale: l.scale), ViewerColor(P.step))
+            }
+            for b in g.buttons {
+                polygon(ViewerLayout.roundedPolygon(l.window(b.rect), radii: CornerRadii(all: 1.5), scale: l.scale, steps: 3), ViewerColor(P.button))
+            }
+            polygon(ViewerLayout.roundedPolygon(body, radii: g.bodyRadii, scale: l.scale), ViewerColor(P.outer))
+            if let inner = g.innerBandRect {
+                polygon(ViewerLayout.roundedPolygon(l.window(inner.rect), radii: inner.radii, scale: l.scale), ViewerColor(P.inner))
+            }
+        } else if framed {
             for b in g.buttons {
                 color(0x45, 0x46, 0x4B)
                 fill(l.window(b.rect))

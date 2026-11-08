@@ -111,9 +111,13 @@ extension NavigatorAreaController {
             let top = selectorBottom + Self.firstRowGap - pad
             let bottom = max(scrollClipView.frame.minY, filterGlass.frame.maxY + 2) - scrollBottom
             // The scroll bar's track: 3 below the selector capsule, 11 above
-            // the filter capsule (`metrics.md` §13.2, row 49).
-            let scroller = NSEdgeInsets(top: selectorBottom + Self.scrollerBelowSelector, left: 0,
-                                        bottom: filterGlass.frame.height + Self.scrollerAboveFilter, right: 0)
+            // the filter capsule (`metrics.md` §13.2, row 49; `editor-area.md`
+            // H.10, council row 167). The scroll view places its scrollers
+            // inside its content insets as well, so the scroller insets are
+            // what remains (round 6 measured the track 36 too low and 13.5
+            // too high: the content insets counted twice).
+            let scroller = NSEdgeInsets(top: selectorBottom + Self.scrollerBelowSelector - top, left: 0,
+                                        bottom: filterGlass.frame.height + Self.scrollerAboveFilter - bottom, right: 0)
             setOutlineInsets(NSEdgeInsets(top: top, left: 0, bottom: bottom, right: 0), scroller: scroller)
         } else {
             setOutlineInsets(NSEdgeInsets(top: Self.clipToFirstRow - pad, left: 0, bottom: 0, right: 0))

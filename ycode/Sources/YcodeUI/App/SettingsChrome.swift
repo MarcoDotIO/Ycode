@@ -339,9 +339,12 @@ public final class SettingsRowView: NSView {
         // A navigation row: 44 tall, the icon 10 inside, the label's ink 45
         // inside (a label's ink starts 1 point after its alignment rect).
         let labelInset = icon == nil ? SettingsMetrics.labelInset : SettingsMetrics.navigationLabelInset - 1
+        // Content-sized (R6.3): a pop-up row 37.25, a switch row 36.5.
+        rowKind = controls.contains { $0 is NSSwitch } ? .toggle : .popUp
+        let height = icon == nil ? SettingsRowMetrics.height(rowKind) : SettingsMetrics.navigationRowHeight
         var cs: [NSLayoutConstraint] = [
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: labelInset),
-            heightAnchor.constraint(greaterThanOrEqualToConstant: icon == nil ? SettingsMetrics.rowHeight : SettingsMetrics.navigationRowHeight),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: height),
         ]
         if let icon {
             let v = SettingsRowIconView(icon)
@@ -372,10 +375,26 @@ public final class SettingsRowView: NSView {
         } else {
             cs.append(label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -SettingsMetrics.controlInset))
         }
-        // One line: the label centred in the 37.5-point row.
-        oneLine = [label.centerYAnchor.constraint(equalTo: centerYAnchor)]
+        // One line: the label's cap top 13 under the row's top (R6.3); a
+        // navigation row's label centred in its 44 points.
+        let exact = heightAnchor.constraint(equalToConstant: height)
+        exact.priority = .defaultHigh
+        oneLine = icon == nil ? [label.firstBaselineAnchor.constraint(equalTo: topAnchor, constant: Self.labelBaseline), exact]
+            : [label.centerYAnchor.constraint(equalTo: centerYAnchor), exact]
         let tall = label.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 9)
         NSLayoutConstraint.activate(cs + oneLine + [tall])
+    }
+
+    /// What the row holds (its height, R6.3).
+    public private(set) var rowKind: SettingsRowMetrics.Kind = .popUp
+    /// The label's first baseline under the row's top: its cap top 13 under it.
+    static var labelBaseline: CGFloat {
+        SettingsRowMetrics.labelCapTop + NSFont.systemFont(ofSize: SettingsMetrics.fontSize).capHeight
+    }
+    /// The description's first baseline under the label's (cap tops 17.5 apart).
+    static var helpBaselineGap: CGFloat {
+        SettingsRowMetrics.helpBaselineGap(titleCapHeight: NSFont.systemFont(ofSize: SettingsMetrics.fontSize).capHeight,
+                                           helpCapHeight: NSFont.systemFont(ofSize: SettingsMetrics.helpFontSize).capHeight)
     }
 
     /// A row that holds one view (a list, a preview, a table) inset 10.
@@ -401,7 +420,8 @@ public final class SettingsRowView: NSView {
     public override var isFlipped: Bool { true }
 
     /// The help text under the label: 11 points, the secondary colour, a
-    /// 14-point pitch, the first baseline 19 under the label's.
+    /// 14-point pitch, its cap top 17.5 under the label's (R6.3), the row
+    /// ending 13.75 under its last baseline.
     func setHelp(_ text: String) {
         if let help {
             help.attributedStringValue = Self.helpText(help.stringValue + "\n" + text)
@@ -418,10 +438,15 @@ public final class SettingsRowView: NSView {
         helpConstraints = [
             h.leadingAnchor.constraint(equalTo: leadingAnchor, constant: SettingsMetrics.labelInset),
             h.widthAnchor.constraint(lessThanOrEqualToConstant: SettingsMetrics.helpWidth),
+        ]
+        helpConstraints += labelEmpty ? [
             h.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -11),
-            label.topAnchor.constraint(equalTo: topAnchor, constant: labelEmpty ? 0 : 9),
-            labelEmpty ? h.topAnchor.constraint(equalTo: topAnchor, constant: 10.5)
-                : h.firstBaselineAnchor.constraint(equalTo: label.firstBaselineAnchor, constant: SettingsMetrics.helpBaselineGap),
+            label.topAnchor.constraint(equalTo: topAnchor),
+            h.topAnchor.constraint(equalTo: topAnchor, constant: 10.5),
+        ] : [
+            bottomAnchor.constraint(equalTo: h.lastBaselineAnchor, constant: SettingsRowMetrics.helpBottom(rowKind)),
+            label.firstBaselineAnchor.constraint(equalTo: topAnchor, constant: Self.labelBaseline),
+            h.firstBaselineAnchor.constraint(equalTo: label.firstBaselineAnchor, constant: Self.helpBaselineGap),
         ]
         NSLayoutConstraint.activate(helpConstraints)
     }

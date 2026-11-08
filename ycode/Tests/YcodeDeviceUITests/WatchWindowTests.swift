@@ -140,8 +140,11 @@ import YcodeDisplayStream
         #expect(!canvas.canPerform(.rotateLeft) && !canvas.canPerform(.volumeUp) && !canvas.canPerform(.volumeDown))
         #expect(!canvas.canPerform(.appSwitcher) && !canvas.canPerform(.actionButton) && !canvas.canPerform(.poseOpen))
         #expect(canvas.canPerform(.physicalSize) && canvas.canPerform(.toggleBezels))
-        // Zoom to Fit: the watch is scaled up to fill the canvas (it is small).
-        #expect(canvas.frameView.scale > 1.5)
+        // Zoom to Fit: the hub's rule (device-hub.md §14.3, row 154), here
+        // bound by the canvas's width: the outer box a third of 580.
+        let fit = DeviceZoom.hubFit(frame: canvas.frameView.geometry.outerBox.size, in: canvas.deviceArea.size)
+        #expect(abs(Double(canvas.frameView.scale) - fit) < 1e-9)
+        #expect(abs(Double(canvas.frameView.geometry.outerBox.width) * fit - DeviceZoom.hubFitWidthShare * 580) < 1e-6)
         #expect(canvas.frameView.frame.maxY <= canvas.controls.frame.minY)
         canvas.perform(.zoomOut)
         #expect(canvas.zoom != .fit)

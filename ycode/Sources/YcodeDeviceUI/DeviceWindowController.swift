@@ -338,8 +338,9 @@ public final class DeviceWindowController: NSWindowController, NSWindowDelegate,
             item.label = "Capture Keyboard"
             return item
         case Self.zoomID:
-            let images = ["minus.magnifyingglass", "arrow.up.left.and.down.right.magnifyingglass", "1.magnifyingglass", "plus.magnifyingglass"]
-                .compactMap { image($0, "") }
+            // Zoom to Fit is Ycode's own drawing (§14.1: four outward arrowheads in the lens).
+            let images = ["minus.magnifyingglass", "", "1.magnifyingglass", "plus.magnifyingglass"]
+                .compactMap { $0.isEmpty ? DeviceControlGlyphImage.zoomToFit() : image($0, "") }
             let g = NSToolbarItemGroup(itemIdentifier: id, images: images, selectionMode: .selectOne,
                                        labels: ["Zoom Out", "Zoom to Fit", "Zoom To Actual Size", "Zoom In"],
                                        target: self, action: #selector(zoomChosen(_:)))

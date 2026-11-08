@@ -58,13 +58,14 @@ public struct DeviceWindowFrame: Equatable, Sendable {
             }
         }
 
-        /// The symbol (the macOS window's names; OpenViews draws its own artwork).
+        /// The symbol (the macOS window's names; OpenViews draws its own
+        /// artwork; Zoom to Fit is Ycode's drawing on both).
         public var symbol: String {
             switch self {
             case .captureKeyboard: "keyboard"
             case .resizeMode: "rectangle.inset.filled"
             case .zoomOut: "minus.magnifyingglass"
-            case .zoomFit: "arrow.up.left.and.down.right.magnifyingglass"
+            case .zoomFit: DeviceWindowFrame.zoomToFitSymbol
             case .zoomActual: "1.magnifyingglass"
             case .zoomIn: "plus.magnifyingglass"
             case .more: "ellipsis"
@@ -74,6 +75,10 @@ public struct DeviceWindowFrame: Equatable, Sendable {
             }
         }
     }
+
+    /// Zoom to Fit's glyph: Ycode's own drawing on both IDEs
+    /// (`DeviceControlGlyphs.zoomToFit`, device-hub.md §14.1), not a system symbol.
+    public static let zoomToFitSymbol = "ycode.zoomToFit"
 
     /// The groups, left to right: each capsule's items.
     public static let groups: [[Item]] = [[.captureKeyboard, .resizeMode], [.zoomOut, .zoomFit, .zoomActual, .zoomIn], [.more]]

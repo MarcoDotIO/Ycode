@@ -24,12 +24,17 @@ public struct IssueSummary: Equatable, Sendable {
             }
         }
 
-        /// The symbol's fill as 0xRRGGBB (its mark is white): the warning
-        /// triangle #FFE015 (G.8), the error circle the system red.
-        public var fill: UInt32 {
+        /// The symbol's fill as 0xRRGGBB (its mark is white) in dark: the
+        /// warning triangle #FFE015 (G.8), the error circle the system red.
+        public var fill: UInt32 { fill(dark: true) }
+
+        /// The symbol's fill in the light or dark appearance: the warning
+        /// triangle #F5C200 in light (H.5, council row 161), #FFE015 in
+        /// dark (G.8); the error circle the system red in both.
+        public func fill(dark: Bool) -> UInt32 {
             switch self {
             case .error, .testFailure: 0xFF3B30
-            case .warning: 0xFFE015
+            case .warning: dark ? 0xFFE015 : 0xF5C200
             }
         }
 
@@ -83,18 +88,25 @@ public struct IssueSummary: Equatable, Sendable {
     /// The most severe kind (the stepper's symbol); nil without issues.
     public var mostSevere: Kind? { parts.first?.kind }
 
-    /// The capsule's geometry (G.8, in points): 36 tall; the first symbol
-    /// 16.5 inside its left end; the count 8 after its symbol; a part's
-    /// count to the next part's symbol 16; the last count 11.5 from the
-    /// right end, so one warning with "1" is 61 wide. Symbols are drawn
-    /// at `symbolSize` (the triangle's ink 17.5 × 15.5); counts at
-    /// `countSize`, regular, in the label colour.
+    /// The capsule's geometry (G.8, H.5; council rows 138, 161; in
+    /// points): 36 tall; the first symbol 16.5 inside its left end; its
+    /// count's ink 5 after the symbol, black in light and white in dark;
+    /// a count's ink to the next part's symbol 24.5; the last count's ink
+    /// 18 from the right end, so one warning with "1" is 61 wide and an
+    /// error and a warning 111. The constants below are those distances
+    /// for the count's text box at `countSize` (the system font's "1" has
+    /// its ink from 0.83 to 4.4 of its 5.95 advance): 4 to the text, 23
+    /// from a text's end to the next symbol, 16.5 from the last text's
+    /// end. Symbols are drawn at `symbolSize` (the triangle's ink 17.5 ×
+    /// 16); counts at `countSize`, regular.
     public enum Capsule {
         public static let height: Double = 36
         public static let leading: Double = 16.5
-        public static let symbolToCount: Double = 8
-        public static let partGap: Double = 18
-        public static let trailing: Double = 13
+        public static let symbolToCount: Double = 4
+        public static let partGap: Double = 23
+        /// With symbols only, between a symbol and the next.
+        public static let partGapSymbolsOnly: Double = 18
+        public static let trailing: Double = 16.5
         /// With symbols only (a narrow window), the last symbol's end to
         /// the right end: the capsule keeps its leading inset on both sides.
         public static let trailingSymbolOnly: Double = 16.5
@@ -103,13 +115,17 @@ public struct IssueSummary: Equatable, Sendable {
         public static let countSize: Double = 13
         /// The gap to the scheme capsule before it.
         public static let gapAfterScheme: Double = 7.5
+        /// The count's colour (0xRRGGBB): black in light (H.5), white in dark.
+        public static func countColor(dark: Bool) -> UInt32 { dark ? 0xFFFFFF : 0x000000 }
+        /// The gap between parts.
+        public static func gap(symbolsOnly: Bool) -> Double { symbolsOnly ? partGapSymbolsOnly : partGap }
 
         /// The capsule's width for `parts`, given each count's text width.
         public static func width(_ parts: [Part], symbolsOnly: Bool, countWidth: (String) -> Double) -> Double {
             guard !parts.isEmpty else { return 0 }
             var w = leading
             for (i, p) in parts.enumerated() {
-                if i > 0 { w += partGap }
+                if i > 0 { w += gap(symbolsOnly: symbolsOnly) }
                 w += symbolWidth
                 if !symbolsOnly { w += symbolToCount + countWidth("\(p.count)") }
             }

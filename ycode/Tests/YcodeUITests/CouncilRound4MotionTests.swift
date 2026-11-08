@@ -104,14 +104,16 @@ import Testing
     }
 
     /// The keyframe tables against the slide's curve: hide starts within
-    /// about 60 ms, show within about 120–170, each about 200 ms of
-    /// ease-in-out. Round 5's tables (`editor-area.md` G.1) supersede
-    /// F.5's for the target (row 133); F.5's hide still fits.
+    /// about 60 ms, show within about 120–170. Round 6's curves and
+    /// durations (`editor-area.md` H.2, row 158: hide ease-out over 195 ms,
+    /// show ease-in-out over 230) supersede these tables' shapes
+    /// (`CouncilRound6ChromeTests`); round 4's tables still fit loosely.
     @Test func inspectorSlideFollowsTheRound4Tables() {
-        let hide: [(Double, Double)] = [(86, 0.18), (109, 0.21), (141, 0.41), (154, 0.48), (174, 0.65), (193, 0.76), (209, 0.90), (222, 0.92), (249, 1)]
         let show: [(Double, Double)] = [(170, 0.07), (197, 0.10), (211, 0.24), (241, 0.36), (256, 0.52), (288, 0.75), (317, 0.79), (331, 0.83), (345, 0.97),
                                         (358, 1)]
-        for (table, isShow) in [(hide, false), (show, true)] {
+        // Round 6's hide is an ease-out (H.2): round 4's hide table, an
+        // ease-in-out, is left out; its show still fits.
+        for (table, isShow) in [(show, true)] {
             var squares = 0.0
             for (ms, p) in table {
                 let d = EditorMetrics.inspectorSlideProgress(elapsed: ms / 1000, show: isShow) - p
@@ -122,7 +124,7 @@ import Testing
         }
         #expect(EditorMetrics.inspectorSlideDelay(show: false) <= 0.06)
         #expect((0.12...0.17).contains(EditorMetrics.inspectorSlideDelay(show: true)))
-        #expect(abs(EditorMetrics.inspectorSlideMotion(show: false) - 0.2) <= 0.01 && abs(EditorMetrics.inspectorSlideMotion(show: true) - 0.2) <= 0.01)
+        #expect(abs(EditorMetrics.inspectorSlideMotion(show: false) - 0.195) <= 0.01 && abs(EditorMetrics.inspectorSlideMotion(show: true) - 0.23) <= 0.01)
     }
 
     /// The slide's frames do the slide's own layout and nothing else: the
@@ -329,7 +331,8 @@ import Testing
         wc.navigator.select(1)
         wc.window?.contentView?.layoutSubtreeIfNeeded()
         let c = wc.navigator.sourceControlMode
-        #expect(c.frame.height == 16 && c.font?.pointSize == 10, "\(c.frame)")
+        // Round 6 (row 166): 11-point titles ("Changes" 45 in ink, H.9).
+        #expect(c.frame.height == 16 && c.font?.pointSize == 11, "\(c.frame)")
         // "Changes" was 49.5 wide in ink at 11 points; at 10 it is 45.
         func width(_ size: CGFloat) -> CGFloat { ("Changes" as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: size)]).width }
         #expect(abs(49.5 * width(10) / width(11) - 45) <= 1)
@@ -380,8 +383,12 @@ import Testing
         let first = try stateWindow(dir, state: state)
         let nav = first.navigator
         let plain = try #require((0..<nav.outlineView.numberOfRows).compactMap { nav.outlineView.item(atRow: $0) as? OutlineItem }.first { $0.title == "Plain" })
-        #expect(!nav.outlineView.isItemExpanded(plain))
-        nav.outlineView.expandItem(plain)
+        // Round 6 (row 160): every group of the main group opens expanded;
+        // Sub, inside Plain, stays collapsed until expanded here.
+        #expect(nav.outlineView.isItemExpanded(plain))
+        let sub = try #require(plain.children.first { $0.title == "Sub" })
+        #expect(!nav.outlineView.isItemExpanded(sub))
+        nav.outlineView.expandItem(sub)
         first.open(path: dir.appendingPathComponent("GlassScroll/Long.swift").path, line: nil)
         // Other navigators and back, then the window closes.
         nav.select(1)

@@ -1,7 +1,9 @@
-// The device as Ycode draws it (device-hub.md §4.3): the live screen with
-// its rounded corners inside a dark band of even width whose outer corners
-// are concentric with the screen's, and the side buttons as short bars on
-// the edges, drawn flat with a slight shade. Clicking a button presses it
+// The device as Ycode draws it (device-hub.md §4.3, §14.2): the live screen
+// with its rounded corners inside a band of even width whose outer corners
+// are concentric with the screen's — black next to the screen, mid grey
+// outside (a watch: one near-black tone with a lighter rim) — a foldable's
+// cover with the folded half's edge as a darker grey step on its hinge side,
+// and the side buttons as short bars on the edges, drawn flat. Clicking a button presses it
 // on the device (down while the mouse is down, so a click is a press and a
 // hold is a long press). For the iPhone Duo, Option-dragging on the frame
 // sets the hinge (the pose slider, §4.4). A watch's Digital Crown is drawn
@@ -20,7 +22,10 @@ public final class DeviceFrameView: NSView {
     public let screen = DeviceView(frame: NSRect(x: 0, y: 0, width: 100, height: 200))
     /// View points per device point.
     public var scale: CGFloat = 1 { didSet { if scale != oldValue { needsLayout = true; invalidateIntrinsicContentSize() } } }
-    public var geometry: DeviceFrameGeometry { didSet { if geometry != oldValue { needsLayout = true; invalidateIntrinsicContentSize() } } }
+    /// The colours follow it too (two tones, or a watch's one).
+    public var geometry: DeviceFrameGeometry {
+        didSet { if geometry != oldValue { needsLayout = true; needsDisplay = true; invalidateIntrinsicContentSize() } }
+    }
     /// A frame button went down or up.
     public var onButton: ((DeviceFrameGeometry.ButtonKind, Bool) -> Void)?
     /// Option-drag on a foldable's frame: called with the horizontal
@@ -29,6 +34,8 @@ public final class DeviceFrameView: NSView {
     public var allowsHingeDrag = false
 
     private let bodyLayer = CAShapeLayer()
+    private let innerBandLayer = CAShapeLayer()
+    private let stepLayer = CAShapeLayer()
     private let buttonsLayer = CAShapeLayer()
     private let ridgesLayer = CAShapeLayer()
     private let pressedLayer = CAShapeLayer()
@@ -43,7 +50,7 @@ public final class DeviceFrameView: NSView {
         super.init(frame: NSRect(origin: .zero, size: geometry.size))
         wantsLayer = true
         layer?.masksToBounds = false
-        for l in [buttonsLayer, pressedLayer, ridgesLayer, bodyLayer] { layer?.addSublayer(l) }
+        for l in [stepLayer, buttonsLayer, pressedLayer, ridgesLayer, bodyLayer, innerBandLayer] { layer?.addSublayer(l) }
         addSubview(screen)
         screen.layer?.mask = screenMask
         for l in [shadeLayer, hingeLayer] { l.zPosition = 10; layer?.addSublayer(l) }
@@ -76,21 +83,30 @@ public final class DeviceFrameView: NSView {
     public override var isFlipped: Bool { true }
     public override var intrinsicContentSize: NSSize { NSSize(width: geometry.size.width * scale, height: geometry.size.height * scale) }
 
-    /// Fill colours: a near-black band with a slightly lighter rim, and
-    /// buttons a step lighter (system greys, the same in both appearances).
+    /// Fill colours, the same in both appearances: a two-tone band (the
+    /// shared `DeviceFrameGeometry.Palette`: black inside, mid grey outside,
+    /// the step and the buttons grey), or for a watch a near-black band with
+    /// a slightly lighter rim and buttons a step lighter.
     public override func updateLayer() {
-        bodyLayer.fillColor = NSColor(white: 0.07, alpha: 1).cgColor
-        bodyLayer.strokeColor = NSColor(white: 0.32, alpha: 1).cgColor
-        buttonsLayer.fillColor = NSColor(white: 0.22, alpha: 1).cgColor
-        buttonsLayer.strokeColor = NSColor(white: 0.36, alpha: 1).cgColor
+        let twoTone = geometry.innerBand != nil
+        bodyLayer.fillColor = twoTone ? Self.color(DeviceFrameGeometry.Palette.outer) : NSColor(white: 0.07, alpha: 1).cgColor
+        bodyLayer.strokeColor = twoTone ? nil : NSColor(white: 0.32, alpha: 1).cgColor
+        innerBandLayer.fillColor = Self.color(DeviceFrameGeometry.Palette.inner)
+        stepLayer.fillColor = Self.color(DeviceFrameGeometry.Palette.step)
+        buttonsLayer.fillColor = twoTone ? Self.color(DeviceFrameGeometry.Palette.button) : NSColor(white: 0.22, alpha: 1).cgColor
+        buttonsLayer.strokeColor = twoTone ? nil : NSColor(white: 0.36, alpha: 1).cgColor
         buttonsLayer.lineWidth = 0.5
-        pressedLayer.fillColor = NSColor(white: 0.55, alpha: 1).cgColor
+        pressedLayer.fillColor = twoTone ? Self.color(DeviceFrameGeometry.Palette.pressedButton) : NSColor(white: 0.55, alpha: 1).cgColor
         ridgesLayer.strokeColor = NSColor(white: 0.12, alpha: 1).cgColor
         ridgesLayer.fillColor = nil
         shadeLayer.fillColor = NSColor.black.withAlphaComponent(0.28).cgColor
         hingeLayer.strokeColor = NSColor(white: 0.45, alpha: 1).cgColor
     }
     public override var wantsUpdateLayer: Bool { true }
+
+    static func color(_ hex: UInt32) -> CGColor {
+        NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1).cgColor
+    }
 
     public override func layout() {
         super.layout()
@@ -100,6 +116,8 @@ public final class DeviceFrameView: NSView {
         func r(_ rect: CGRect) -> CGRect { CGRect(x: rect.minX * s, y: rect.minY * s, width: rect.width * s, height: rect.height * s) }
         let hasBand = g.body != g.screen
         bodyLayer.path = hasBand ? Self.path(r(g.body), radii: g.bodyRadii.scaled(by: s)) : nil
+        innerBandLayer.path = g.innerBandRect.map { Self.path(r($0.rect), radii: $0.radii.scaled(by: s)) }
+        stepLayer.path = g.hingeStep.map { Self.path(r($0), radii: g.hingeStepRadii.scaled(by: s)) }
         let buttons = CGMutablePath()
         for b in g.buttons { buttons.addPath(Self.path(r(b.rect), radii: Self.buttonRadii(b, scale: s))) }
         buttonsLayer.path = buttons

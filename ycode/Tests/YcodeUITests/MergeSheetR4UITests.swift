@@ -45,11 +45,15 @@ import Testing
         let ax = try #require(sheets.first { ($0 as AnyObject) === alert })
         #expect(ax.accessibilityLabel() == "Are you sure you want to merge from \u{201C}feature\u{201D}?")
         let children = try #require(ax.accessibilityChildren())
-        #expect(children.map { Self.role($0) } == [.staticText, .staticText, .button, .button], "\(children.map { Self.role($0)?.rawValue ?? "nil" })")
-        #expect(children.prefix(2).compactMap { ($0 as? NSTextField)?.stringValue }
+        // Round 6 (merge-sheet.md §15.4, row 168): the reference's order,
+        // Merge, Cancel, the message, the icon (an image with a
+        // description), the informative text.
+        #expect(children.map { Self.role($0) } == [.button, .button, .staticText, .image, .staticText], "\(children.map { Self.role($0)?.rawValue ?? "nil" })")
+        #expect(children.compactMap { ($0 as? NSTextField)?.stringValue }
                 == [MergeSheetText.alertTitle(branch: "feature"), MergeSheetText.alertMessage(branch: "feature", current: "main")])
+        #expect((children[3] as? NSImageView)?.accessibilityLabel() == MergeSheetText.alertIconDescription)
         let buttons = children.compactMap { $0 as? MergeButton }
-        #expect(buttons.map { Self.title($0) } == ["Cancel", "Merge"])
+        #expect(buttons.map { Self.title($0) } == ["Merge", "Cancel"])
         #expect(buttons.allSatisfy { $0.isAccessibilityElement() && $0.isAccessibilityEnabled() })
         #expect((ax.accessibilityDefaultButton() as AnyObject?) === alert.mergeButton)
         #expect((ax.accessibilityCancelButton() as AnyObject?) === alert.cancelButton)

@@ -230,10 +230,12 @@ import Testing
         #expect(kw.slider.isEnabled && kw.well.isEnabled)
         kw.well.commit("#3366CC")
         #expect(p.theme.tokens["keyword"] == "#3366CC" && kw.slider.value == 1)
-        // The slider: the colour's strength over the background (15 % at the left end).
-        kw.slider.background = (1, 1, 1)
+        // The slider: the colour's strength over white (a quarter at the
+        // left end, R6.1), stored with the theme.
         kw.slider.set(0)
-        #expect(p.theme.tokens["keyword"] == ThemeColorRows.hex(1 - 0.8 * 0.15, 1 - 0.6 * 0.15, 1 - 0.2 * 0.15), "\(p.theme.tokens["keyword"] ?? "-")")
+        let k = ThemeColorRows.paleStrength
+        #expect(p.theme.tokens["keyword"] == ThemeColorRows.hex(1 - 0.8 * k, 1 - 0.6 * k, 1 - 0.2 * k), "\(p.theme.tokens["keyword"] ?? "-")")
+        #expect(p.theme.strengths?["keyword"] == 0)
         kw.slider.set(1)
         #expect(p.theme.tokens["keyword"] == "#3366CC")
         kw.well.commit("")

@@ -44,19 +44,20 @@ import Testing
         cap.layoutSubtreeIfNeeded()
         cap.frame = NSRect(x: 0, y: 0, width: cap.intrinsicContentSize.width, height: 36)
         cap.layoutSubtreeIfNeeded()
-        // G.8: one warning, "1": 61 wide; the symbol 16.5 inside; the count 8 after it.
+        // G.8, H.5: one warning, "1": 61 wide; the symbol 16.5 inside; the
+        // count's text 4 after it (its ink 5, round 6).
         #expect(!cap.isHidden && abs(cap.capsuleWidth - 61) <= 1, "\(cap.capsuleWidth) count \(IssueCapsuleView.countWidth("1"))")
         let warn = cap.buttons[IssueSummary.Kind.warning.rawValue]
-        #expect(abs(warn.frame.minX - 16.5) < 0.01 && warn.countFrame.minX == 17.5 + 8)
+        #expect(abs(warn.frame.minX - 16.5) < 0.01 && warn.countFrame.minX == 17.5 + 4 - IssuePartButton.labelInset)
         #expect(warn.title == "1" && warn.accessibilityTitle() == "Issues")
-        // Errors first, then warnings: 110.5 wide for one of each (G.8).
+        // Errors first, then warnings: 111 wide for one of each (H.5).
         cap.errors = 1
         cap.layoutSubtreeIfNeeded()
         cap.frame.size.width = cap.intrinsicContentSize.width
         cap.layoutSubtreeIfNeeded()
         let err = cap.buttons[IssueSummary.Kind.error.rawValue]
         #expect(cap.parts.map(\.0) == ["xmark.circle.fill", "exclamationmark.triangle.fill"])
-        #expect(err.frame.minX < warn.frame.minX && abs(cap.capsuleWidth - 110.5) <= 1.5, "\(cap.capsuleWidth)")
+        #expect(err.frame.minX < warn.frame.minX && abs(cap.capsuleWidth - 111) <= 1, "\(cap.capsuleWidth)")
         // Symbols only in a narrow window.
         cap.symbolsOnly = true
         cap.layoutSubtreeIfNeeded()

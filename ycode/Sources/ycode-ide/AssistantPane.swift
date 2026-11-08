@@ -487,7 +487,7 @@ struct NewConversationToolbarButton: View {
 
     var body: some View {
         GlassCircleButton(symbol: WorkspaceChrome.newConversation.symbols[0], help: WorkspaceChrome.newConversation.toolTips[0],
-                          target: "tb new conversation") { assistant.togglePrompt() }
+                          gradient: WorkspaceChrome.newConversationGradient, target: "tb new conversation") { assistant.togglePrompt() }
             .popover(isPresented: $assistant.isPromptShown, arrowEdge: .bottom) {
                 let c = ShellColors(scheme)
                 VStack(alignment: .leading, spacing: 8) {

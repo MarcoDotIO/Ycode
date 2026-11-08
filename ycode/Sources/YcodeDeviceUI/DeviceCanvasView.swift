@@ -400,7 +400,9 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
             return CompactWindowLayout.scale(device: size, windowWidth: Double(bounds.width))
         case .hub:
             switch zoom {
-            case .fit: return DeviceZoom.fit(size, in: deviceArea.size)
+            // The frame's outer box at the hub's shares of the free height and
+            // the canvas width (§14.3, row 154: an interim rule, kept in DeviceZoom).
+            case .fit: return DeviceZoom.hubFit(frame: frameView.geometry.outerBox.size, in: deviceArea.size)
             case .scale(let s): return s
             case .actual:
                 let spec = session?.spec ?? stoppedSpec ?? .iPhoneDuo

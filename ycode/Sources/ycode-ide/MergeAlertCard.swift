@@ -31,8 +31,30 @@ struct MergeAlertCard: View {
             RoundedRectangle(cornerRadius: CGFloat(M.cornerRadius), style: .continuous)
                 .fill(Color(mergeHex: p.sheet))
                 .shadow(color: Color.black.opacity(scheme == .dark ? 0.5 : 0.25), radius: 14, x: 0, y: 6)
-            YcodeMark(size: CGFloat(M.alertIcon))
-                .offset(x: CGFloat(M.alertIconOrigin.x), y: CGFloat(M.alertIconOrigin.y))
+            // Accessibility follows this order (merge-sheet.md §15.4, row
+            // 168): Merge, Cancel, the message, the icon, the informative
+            // text, then the branch pop-up. Nothing here overlaps, so the
+            // order does not change the drawing.
+            Button { if !isLeaving { scm.confirmMergeAlert() } } label: {
+                MergeButtonLabel(title: MergeSheetText.merge, isDefault: isReady, palette: p,
+                                 width: CGFloat(M.alertMergeWidth), height: CGFloat(M.alertButtonHeight))
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.defaultAction)
+            .accessibilityLabel(MergeSheetText.merge)
+            .accessibilityHint("Default button (Return)")
+            .offset(x: mergeX, y: buttonY)
+            .shellTarget("merge alert merge")
+            Button(role: .cancel) { if !isLeaving { scm.cancelMergeAlert() } } label: {
+                MergeButtonLabel(title: MergeSheetText.cancel, isDefault: false, palette: p,
+                                 width: CGFloat(M.alertCancelWidth), height: CGFloat(M.alertButtonHeight))
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
+            .accessibilityLabel(MergeSheetText.cancel)
+            .accessibilityHint("Cancel button (Escape)")
+            .offset(x: cancelX, y: buttonY)
+            .shellTarget("merge alert cancel")
             // The title's first cap top 20 below the alert's top.
             Text(verbatim: alert.title)
                 .font(.system(size: 13, weight: .bold))
@@ -42,6 +64,11 @@ struct MergeAlertCard: View {
                 .frame(width: textWidth, alignment: .topLeading)
                 .offset(x: textX, y: CGFloat(M.alertTitleTop) - 4)
                 .shellTarget("merge alert title")
+            YcodeMark(size: CGFloat(M.alertIcon))
+                .accessibilityElement()
+                .accessibilityLabel(MergeSheetText.alertIconDescription)
+                .accessibilityAddTraits(.isImage)
+                .offset(x: CGFloat(M.alertIconOrigin.x), y: CGFloat(M.alertIconOrigin.y))
             Text(verbatim: alert.message)
                 .font(.system(size: 11))
                 .foregroundStyle(Color(mergeHex: scheme == .dark ? p.label : 0x000000))
@@ -71,26 +98,6 @@ struct MergeAlertCard: View {
                 .offset(x: textX, y: CGFloat(M.alertMessageTop) + 30)
                 .shellTarget("merge alert branch")
             }
-            Button(role: .cancel) { if !isLeaving { scm.cancelMergeAlert() } } label: {
-                MergeButtonLabel(title: MergeSheetText.cancel, isDefault: false, palette: p,
-                                 width: CGFloat(M.alertCancelWidth), height: CGFloat(M.alertButtonHeight))
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut(.cancelAction)
-            .accessibilityLabel(MergeSheetText.cancel)
-            .accessibilityHint("Cancel button (Escape)")
-            .offset(x: cancelX, y: buttonY)
-            .shellTarget("merge alert cancel")
-            Button { if !isLeaving { scm.confirmMergeAlert() } } label: {
-                MergeButtonLabel(title: MergeSheetText.merge, isDefault: isReady, palette: p,
-                                 width: CGFloat(M.alertMergeWidth), height: CGFloat(M.alertButtonHeight))
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut(.defaultAction)
-            .accessibilityLabel(MergeSheetText.merge)
-            .accessibilityHint("Default button (Return)")
-            .offset(x: mergeX, y: buttonY)
-            .shellTarget("merge alert merge")
         }
         .frame(width: w, height: h, alignment: .topLeading)
         .contentShape(Rectangle())

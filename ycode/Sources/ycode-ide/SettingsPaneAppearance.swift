@@ -99,7 +99,7 @@ struct AppearanceSettingsPane: View {
         let builtIn = EditorTheme.builtIns.contains { $0.name == theme.name }
         let L = SettingsAppearanceLayout.self
         SettingsSection(nil, cardFollows: true) {
-            SettingsFixedRow(title: "Theme", height: L.themeRowHeight) {
+            SettingsFixedRow(title: "Theme", height: L.themeRowHeight, raise: SettingsAppearanceR6.themeRowRaise) {
                 SettingsPushButton(title: "Choose\u{2026}", target: "settings theme choose") { choosing = true }
                     .popover(isPresented: $choosing) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -128,8 +128,7 @@ struct AppearanceSettingsPane: View {
         }
         SettingsSection(nil, content: {
             ForEach(ThemeColorRows.all, id: \.key) { row in
-                ThemeColorRowView(title: row.title, key: row.key, theme: theme, shown: Self.shownColor(row.key, palette),
-                                  background: palette.background, editable: !builtIn)
+                ThemeColorRowView(title: row.title, key: row.key, theme: theme, shown: Self.shownColor(row.key, palette), editable: !builtIn)
                     .id("\(theme.name)/\(row.key)")
             }
         }, footer: {
@@ -300,10 +299,12 @@ struct ThemePreview: View {
 }
 
 /// A card row of a given height: the label at the left, the control at the
-/// right (10 inside), both centred.
+/// right (10 inside), both centred, or `raise` above the centre (the Theme
+/// row's content, 2.25 higher: R6.1).
 struct SettingsFixedRow<Control: View>: View {
     var title: String
     var height: CGFloat
+    var raise: CGFloat = 0
     @ViewBuilder var control: Control
     @Environment(\.colorScheme) private var scheme
 
@@ -315,29 +316,30 @@ struct SettingsFixedRow<Control: View>: View {
             control
         }
         .padding(.horizontal, SettingsLayout.labelInset)
+        .padding(.bottom, 2 * raise)
         .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
         .background(p.card)
     }
 }
 
-/// One colour of the selected theme (R5.1's Foreground row): 56 tall, the
-/// label at the top-left, the strength slider and the colour well centred.
+/// One colour of the selected theme (R5.1's Foreground row, R6.1): 56
+/// tall, the label at the top-left, the slider and the well centred. The
+/// track's hue, the knob's strength and the well's colour come from
+/// `ThemeColorRows.display` (a grey takes Ycode's hue for the row).
 struct ThemeColorRowView: View {
     var title: String
     var key: String
     var theme: EditorTheme
     var shown: ThemeColor
-    var background: ThemeColor
     var editable: Bool
-    @State private var strength = 1.0
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let p = SettingsPalette(scheme)
         let L = SettingsAppearanceLayout.self
-        let base = (shown.redFraction, shown.greenFraction, shown.blueFraction)
-        let bg = (background.redFraction, background.greenFraction, background.blueFraction)
-        let current = ThemeColorRows.tint(base, over: bg, strength: strength)
+        let resolved = (shown.redFraction, shown.greenFraction, shown.blueFraction)
+        let d = ThemeColorRows.display(key, in: theme, resolved: resolved)
+        let current = ThemeColorRows.paleTint(d.full, strength: d.strength)
         ZStack(alignment: .topLeading) {
             Text(verbatim: title).font(SettingsFonts.label).foregroundStyle(p.label).lineLimit(1)
                 .padding(.leading, SettingsLayout.labelInset)
@@ -345,22 +347,22 @@ struct ThemeColorRowView: View {
             // The slider x 421.5–624, the well 632–680 (8 apart, 10 inside the card).
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
-                ThemeColorSlider(base: base, background: bg, value: Binding(get: { strength }, set: { v in
-                    strength = v
-                    let c = ThemeColorRows.tint(base, over: bg, strength: v)
-                    Preferences.shared.editSelectedTheme { ThemeColorRows.set(key, ThemeColorRows.hex(c.r, c.g, c.b), in: &$0) }
+                ThemeColorSlider(base: d.full, value: Binding(get: { d.strength }, set: { v in
+                    guard editable else { return }
+                    Preferences.shared.editSelectedTheme { ThemeColorRows.setStrength(key, full: d.full, strength: v, in: &$0) }
                 }), target: "settings color slider \(key)")
-                ThemeColorWell(color: settingsColor(current), hex: ThemeColorRows.value(key, in: theme) ?? "", target: "settings color \(key)") { hex in
-                    Preferences.shared.editSelectedTheme { ThemeColorRows.set(key, hex, in: &$0) }
-                    strength = 1
+                .allowsHitTesting(editable)
+                ThemeColorWell(color: current, hex: ThemeColorRows.value(key, in: theme) ?? "", target: "settings color \(key)") { hex in
+                    Preferences.shared.editSelectedTheme { ThemeColorRows.setTyped(key, hex, in: &$0) }
                 }
+                .allowsHitTesting(editable)
             }
             .padding(.trailing, SettingsLayout.controlInset)
             .frame(height: L.colorRowHeight)
         }
         .frame(maxWidth: .infinity, minHeight: L.colorRowHeight, maxHeight: L.colorRowHeight, alignment: .topLeading)
         .background(p.card)
-        .disabled(!editable)
+        .accessibilityHint(editable ? "" : "Built-in themes cannot be changed")
     }
 }
 

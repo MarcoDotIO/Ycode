@@ -122,7 +122,7 @@ public final class InspectorAreaController: NSViewController {
     private let content = NSStackView()
     /// The scroll view around the contents (tests).
     let contentScroll = NSScrollView()
-    private var file: URL?
+    private(set) var file: URL?
     /// The Quick Help inspector's text (from the language server).
     public private(set) var quickHelp: String?
 
@@ -638,11 +638,15 @@ public final class InspectorAreaController: NSViewController {
 
     // MARK: Image Properties, Localization (editor-area.md §C.6)
 
-    /// The shown image's properties, once the image viewer has decoded it
-    /// (nil: "--" in every row).
-    public var imageProperties: ImageFileProperties? {
-        didSet { if oldValue != imageProperties, selectedIndex == 0 { refresh() } }
-    }
+    /// The shown image's properties, once the image viewer has decoded it.
+    /// The File inspector still reads "--" in every row (`editor-area.md`
+    /// H.7, council row 162: the reference shows "--" for an image selected
+    /// in the navigator, three rounds in a row), so nothing is redrawn when
+    /// they arrive.
+    public var imageProperties: ImageFileProperties?
+
+    /// The rows Image Properties shows: "--" in all four (H.7).
+    public var shownImagePropertyRows: [(String, String)] { ImageFileProperties.placeholderRows }
 
     private func imageSections() {
         typealias R = InspectorStyle.Resource
@@ -651,7 +655,7 @@ public final class InspectorAreaController: NSViewController {
         let ip = heading("Image Properties", ruleBefore: R.tagsToRule, ruleAfter: R.ruleToHeader)
         content.addArrangedSubview(ip)
         content.setCustomSpacing(R.headerToProperties, after: ip)
-        for (k, v) in imageProperties?.rows ?? ImageFileProperties.placeholderRows {
+        for (k, v) in shownImagePropertyRows {
             content.addArrangedSubview(row(k, v, inset: R.propertyInset))
             rowValues.append((k, v))
         }
@@ -682,9 +686,11 @@ public final class InspectorAreaController: NSViewController {
         content.addArrangedSubview(header)
         // G.5: a resource's field box 22 below the header's ink.
         if resource { content.setCustomSpacing(InspectorStyle.Resource.headerToTags, after: header) }
-        let tags = NSTokenField()
-        // An image is a resource: a "Tags" field (editor-area.md §D.8).
-        tags.placeholderString = resource ? "Tags" : "Only resources are taggable"
+        // An image is a resource: a "Tags" field (editor-area.md §D.8),
+        // #E0E0E1 in light with its placeholder 6.5 in and centred (H.7,
+        // council row 162; `ResourceTagsField`).
+        let tags: NSTokenField = resource ? ResourceTagsField() : NSTokenField()
+        if resource { tags.cell = ResourceTagsFieldCell(textCell: "") }
         tags.isEnabled = resource
         if resource {
             tags.isBezeled = false
@@ -692,11 +698,18 @@ public final class InspectorAreaController: NSViewController {
             tags.drawsBackground = false
             tags.wantsLayer = true
             tags.layer?.cornerRadius = 6
-            tags.layer?.backgroundColor = InspectorStyle.fieldFill.cgColor
+            (tags as? ResourceTagsField)?.updateFill()
             tags.heightAnchor.constraint(equalToConstant: 24).isActive = true
         }
         tags.controlSize = .small
         tags.font = .systemFont(ofSize: 11)
+        if resource {
+            tags.placeholderAttributedString = NSAttributedString(string: "Tags", attributes: [
+                .font: NSFont.systemFont(ofSize: 11), .foregroundColor: ResourceTagsStyle.placeholder,
+            ])
+        } else {
+            tags.placeholderString = "Only resources are taggable"
+        }
         fileControls["On Demand Resource Tags"] = tags
         content.addArrangedSubview(tags)
         tags.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -Self.horizontalInsets).isActive = true

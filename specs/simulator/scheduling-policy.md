@@ -814,13 +814,85 @@ lock is a leaf):
 - `YCODE_HANDOFF_PUSH=held` carries only held reply pushes (§4.12), not a
   sync-IPC push or a hand-off push of the dispatching thread's own, so
   hand-offs do not chain.
+- `YCODE_HANDOFF_PUSH=request` (added 2026-11-07, `boot-profile.md` §26.5):
+  the hand-off is tied to the requests the dispatching thread's workloop
+  holds (§4.12) instead of to the next drain. When the servicer of a
+  workloop that holds requests asks another workloop of its image for a
+  thread, that workloop *borrows* the first one's held-request counter: its
+  servicer (now, and whichever thread services it next) carries the highest
+  class of those requests for as long as any of them is unanswered, follows
+  that class as requests arrive and are answered, and drops it when the last
+  one is answered (the link ends then; a later hand-off makes a new one).
+  Nothing is carried after the reply, and a borrowed push is not lent on (no
+  chains). It is the narrowest tag Ycode can see: libdispatch's work items
+  carry the request's voucher, but Ycode refuses messages with vouchers, so
+  the guest makes none. Under the image's event lock (the link) and G (the
+  counter's changes); the links have a leaf lock of their own, never held
+  while another lock is taken.
 - Not modelled: hand-offs through the workqueue's own buckets
   (`workq_kernreturn` thread requests, dispatch overrides), and a hand-off
   that outlives the drain.
 
-Diagnostics: `hand-off pushes N (taken N)` in the `sched:` report; with
-`YCODE_SYNC_PUSH_TRACE` a line for each hand-off and each servicer that takes
-one. Measurements: `boot-profile.md` §25 (slower at the band default in both forms).
+Diagnostics: `hand-off pushes N (taken N)` in the `sched:` report (with
+`=request`: `hand-off pushes N (taken 0, ended by the answer N)`, the links
+made and those the last answer ended); with `YCODE_SYNC_PUSH_TRACE` a line
+for each hand-off and each servicer that takes one. Measurements: `boot-profile.md` §25 (slower at the band default in both forms).
+
+### 4.15 Thread starts on the host (`YCODE_START_CLASS`, `YCODE_VCPU_CREATORS`)
+
+The reference (xnu, level 1; behaviour read from the open-source
+`bsd/pthread/pthread_workqueue.c` and `osfmk/kern/thread_policy.c`; nothing
+copied): a new thread runs at its own QoS from its first instruction (a
+workqueue thread at its request's QoS, a pthread at the QoS it was created
+with, its task's darwin-bg state applied), and a thread start costs the
+kernel microseconds. Nothing a previous thread did on the same CPU carries
+over.
+
+Ycode before (`boot-profile.md` §26.2): a guest thread runs on a vCPU's host
+thread (`thread-latency.md` §3). Every thread that is the first to use a
+vCPU of its process waits for one of the VMM's vCPU creator threads (2 by
+default) to make the host thread, and a creation that needs a new vCPU
+first waits for KVM's grace period (25–100 ms). The creator threads are
+host threads with no guest context: each stays in the cgroup of the thread
+whose request started it (§4.7: a class is applied only at a guest thread's
+trap end), and the host threads it creates begin there. §4.7
+applies a guest thread's class only at the end of a locked trap; a new
+thread, and a thread whose class a push raised, keeps its host thread's
+earlier priority until then, and a loader (long guest code, few traps, most
+of them on fast paths) can run seconds that way. In a boot to the home
+screen 1 759 thread starts waited for a creation: 428 ms on average, 1.3 s
+at the 90th percentile, 752 thread-seconds in all.
+
+Ycode (all behind switches, off or unchanged by default until measured):
+
+- **`YCODE_START_CLASS=1`** (`StartClass.swift`). A host thread that takes
+  a guest thread applies that thread's host class (its class raised to its
+  image's send and sync-wait pushes, §4.7) before the thread's first
+  instruction, without the demotion delay; a host thread whose guest thread
+  ended in a class below df moves to df while it waits for the next one, so
+  the start that wakes it does not first wait for a CPU at class bg's
+  weight; and the vCPU creator threads run at class ui (they are host
+  service threads, §4.4), so creations and the host threads they make are
+  not throttled by the class of the thread that first asked for one.
+- **`YCODE_VCPU_CREATORS=N`** (existing, default 2, `thread-latency.md`
+  §3.1): more creator threads overlap the grace periods of different
+  creations, so a start that needs only a host thread does not queue behind
+  those that wait for one.
+- **`YCODE_FAST_TRAP_HOST_CLASS=push`** (existing, §4.7 and
+  `boot-profile.md` §12.3): at the end of a fast trap, a raise of the
+  image's push above the thread's class and its applied class is applied
+  then (lowering stays with the locked path). A loader that a waiting
+  client's request pushes (§4.12, §4.13) then runs at the pushed class
+  from its next fast trap instead of its next locked one.
+- **`YCODE_HOST_SCHED_UI_WEIGHT=N`** (1–10 000, default 400): class ui's
+  cgroup weight (§4.7), for measurement.
+
+Diagnostics: the `sched:` report adds `thread starts by the host thread's
+class: below the thread's N (from bg N), above N, the same N, new host
+threads N` (any backend), and with the switch `start class: N at starts, N
+at parks, N creator threads` (moves). The boot profile's `# latency` line
+(`thread-latency.md` §2.1) has the creation queue. Measurements:
+`boot-profile.md` §26.
 
 ## 5. Diagnostics
 
@@ -898,11 +970,16 @@ one. Measurements: `boot-profile.md` §25 (slower at the band default in both fo
 | `YCODE_REPLY_PUSH` | 1 for `--device` runs (since 2026-11-07), else 0 | §4.12 a waiting sender's request pushes whoever holds it until the reply (queued: the receiving image; received: the workloop it came through, else the thread that took it), in both the one-call and libdispatch's two-call form (with `YCODE_SCHED_QOS`); `1` on, `image` on with the whole receiving image pushed |
 | `YCODE_TRANSIT_PUSH` | 1 for `--device` runs (since 2026-11-07), else 0 | §4.13 a request or importance queued on a port in transit credits the target of the port that carries it; `1` on |
 | `YCODE_WATCH_PUSH` | 1 for `--device` runs (since 2026-11-07), else 0 | §4.13 with the reply push alone, spawns bind watch ports for the queued credit (and execs move it); `1` on |
-| `YCODE_HANDOFF_PUSH` | 0 | §4.14 a pushed thread's workloop thread request carries its push to the workloop's next servicer for its drain (with `YCODE_SCHED_QOS`); `1` on, `held` only held reply pushes |
+| `YCODE_HANDOFF_PUSH` | 0 | §4.14 a pushed thread's workloop thread request carries its push to the workloop's next servicer for its drain (with `YCODE_SCHED_QOS`); `1` on, `held` only held reply pushes, `request` the held requests' push until they are answered |
+| `YCODE_START_CLASS` | 1 for `--device` runs (since 2026-11-07), else 0 | §4.15 a host thread takes its new guest thread's host class before the first instruction, parks below df at df; the vCPU creator threads run at ui; `1` on |
+| `YCODE_HOST_SCHED_UI_WEIGHT` | 400 | §4.15 class ui's cgroup `cpu.weight` (1–10 000) |
 | `YCODE_HOST_SCHED_UI_PUSHED` | unset | with `YCODE_HOST_SCHED_UI_CPUS`: an image whose send push (§4.6) is at least this class also runs on the UI path's CPUs while it lasts |
 | `YCODE_BOOT_PRIORITY` | 1 for device runs (since 2026-10-27; was 0) | device runs (`--device`) only: with `YCODE_SCHED_QOS` unset, set it to 1 and `YCODE_HOST_SCHED` (if unset) to `cgroup` before the VMM starts (§7.4, §7.5); `0` turns it off. The cgroup backend re-executes the VMM in a delegated user scope only when the user's service manager is reachable (`$XDG_RUNTIME_DIR/systemd/private`); otherwise it reports itself unavailable and the run goes on without host scheduling |
 
 ## 7. Measurements
+
+**Default (2026-11-07):** for `--device` runs `YCODE_START_CLASS=1` and
+`YCODE_VCPU_CREATORS=8` (`boot-profile.md` §26.8); otherwise 0 and 2.
 
 ### 7.1 Thor, full boot (agent PRIO, 2026-10-19)
 

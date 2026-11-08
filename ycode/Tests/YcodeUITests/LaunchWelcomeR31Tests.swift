@@ -211,9 +211,11 @@ import YcodeProject
         func titles(_ items: [OutlineItem]) -> [String] { items.flatMap { [$0.title] + titles($0.children) } }
         let all = titles([root])
         #expect(all.contains("ContentView") && !all.contains { $0.hasSuffix(".swift") })
-        // N4: the root and its first group are expanded at first open.
+        // N4 (council round 6, row 160): the root and every group of the
+        // main group are expanded at first open.
         let first = try #require(root.children.first { $0.nodeKind != .file })
-        #expect(wc.navigator.projectExpansion == [root.expansionKey, first.expansionKey].compactMap { $0 })
+        let groups = root.children.filter { $0.nodeKind != .file }
+        #expect(wc.navigator.projectExpansion == ([root.expansionKey] + groups.map(\.expansionKey)).compactMap { $0 })
         // N3: letters on file rows only.
         let file = try #require(wc.session.model.root.allFiles.first { $0.name == "ContentView.swift" }?.path)
         wc.navigator.setFileStatus([file: .modified, proj.path: .modified, proj.deletingLastPathComponent().appendingPathComponent("Tour").path: .modified])

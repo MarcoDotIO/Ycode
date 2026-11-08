@@ -35,11 +35,22 @@ public final class IssueCapsuleView: NSView {
 
     static let countFont = NSFont.systemFont(ofSize: CGFloat(IssueSummary.Capsule.countSize))
 
+    /// A colour from 0xRRGGBB.
+    static func rgb(_ v: UInt32) -> NSColor {
+        NSColor(srgbRed: CGFloat(v >> 16 & 0xFF) / 255, green: CGFloat(v >> 8 & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
+    }
+
+    /// The counts' colour: black in light, white in dark (H.5, row 161).
+    static let countColor = NSColor(name: nil) { a in
+        rgb(IssueSummary.Capsule.countColor(dark: a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua))
+    }
+
     /// A kind's symbol: the system symbol in two colours, its mark white
-    /// on the kind's fill, sized so the triangle's ink is about 17.5 × 15.5.
-    public static func symbolImage(_ kind: IssueSummary.Kind) -> NSImage {
-        let fill = NSColor(srgbRed: CGFloat(kind.fill >> 16 & 0xFF) / 255, green: CGFloat(kind.fill >> 8 & 0xFF) / 255,
-                           blue: CGFloat(kind.fill & 0xFF) / 255, alpha: 1)
+    /// on the kind's fill (the appearance's: H.5's #F5C200 triangle in
+    /// light, G.8's #FFE015 in dark), sized so the triangle's ink is about
+    /// 17.5 × 16.
+    public static func symbolImage(_ kind: IssueSummary.Kind, dark: Bool = false) -> NSImage {
+        let fill = rgb(kind.fill(dark: dark))
         let config = NSImage.SymbolConfiguration(pointSize: CGFloat(IssueSummary.Capsule.symbolSize), weight: .regular)
             .applying(NSImage.SymbolConfiguration(paletteColors: [.white, fill]))
         guard let symbol = NSImage(systemSymbolName: kind.symbol, accessibilityDescription: kind.title)?.withSymbolConfiguration(config) else {
@@ -119,7 +130,7 @@ public final class IssueCapsuleView: NSView {
             let w = b.contentWidth
             b.frame = NSRect(x: x, y: 0, width: w, height: bounds.height)
             b.layoutSubtreeIfNeeded()
-            x += w + CGFloat(c.partGap)
+            x += w + CGFloat(c.gap(symbolsOnly: symbolsOnly))
         }
     }
 
@@ -134,8 +145,8 @@ public final class IssueCapsuleView: NSView {
 }
 
 /// One kind's button in the issue capsule: its symbol and, unless the
-/// capsule shows symbols only, its count 8 after it (13 points, the label
-/// colour). The button draws no bezel; its title is the count (for
+/// capsule shows symbols only, its count with its ink 5 after it (13
+/// points, black in light, white in dark; H.5). The button draws no bezel; its title is the count (for
 /// accessibility and tests) and its accessibility title the kind's.
 @MainActor
 public final class IssuePartButton: NSButton {
@@ -157,9 +168,10 @@ public final class IssuePartButton: NSButton {
         isBordered = false
         setButtonType(.momentaryChange)
         glyph.image = IssueCapsuleView.symbolImage(kind)
+        glyph.darkImage = IssueCapsuleView.symbolImage(kind, dark: true)
         glyph.imageScaling = .scaleNone
         countLabel.font = IssueCapsuleView.countFont
-        countLabel.textColor = .labelColor
+        countLabel.textColor = IssueCapsuleView.countColor
         for v in [glyph, countLabel] as [NSView] { addSubview(v) }
     }
 
@@ -178,6 +190,9 @@ public final class IssuePartButton: NSButton {
         return w
     }
 
+    /// Where a label draws its text inside its frame.
+    static let labelInset: CGFloat = 2
+
     /// The symbol's frame in the button (tests).
     public var symbolFrame: NSRect { glyph.frame }
     /// The count's frame in the button; zero with symbols only (tests).
@@ -190,8 +205,10 @@ public final class IssuePartButton: NSButton {
         // Centred in the symbol's slot and on the capsule's middle.
         glyph.frame = NSRect(x: (CGFloat(c.symbolWidth) - size.width) / 2, y: (bounds.height - size.height) / 2, width: size.width, height: size.height)
         let text = countLabel.intrinsicContentSize
-        countLabel.frame = NSRect(x: CGFloat(c.symbolWidth + c.symbolToCount), y: ((bounds.height - text.height) / 2).rounded(),
-                                  width: ceil(text.width), height: text.height)
+        // The label draws its text 2 inside its frame: the text starts
+        // `symbolToCount` after the symbol's slot (its ink 5 after, H.5).
+        countLabel.frame = NSRect(x: CGFloat(c.symbolWidth + c.symbolToCount) - Self.labelInset, y: ((bounds.height - text.height) / 2).rounded(),
+                                  width: ceil(text.width) + 2 * Self.labelInset, height: text.height)
     }
 }
 
@@ -201,7 +218,16 @@ public final class IssuePartButton: NSButton {
 /// grey.
 final class IssueSymbolView: NSView {
     var image: NSImage? { didSet { needsDisplay = true } }
+    /// The symbol in the dark appearance's colours.
+    var darkImage: NSImage? { didSet { needsDisplay = true } }
     var imageScaling: NSImageScaling = .scaleNone
     override var allowsVibrancy: Bool { false }
-    override func draw(_ dirtyRect: NSRect) { image?.draw(in: bounds) }
+    var isDark: Bool { effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua }
+    /// The image drawn in the view's appearance.
+    var shownImage: NSImage? { isDark ? (darkImage ?? image) : image }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+    override func draw(_ dirtyRect: NSRect) { shownImage?.draw(in: bounds) }
 }

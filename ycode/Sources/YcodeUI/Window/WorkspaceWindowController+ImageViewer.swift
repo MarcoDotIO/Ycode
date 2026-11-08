@@ -36,7 +36,7 @@ extension WorkspaceWindowController {
         editor.showAuxiliary(c.view, path: jumpPath(for: url), file: url)
         editor.jumpBar.symbolTitle = "No Selection"
         inspector.imageProperties = c.properties
-        inspector.show(file: url)
+        showInspectorAfterEditor(file: url)
         // No "Line: Col:" for an image (editor-area.md §D.7).
         debugArea.setPosition(line: 0, column: 0)
     }

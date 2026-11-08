@@ -129,15 +129,20 @@ final class NavigatorFilterField: NSSearchField {
     /// starting 1.2 in; the chevron's 6 × 3.5 in its natural 8 × 5), so
     /// the rects are larger than the ink.
     static let optionsGlyph: NSImage = {
+        // Light weight: a 1-point stroke (H.9, row 165).
         let funnel = NSImage(systemSymbolName: "line.3.horizontal.decrease.circle", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .light))
         let chevron = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 6.5, weight: .semibold))
-        let circle: CGFloat = 15.5, chevronX: CGFloat = 15.1, chevronSize = NSSize(width: 8, height: 5)
-        let size = NSSize(width: optionsWidth, height: 16)
+        // The light circle's ink is 12.25 in a 15.5 rect: a 17.1 rect gives
+        // about 13.5 (H.9: 14.5 × 13), its ink from 2.7 (the glyph starts
+        // 7.5 inside the capsule); the chevron's ink 1 after it, ending
+        // inside the button's 23.5.
+        let circle: CGFloat = 17.1, circleX: CGFloat = 0.9, chevronX: CGFloat = 16.2, chevronSize = NSSize(width: 8, height: 5)
+        let size = NSSize(width: chevronX + chevronSize.width, height: 16)
         let image = NSImage(size: size, flipped: false) { _ in
             if let f = funnel {
-                f.draw(in: NSRect(x: 0, y: (size.height - circle) / 2, width: circle, height: circle))
+                f.draw(in: NSRect(x: circleX, y: (size.height - circle) / 2, width: circle, height: circle))
             }
             if let c = chevron {
                 c.draw(in: NSRect(x: chevronX, y: (size.height - chevronSize.height) / 2, width: chevronSize.width, height: chevronSize.height))
@@ -205,14 +210,12 @@ final class BookmarkBox: NSObject {
 
 /// Colours of the navigator's bottom bar.
 enum NavigatorBarColors {
-    /// The filter-options glyph (funnel lines and chevron): in dark #ABABAC
-    /// on the capsule (`editor-area.md` F.9, checklist row 110; it was the
-    /// secondary label colour, #807F7F there); in light the secondary label
-    /// colour (`metrics.md` §15).
+    /// The filter-options glyph (funnel lines and chevron): #ABABAC in dark
+    /// (`editor-area.md` F.9, checklist row 110), #777777 in light (H.9, row
+    /// 165). Opaque: the glyph is tinted source-atop, where a translucent
+    /// tint over the black symbol stayed black.
     static let optionsGlyph = NSColor(name: "NavigatorOptionsGlyph") { a in
-        a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(srgbRed: CGFloat((WorkspaceChrome.filterGlyphDark >> 16) & 0xFF) / 255,
-                                                                    green: CGFloat((WorkspaceChrome.filterGlyphDark >> 8) & 0xFF) / 255,
-                                                                    blue: CGFloat(WorkspaceChrome.filterGlyphDark & 0xFF) / 255, alpha: 1)
-            : .secondaryLabelColor
+        let v = WorkspaceChrome.filterGlyph(dark: a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
+        return NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
     }
 }

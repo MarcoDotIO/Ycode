@@ -136,7 +136,12 @@ is unset.
   scheduling policy's host backend (`scheduling-policy.md` §4.7: priority
   per class after a trap); no CPU affinity is set. A reused or warm host
   thread keeps its last class until the new thread's first trap, as a
-  parked vCPU did before.
+  parked vCPU did before; a new host thread starts in its creator thread's
+  cgroup. `YCODE_START_CLASS=1` (2026-11-07, `scheduling-policy.md` §4.15)
+  applies the new thread's class before its first instruction and runs the
+  creator threads at ui. In a 25 s boot the creator queue is on the path
+  (`boot-profile.md` §26.4: 428 ms per start with 2 creators, 55 ms with 8
+  and the start class).
 - Owner actions (root only, not done): `rcupdate.rcu_expedited=1` (or
   `rcu_normal=0` with expedited grace periods) would shorten the creation
   grace period left for processes with more than 16 threads; a lower

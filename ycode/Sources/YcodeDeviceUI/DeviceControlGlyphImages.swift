@@ -1,5 +1,6 @@
-// The second capsule's glyphs on macOS (device-hub.md §13.1, rows 131–132):
-// Rotate and the three postures drawn by Ycode from the shapes the Linux
+// The second capsule's glyphs on macOS (device-hub.md §13.1, rows 131–132)
+// and the toolbar's Zoom to Fit (§14.1, row 156): Rotate, the three postures
+// and the magnifier with four arrowheads drawn by Ycode from the shapes the Linux
 // device window draws too (`DeviceControlGlyphs`, YcodeDeviceModel).
 
 #if os(macOS)
@@ -64,6 +65,20 @@ public enum DeviceControlGlyphImage {
         }
         img.isTemplate = true
         img.accessibilityDescription = "Rotate"
+        return img
+    }
+
+    /// Zoom to Fit (§14.1, row 156): a template image the size of the
+    /// toolbar's other magnifiers (16 × 15), so the segment tints it.
+    @MainActor
+    public static func zoomToFit() -> NSImage {
+        let g = G.zoomToFit
+        let img = NSImage(size: NSSize(width: g.size.width, height: g.size.height), flipped: true) { r in
+            draw(g, in: r, line: .black, fill: nil)
+            return true
+        }
+        img.isTemplate = true
+        img.accessibilityDescription = "Zoom to Fit"
         return img
     }
 

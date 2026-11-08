@@ -49,9 +49,14 @@ public enum WorkspaceChrome {
     /// The bar's room at the navigator's leading and trailing edges.
     public static let filterBarLeading: Double = 7
     public static let filterBarTrailing: Double = 7.5
-    /// The filter-options glyph in dark (#ABABAC; the secondary label
-    /// colour in light).
+    /// The filter-options glyph in dark (#ABABAC).
     public static let filterGlyphDark: UInt32 = 0xABABAC
+    /// The filter-options glyph and its chevron in light: #777777 with a
+    /// 1-point stroke, the circle's ink 14.5 × 13 (`editor-area.md` H.9,
+    /// council row 165; Ycode drew them black).
+    public static let filterGlyphLight: UInt32 = 0x777777
+    /// The glyph's colour in the light or dark appearance (0xRRGGBB).
+    public static func filterGlyph(dark: Bool) -> UInt32 { dark ? filterGlyphDark : filterGlyphLight }
 
     /// The navigators in selector order (`CommandTable.navigators`).
     public static let navigatorSymbols = [
@@ -104,13 +109,20 @@ public enum WorkspaceChrome {
         public var toolTips: [String]
     }
 
-    public static let leftPanes = ToolbarItem(id: "leftPanes", symbols: ["sidebar.left", "text.bubble"],
+    /// The leading capsule: a list glyph (the navigators) and a sparkle
+    /// (the coding assistant), as the reference's (`editor-area.md` H.9,
+    /// council row 166; Ycode had a sidebar glyph and a speech bubble).
+    public static let leftPanes = ToolbarItem(id: "leftPanes", symbols: ["list.bullet", "sparkles"],
                                               toolTips: ["Navigators", "Coding Assistant"])
     public static let runStop = ToolbarItem(id: "run", symbols: ["play.fill", "stop.fill"],
                                             toolTips: ["Build and then run the current scheme", "Stop the running scheme or application"])
     public static let history = ToolbarItem(id: "history", symbols: ["chevron.left", "chevron.right"],
                                             toolTips: ["Show Previous Location in History", "Show Next Location in History"])
     public static let newConversation = ToolbarItem(id: "newConversation", symbols: ["plus.bubble"], toolTips: ["New Conversation"])
+    /// New Conversation's glyph is filled with a pink-to-purple gradient,
+    /// top leading to bottom trailing (H.9, row 166; the reference's fill
+    /// style, in Ycode's own colours): 0xRRGGBB at each end.
+    public static let newConversationGradient: (start: UInt32, end: UInt32) = (0xF2559E, 0x8E5BF5)
     public static let addEditor = ToolbarItem(id: "addEditor", symbols: ["plus.rectangle.on.rectangle"],
                                               toolTips: ["Add Editor Tabs or Editor Panes"])
     public static let editorOptions = ToolbarItem(id: "editorOptions", symbols: ["line.3.horizontal"], toolTips: ["Adjust Editor Options"])

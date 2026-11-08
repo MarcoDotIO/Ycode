@@ -227,8 +227,9 @@ final class SettingsSegmentsControl: NSControl {
     }
 }
 
-/// A push button in the card style (R5.1's "Choose…"): 24 tall, fully
-/// rounded, #E4E4E4 with a #232323 label 14 from each end.
+/// A push button in the card style (R5.1's "Choose…"): 24 tall, a rounded
+/// rectangle of radius 6 (R6.1), #E4E4E4 with a #232323 label 12.25 from
+/// each end.
 final class SettingsPushButton: NSButton {
     var onPress: ((SettingsPushButton) -> Void)?
 
@@ -259,7 +260,8 @@ final class SettingsPushButton: NSButton {
         let r = bounds
         (isHighlighted ? SettingsR5Colors.pushButton.blended(withFraction: 0.12, of: .black) ?? SettingsR5Colors.pushButton
             : SettingsR5Colors.pushButton).withAlphaComponent(alpha).setFill()
-        NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2).fill()
+        let radius = SettingsAppearanceR6.pushButtonRadius
+        NSBezierPath(roundedRect: r, xRadius: radius, yRadius: radius).fill()
         let text = NSAttributedString(string: title, attributes: [.font: labelFont, .foregroundColor: SettingsR5Colors.pushButtonLabel.withAlphaComponent(alpha)])
         let s = text.size()
         text.draw(at: NSPoint(x: r.midX - s.width / 2, y: r.midY - s.height / 2))
@@ -268,20 +270,20 @@ final class SettingsPushButton: NSButton {
 
 // MARK: Colour rows (R5.1's Foreground)
 
-/// The colour slider: a 14-point capsule track from a pale to a full tint
-/// of the colour (`ThemeColorRows.tint`, its strength over the editor's
-/// background) and a round knob (white rim, the colour inside), at the
-/// full colour to begin with.
+/// The colour slider (R6.1): a 14-point capsule track in one hue, from a
+/// pale tint at the left to the full colour at the right
+/// (`ThemeColorRows.paleTint`), with a 1-point darker edge, and a knob
+/// about 28 across (a white rim around the colour under it) at the row's
+/// strength. A built-in theme's row is read-only but drawn in full.
 final class ThemeColorSlider: NSControl {
     typealias RGB = (r: Double, g: Double, b: Double)
+    /// The full colour (the track's right end).
     var base: RGB { didSet { needsDisplay = true } }
-    var background: RGB
-    var value = 1.0 { didSet { needsDisplay = true } }
+    var value = ThemeColorRows.defaultStrength { didSet { needsDisplay = true } }
     var onChange: ((Double) -> Void)?
 
-    init(base: RGB, background: RGB) {
+    init(base: RGB) {
         self.base = base
-        self.background = background
         super.init(frame: .zero)
         setAccessibilityRole(.slider)
     }
@@ -295,15 +297,22 @@ final class ThemeColorSlider: NSControl {
     override func accessibilityValue() -> Any? { value }
 
     /// The colour at the knob.
-    var color: RGB { ThemeColorRows.tint(base, over: background, strength: value) }
+    var color: RGB { ThemeColorRows.paleTint(base, strength: value) }
 
     override func draw(_ dirtyRect: NSRect) {
-        let alpha: CGFloat = isEnabled ? 1 : 0.5
+        let alpha: CGFloat = 1
         let k = SettingsAppearanceLayout.sliderKnob, th = SettingsAppearanceLayout.sliderTrackHeight
         let track = NSRect(x: 0, y: bounds.midY - th / 2, width: bounds.width, height: th)
         func ns(_ c: RGB) -> NSColor { NSColor(srgbRed: CGFloat(c.r), green: CGFloat(c.g), blue: CGFloat(c.b), alpha: alpha) }
+        let pale = ThemeColorRows.paleTint(base, strength: 0)
+        let f = ThemeColorRows.self, e = SettingsAppearanceR6.trackEdgeFactor
+        // The darker edge, then the gradient 1 point inside it.
         let shape = NSBezierPath(roundedRect: track, xRadius: th / 2, yRadius: th / 2)
-        NSGradient(starting: ns(ThemeColorRows.tint(base, over: background, strength: 0)), ending: ns(base))?.draw(in: shape, angle: 0)
+        NSGradient(starting: ns(f.darker(pale, e)), ending: ns(f.darker(base, e)))?.draw(in: shape, angle: 0)
+        let w = SettingsAppearanceR6.edgeWidth
+        let inner = track.insetBy(dx: w, dy: w)
+        let innerShape = NSBezierPath(roundedRect: inner, xRadius: inner.height / 2, yRadius: inner.height / 2)
+        NSGradient(starting: ns(pale), ending: ns(base))?.draw(in: innerShape, angle: 0)
         let x = k / 2 + CGFloat(value) * (bounds.width - k)
         let knob = NSRect(x: x - k / 2, y: bounds.midY - k / 2, width: k, height: k)
         NSGraphicsContext.saveGraphicsState()
@@ -316,7 +325,7 @@ final class ThemeColorSlider: NSControl {
         NSBezierPath(ovalIn: knob).fill()
         NSGraphicsContext.restoreGraphicsState()
         ns(color).setFill()
-        NSBezierPath(ovalIn: knob.insetBy(dx: 3, dy: 3)).fill()
+        NSBezierPath(ovalIn: knob.insetBy(dx: SettingsAppearanceR6.knobRim, dy: SettingsAppearanceR6.knobRim)).fill()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -341,8 +350,8 @@ final class ThemeColorSlider: NSControl {
     }
 }
 
-/// The colour well: a 48 × 28 capsule with a 3-point grey rim around the
-/// colour. A click shows the colour as #RRGGBB in a popover to edit
+/// The colour well: a 48 × 28 capsule with a 3-point #DFDFDF rim around
+/// the colour (the knob's), the colour edged 1 point darker (R6.1). A click shows the colour as #RRGGBB in a popover to edit
 /// (Ycode's own editor, the same on Linux); an empty value is the system's.
 final class ThemeColorWellButton: NSButton, NSTextFieldDelegate {
     var color: NSColor { didSet { needsDisplay = true } }
@@ -371,12 +380,17 @@ final class ThemeColorWellButton: NSButton, NSTextFieldDelegate {
 
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds
-        let alpha: CGFloat = isEnabled ? 1 : 0.5
-        SettingsR5Colors.wellRim.withAlphaComponent(alpha).setFill()
+        SettingsR5Colors.wellRim.setFill()
         NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2).fill()
         let inner = r.insetBy(dx: SettingsAppearanceLayout.wellRim, dy: SettingsAppearanceLayout.wellRim)
-        color.withAlphaComponent(alpha).setFill()
+        let c = color.usingColorSpace(.sRGB) ?? color
+        let e = CGFloat(SettingsAppearanceR6.wellEdgeFactor)
+        NSColor(srgbRed: c.redComponent * e, green: c.greenComponent * e, blue: c.blueComponent * e, alpha: 1).setFill()
         NSBezierPath(roundedRect: inner, xRadius: inner.height / 2, yRadius: inner.height / 2).fill()
+        let w = SettingsAppearanceR6.edgeWidth
+        let core = inner.insetBy(dx: w, dy: w)
+        c.setFill()
+        NSBezierPath(roundedRect: core, xRadius: core.height / 2, yRadius: core.height / 2).fill()
     }
 
     @objc func editColor() {
@@ -414,25 +428,31 @@ final class ThemeColorWellButton: NSButton, NSTextFieldDelegate {
     }
 }
 
-/// A 56-point colour row (R5.1): the label at the top-left (cap top 13
-/// under the row's top), the slider and the well centred in the row.
+/// A 56-point colour row (R5.1, R6.1): the label at the top-left (cap top
+/// 13 under the row's top), the slider and the well centred in the row.
+/// The track's hue, the knob's strength and the well's colour come from
+/// `ThemeColorRows.display` (a grey takes Ycode's hue for the row).
 final class ThemeColorRowView: NSView {
     let label: NSTextField
     let slider: ThemeColorSlider
     let well: ThemeColorWellButton
-
-    /// The theme's colour and background as given (system colours are
-    /// dynamic): resolved in the row's own appearance, flattened over the
-    /// background, whenever the appearance changes.
+    let key: String
+    /// The theme the row shows.
+    var theme: EditorTheme
+    /// The theme's colour as given (system colours are dynamic): resolved
+    /// in the row's own appearance, flattened over the background, whenever
+    /// the appearance changes.
     var dynamicColor: NSColor
     let dynamicBackground: NSColor
 
-    init(title: String, color: NSColor, background: NSColor, hex: String?) {
+    init(title: String, key: String, theme: EditorTheme, color: NSColor, background: NSColor) {
         label = NSTextField(labelWithString: title)
+        self.key = key
+        self.theme = theme
         dynamicColor = color
         dynamicBackground = background
-        slider = ThemeColorSlider(base: (0, 0, 0), background: (1, 1, 1))
-        well = ThemeColorWellButton(color: color, hex: hex)
+        slider = ThemeColorSlider(base: ThemeColorRows.rgb(0xE35590))
+        well = ThemeColorWellButton(color: color, hex: ThemeColorRows.value(key, in: theme))
         super.init(frame: .zero)
         label.font = .systemFont(ofSize: SettingsMetrics.fontSize)
         label.textColor = SettingsColors.label
@@ -477,17 +497,24 @@ final class ThemeColorRowView: NSView {
         resolve()
     }
 
-    /// The colours as drawn in this row's appearance.
+    /// The colours as drawn in this row's appearance: the track's full
+    /// colour, the knob's strength, the well's colour (the knob's).
     func resolve() {
-        var c = NSColor.black, bg = NSColor.white
+        var c = NSColor.black
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            bg = Self.opaque(self.dynamicBackground, over: .white)
+            let bg = Self.opaque(self.dynamicBackground, over: .white)
             c = Self.opaque(self.dynamicColor, over: bg)
         }
-        func rgb(_ c: NSColor) -> ThemeColorSlider.RGB { (Double(c.redComponent), Double(c.greenComponent), Double(c.blueComponent)) }
-        slider.base = rgb(c)
-        slider.background = rgb(bg)
-        well.color = c
+        let shown = ThemeColorRows.display(key, in: theme, resolved: (Double(c.redComponent), Double(c.greenComponent), Double(c.blueComponent)))
+        slider.base = shown.full
+        slider.value = shown.strength
+        showKnobColor()
+    }
+
+    /// The well shows the colour under the knob.
+    func showKnobColor() {
+        let k = slider.color
+        well.color = NSColor(srgbRed: CGFloat(k.r), green: CGFloat(k.g), blue: CGFloat(k.b), alpha: 1)
     }
 
     /// `c` in sRGB with its transparency flattened over `bg`.
@@ -725,8 +752,8 @@ final class SettingsInfoButton: NSButton {
 
 /// One Components row (R5.2): 51.5 tall, the symbol centred on x 26 of the
 /// card, the title from x 51 (cap top 13.5 under the row's top), the
-/// subtitle 15 under it, "Last used …" right-aligned 34.5 inside, the info
-/// button 11.5 inside.
+/// subtitle 15 under it (a size 3.25 further right), "Last used …" at the
+/// subtitle's size right-aligned 34.5 inside, the info button 11.5 inside.
 final class ComponentsRowView: NSView {
     let row: ComponentsRow
     let glyph: ComponentGlyphView
@@ -747,7 +774,8 @@ final class ComponentsRowView: NSView {
         title.textColor = SettingsColors.label
         subtitle.font = .systemFont(ofSize: SettingsComponentsLayout.subtitleFontSize)
         subtitle.textColor = SettingsR5Colors.subtitle
-        lastUsed?.font = .systemFont(ofSize: SettingsMetrics.fontSize)
+        // "Last used …" at the subtitle's size (R6.2).
+        lastUsed?.font = .systemFont(ofSize: SettingsComponentsR6.lastUsedFontSize)
         lastUsed?.textColor = SettingsR5Colors.subtitle
         for v in [glyph, title, subtitle, info] + (lastUsed.map { [$0] } ?? []) as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
@@ -765,7 +793,8 @@ final class ComponentsRowView: NSView {
             glyph.heightAnchor.constraint(equalToConstant: row.glyph.size.height),
             title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: L.titleInset - 1),
             title.topAnchor.constraint(equalTo: topAnchor, constant: L.titleCapTop - 3),
-            subtitle.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+            // A size starts 3.25 right of the title; "Built-in" does not (R6.2).
+            subtitle.leadingAnchor.constraint(equalTo: title.leadingAnchor, constant: row.subtitleInset),
             subtitle.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor, constant: L.subtitleBaselineGap),
             info.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -L.infoTrailingInset),
             info.centerYAnchor.constraint(equalTo: centerYAnchor),

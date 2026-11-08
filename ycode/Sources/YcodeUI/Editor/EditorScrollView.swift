@@ -3,12 +3,13 @@ import QuartzCore
 import YcodeIDECore
 
 /// The source editor's scroll view. It adds the top bounce of
-/// `editor-area.md` §D.4 and E.1 (checklist rows 40, 70): when momentum
-/// would carry the text past the top, the text runs on and springs back
-/// (`TopBounce`: about 8 % past the end of a 600-point flick, then a
-/// critically damped return at ω 12.6 rad/s), instead of the system's
-/// short elastic stop. Everything else is the system's, and the text
-/// follows a gesture from its first event (no hold).
+/// `editor-area.md` §D.4, E.1 and H.1 (checklist rows 40, 70, 157): when
+/// momentum would carry the text past the top, the text runs on and
+/// springs back (`TopBounce`: about 120 points past the top for the
+/// council's flick, then a critically damped return at ω 13.5 rad/s),
+/// instead of the system's short elastic stop. Everything else is the
+/// system's; the text follows a gesture from its first event (no hold),
+/// and the events queued behind one are applied with it, in one frame.
 final class EditorScrollView: NSScrollView {
     let topBounce = EditorTopBounce()
 
@@ -20,12 +21,73 @@ final class EditorScrollView: NSScrollView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
+    /// Until when the overlay scrollers are not flashed: from an inspector
+    /// slide's start until shortly after its end (`editor-area.md` H.2,
+    /// council row 158: nothing is redrawn after the motion; round 6 saw
+    /// the scroll indicator repaint 70–90 ms after it). A scroll ends it.
+    static var quietScrollersUntil: CFTimeInterval = 0
+    /// How long after a slide's end the scrollers stay quiet.
+    static let quietAfterSlide: CFTimeInterval = 0.5
+
+    static var scrollersAreQuiet: Bool { CACurrentMediaTime() < quietScrollersUntil }
+
+    override func flashScrollers() {
+        guard !Self.scrollersAreQuiet else { return }
+        super.flashScrollers()
+    }
+
     override func scrollWheel(with event: NSEvent) {
+        Self.quietScrollersUntil = 0
+        apply(event)
+        // The scroll events already queued behind this one are applied
+        // before the next frame is drawn (`editor-area.md` H.1, council
+        // row 157: the gesture's pending deltas in the first frame the
+        // content moves). One event per drawn frame let a burst reach the
+        // top in four steps over 70 ms; the reference took one frame.
+        var taken = 0
+        while taken < Self.maximumCoalesced, let next = Self.nextQueuedEvent(self) {
+            apply(next)
+            taken += 1
+        }
+        coalescedEvents += taken
+    }
+
+    /// One scroll event: the bounce's, a line wheel's, or the system's.
+    private func apply(_ event: NSEvent) {
         if topBounce.handle(event, in: self) { return }
         if scrollByLineWheel(event) { return }
         let before = contentView.bounds.origin
         super.scrollWheel(with: event)
         followFirstEvent(event, from: before)
+    }
+
+    /// The most queued events taken with one (a bound on the frame's work).
+    static let maximumCoalesced = 256
+    /// The events taken from the queue so far (tests).
+    private(set) var coalescedEvents = 0
+
+    /// The next queued scroll event for `view`, taken off the queue; nil
+    /// when the next one is not a scroll event over it (it stays queued).
+    /// Tests replace it to feed a burst.
+    /// Only for an event AppKit is dispatching from its queue to a window
+    /// on screen (a call with an event of one's own, as tests make, takes
+    /// nothing from the queue).
+    static var nextQueuedEvent: @MainActor (NSScrollView) -> NSEvent? = { view in
+        guard let window = view.window, window.isVisible, window.occlusionState.contains(.visible),
+              let current = NSApp.currentEvent, current.type == .scrollWheel, current.window === window else { return nil }
+        let mode = RunLoop.current.currentMode ?? .default
+        guard let peek = NSApp.nextEvent(matching: .scrollWheel, until: nil, inMode: mode, dequeue: false),
+              peek.window === window, belongs(peek, to: view) else { return nil }
+        return NSApp.nextEvent(matching: .scrollWheel, until: nil, inMode: mode, dequeue: true)
+    }
+
+    /// Whether `event` goes to `view`: a gesture's later events and its
+    /// momentum follow the view the gesture began in; other events go to
+    /// the view under the pointer.
+    static func belongs(_ event: NSEvent, to view: NSView) -> Bool {
+        let continuing = !event.momentumPhase.isEmpty || (!event.phase.isEmpty && !event.phase.contains(.began) && !event.phase.contains(.mayBegin))
+        if continuing { return true }
+        return view.bounds.contains(view.convert(event.locationInWindow, from: nil))
     }
 
     /// A gesture's first event moves the text by its own delta

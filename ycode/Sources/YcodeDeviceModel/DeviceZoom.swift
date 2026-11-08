@@ -36,7 +36,9 @@ public enum DeviceZoomMode: Equatable, Sendable {
 public enum DeviceZoom {
     /// Zoom In / Zoom Out steps (Q7, Ycode decision).
     public static let steps: [Double] = [0.25, 1.0 / 3, 0.5, 2.0 / 3, 0.75, 1, 1.25, 1.5, 2, 3, 4]
-    /// Zoom to Fit's margin around the device in the canvas (Q7, Ycode decision).
+    /// The margin a fitted drawing keeps from the canvas's edges where the
+    /// hub's rule does not apply (Q7, Ycode decision), and the room a zoomed
+    /// device keeps around it in the hub's scroll view.
     public static let fitMargin: Double = 24
 
     /// The scale that fits `content` into `area` less the margin on every
@@ -45,6 +47,35 @@ public enum DeviceZoom {
         guard content.width > 0, content.height > 0 else { return 1 }
         let w = max(1, Double(area.width) - 2 * margin), h = max(1, Double(area.height) - 2 * margin)
         return min(4, max(0.05, min(w / Double(content.width), h / Double(content.height))))
+    }
+
+    // MARK: Zoom to Fit in the hub (device-hub.md §14.3, council round 6 row 154)
+
+    /// The share of the free height (the toolbar's bottom to the control
+    /// capsules' top) the frame's outer box fills at Zoom to Fit: 379.5 of
+    /// 703.5 points, about 54 %.
+    public static let hubFitHeightShare = 379.5 / 703.5
+    /// The share of the canvas width the frame's outer box fills at most:
+    /// 274 of 820.5 points, about 33 %.
+    public static let hubFitWidthShare = 274.0 / 820.5
+
+    /// Zoom to Fit's scale in the hub window and the Linux device window:
+    /// the frame's outer box (`DeviceFrameGeometry.outerBox`, buttons and a
+    /// foldable's hinge step included) fills `hubFitHeightShare` of the free
+    /// height and at most `hubFitWidthShare` of the canvas width, whichever
+    /// is smaller (never above 4, never below 0.05). `area` is the space the
+    /// device is centred in: the canvas's width by the free height.
+    ///
+    /// An interim rule: every council round captured the reference in one
+    /// window (1100 × 800, the inspector shown), where both shares hold
+    /// exactly (the Duo's cover at 0.531). Whether the reference's scale
+    /// follows the window, and how, is open (§14.4); refit these two
+    /// numbers, here only, once a second window size is captured.
+    public static func hubFit(frame outer: CGSize, in area: CGSize) -> Double {
+        guard outer.width > 0, outer.height > 0 else { return 1 }
+        let byHeight = hubFitHeightShare * Double(area.height) / Double(outer.height)
+        let byWidth = hubFitWidthShare * Double(area.width) / Double(outer.width)
+        return min(4, max(0.05, min(byHeight, byWidth)))
     }
 
     /// The next step above the scale (the largest step when there is none).

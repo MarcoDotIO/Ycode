@@ -1156,6 +1156,10 @@ extension DarwinKernel {
                 guard PthreadPriority.qos(c.qos) != nil else { result.errno = Errno.ERANGE; return result }
                 kn.qos = c.qos
                 if SchedPolicy.handoffPushEnabled { noteWorkloopHandoff(wl, from: context) }
+            } else if SchedPolicy.handoffRequestTied, SchedPolicy.handoffPushActive, context.worker?.boundQueue !== wl {
+                // A poke of a thread request that exists (its workloop is
+                // being drained): the request-tied hand-off lends to it too.
+                lendHeldRequests(to: wl, from: context)
             }
             if isNew {
                 kn.kq = wl

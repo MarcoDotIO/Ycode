@@ -38,6 +38,10 @@ public final class MergeAlertView: NSView {
         // such as a test host, would show the system's generic one).
         iconView.image = Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") == nil ? ProductIcon.image : NSApp.applicationIconImage
         iconView.imageScaling = .scaleProportionallyUpOrDown
+        // An image with a description to accessibility (merge-sheet.md §15.4).
+        iconView.setAccessibilityElement(true)
+        iconView.setAccessibilityRole(.image)
+        iconView.setAccessibilityLabel(MergeSheetText.alertIconDescription)
         titleField.font = .boldSystemFont(ofSize: 13)
         messageField.font = .systemFont(ofSize: 11)
         for f in [titleField, messageField] {
@@ -91,11 +95,14 @@ public final class MergeAlertView: NSView {
     public override func accessibilityLabel() -> String? { titleField.stringValue }
     public override func accessibilityDefaultButton() -> Any? { mergeButton }
     public override func accessibilityCancelButton() -> Any? { cancelButton }
-    /// The texts, the branch pop-up and the buttons, in reading order.
+    /// The reference's order (`merge-sheet.md` §15.4, council row 168): the
+    /// default button, the cancel button, the message, the application's
+    /// icon (an image with a description), the informative text; then the
+    /// branch pop-up when there is one. No status image (nothing is drawn
+    /// for it).
     public override func accessibilityChildren() -> [Any]? {
-        var out: [Any] = [titleField, messageField]
+        var out: [Any] = [mergeButton, cancelButton, titleField, iconView, messageField]
         if let chooser { out.append(chooser) }
-        out += [cancelButton, mergeButton]
         return out
     }
 

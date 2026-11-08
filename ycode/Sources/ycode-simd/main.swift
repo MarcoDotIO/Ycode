@@ -807,6 +807,18 @@ if CommandLine.arguments.contains("--device") {
         SchedPolicy.watchPushEnabled = true
     }
 }
+// Thread starts (scheduling-policy.md §4.15, boot-profile.md §26): on by
+// default for device runs since 2026-11-07. A new guest thread starts in its
+// own class, and 8 creator threads (not 2) make vCPUs: home 25.07 → 23.92 s,
+// fidelity unchanged over 700 s. `YCODE_START_CLASS=0` and
+// `YCODE_VCPU_CREATORS=2` restore the old behaviour.
+if CommandLine.arguments.contains("--device") {
+    if getenv("YCODE_START_CLASS") == nil {
+        setenv("YCODE_START_CLASS", "1", 0)
+        HostSched.startClassEnabled = true
+    }
+    if getenv("YCODE_VCPU_CREATORS") == nil { setenv("YCODE_VCPU_CREATORS", "8", 0) }
+}
 // A command for a running device (FoldControl.swift, SettingsClient.swift): nothing else starts.
 if isHealthClient(CommandLine.arguments) { runHealthClient(CommandLine.arguments) }
 if isSettingsClient(CommandLine.arguments) { runSettingsClient(CommandLine.arguments) }

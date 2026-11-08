@@ -3,9 +3,11 @@ import QuartzCore
 import YcodeIDECore
 
 /// Showing and hiding the inspector (`specs/ide/editor-area.md` §C.7,
-/// `fidelity-council.md` row 9): the inspector slides rigidly by its
-/// width while the editor resizes live, every frame, over about 215 ms on
-/// the measured progress curve. The divider moves one display frame at a
+/// H.2; `fidelity-council.md` rows 9, 158): the inspector slides rigidly
+/// by its width while the editor resizes live, every frame: a hide
+/// ease-out over 195 ms, a show ease-in-out over 230
+/// (`EditorMetrics.inspectorSlideProgress`); the editor's scrollers are
+/// not flashed by it. The divider moves one display frame at a
 /// time from the press; the inspector's contents keep their width pinned to
 /// the divider, so nothing in them reflows.
 extension WorkspaceWindowController {
@@ -59,6 +61,7 @@ extension WorkspaceWindowController {
         // their blurred image, and the toolbar is fitted and updated once
         // at the end (row 106).
         EditorBlurMotion.begin()
+        EditorScrollView.quietScrollersUntil = .infinity
         let link = split.displayLink(target: state, selector: #selector(InspectorSlideState.step(_:)))
         state.onFrame = { [weak self] progress in self?.inspectorSlideFrame(progress) }
         link.add(to: .main, forMode: .common)
@@ -78,6 +81,7 @@ extension WorkspaceWindowController {
         if !state.show { inspectorItem.isCollapsed = true }
         inspectorItem.minimumThickness = state.minimum
         EditorBlurMotion.end()
+        EditorScrollView.quietScrollersUntil = CACurrentMediaTime() + EditorScrollView.quietAfterSlide
         updateToolbarState()
         scheduleToolbarFit()
     }

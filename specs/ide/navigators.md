@@ -58,8 +58,10 @@ JSON (`[{file, line?, label}]`, sorted keys) at
 - Project: the top row is the project; below it, the main group's children
   in file order, except the product-reference group (`productRefGroup`,
   "Products"), which is not shown (correction 2026-10-19,
-  `reference-ui-5.md` §5.1). At first open the project row and its first
-  group are expanded. `PBXGroup`, `PBXVariantGroup`, `XCVersionGroup` are
+  `reference-ui-5.md` §5.1). At first open (no saved state) the project
+  row and **every group or folder that is a direct child of the main
+  group** are expanded; deeper ones are collapsed (correction, council
+  round 6: `editor-area.md` H.6). `PBXGroup`, `PBXVariantGroup`, `XCVersionGroup` are
   groups; `PBXFileReference` rows are files; a
   `PBXFileSystemSynchronizedRootGroup` is a folder whose rows are the
   directory's contents read from disk. Row names are `name`, else the last

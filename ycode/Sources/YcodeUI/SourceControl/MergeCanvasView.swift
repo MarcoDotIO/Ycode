@@ -53,6 +53,16 @@ public final class MergeCanvasView: NSView {
 
     public override var isFlipped: Bool { true }
     public override var acceptsFirstResponder: Bool { true }
+    // The current change's rules follow the focus (§15.2).
+    public override func becomeFirstResponder() -> Bool { needsDisplay = true; return true }
+    public override func resignFirstResponder() -> Bool { needsDisplay = true; return true }
+
+    /// The panes (this view or its hand editor) have the keyboard focus.
+    public var hasPanesFocus: Bool {
+        guard let r = window?.firstResponder else { return false }
+        if r === self { return true }
+        return (r as? NSView)?.isDescendant(of: self) ?? false
+    }
 
     var palette: MergeSheetPalette { MergeSheetPalette.forDark(effectiveAppearance.isDarkMerge) }
 
@@ -179,10 +189,10 @@ public final class MergeCanvasView: NSView {
             if let l = row.left { drawSide(l, lines: leftLines, x: 0, top: r.minY, current: currentLine.left, cols: cols, p) }
             if let rr = row.right { drawSide(rr, lines: rightLines, x: rightX, top: r.minY, current: currentLine.right, cols: cols, p) }
         }
-        // The selected change's rules, across both panes and the gutter.
+        // The selected change's rules, across both panes and the gutter:
+        // bright while the panes have the focus (§15.2, row 147).
         if let h = selected, let range = rows(ofHunk: h) {
-            let decided = state?.token(forHunk: h)?.isDecided ?? false
-            NSColor(mergeHex: decided ? p.decidedRule : p.selectedRule).setFill()
+            NSColor(mergeHex: p.changeRule(panesFocused: hasPanesFocus)).setFill()
             let top = rowTops[range.lowerBound], bottom = rowRect(range.upperBound - 1).maxY
             NSRect(x: 0, y: top, width: totalWidth, height: 1).fill()
             NSRect(x: 0, y: bottom - 1, width: totalWidth, height: 1).fill()
@@ -200,7 +210,7 @@ public final class MergeCanvasView: NSView {
                   cols: Int, _ p: MergeSheetPalette) {
         let lh = CGFloat(M.lineHeight), cw = CGFloat(M.cellWidth)
         let segs = MergeSheetLayout.wrap(side.text, columns: cols)
-        // Changed words: 16 tall, whole cells, never the spaces (§6).
+        // Changed runs: 16 tall, whole cells, a run's inner spaces included (§15.1).
         if !side.words.isEmpty {
             NSColor(mergeHex: p.conflictWord).setFill()
             for (k, seg) in segs.enumerated() {

@@ -151,16 +151,26 @@ public enum EditorMetrics {
     /// within about 120–170; rounds 4 and 5 measured 48 and 60, 116–129 and
     /// 170).
     public static func inspectorSlideDelay(show: Bool) -> Double { show ? 0.145 : 0.050 }
-    /// The motion: about 200 ms of ease-in-out both ways (G.1; round 4's fits
-    /// were 226 and 217, round 5 measured 198 and 188 of edge motion).
-    public static func inspectorSlideMotion(show: Bool) -> Double { 0.200 }
-    /// Ease-in-out, the working curve for both.
+    /// The motion (`editor-area.md` H.2, council row 158; supersedes G.1's
+    /// 200 ms both ways): hide about 195 ms, show about 230 ms (the
+    /// reference's edge moved 196 and 231 ms; round 5's Ycode, at 200 ms,
+    /// 191 and 224).
+    public static func inspectorSlideMotion(show: Bool) -> Double { show ? 0.230 : 0.195 }
+    /// Ease-in-out (0.42, 0, 0.58, 1): the show's curve (H.2).
     public static let inspectorSlideEaseInOut = (x1: 0.42, y1: 0.0, x2: 0.58, y2: 1.0)
+    /// Ease-out (0, 0, 0.58, 1): the hide's curve (H.2: 16 % of the travel
+    /// 21 ms in).
+    public static let inspectorSlideEaseOut = (x1: 0.0, y1: 0.0, x2: 0.58, y2: 1.0)
+    /// The curve of a hide (ease-out) or a show (ease-in-out); round 5 had
+    /// them the other way round (H.2).
+    public static func inspectorSlideCurve(show: Bool) -> (x1: Double, y1: Double, x2: Double, y2: Double) {
+        show ? inspectorSlideEaseInOut : inspectorSlideEaseOut
+    }
 
     /// The slide's progress `elapsed` seconds after the press.
     public static func inspectorSlideProgress(elapsed: Double, show: Bool) -> Double {
         let t = (elapsed - inspectorSlideDelay(show: show)) / inspectorSlideMotion(show: show)
-        let c = inspectorSlideEaseInOut
+        let c = inspectorSlideCurve(show: show)
         return cubicBezier(t, x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2)
     }
     /// The whole slide from the press.

@@ -305,6 +305,9 @@ import Testing
 
             // Choose (§7): the menu's items, then Choose Right rewrites the
             // left pane and the change stays selected.
+            // The token's click moves the focus into the panes (§14.3), and
+            // the current change's rules follow the focus (§15.2, row 147).
+            sheet.canvas.window?.makeFirstResponder(sheet.canvas)
             let menu = sheet.chooseMenu(forHunk: 0)
             #expect(menu.items.map { $0.isSeparatorItem ? "|" : $0.title }
                     == ["Choose Left", "Choose Right", "|", "Choose Left Then Right", "Choose Right Then Left"])
@@ -314,7 +317,7 @@ import Testing
             #expect(sheet.canvas.rows[conflictRow].left?.text == sheet.canvas.rows[conflictRow].right?.text)
             #expect(sheet.state.token(forHunk: 0)?.glyph == "1" && sheet.state.token(forHunk: 0)?.isDecided == true)
             s = try snapshot(wc)
-            #expect(same(s.color(rc.minX + 4, rc.minY + 0.25), p.decidedRule), "decided rule \(look)")
+            #expect(same(s.color(rc.minX + 4, rc.minY + 0.25), p.decidedRule), "bright rules with the panes focused \(look)")
             #expect(same(s.color(rc.minX + 4, rc.midY), p.conflictRow), "shading stays \(look)")
             shot(wc, "\(look)-chose-right")
             // Clicking the second token selects its change.

@@ -137,11 +137,12 @@ struct NavigatorFilterBar: View {
                 // The lines in a circle and a chevron 1.5 after it, in the
                 // secondary colour; "Filter" begins 33.5 in (metrics.md §15).
                 HStack(spacing: 0) {
-                    Image(systemName: "line.3.horizontal.decrease.circle").font(.system(size: 13))
+                    Image(systemName: "line.3.horizontal.decrease.circle").font(.system(size: 13, weight: .light))
                     Image(systemName: "chevron.down").font(.system(size: 6))
                 }
-                // #ABABAC in dark (editor-area.md F.9, row 110).
-                .foregroundStyle(scheme == .dark ? Color(.sRGB, red: 0xAB / 255.0, green: 0xAB / 255.0, blue: 0xAC / 255.0) : c.secondaryLabel)
+                // #ABABAC in dark (editor-area.md F.9, row 110), #777777 in
+                // light with a 1-point stroke (H.9, row 165).
+                .foregroundStyle(IssueSymbol.color(WorkspaceChrome.filterGlyph(dark: scheme == .dark)))
                 TextField("Filter", text: $text)
                     .textFieldStyle(.plain)
                     .font(ShellFonts.row)

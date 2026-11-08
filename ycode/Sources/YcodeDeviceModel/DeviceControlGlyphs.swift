@@ -1,5 +1,5 @@
-// Ycode's own glyphs for the device windows' second capsule
-// (device-hub.md §13.1, council round 5 rows 131–132), as shapes shared by
+// Ycode's own glyphs for the device windows' second capsule and the zoom
+// toolbar's Zoom to Fit (device-hub.md §13.1, §14.1; council rows 131, 132, 156), as shapes shared by
 // the macOS canvas (drawn with AppKit paths) and the Linux device window
 // (drawn with its own primitives), so both draw the same thing. No Apple
 // artwork: the shapes follow the spec's descriptions in words.
@@ -16,6 +16,9 @@
 //                dipping at the spine: 16 × 13.5
 //   Flat         a wide rounded rectangle with a short bar near its bottom
 //                edge (a tablet laid flat): 17 × 13.5
+//   Zoom to Fit  a magnifier whose lens holds four small arrowheads pointing
+//                outward to its diagonal corners (council round 6 row 156,
+//                device-hub.md §14.1): 16 × 15, the toolbar's magnifier size
 
 import Foundation
 
@@ -85,6 +88,41 @@ public enum DeviceControlGlyphs {
         return [Point(end.x + t.x * length, end.y + t.y * length),
                 Point(end.x + n.x * half - t.x * 0.4, end.y + n.y * half - t.y * 0.4),
                 Point(end.x - n.x * half - t.x * 0.4, end.y - n.y * half - t.y * 0.4)]
+    }
+
+    // MARK: Zoom to Fit (council round 6 row 156)
+
+    /// The lens: its centre (from the glyph's centre) and radius (to the
+    /// stroke's middle), in the 16 × 15 box the toolbar's other magnifiers
+    /// take.
+    public static let zoomLensCentre = Point(-1.5, -1.75)
+    public static let zoomLensRadius = 4.4
+    /// The four arrowheads' tips and bases, from the lens's centre.
+    public static let zoomArrowTip = 3.0, zoomArrowBase = 1.15, zoomArrowHalfWidth = 1.05
+    /// The handle's end along the diagonal from the lens's centre.
+    public static let zoomHandleEnd = 11.0
+
+    /// Zoom to Fit: a magnifier whose lens holds four small arrowheads
+    /// pointing outward to its four diagonal corners (§14.1), with a handle
+    /// to the bottom right. Ycode's own drawing.
+    public static var zoomToFit: Glyph {
+        let c = zoomLensCentre, r = zoomLensRadius
+        var solids: [Shape] = []
+        for k in 0..<4 {
+            let a = Double.pi / 4 + Double(k) * Double.pi / 2
+            let d = (x: cos(a), y: sin(a)), n = (x: -sin(a), y: cos(a))
+            let tip = Point(c.x + d.x * zoomArrowTip, c.y + d.y * zoomArrowTip)
+            let base = (x: c.x + d.x * zoomArrowBase, y: c.y + d.y * zoomArrowBase)
+            solids.append(.polygon([tip, Point(base.x + n.x * zoomArrowHalfWidth, base.y + n.y * zoomArrowHalfWidth),
+                                    Point(base.x - n.x * zoomArrowHalfWidth, base.y - n.y * zoomArrowHalfWidth)]))
+        }
+        // The handle: a bar 2 wide from the lens's rim to the bottom right.
+        let a = Double.pi / 4, d = (x: cos(a), y: sin(a)), n = (x: -sin(a), y: cos(a)), half = 1.0
+        let from = (x: c.x + d.x * (r + 0.4), y: c.y + d.y * (r + 0.4)), to = (x: c.x + d.x * zoomHandleEnd, y: c.y + d.y * zoomHandleEnd)
+        solids.append(.polygon([Point(from.x + n.x * half, from.y + n.y * half), Point(to.x + n.x * half, to.y + n.y * half),
+                                Point(to.x - n.x * half, to.y - n.y * half), Point(from.x - n.x * half, from.y - n.y * half)]))
+        return Glyph(size: (16, 15), lineWidth: 1.3, fills: [], strokes: [.arc(centre: c, radius: r, from: 0, to: 2 * Double.pi)],
+                     solids: solids)
     }
 
     // MARK: Postures (row 131)

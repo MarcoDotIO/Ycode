@@ -6,10 +6,11 @@ import YcodeIDEShell
 
 /// Showing and hiding the inspector as the macOS IDE does
 /// (`WorkspaceWindowController+InspectorSlide.swift`; `editor-area.md`
-/// G.1, checklist row 133): the inspector slides rigidly by its width while
-/// the editor resizes live, ease-in-out (0.42, 0, 0.58, 1) over 200 ms,
-/// starting 50 ms after the press (hide) or 145 ms (show)
-/// (`EditorMetrics.inspectorSlideDelay`, `inspectorSlideMotion`). The
+/// G.1, H.2; checklist rows 133, 158): the inspector slides rigidly by its
+/// width while the editor resizes live: a hide ease-out (0, 0, 0.58, 1)
+/// over 195 ms from 50 ms after the press, a show ease-in-out (0.42, 0,
+/// 0.58, 1) over 230 ms from 145 ms (`EditorMetrics.inspectorSlideDelay`,
+/// `inspectorSlideMotion`, `inspectorSlideCurve`). The
 /// inspector toggle stays at the window's right edge throughout, as the
 /// macOS toolbar keeps it.
 @MainActor
@@ -43,7 +44,7 @@ final class InspectorSlideState {
         shown = show
         isRunning = true
         let delay = EditorMetrics.inspectorSlideDelay(show: show), motion = EditorMetrics.inspectorSlideMotion(show: show)
-        let c = EditorMetrics.inspectorSlideEaseInOut
+        let c = EditorMetrics.inspectorSlideCurve(show: show)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.generation == g else { return }
             withAnimation(.timingCurve(c.x1, c.y1, c.x2, c.y2, duration: motion)) { self.progress = show ? 1 : 0 }

@@ -8,6 +8,16 @@ import YcodeSyntax
 public struct ShellEditorPane: Identifiable, Equatable, Sendable {
     public let id: Int
     public var path: String?
+    /// The jump bar's last item while the pane is not focused: the
+    /// declaration at its insertion point when it lost the focus, or "No
+    /// Selection" (`editor-area.md` H.4; the macOS panes keep their own).
+    public var symbolTitle: String?
+
+    public init(id: Int, path: String?, symbolTitle: String? = nil) {
+        self.id = id
+        self.path = path
+        self.symbolTitle = symbolTitle
+    }
 }
 
 /// The editor panes of the workspace window, as the macOS IDE's editor
@@ -55,6 +65,7 @@ extension WorkspaceShellModel {
         let path = Preferences.shared.newEditorPanesOpenWith == .sameDocument ? document?.path : nil
         let pane = ShellEditorPane(id: p.nextID, path: path)
         p.nextID += 1
+        p.panes[p.focused].symbolTitle = jumpBarLastItem
         p.panes.insert(pane, at: p.focused + 1)
         p.focused += 1
         if path == nil { showNoFile() }
@@ -66,6 +77,7 @@ extension WorkspaceShellModel {
     public func focusPane(_ id: Int) {
         let p = panes
         guard let i = p.panes.firstIndex(where: { $0.id == id }), i != p.focused else { return }
+        p.panes[p.focused].symbolTitle = jumpBarLastItem
         p.focused = i
         showFocusedPane()
     }
@@ -152,6 +164,14 @@ extension WorkspaceShellModel {
         syncEditorIssues()
         sourceControl.noteText(of: path)
         return true
+    }
+
+    /// The focused pane's jump-bar last item: the declaration at the
+    /// insertion point, "No Selection" outside one or for an image; nil with
+    /// no file.
+    public var jumpBarLastItem: String? {
+        if editor != nil { return languageFeatures.caretSymbol?.name ?? WorkspaceChrome.jumpBarNoSymbol }
+        return imagePath != nil ? WorkspaceChrome.jumpBarNoSymbol : nil
     }
 
     /// The open image's path, when the focused pane shows an image.

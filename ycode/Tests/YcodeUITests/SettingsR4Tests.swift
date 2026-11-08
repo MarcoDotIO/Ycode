@@ -301,10 +301,11 @@ import Testing
         #expect(dark(SettingsColors.separator) == 0x303030 && dark(SettingsColors.sidebar) == 0x262627)
         #expect(dark(SettingsColors.divider) == 0x414142 && dark(SettingsColors.selection) == 0x007AFF)
         #expect(dark(SettingsColors.header) == 0xDDDDDD && dark(SettingsColors.label) == 0xDEDEDE)
-        // Drawn: the sidebar, its divider at x 179.5, the detail and a card.
+        // Drawn: the sidebar, its divider at x 179.5, the detail and a card
+        // (above its first label: the description is higher since R6.3).
         let rep = try render(w)
         #expect(close(hex(rep, 90, 445), 0x262627, 2) && close(hex(rep, 179.75, 445), 0x414142, 2))
-        #expect(close(hex(rep, 195, 300), 0x1F1F1F, 2) && close(hex(rep, 400, 130), 0x262626, 2))
+        #expect(close(hex(rep, 195, 300), 0x1F1F1F, 2) && close(hex(rep, 400, 103), 0x262626, 2))
         w.close()
     }
 

@@ -225,7 +225,12 @@ public struct MergeSheetPalette: Equatable, Sendable {
     public var conflictRow: UInt32
     public var conflictWord: UInt32
     public var cleanRow: UInt32
+    /// The current change's 1-point rules while the file list has the
+    /// focus (#DA5559).
     public var selectedRule: UInt32
+    /// The current change's rules while the panes have the focus (#FF656A;
+    /// §15.2: they brighten with the click that moves the focus there, not
+    /// with the choice).
     public var decidedRule: UInt32
     public var token: UInt32
     /// The unselected token's 0.5-point rim (§13.5; in light the token's
@@ -307,6 +312,11 @@ public struct MergeSheetPalette: Equatable, Sendable {
         if selected && listFocused { return FileRowColors(fill: selection, ink: 0xFFFFFF, badge: badge, badgeLetter: badgeLetter) }
         return FileRowColors(fill: selected ? unfocusedSelection : nil, ink: nil, badge: rowBadge, badgeLetter: rowBadgeLetter)
     }
+
+    /// The current change's rules (§15.2, checklist row 147): #FF656A
+    /// whenever the panes have the focus, #DA5559 when the file list has
+    /// it; a choice changes only the text.
+    public func changeRule(panesFocused: Bool) -> UInt32 { panesFocused ? decidedRule : selectedRule }
 
     /// A colour's red, green and blue in 0…1.
     public static func components(_ hex: UInt32) -> (r: Double, g: Double, b: Double) {
@@ -552,13 +562,16 @@ public enum MergeSheetLayout {
         return out
     }
 
-    /// The words of `a` and `b` (runs of non-space characters) that the
-    /// other line does not have, by a longest common subsequence of words;
-    /// cell ranges, so the spaces between words are never included.
+    /// The changed runs of `a` and `b` (§15.1, checklist row 146): each line
+    /// is split into tokens (a run of word characters, a run of white space,
+    /// or one other character, so every quote, comma and operator is a token
+    /// of its own); the two token sequences are matched by a longest common
+    /// subsequence; each maximal run of consecutive unmatched tokens is one
+    /// fill, white space inside it included. Cell ranges of the line.
     public static func changedWords(_ a: String, _ b: String) -> (left: [Range<Int>], right: [Range<Int>]) {
         let ca = Array(a), cb = Array(b)
-        let wa = words(a), wb = words(b)
-        let sa = wa.map { String(ca[$0]) }, sb = wb.map { String(cb[$0]) }
+        let ta = tokens(ca), tb = tokens(cb)
+        let sa = ta.map { String(ca[$0]) }, sb = tb.map { String(cb[$0]) }
         let n = sa.count, m = sb.count
         var dp = [[Int]](repeating: [Int](repeating: 0, count: m + 1), count: n + 1)
         if n > 0, m > 0 {
@@ -574,18 +587,42 @@ public enum MergeSheetLayout {
             if sa[i] == sb[j] { keepA.insert(i); keepB.insert(j); i += 1; j += 1 }
             else if dp[i + 1][j] >= dp[i][j + 1] { i += 1 } else { j += 1 }
         }
-        return (wa.indices.filter { !keepA.contains($0) }.map { wa[$0] }, wb.indices.filter { !keepB.contains($0) }.map { wb[$0] })
+        return (runs(ta, keeping: keepA), runs(tb, keeping: keepB))
     }
 
-    static func words(_ s: String) -> [Range<Int>] {
+    /// The maximal runs of consecutive tokens not in `kept`, as cell ranges.
+    static func runs(_ tokens: [Range<Int>], keeping kept: Set<Int>) -> [Range<Int>] {
         var out: [Range<Int>] = []
-        var start: Int?
-        for (i, ch) in s.enumerated() {
-            if ch == " " {
-                if let st = start { out.append(st..<i); start = nil }
-            } else if start == nil { start = i }
+        var open: Range<Int>?
+        for (k, t) in tokens.enumerated() {
+            if kept.contains(k) {
+                if let o = open { out.append(o); open = nil }
+            } else {
+                open = open.map { $0.lowerBound..<t.upperBound } ?? t
+            }
         }
-        if let st = start { out.append(st..<s.count) }
+        if let o = open { out.append(o) }
+        return out
+    }
+
+    /// A line's tokens (§15.1): runs of word characters (letters, digits,
+    /// underscore), runs of white space, and every other character alone.
+    static func tokens(_ chars: [Character]) -> [Range<Int>] {
+        enum Class { case word, space, other }
+        func kind(_ c: Character) -> Class {
+            if c == " " || c == "\t" { return .space }
+            if c == "_" || c.isLetter || c.isNumber { return .word }
+            return .other
+        }
+        var out: [Range<Int>] = []
+        var k = 0
+        while k < chars.count {
+            let c = kind(chars[k])
+            var e = k + 1
+            if c != .other { while e < chars.count, kind(chars[e]) == c { e += 1 } }
+            out.append(k..<e)
+            k = e
+        }
         return out
     }
 

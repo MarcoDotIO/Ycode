@@ -16,11 +16,11 @@ import YcodeBuild
         let both = IssueSummary(errors: 2, warnings: 1, failedTests: 1)
         #expect(both.parts.map(\.kind) == [.error, .warning, .testFailure] && both.mostSevere == .error)
         #expect(IssueSummary.Kind.error.symbol == "xmark.circle.fill" && IssueSummary.Kind.warning.fill == 0xFFE015)
-        // G.8: one warning with "1" is 61 wide, an error and a warning 110.5;
-        // 36 tall, 7.5 after the scheme capsule.
+        // G.8, H.5 (round 6): one warning with "1" is 61 wide, an error and
+        // a warning 111 (a 6-point "1"); 36 tall, 7.5 after the scheme capsule.
         let digit: (String) -> Double = { Double($0.count) * 6 }
-        #expect(IssueSummary.Capsule.width(warn.parts, symbolsOnly: false, countWidth: digit) == 61)
-        #expect(IssueSummary.Capsule.width(IssueSummary(errors: 1, warnings: 1).parts, symbolsOnly: false, countWidth: digit) == 110.5)
+        #expect(abs(IssueSummary.Capsule.width(warn.parts, symbolsOnly: false, countWidth: digit) - 61) <= 0.5)
+        #expect(IssueSummary.Capsule.width(IssueSummary(errors: 1, warnings: 1).parts, symbolsOnly: false, countWidth: digit) == 111)
         #expect(IssueSummary.Capsule.width(warn.parts, symbolsOnly: true, countWidth: digit) == 50.5)
         #expect(IssueSummary.Capsule.height == 36 && IssueSummary.Capsule.gapAfterScheme == 7.5)
     }

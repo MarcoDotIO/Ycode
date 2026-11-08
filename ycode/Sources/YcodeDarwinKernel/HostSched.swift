@@ -38,7 +38,11 @@ public enum HostSched {
     /// `YCODE_HOST_SCHED_BG_WEIGHT` (default 5); `YCODE_HOST_SCHED_BG_WEIGHT=idle`
     /// makes it `cpu.idle` instead (the behaviour before 2026-10-27, which
     /// starved a class-0 holder of the kernel lock, scheduling-policy.md §7.4).
-    static let weightByClass = [bgWeight ?? 1, 25, 100, 400]
+    static let weightByClass = [bgWeight ?? 1, 25, 100, uiWeight]
+    /// Class 3's (ui) weight: `YCODE_HOST_SCHED_UI_WEIGHT` (1–10000, default
+    /// 400; `boot-profile.md` §26: with 400 a ui thread on a saturated host
+    /// still waits for a CPU about a tenth of the time).
+    static let uiWeight: Int = getenv("YCODE_HOST_SCHED_UI_WEIGHT").flatMap { Int(String(cString: $0)) }.map { max(1, min(10_000, $0)) } ?? 400
     /// Class 0's weight, nil for `cpu.idle`.
     static let bgWeight: Int? = {
         guard let v = getenv("YCODE_HOST_SCHED_BG_WEIGHT").map({ String(cString: $0) }) else { return 5 }
@@ -81,6 +85,7 @@ public enum HostSched {
             + "\(groupWrites.load(ordering: .relaxed)) class weight writes, \(groupWriteNanoseconds.load(ordering: .relaxed) / 1_000_000) ms)"
             + (bgCPUMasks == nil && uiCPUMasks == nil ? "" : "; affinity failures \(affinityFailures.load(ordering: .relaxed))")
             + placementReport
+            + startClassReport
             + (SyncHandoff.report.isEmpty ? "" : "; " + SyncHandoff.report)
             + (BackgroundBand.report.isEmpty ? "" : "; " + BackgroundBand.report)
     }

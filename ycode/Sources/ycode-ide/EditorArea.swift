@@ -78,38 +78,24 @@ struct JumpBar: View {
                     .padding(.trailing, CGFloat(JumpBarPaneLayout.pathX - JumpBarPaneLayout.dividerX - 1) - 2)
             }
             if path != nil {
-                let components = model.jumpPath(for: path)
-                ForEach(Array(components.enumerated()), id: \.offset) { pair in
-                    if pair.offset > 0 { chevron(c) }
-                    let middle = pair.offset > 0 && pair.offset < components.count - 1
-                    HStack(spacing: 2) {
-                        Image(systemName: pair.element.symbol).font(.system(size: 11))
-                            .foregroundStyle(isActive ? JumpBarPaneLayout.tint(pair.element.symbol, scheme) : c.secondaryLabel)
-                        Text(verbatim: pair.element.title).font(ShellFonts.small)
-                            .foregroundStyle(isActive ? c.label : c.secondaryLabel).lineLimit(1)
-                    }
-                    .layoutPriority(middle ? 0 : 1)
-                    // The path's ink rises 2 above the band's centre (metrics.md §16.1, as the macOS bar).
-                    .offset(y: CGFloat(JumpBarPaneLayout.pathRaise))
-                }
-                if let path, model.editedPaths.contains(path) {
-                    // The unsaved changes' mark.
-                    Circle().fill(c.secondaryLabel).frame(width: 6, height: 6)
-                        .help("Unsaved changes")
-                        .shellTarget("edited mark")
-                }
-                if isFocusedPane, model.editor != nil {
-                    chevron(c)
-                    // The declaration at the insertion point; its menu lists the file's (LanguageViews.swift).
-                    DocumentItemsMenu(model: model)
-                        .offset(y: CGFloat(JumpBarPaneLayout.pathRaise))
-                } else if isFocusedPane, model.imagePath != nil {
-                    // An image has no symbols: "No Selection", as the macOS bar.
-                    chevron(c)
-                    Text(verbatim: WorkspaceChrome.jumpBarNoSymbol).font(ShellFonts.small)
-                        .foregroundStyle(c.tertiaryLabel).lineLimit(1)
-                        .offset(y: CGFloat(JumpBarPaneLayout.pathRaise))
-                }
+                // The path, spaced and collapsed by the shared model
+                // (JumpBarPath.swift; H.4, rows 143–145): the last item is
+                // the declaration at the insertion point (its menu lists the
+                // file's, LanguageViews.swift), "No Selection" for an image,
+                // and in a pane without focus what it showed last.
+                let focusedLast = isFocusedPane && (model.editor != nil || model.imagePath != nil)
+                let lastTitle = isFocusedPane ? nil : pane?.symbolTitle
+                JumpBarPathView(components: model.jumpPath(for: path), isActive: isActive,
+                                edited: path.map { model.editedPaths.contains($0) } ?? false, background: palette.background.color,
+                                last: {
+                                    if focusedLast, model.editor != nil {
+                                        DocumentItemsMenu(model: model, isActive: isActive)
+                                    } else {
+                                        Text(verbatim: lastTitle ?? WorkspaceChrome.jumpBarNoSymbol).font(ShellFonts.small)
+                                            .foregroundStyle(isActive ? c.label : c.secondaryLabel).lineLimit(1).fixedSize()
+                                            .shellTarget("jump bar symbol")
+                                    }
+                                }, hasLast: focusedLast || lastTitle != nil)
             } else {
                 // No file open: a 1-point divider after the grid button, then
                 // "No Selection" in the bar's text colour from 47.5 in
@@ -123,8 +109,8 @@ struct JumpBar: View {
                         .padding(.leading, closable ? 0 : CGFloat(JumpBarEmpty.textX - JumpBarEmpty.dividerX - 1))
                         .offset(y: CGFloat(JumpBarPaneLayout.pathRaise))
                 }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
             if isFocusedPane, let path, StructuredEditor.hasSourceView(path) { OpenAsSwitch(model: model) }
             // The issue stepper whenever the workspace has issues (G.8, row 139).
             IssueStepperView(model: model)
@@ -137,11 +123,6 @@ struct JumpBar: View {
         // scroll-edge line under the toolbar).
         .overlay(alignment: .top) { Hairline(color: c.separator) }
         .shellTarget(pane == nil || isFocusedPane ? "jump bar" : "jump bar \(pane?.id ?? 0)")
-    }
-
-    func chevron(_ c: ShellColors) -> some View {
-        Text(verbatim: "›").font(ShellFonts.small).foregroundStyle(c.secondaryLabel)
-            .offset(y: CGFloat(JumpBarPaneLayout.pathRaise))
     }
 }
 

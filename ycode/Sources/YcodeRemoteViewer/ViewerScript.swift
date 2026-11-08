@@ -18,6 +18,8 @@
 //   button home|lock|volumeUp|volumeDown|side
 //   rotate left|right
 //   scale fit|point|pixel
+//   device-type <type id>              draw that device type's frame before any server's hello
+//                                      (iphone-duo, iphone-18-pro, …; pictures of the window)
 //   shot <path.png>                    the stream image
 //   server-shot <path.png>             the server's full-resolution PNG
 //   window-shot <path.png>             the window as drawn (frame, controls)
@@ -37,6 +39,7 @@
 // Lines starting with # are comments. Every step is logged.
 
 import Foundation
+import YcodeDeviceModel
 import YcodeDisplayStream
 
 /// What a script needs from the window beyond the session.
@@ -234,6 +237,9 @@ public final class ViewerScript: @unchecked Sendable {
         case "rotate":
             let left = w.count > 1 && w[1] == "left"
             onWindow { [session] in session.rotate(left: left) }
+        case "device-type":
+            guard w.count > 1, let spec = DeviceFrameSpec.named(typeID: w[1]) else { throw Failure(description: "device-type <type id>") }
+            onWindow { [session] in session.preview(spec: spec) }
         case "scale":
             guard w.count > 1, let m = ViewerScaleMode(argument: w[1]) else { throw Failure(description: "scale fit|point|pixel") }
             onWindow { [host] in host?.setScale(m) }

@@ -26,9 +26,21 @@ extension SourceEditorController: NSTextLayoutManagerDelegate {
 
 /// The rule on a text alone, with the last paragraph's rows remembered
 /// (TextKit asks several times per row).
+///
+/// TextKit lays a paragraph's rows out in order and, for each row, first
+/// proposes its own break (after the white space that may hang past the
+/// edge), then earlier ones while the delegate refuses. A break the rule
+/// wants for a **later** row can therefore be proposed for this one (row
+/// 142: from "0: a comment line" TextKit proposes "line", the rule's start
+/// of the row after "comment"), so the answer depends on the row being laid
+/// out: the break is allowed only when it is the rule's next start after
+/// the last one allowed.
 public final class EditorLineBreaks: @unchecked Sendable {
     private let lock = NSLock()
-    private var cached: (text: String, width: CGFloat, advance: CGFloat, indents: Bool, tabWidth: Int, starts: Set<Int>)?
+    private var cached: (location: Int, text: String, width: CGFloat, advance: CGFloat, indents: Bool, tabWidth: Int, starts: [Int])?
+    /// The start of the row TextKit is laying out (the last break allowed,
+    /// from the paragraph's start).
+    private var rowStart = 0
 
     public init() {}
 
@@ -48,13 +60,30 @@ public final class EditorLineBreaks: @unchecked Sendable {
         let line = ns.substring(with: para)
         lock.lock()
         defer { lock.unlock() }
-        if let c = cached, c.width == width, c.advance == advance, c.indents == indents, c.tabWidth == tabWidth, c.text == line {
-            return c.starts.contains(offset - para.location)
+        let starts: [Int]
+        if let c = cached, c.location == para.location, c.width == width, c.advance == advance, c.indents == indents, c.tabWidth == tabWidth,
+           c.text == line {
+            starts = c.starts
+        } else {
+            guard let s = Self.rowStarts(line, in: text, at: para.location, width: width, advance: advance,
+                                         indents: indents, tabWidth: tabWidth) else { cached = nil; return true }
+            starts = s
+            cached = (para.location, line, width, advance, indents, tabWidth, s)
+            rowStart = 0
         }
-        guard let starts = Self.rowStarts(line, in: text, at: para.location, width: width, advance: advance,
-                                          indents: indents, tabWidth: tabWidth) else { return true }
-        cached = (line, width, advance, indents, tabWidth, Set(starts))
-        return starts.contains(offset - para.location)
+        return allows(offset - para.location, starts: starts)
+    }
+
+    /// Whether the break before `b` (from the paragraph's start) ends the
+    /// row TextKit is laying out; `starts` are the rule's row starts.
+    private func allows(_ b: Int, starts: [Int]) -> Bool {
+        // The same break asked again.
+        if b == rowStart, b > 0 { return true }
+        // An earlier break: TextKit is laying the paragraph out again.
+        if b < rowStart { rowStart = 0 }
+        guard let next = starts.first(where: { $0 > rowStart }), b == next else { return false }
+        rowStart = b
+        return true
     }
 
     /// The continuation rows' starts of `line` (at `location` in `text`), or

@@ -28,11 +28,27 @@ public enum IssueStepper {
         errors > 0 ? .error : (warnings > 0 ? .warning : nil)
     }
 
+    // MARK: Colours (H.5, council row 161)
+
+    /// The chevrons' colour (0xRRGGBB): #7F7F7F in light (H.5), #9D9D9D
+    /// in dark (G.8).
+    public static func chevronColor(dark: Bool) -> UInt32 { dark ? 0x9D9D9D : 0x7F7F7F }
+
+    /// The kind's symbol fill (its mark white): the warning triangle
+    /// #FFCB00 in light (H.5), #FFE015 in dark; the error circle the
+    /// system red.
+    public static func symbolFill(_ kind: Kind, dark: Bool) -> UInt32 {
+        switch kind {
+        case .error: 0xFF3B30
+        case .warning: dark ? 0xFFE015 : 0xFFCB00
+        }
+    }
+
     // MARK: Geometry (G.8: x 1084.5–1124.5 in a 1400-point window)
 
     /// The stepper's right end inside the jump bar's right edge.
     public static let trailingInset = 14.5
-    /// The chevrons' glyph box (#9D9D9D in dark).
+    /// The chevrons' glyph box (`chevronColor`).
     public static let chevronWidth = 6.5
     public static let chevronHeight = 11.5
     /// The kind's symbol.

@@ -103,14 +103,18 @@ extension ConflictEditorState {
                      isSelected: h == currentHunk, isConflict: kind == .conflict)
     }
 
-    /// The overview ruler's marks (§4.4, §14.4): each change at the centre
-    /// of its first line among the right pane's logical lines, (line − 0.5)
-    /// ÷ lines, a share of the ruler's track (`MergeSheetMetrics.rulerMarkY`).
-    /// Wrapped lines count once; a change with no right lines takes the
-    /// place of the right line that follows it.
+    /// The overview ruler's marks (§4.4, §14.4, §15.3): each change at the
+    /// centre of its first line among the right file's logical lines,
+    /// (line − 0.5) ÷ lines, a share of the ruler's track
+    /// (`MergeSheetMetrics.rulerMarkY`). Lines are counted as an editor
+    /// counts them: after a final line break, one more (empty) line (the
+    /// reference's 9, 13 and 17 of 19 for an 18-line text). Wrapped lines
+    /// count once; a change with no right lines takes the place of the
+    /// right line that follows it.
     public func rulerMarks(rows: [MergeSheetRow]) -> [(position: Double, isConflict: Bool)] {
-        let lines = rows.compactMap(\.right).count
-        guard lines > 0 else { return [] }
+        let text = rows.compactMap(\.right).count
+        guard text > 0 else { return [] }
+        let lines = text + ((document?.theirsEndsWithNewline ?? true) ? 1 : 0)
         var out: [(position: Double, isConflict: Bool)] = []
         for (i, r) in rows.enumerated() where r.isFirstOfHunk {
             let line = r.right?.number ?? rows[i...].lazy.compactMap(\.right).first?.number ?? lines + 1

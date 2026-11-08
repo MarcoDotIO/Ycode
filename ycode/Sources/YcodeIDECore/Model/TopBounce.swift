@@ -1,34 +1,42 @@
 import Foundation
 
-/// The editor's bounce at the top (`editor-area.md` §D.4 and E.1,
-/// checklist rows 40 and 70).
+/// The editor's bounce at the top (`editor-area.md` §D.4, E.1 and H.1,
+/// checklist rows 40, 70 and 157).
 ///
 /// When momentum carries the text past the top, it runs on and comes back
 /// in two parts, momentum then a critically damped return (E.1 item 3):
 ///
 /// - the run past the top, from the crossing at velocity `v` (points per
 ///   second): `rise(t) = g · v · t · e^(−ω₁ t)`, which peaks at
-///   t₁ = 1/ω₁ (about 67 ms) at `P = g · v / (ω₁ e)`;
-/// - the return from the peak: `P · (1 + ω t′) · e^(−ω t′)`, ω 12.6 rad/s.
+///   t₁ = 1/ω₁ (about 70 ms) at `P = g · v / (ω₁ e)`, at most
+///   `maximumShare` of the visible height;
+/// - the return from the peak: `P · (1 + ω t′) · e^(−ω t′)`, ω 13.5 rad/s.
 ///
-/// Round 3's reference crossed at about 2470 points a second, ran 48
-/// points past the end of a 600-point flick (8 %), peaked 157 ms after the
-/// flick began (about 67 ms after the crossing), lost half the overshoot
-/// about 140 ms after the peak and was within a point of the top 440 ms
-/// after it. ω₁ and g fit that run; ω is round 2's return, which round 3
-/// confirms.
+/// Round 6 (H.1, superseding round 3's 48 points, which the pixel-change
+/// measure under-read) matched every frame of the reference against its
+/// stills: the council's flick (8 gesture events of 40 points, then about
+/// 1544 points of momentum decaying with a 0.33 s time constant, from 600
+/// points down) reached the top in one frame, ran **119** points past it,
+/// peaked 72 ms after reaching it, returned as a critically damped spring
+/// at ω ≈ 13.6 with no oscillation and was settled about 700 ms after the
+/// first event. Round 5's Ycode ran 199 past (its cap, a quarter of the
+/// view); the cap is now 0.16 of the view, about 120 points in the
+/// council's window, and the gain gives about 120 for the flick's
+/// crossing at 4000–4500 points a second.
 public enum TopBounce {
-    /// The return's natural frequency, rad/s.
-    public static let omega = 12.6
+    /// The return's natural frequency, rad/s (H.1: 13.6 fitted).
+    public static let omega = 13.5
     /// The run past the top: its rate (the peak comes 1/ω₁ after the
-    /// crossing) and its gain on the crossing velocity.
-    public static let riseOmega = 15.0
-    public static let riseGain = 0.78
-    /// The overscroll is over once it is below this (points) after the peak.
-    public static let restThreshold = 0.25
-    /// The deepest overscroll, as a share of the visible height (a very
-    /// fast flick is limited to it; not measured, Ycode's choice).
-    public static let maximumShare = 0.25
+    /// crossing, H.1: 72 ms) and its gain on the crossing velocity.
+    public static let riseOmega = 14.0
+    public static let riseGain = 1.1
+    /// The overscroll is over once it is below this (points) after the peak
+    /// (settled about 700 ms after the flick began, H.1).
+    public static let restThreshold = 0.5
+    /// The deepest overscroll, as a share of the visible height: 0.16, about
+    /// 120 points in the council's 880-point window (H.1: 119; a stiffer
+    /// limit than round 5's quarter, 199 points).
+    public static let maximumShare = 0.16
 
     /// The overscroll `t` seconds after crossing the top at `velocity`.
     public static func overscroll(velocity: Double, at t: Double) -> Double {

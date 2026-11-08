@@ -789,6 +789,208 @@ From the stills of this round:
 | The overflow capsule's start width (120 in round 4, about 40 in round 5) | two rounds disagree | the narrowing step again, and a slow live resize |
 | Row 88's "space must fit" rule | the same line twice | a line ending exactly at the container edge, with and without a following word |
 
+## Round 6 (2026-11-07)
+
+**Owner's design rules** (they decide every row below):
+1. Where the reference has the element, **match it**.
+2. Where Ycode has an element the reference lacks, **design it to the
+   platform's human interface guidelines in the OS 26+ Liquid Glass
+   language**, with the same anatomy as its neighbours.
+3. Ycode's **macOS and Linux IDEs look one to one**: a row's target
+   holds for both.
+
+Both apps were captured as in round 5 (Retina, 120 fps, foreground, key
+window, the conflict window 36 below the display's top with a 60-point
+margin), with Ycode `0f1408a4`, but with the **system appearance Light**
+(round 5: Dark). So the main, conflict and device steps are light in
+both apps, and Settings 20–22 are light too; each app's own Appearance
+was set to Dark for a supplement (D02–D05: Appearance, General, Editing,
+Components). Ycode's main steps 01–08 were re-run at the reference's
+load (1-minute load 11–15 against 10–13), so this round's scroll and
+flick timings compare like for like. Ycode's first main run hung in a
+toolbar layout loop after Settings opened over the narrowed, split
+window (a Ycode bug; Settings 19–28 were taken from a fresh instance).
+
+### Scores
+
+Round 6 is light, round 5 dark, except where the note says so; Settings
+rows compare like with like (round 6's light 20–22 against round 5's
+light 24–26; round 6's dark D03–D05 against round 5's dark 20–22).
+
+| Step | Opus | Sol | Gemini | Mean | Round 5 | Round 4 | Round 3 |
+|---|---|---|---|---|---|---|---|
+| 01 select Long.swift | 8.5 | 8.7 | 9.3 | 8.83 | 8.2 | 8.2 | 7.6 |
+| 02 editor at rest | 8.5 | 8.8 | 9.2 | 8.83 | 8.5 | 7.6 | 7.1 |
+| 03 linear scroll 600 pt | 9 | 9.4 | 9.6 | **9.33** | 8.4 | 7.7 | 7.2 |
+| 04 momentum flick | 7.5 | 7.9 | 8.0 | 7.80 | 8.2 | 6.9 | 6.6 |
+| 05 select Stripes.png | 8 | 8.1 | 9.3 | 8.47 | 7.6 | 7.4 | 6.7 |
+| 06 open Stripes.png | 9.5 | 9.6 | 10 | 9.70 | 9.2 | 9.3 | 4.3 |
+| 07 select Bands.swift | 9 | 9.0 | 9.1 | 9.03 | 8.1 | 4.8 | 6.3 |
+| 08 bands under the bars | 8.5 | 8.9 | 9.2 | 8.87 | 8.3 | 5.2 | 6.6 |
+| 10 hide inspector | 7.5 | 8.2 | 9.0 | 8.23 | 7.9 | 6.6 | 8.5 |
+| 11 show inspector | 8 | 8.0 | 9.1 | 8.37 | 7.8 | 6.5 | 8.7 |
+| 12 inspector scroll | 9 | 8.8 | 10 | 9.27 | 8.4 | 7.5 | 7.3 |
+| 13 plain group | 8 | 7.7 | 7.8 | 7.83 | 7.9 | 7.7 | 7.4 |
+| 14 expand folder | 9 | 8.7 | 9.5 | 9.07 | 8.8 | 7.7 | 6.7 |
+| 15 navigator scroll | 9 | 9.2 | 9.4 | 9.20 | 9.0 | 8.2 | 6.4 |
+| 16 split editor | 8.5 | 7.8 | 9.5 | 8.60 | 7.8 | 8.1 | 5.6 |
+| 17 narrower window | 7 | 8.8 | 8.8 | 8.20 | 7.4 | 6.5 | 6.3 |
+| 18 Welcome window | 9 | 9.0 | 9.6 | 9.20 | 8.7 | 8.2 | 7.3 |
+| 20 Settings ▸ General (light; R5's 24) | 9 | 9.2 | 9.2 | 9.13 | 8.1 | — | — |
+| 21 Settings ▸ Editing (light; R5's 25) | 9 | 9.3 | 9.6 | 9.30 | 8.4 | — | — |
+| 22 Settings ▸ Components (light; R5's 26) | 8.5 | 9.4 | 9.5 | **9.13** | 6.2 | — | — |
+| 23 Settings ▸ Appearance (light) | 8 | 8.2 | 9.2 | **8.47** | 5.2 | — | — |
+| 24 General (own Appearance Light) | 9 | 9.2 | 9.3 | 9.17 | 8.1 | — | — |
+| 25 Editing (own Appearance Light) | 9 | 9.3 | 9.6 | 9.30 | 8.4 | — | — |
+| 26 Components (own Appearance Light) | 8.5 | 9.4 | 9.5 | **9.13** | 6.2 | — | — |
+| D02 Appearance (dark, new) | 8 | 8.2 | 9.3 | 8.50 | — | — | — |
+| D03 General (dark; R5's 20) | 8.5 | 9.1 | 9.3 | 8.97 | 8.5 | 7.6 | 3.7 |
+| D04 Editing (dark; R5's 21) | 8.5 | 9.3 | 9.6 | 9.13 | 8.7 | 5.6 | — |
+| D05 Components (dark; R5's 22) | 8.5 | 9.3 | 9.5 | **9.10** | 6.3 | — | — |
+| Conflict 01 Repositories view | 7.5 | 8.4 | 9.0 | 8.30 | 8.5 | 7.7 | 6.2 |
+| Conflict 02 starting the merge | 9 | 9.0 | 9.3 | **9.10** | 7.4 | 7.3 | 1.7 |
+| Conflict 03 conflict at rest | 8 | 9.1 | 9.4 | **8.83** | 6.2 | 6.8 | 3.0 |
+| Conflict 04 Choose Right | 7.5 | 8.5 | 9.2 | **8.40** | 6.3 | 7.3 | 3.3 |
+| Device 01 Home at rest | 7.5 | 6.8 | 8.7 | 7.67 | 7.4 | 6.1 | 5.3 |
+| **Main steps 01–18 (mean of 17)** | **8.44** | **8.62** | **9.20** | **8.75** | 8.25 | 7.31 | 6.87 |
+| **Area: conflict editor** | **8.0** | **8.8** | **9.2** | **8.67** | 7.00 | 7.20 | 3.43 |
+| **Area: Settings** (20–26, D02–D05) | **8.6** | **9.0** | **9.4** | **9.00** | 7.33 | 6.47 | 3.67 |
+| **Area: device window** | **7.5** | **6.8** | **8.7** | **7.67** | 7.40 | 6.10 | 5.33 |
+| **Overall** | **8.3** | **8.7** | **8.9** | **8.63** | 7.83 | 6.97 | 6.13 |
+
+Biggest gains: Appearance (5.2 → 8.47), Components (6.2 → 9.13), the
+conflict steps 02–04 (+1.7 to +2.6; the sheet whole, the alert in the
+accessibility tree), the Settings area (+1.67). The spread between the
+judges (8.3 to 8.9) is the narrowest so far. Weakest: the device window
+(7.67), the flick (7.80), the plain group (7.83), the narrow window
+(8.20), the inspector (8.23, 8.37).
+
+### Disputed values, settled by measurement
+
+| Item | Judges | Measured (reference) | Ycode |
+|---|---|---|---|
+| Device outline "130 × 185 against 225 × 320" (Sol), "175 × 350 against 350 × 700" (Gemini) | Sol, Gemini | frame **274 × 379.5**, screen **248 × 360**: **0.53** of the cover's 466 × 678 points (`device-hub.md` §14.2) | frame 460 × 651.5, screen 431.5 × 627.5: 0.93 (1.74 times) |
+| "Actual Size selected" | Opus | **Zoom to Fit** in both: the second segment, the magnifier with four outward arrowheads (§14.1) | the same segment |
+| Flick "settles without overshoot in the reference" | all | **both stretch past the top**: the reference to **119** points, Ycode to 199; both spring back critically damped at ω about 13.5 per second; the tool's pixel progress missed the reference's stretch (`editor-area.md` H.1) | 199; updates every 2–3 frames |
+| Flick "703 against 905 ms" | all | settled at about **700–780** against about 870; the reference reaches the top in one frame at 90 ms, Ycode in four steps by 160 | — |
+| Inspector "303 / 278 against 377 / 368 ms" | all | the edge moves **196** (hide) and **231** (show) ms in the reference, **191** and **224** in Ycode; Ycode's extra is a 9-pixel repaint at the editor's right edge 70–90 ms after the motion. The curves are swapped (H.2) | — |
+| Split at 1100: Ycode's text area "3 narrower" (summary), "12 wider" (Gemini) | Gemini, summary | Ycode's is **1.5 wider** (to the minimap separator 488 against 486.5); both hold 17 columns; the difference is **the space after a word** (H.4) | — |
+| Narrowing "latency 365 against 101" | Opus | content frame **116** against 375; the request returned at 222 against **1247** (H.3) | — |
+| Choose Right "303 against 417 ms" | all | the item's highlight at **165** against 57; the fade (215–319 against 207–323) and the new text (452 against 457) match; Ycode's wider change is the conflict's rules changing in the same frame (`merge-sheet.md` §15.2) | — |
+| Split "animated 332 ms" | Sol, Gemini | the split is one frame in both (E.2); 332 ms is the Add Editor button fading into its menu-open state, which the reference draws too (486–708 ms); only the reference's single darker press frame is missing (H.8) | — |
+| Navigator scroller "about 25 shorter" | Opus | thumb **437** on a track 91.5–849.5 against 384 on 127.5–836; at equal tracks about 26 shorter (H.10) | — |
+| Settings "rows drift 1–1.5 lower" | Opus | the reference's rows are content-sized (pop-up rows about 37.25, switch rows 36.5) and its labels 13 below a row's top; Ycode's rows are all 37.5, labels 14 below: 1 to 3.5 lower further down (`settings.md` R6.3) | — |
+| Components subtitle "about 3 pt" | Opus | a size subtitle starts **3–3.5** right of the title; "Built-in" does not; and "Last used" is the **subtitle's size**, not 13 points (R6.2) | aligned; "Last used" 13 points |
+| Description lengths differ | Sol | Ycode's own words; line counts equal (R6.4) | — |
+| Filter glyph "#333333, 1.5–2 times the stroke" | all | the reference #777777, 1 point, 14.5 × 13 (H.9) | **#000000**, 1–1.5 |
+| Welcome row "/tmp against /private/tmp" | Opus | confirmed: the reference resolves the link (H.10) | — |
+
+### Round 6 rows
+
+Grouped for four implementers so that no two groups edit the same files.
+Group A owns the jump bar's layout; group D's stepper (row 161) is a
+fixed-width trailing part that A's collapse rule (row 144) leaves alone.
+
+**A. Editor text, wrap, jump bar and the merge sheet's word runs**
+(`editor-area.md` H.4, `merge-sheet.md` §15.1–§15.3; the source
+editor's line breaking, the jump bar, the merge sheet's panes and ruler)
+
+| # | Area | Target (reference) | Ycode now | Spec | Level | Raised by | Impact |
+|---|---|---|---|---|---|---|---|
+| 142 | Line breaking: the space after a word (supersedes row 88) | a word moves to the next row when **it and the space after it** do not fit, unless it ends its logical line; at 1100 with a split, line 6 breaks "0: a" / "comment" while "import Foundation" (also to column 17) stays on one row; containers hold 17 columns of 8.04 from x 341.5 | lets the trailing space hang: "0: a comment" on one row | H.4 | 3 | Opus, Gemini, meas. | M |
+| 143 | Jump-bar spacing | icon to title **6**, title to chevron **7**, chevron (2 wide) to the next icon **10.5**, chevron to an icon-less title 9.5 | 0–4, 4, 4.5 (chevron 3 wide): the path 20 shorter at 1400 | H.4 | 3 | meas. | L |
+| 144 | Jump-bar collapse order | when the path does not fit: **(1)** the project's and groups' titles go, their icons stay; **(2)** then the file's title is cut from its end with a fade; **(3)** the last item ("No Selection" or the symbol) stays whole. At 1100: icon › icon › file icon "Lo…" › "No Selection" (ending 23 inside the pane) | keeps "GlassScroll", drops the group's title, cuts "No Selection" to "No Se" | H.4 | 3 | Opus, meas. | M |
+| 145 | Jump bar's last item colour | "No Selection" in the same colour as the other items (the active pane's label colour, the inactive pane's grey) | a lighter secondary grey | H.4 | 3 | meas. | L |
+| 146 | Changed-word runs | tokens = word-character runs, whitespace runs and **single other characters**; fill each **maximal run of unmatched tokens** as one box (inner spaces filled): "Good", "morning" (no quote, no comma); "See you soon" one run | splits on whitespace: "\"Good", "morning,", "See", "you", "soon," | §15.1 | 3 | Opus, meas. | M |
+| 147 | Current change's rules | **#FF656A while the panes have focus** (113 ms after the click on a token), #DA5559 while the file list has it; at the choice only the text changes | turn #FF656A only when the choice is applied (a full-width repaint) | §15.2 | 3 | meas. | L |
+| 148 | Overview ruler in light | marks at (line − 0.5) ÷ lines of a track **105–815**: y 423, 571, 719 | the same fraction of 105–853: 16.5–36.5 lower | §15.3 | 3 | Opus | L |
+
+**B. Settings** (`settings.md` R6.1–R6.3; the Settings window code)
+
+| # | Area | Target (reference) | Ycode now | Spec | Level | Raised by | Impact |
+|---|---|---|---|---|---|---|---|
+| 149 | Appearance: Foreground row | slider track x 421.5–624 (14 tall) in **one hue from a pale tint to the full colour**, a darker 1-point edge; knob about 28 across, white rim around the colour under it, at the theme's value (**50 %** for the default); colour well **48 × 28** with a **3-point #DFDFDF rim** around the knob's colour | a grey gradient, the knob at the right end, a rimless 42 × 22 grey well | R6.1 | 3 | Opus, Sol, Gemini | M |
+| 150 | Choose… shape | a **rounded rectangle, radius about 6**, 80.5 × 24 | a capsule (radius 12) | R6.1 | 3 | Opus, meas. | L |
+| 151 | Theme row's content | button y 310.5–334.5, label cap top 317.5: 5.5 below the card's top (2.25 above the row's centre) | centred: 2.5 lower | R6.1 | 3 | Opus | L |
+| 152 | Components: subtitle and "Last used" | a size subtitle starts **3–3.5 right** of the title ("Built-in" aligned); "Last used …" at the **subtitle's size** (cap 8) | sizes aligned with the title; "Last used" at about 13 points | R6.2 | 3 | Opus, meas. | L |
+| 153 | Row heights | content-sized: pop-up rows about **37.25 + 1**, switch rows **36.5 + 1**, a switch with a two-line description 66; labels **13** below a row's top; a description **17.5** below its title's top | every row 37.5 + 1, labels 14 below, description 20.5 below: 1–3.5 lower further down | R6.3 | 3 | Opus, meas. | L |
+
+**C. Device window** (`device-hub.md` §14; the device canvas code)
+
+| # | Area | Target (reference) | Ycode now | Spec | Level | Raised by | Impact |
+|---|---|---|---|---|---|---|---|
+| 154 | Device scale at Zoom to Fit | the frame fills **54 % of the free height** (toolbar's bottom to the capsules' top) and at most **33 % of the canvas width**, centred in that space: in the 1100 × 800 window the Duo's cover at **0.53** of its points (screen 248 × 360, frame 274 × 379.5, 161 above and 163 below); rescales with the window (an interim rule; one window size captured) | 0.93 (frame 460 × 651.5, 26 above and below) | §14.2, §14.3 | 3 | Opus, Sol, Gemini | **H** |
+| 155 | Frame band and buttons | band about 16 device points (8.5 here) in two tones: black inside, mid grey (#505050–#6F6F6F) outside; on a foldable's closed posture a 10-point grey step on the hinge side; the cover's buttons: two bars on the top edge, one on the right edge | one near-black tone (#121212) 11.5 with a 1-point rim; three bars on the left, one on the right | §14.2 | 3 | meas. | L |
+| 156 | Zoom to Fit glyph | a magnifier holding four small outward arrowheads (Ycode's drawing) | a magnifier holding a diagonal two-headed arrow | §14.1 | 3 | meas. | L |
+
+**D. Main-window chrome and motion** (`editor-area.md` H.1–H.3, H.5–H.10,
+`merge-sheet.md` §15.4; scroll, inspector, window, toolbar, navigator,
+image-editor, Welcome and alert code)
+
+| # | Area | Target (reference) | Ycode now | Spec | Level | Raised by | Impact |
+|---|---|---|---|---|---|---|---|
+| 157 | Flick at the edge (supersedes row 108) | the gesture's pending deltas in the first moved frame (the top reached in one frame at 90 ms); a stretch past the edge peaking at about **120 points** about 70 ms later; a **critically damped return, ω about 13.5 per second**, no oscillation; settled in about 700 ms; a new position **every display frame** | the top reached in four steps by 160; stretch **199**; the same return; positions every 2–3 frames (about 30 per second) | H.1 | 3 | Opus, Sol, Gemini | M |
+| 158 | Inspector hide and show (supersedes row 133) | **hide**: from about 77 ms over about **195 ms, ease-out** (16 % of the travel in the first 21 ms); **show**: from about 95 ms over about **230 ms, ease-in-out** (keyframe tables); a new position at least every 27 ms; **nothing repainted after the motion** | timing envelope met; the curves swapped (hide ease-in-out, show ease-out); 41–51 ms holds; a 9-pixel repaint at the editor's right edge 70–90 ms after | H.2 | 3 | Opus, Sol, Gemini | M |
+| 159 | Narrowing (supersedes row 134) | content relayout in one frame within about **120 ms** of the size request; the request returns without waiting (about 220 ms); the overflow capsule morphs from the absorbed items' extent (124 wide here) to its circle over about **165 ms**, ease-out, with the "»" at full size throughout | relayout at 375; the request returns at 1247; the capsule at its final size from the start, the "»" growing from a dot over 229 ms | H.3 | 3 | Opus, meas. | M |
+| 160 | Navigator at first open (supersedes row 113) | with no saved state: the project row and **every group or folder that is a direct child of the main group** expanded (GlassScroll and Plain), deeper ones collapsed (Models, Sub) | only the project and its first group (Plain collapsed, so step 13's click expands Plain) | H.6 | 3 | Opus, Sol, Gemini | M |
+| 161 | Issue capsule and jump-bar stepper (restates rows 138–139 in light) | capsule 36 tall, 7.5–8 after the scheme capsule, fill #F9F9F9 with a #BFBFBF hairline; per kind its symbol (17–17.5 wide, 16.5 inside the capsule) and a black count 5 after it, errors first, pairs 24.5 apart (61 wide for one warning, 111 for an error and a warning); stepper chevrons #7F7F7F around the most severe symbol at x 1084.5–1124.5, shown in every editor's jump bar even with "No Selection"; **neither shown with no issues** | none | H.5 | 3 | Opus, Sol, Gemini | M |
+| 162 | Image inspector | Dimensions, Resolution, Color Space, Alpha Channel **"--"** when the image is selected in the navigator (F.8's acceptance withdrawn); the Tags field #E0E0E1 with its placeholder **6.5 in and vertically centred** | filled values; field #D5D5D6; placeholder 2.5 in, 3 below the top | H.7 | 3 | Opus, Sol, Gemini | L |
+| 163 | File switch (supersedes row 136) | the new file's content within about **210 ms** of the click (216 text, 205 the empty image viewer); the inspector may follow one frame (text) or about 80 ms (image) later; no empty-editor frame needed | everything at 266–272 in one frame | H.7 | 3 | Opus, meas. | L |
+| 164 | Add Editor press (supersedes row 137) | a **single darker frame** (about 15 ms) on the press, then the fade into the menu-open state (about 220 ms) | the fade matches; no darker frame | H.8 | 3 | Opus, Sol, Gemini | L |
+| 165 | Navigator filter glyph | **#777777**, 1-point stroke, 14.5 × 13; its chevron the same grey | #000000, 1–1.5, 13.5 × 14 | H.9 | 3 | Opus, Sol, Gemini | L |
+| 166 | Toolbar and Source Control glyphs | the reference's items, grouping and fill style in Ycode's own drawings: leading capsule a list glyph and a sparkle; the bubble left of the scheme in a pink-to-purple gradient; Source Control groups **filled grey**, the control y 90–106 with its labels about 9 % larger than Ycode's, rows 1.5–3.5 lower than Ycode's; the standalone cloud circle (37 wide, 7.5 before the Add Editor capsule): **owner's decision** on an equivalent status item (rule 2) | sidebar glyph and speech bubble; a black bubble; outline group glyphs; control 2 higher; no circle | H.9 | 3 | Opus, Sol, Gemini | L |
+| 167 | Navigator scroller | the track from just below the navigator's top bar to just above its bottom bar (y 91.5–849.5 here); the thumb the visible share of the content (437 of 758 at step 15) | track 127.5–836; thumb 384 | H.10 | 3 | Opus, meas. | L |
+| 168 | Alert accessibility order (completes row 130) | the sheet's children: [an empty status image], **Merge**, **Cancel**, the message (296 × 34), the application icon as an image with a description, the informative text (296 × 30) | message (296 × 36), informative text (296 × 32), Cancel, Merge; no images | §15.4 | 3 | Opus, Sol, Gemini | L |
+| 169 | Welcome window path | the recent project's **real path** (symbolic links resolved: "/private/tmp/…"); the inspector keeps the path as opened | the path as opened ("/tmp/…") | H.10 | 3 | Opus | L |
+
+**Top 10 rows by impact:** 154 (device scale); 157 (flick stretch and
+cadence); 160 (first-open expansion); 161 (issue capsule and stepper);
+158 (inspector curves); 142 (the space rule); 144 (jump-bar collapse);
+149 (Foreground row); 146 (word runs); 159 (narrowing).
+
+### Round 5 rows now met
+
+From this round's stills and recordings:
+- **Met:** 115 (each pane wraps at its own width: 17 columns in both
+  panes at 1100), 116 (the minimap's 12-band group repeats every 246 in
+  both, measured), 117–119 (Appearance's card, thumbnails and ring,
+  preview, segments; the thumbnails' artwork is Ycode's own), 121
+  (Components' two sections and two-line rows; the details are row 152),
+  122 (the pane title), 125 (the sheet below its window, both buttons
+  visible), 127 (the file row grey with the red badge after a token
+  click), 130 (the alert's buttons found and pressed from outside; the
+  order is row 168), 131 (the posture buttons), 135 (the image
+  inspector's spacing, every row within a point).
+- **Partly:** 120 (push button and Name row present; rows 149–151), 133
+  (start and duration within 10 ms; curves and cadence, row 158), 136
+  (no blank frame needed; latency, row 163), 137 (the fade matches; the
+  darker frame, row 164).
+- **Open:** 128 (the Choose item's on-off-on at 57, 73, 140 ms; Ycode's
+  menu is the system's, §14.5), 134 (row 159), 138–139 (row 161), 140
+  (Ycode's split again not within the 1.2 s after the press; the
+  reference's at 738 ms), 141 (no activity subtitle was visible in this
+  round's conflict stills, so it was not tested).
+- **Not re-measured:** 123 (the selected sidebar label's weight), 124
+  (the simulator host's settings page, not captured), 126 (the sheet's
+  buttons, captured in light only), 129 (the ruler in dark; light is row
+  148), 132 (the Rotate glyph).
+- **Round 4 rows:** 88 becomes row 142, 108 row 157, 113 row 160.
+
+### Not settled by round 6
+
+| Item | Why not | Capture needed |
+|---|---|---|
+| The device's Zoom to Fit rule (row 154 is an interim fit) | one window size in every round | the same device at Zoom to Fit in a second window size and with the inspector hidden; a classic iPhone and an iPad in 1100 × 800; the Duo opened |
+| The flick's stretch for other speeds and at the bottom edge | one flick, at the top | flicks at two speeds, up to the top and down to the bottom |
+| Which leading jump-bar title goes first | at 1100 both went | the split at a width between 1100 and 1400 (for example 1250), and a deeper path |
+| What the Foreground slider changes; the list below it; Fonts and Editor | no control moved | drag the slider; scroll the list; switch segments, in both appearances |
+| A saved navigator state restored in a later session | each round opens a fresh copy | collapse and expand groups, close the workspace, reopen it |
+| Whether the reference ever fills the image properties | the after still is 1.2 s after the step | a still 5 s after, and after selecting the image a second time |
+| Ycode's split latency (row 140) | the recording ended 1.2 s after the press | a 3-second post-roll |
+| The issue capsule in a narrow window in light; its order with three kinds | conflict steps only at 1400 | the conflict session at 1100; a project with errors, warnings and notes |
+| Row heights in the dark supplement; Settings rows below the first screen | not measured; not scrolled | the dark stills measured; scroll each pane |
+| The activity subtitle (row 141) | not visible this round | a still while the workspace prepares its editor services |
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -799,6 +1001,7 @@ From the stills of this round:
 | Round 3 reference values | 3 | The round 3 Retina stills and 120 fps recordings of the reference and Ycode (foreground, key window; the merge session, Settings and Device Hub added), measured in the dirty room with colour runs, ink boxes, per-frame column profiles and the capture tool's timing segments; full descriptions in the cited spec sections |
 | Round 4 reference values | 3 | The round 4 Retina stills and 120 fps recordings of the reference and Ycode (foreground, key window, dark appearance; Settings ▸ Editing added), measured in the dirty room with glyph-core colour samples, colour runs, ink boxes, per-frame edge tracking and the capture tool's timing segments; full descriptions in the cited spec sections |
 | Round 5 reference values | 3 | The round 5 Retina stills and 120 fps recordings of the reference and Ycode (foreground, key window, dark; Settings in light and dark; the conflict session with a 60-point margin below the window), measured in the dirty room with colour runs, ink boxes, per-row ink ends, stem widths and ink areas, per-frame edge positions, region samples and changed regions timed against the session manifests; full descriptions in the cited spec sections |
+| Round 6 reference values | 3 | The round 6 Retina stills and 120 fps recordings of the reference and Ycode (foreground, key window, **light**; Ycode's steps 01–08 re-run at the reference's load; Settings in light with a dark supplement; the conflict session with a 60-point margin; the device window), measured in the dirty room with frame-to-still matching for scroll offsets and a spring fit, per-frame edge positions and named-curve fits, rim positions per frame, colour runs, ink boxes and ink clusters, region means per frame, highlight runs, one-point colour samples, and the alert's accessibility tree as recorded by the capture tool; times against the session manifests; full descriptions in the cited spec sections |
 | Round 5 accessibility path (row 130) | — | The capture tool's own accessibility driver and session runner (our code), and the round 5 conflict manifests' action results |
 | Ycode values | — | The same session's captures of Ycode; `otool -l` of the captured executable |
 | EditorConfig lookup | 1 | The EditorConfig specification (editorconfig.org) |

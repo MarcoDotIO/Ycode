@@ -168,7 +168,8 @@ public final class ThemesSettingsPane: SettingsPane {
         let choose = SettingsPushButton("Choose\u{2026}")
         choose.identifier = .init("settings-theme-choose")
         choose.onPress = { [weak self] b in self?.showThemeMenu(from: b) }
-        cardRow(SettingsPlainRow(label: "Theme", control: choose, height: SettingsAppearanceLayout.themeRowHeight), title: "Theme")
+        cardRow(SettingsPlainRow(label: "Theme", control: choose, height: SettingsAppearanceLayout.themeRowHeight,
+                                  raise: SettingsAppearanceR6.themeRowRaise), title: "Theme")
         let name = NSTextField(labelWithString: t.name)
         name.font = .systemFont(ofSize: SettingsMetrics.fontSize)
         name.textColor = SettingsColors.label
@@ -176,28 +177,33 @@ public final class ThemesSettingsPane: SettingsPane {
         cardRow(SettingsPlainRow(label: "Name", control: name, height: SettingsAppearanceLayout.nameRowHeight), title: "Name")
         endCard()
         for (title, key) in ThemeColorRows.all {
-            let v = ThemeColorRowView(title: title, color: Self.themeColor(key), background: Self.themeColor("background"), hex: ThemeColorRows.value(key, in: t))
+            let v = ThemeColorRowView(title: title, key: key, theme: t, color: Self.themeColor(key), background: Self.themeColor("background"))
+            // A built-in theme's rows are read-only (drawn in full, R6.1).
             v.slider.isEnabled = !builtIn
             v.well.isEnabled = !builtIn
-            v.slider.onChange = { [weak self, weak v] _ in
-                guard let v else { return }
+            v.slider.onChange = { [weak self, weak v] s in
+                guard let self, let v else { return }
+                let full = v.slider.base
+                self.edit { ThemeColorRows.setStrength(key, full: full, strength: s, in: &$0) }
+                v.theme = self.prefs.theme
+                v.showKnobColor()
                 let c = v.slider.color
-                let hex = ThemeColorRows.hex(c.r, c.g, c.b)
-                v.well.hexValue = hex
-                v.well.color = NSColor(srgbRed: CGFloat(c.r), green: CGFloat(c.g), blue: CGFloat(c.b), alpha: 1)
-                self?.setColor(hex: hex, key: key)
+                v.well.hexValue = ThemeColorRows.hex(c.r, c.g, c.b)
+                self.refreshPreview()
             }
             v.well.onCommit = { [weak self, weak v] hex in
-                self?.setColor(hex: hex, key: key)
-                // The typed colour (or the system's again) is the slider's full end.
+                guard let self else { return }
+                self.edit { ThemeColorRows.setTyped(key, hex, in: &$0) }
+                self.refreshPreview()
+                // The typed colour (or the system's again) is the row's full colour.
                 if let v {
+                    v.theme = self.prefs.theme
                     if let hex, let c = ThemeColorRows.components(hex) {
                         v.dynamicColor = NSColor(srgbRed: CGFloat(c.r), green: CGFloat(c.g), blue: CGFloat(c.b), alpha: 1)
                     } else {
                         v.dynamicColor = ThemesSettingsPane.themeColor(key)
                     }
                     v.resolve()
-                    v.slider.value = 1
                 }
             }
             cardRow(v, title: title)
@@ -319,12 +325,13 @@ public final class ThemesSettingsPane: SettingsPane {
 }
 
 /// A card row of a given height: the label at the left, one control at the
-/// right (10 inside), both centred in the row.
+/// right (10 inside), both centred in the row, or `raise` above its centre
+/// (the Theme row's content, 2.25 higher: R6.1).
 final class SettingsPlainRow: NSView {
     let label: NSTextField
     let control: NSView
 
-    init(label title: String, control: NSView, height: CGFloat) {
+    init(label title: String, control: NSView, height: CGFloat, raise: CGFloat = 0) {
         label = NSTextField(labelWithString: title)
         self.control = control
         super.init(frame: .zero)
@@ -337,9 +344,9 @@ final class SettingsPlainRow: NSView {
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: height),
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: SettingsMetrics.labelInset),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -raise),
             control.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -SettingsMetrics.controlInset),
-            control.centerYAnchor.constraint(equalTo: centerYAnchor),
+            control.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -raise),
             control.leadingAnchor.constraint(greaterThanOrEqualTo: label.trailingAnchor, constant: 12),
         ])
     }

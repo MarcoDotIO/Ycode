@@ -91,7 +91,10 @@ public final class RecentProjects {
     /// on another volume, from the volume's name ("External/Samples"), on
     /// the startup volume, the path itself ("/Users/me/Projects").
     public static func folderText(_ url: URL) -> String {
-        let folder = url.deletingLastPathComponent().standardizedFileURL
+        // The real path, symbolic links resolved ("/tmp/…" shows as
+        // "/private/tmp/…"; `editor-area.md` H.10, council row 169); the
+        // path as stored when the folder is not there.
+        let folder = realFolder(url.deletingLastPathComponent().standardizedFileURL)
         let parts = folder.pathComponents  // ["/", "Volumes", "X", …]
         if parts.count >= 3, parts[1] == "Volumes" {
             return parts[2...].joined(separator: "/")
@@ -100,5 +103,14 @@ public final class RecentProjects {
         // F.11, checklist row 112: "/private/tmp/…", with no volume name in
         // front; the row truncates it at its head only when it does not fit).
         return folder.path
+    }
+
+    /// `folder` with every symbolic link resolved (realpath(3); Foundation's
+    /// `resolvingSymlinksInPath` drops "/private" on macOS, the opposite
+    /// of what the row shows), or `folder` itself when it cannot be.
+    static func realFolder(_ folder: URL) -> URL {
+        guard let p = realpath(folder.path, nil) else { return folder }
+        defer { free(p) }
+        return URL(fileURLWithPath: String(cString: p), isDirectory: true)
     }
 }

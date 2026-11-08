@@ -74,12 +74,12 @@ import YcodeProject
         #expect(rows.map { ($0.title as NSString).deletingPathExtension } == ["Pkg", "Package", "Sources", "Pkg", "Tool", "Tests", "PkgTests", "README"])
         let expanded = rows.filter { o.isItemExpanded($0) }.map(\.title)
         #expect(expanded == ["Pkg", "Sources", "Tests"])
-        // A project keeps its first group expanded.
+        // A project expands every group of its main group (council round 6, row 160).
         let proj = NavigatorNode(name: "App", kind: .container, path: "/tmp/App.xcodeproj", children: [
             NavigatorNode(name: "Sources", kind: .group, path: "/tmp/S", objectID: "G1", children: []),
             NavigatorNode(name: "Tests", kind: .group, path: "/tmp/T", objectID: "G2", children: []),
         ])
-        #expect(NavigatorTree.initiallyExpanded(proj) == ["/tmp/App.xcodeproj", "G1"])
+        #expect(NavigatorTree.initiallyExpanded(proj) == ["/tmp/App.xcodeproj", "G1", "G2"])
     }
 
     // MARK: N5 — Test navigator rows

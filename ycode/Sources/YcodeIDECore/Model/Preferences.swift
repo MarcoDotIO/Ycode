@@ -362,6 +362,10 @@ public struct EditorTheme: Codable, Equatable, Sendable {
     /// the source font (Settings ▸ Appearance ▸ Fonts). Absent: the source
     /// font (keywords bold).
     public var tokenFonts: [String: FontSpec]?
+    /// Per colour row (`ThemeColorRows` key): the strength the row's slider
+    /// was set to, 0–1 (Settings ▸ Appearance, R6.1). Absent: the colour
+    /// is the row's full colour (a system colour shows at 50 %).
+    public var strengths: [String: Double]?
 
     /// A font by name (empty: the monospaced system font) and size: a
     /// portable font descriptor; each shell resolves it to its own font

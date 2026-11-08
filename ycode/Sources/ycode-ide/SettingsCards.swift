@@ -3,8 +3,9 @@ import SwiftUI
 import YcodeIDECore
 
 // The Settings window's grouped-card form on Linux, as the macOS IDE's
-// (`specs/ide/settings.md` R3.3 and R4.1, YcodeUI `SettingsChrome.swift`):
-// section headers over rounded cards (#F7F7F7, radius 12), rows 37.5 tall
+// (`specs/ide/settings.md` R3.3, R4.1 and R6.3, YcodeUI `SettingsChrome.swift`):
+// section headers over rounded cards (#F7F7F7, radius 12), content-sized rows
+// (a pop-up row 37.25, a switch row 36.5)
 // with 1-point separators inset 10, labels at the left with no colon, help
 // text under them in the secondary colour, and the controls at the right:
 // pop-ups as the value and a circular chevron button, switches 36 × 16;
@@ -161,21 +162,28 @@ struct SettingsCard<Content: View>: View {
 }
 
 /// A card row: the label (no colon) at the left with optional help text
-/// under it, the control at the right centred on the label's line.
+/// under it, the control at the right centred on the label's line. Rows
+/// are content-sized (R6.3): a pop-up row 37.25, a switch row 36.5, the
+/// label's cap top 13 under the row's top, a description's cap top 17.5
+/// under the label's, the row ending 13.75 under its last baseline (3.5
+/// more for a pop-up row).
 struct SettingsRow<Control: View>: View {
     var title: String
     var help: String?
+    var kind: SettingsRowMetrics.Kind
     var control: Control
     @Environment(\.colorScheme) private var scheme
 
-    init(_ title: String, help: String? = nil, @ViewBuilder control: () -> Control) {
+    init(_ title: String, help: String? = nil, kind: SettingsRowMetrics.Kind = .popUp, @ViewBuilder control: () -> Control) {
         self.title = title
         self.help = help
+        self.kind = kind
         self.control = control()
     }
 
     var body: some View {
         let p = SettingsPalette(scheme)
+        let hasHelp = help.map { !$0.isEmpty } ?? false
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
                 Text(verbatim: title)
@@ -186,19 +194,27 @@ struct SettingsRow<Control: View>: View {
                 // Centred on the label's line, whatever its height.
                 control.frame(height: Self.lineHeight)
             }
-            if let help, !help.isEmpty { SettingsHelpText(text: help).padding(.top, Self.helpGap) }
+            if let help, hasHelp { SettingsHelpText(text: help).padding(.top, Self.helpGap) }
         }
         .padding(.horizontal, SettingsLayout.labelInset)
-        .padding(.vertical, (SettingsLayout.rowHeight - Self.lineHeight) / 2)
-        .frame(maxWidth: .infinity, minHeight: SettingsLayout.rowHeight, alignment: .leading)
+        .padding(.top, Self.top)
+        .padding(.bottom, hasHelp ? Self.helpBottom(kind) : SettingsRowMetrics.height(kind) - Self.top - Self.lineHeight)
+        .frame(maxWidth: .infinity, minHeight: SettingsRowMetrics.height(kind), alignment: .leading)
         .background(p.card)
     }
 
     /// The label's line.
     static var lineHeight: CGFloat { 16 }
-    /// From the label's line to the help text's: the help's first baseline
-    /// 19 under the label's.
-    static var helpGap: CGFloat { SettingsLayout.helpBaselineGap - lineHeight + 3 - 2 }
+    /// A 13-point text's cap top is about 3 under its frame's top: the
+    /// label's frame 10 under the row's top puts its cap top at 13.
+    static var top: CGFloat { SettingsRowMetrics.labelCapTop - 3 }
+    /// From the label's line to the description's frame: an 11-point
+    /// text's cap top is about 2.5 under its frame's top, so its cap top
+    /// lands 17.5 under the label's.
+    static var helpGap: CGFloat { SettingsRowMetrics.helpCapGap - (lineHeight - 3) - 2.5 }
+    /// Under the description's frame: its last baseline sits about 3.75
+    /// above the frame's bottom (measured: a switch with two lines is 66).
+    static func helpBottom(_ kind: SettingsRowMetrics.Kind) -> CGFloat { SettingsRowMetrics.helpBottom(kind) - 3.75 }
 }
 
 extension SettingsRow where Control == EmptyView {
@@ -290,7 +306,7 @@ struct CheckRow: View {
     var help: String?
 
     var body: some View {
-        SettingsRow(title, help: help) {
+        SettingsRow(title, help: help, kind: .toggle) {
             SettingsSwitch(isOn: isOn, label: title).shellTarget(target)
         }
     }

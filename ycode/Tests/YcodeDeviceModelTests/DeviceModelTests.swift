@@ -10,7 +10,7 @@ import Testing
 @Suite struct FrameGeometryTests {
     @Test func aPhoneFrameIsConcentricWithItsScreen() {
         let g = DeviceFrameGeometry(spec: .iPhone18Pro)
-        let b = DeviceFrameGeometry.band(.phone), m = DeviceFrameGeometry.protrusion
+        let b = DeviceFrameGeometry.band(.phone), m = DeviceFrameGeometry.margin(.phone)
         // 1206 × 2622 @3 = 402 × 874 points.
         #expect(g.screen == CGRect(x: m + b, y: m + b, width: 402, height: 874))
         #expect(g.body == CGRect(x: m, y: m, width: 402 + 2 * b, height: 874 + 2 * b))

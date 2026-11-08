@@ -550,7 +550,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             reportScope.centerXAnchor.constraint(equalTo: root.centerXAnchor),
             // Across the navigator, 9 from each side, 16 tall, centred in
             // the header row (navigators.md round 3 §2; row 114).
-            sourceControlMode.centerYAnchor.constraint(equalTo: reportScope.centerYAnchor),
+            sourceControlMode.centerYAnchor.constraint(equalTo: reportScope.centerYAnchor, constant: CGFloat(RepositoriesViewStyle.modeControlDrop)),
             sourceControlMode.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Self.modeControlInset),
             sourceControlMode.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Self.modeControlInset),
             sourceControlMode.heightAnchor.constraint(equalToConstant: CGFloat(RepositoriesViewStyle.modeControlHeight)),
@@ -1465,7 +1465,8 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         // Hidden header rows take no spacing either (N3).
         for c in [findOptionsTop, findFieldTop, findScopeTop] as [NSLayoutConstraint?] { c?.constant = index == 3 ? 2 : 0 }
         reportScopeTop?.constant = headerBar ? 2 : 0
-        scrollTop?.constant = headerBar || index == 3 ? 4 : 0
+        // Source Control's rows follow its control 2 lower (H.9, row 166).
+        scrollTop?.constant = (headerBar || index == 3 ? 4 : 0) + (index == 1 ? CGFloat(RepositoriesViewStyle.modeControlDrop) : 0)
         reportScope.isHidden = index != 8
         sourceControlMode.isHidden = index != 1
         testHeader.isHidden = index != 5

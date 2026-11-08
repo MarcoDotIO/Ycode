@@ -393,18 +393,12 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
     @Test func inspectorSlideFollowsTheRound2Timing() {
         #expect(EditorMetrics.inspectorSlideProgress(elapsed: 0.04, show: false) == 0)
         #expect(EditorMetrics.inspectorSlideProgress(elapsed: 0.11, show: true) == 0)
-        // The measured hide progress (ms from the press), within the ease-in-out fit's error.
-        let hide: [(Double, Double)] = [(81, 0.08), (111, 0.20), (144, 0.44), (180, 0.68), (214, 0.87), (240, 0.97), (264, 1)]
-        var squares = 0.0
-        for (ms, p) in hide {
-            let d = EditorMetrics.inspectorSlideProgress(elapsed: ms / 1000, show: false) - p
-            squares += d * d
-            #expect(abs(d) < 0.12, "\(ms) ms")
-        }
-        #expect((squares / Double(hide.count)).squareRoot() < 0.07)
-        // Round 5's target (editor-area.md G.1): 50 + 200 and 145 + 200 ms.
-        #expect(abs(EditorMetrics.inspectorSlideTotal(show: false) - 0.250) < 0.001)
-        #expect(abs(EditorMetrics.inspectorSlideTotal(show: true) - 0.345) < 0.001)
+        // Round 2's hide table (an ease-in-out) is superseded by round 6's
+        // curves (`editor-area.md` H.2, row 158: hide ease-out over 195 ms,
+        // show ease-in-out over 230; `CouncilRound6ChromeTests`). The
+        // starts stand: 50 and 145 ms after the press.
+        #expect(abs(EditorMetrics.inspectorSlideTotal(show: false) - 0.245) < 0.001)
+        #expect(abs(EditorMetrics.inspectorSlideTotal(show: true) - 0.375) < 0.001)
     }
 
     // MARK: Round 2: inspector (rows 41–43) and the status bar for images (row 44)
@@ -431,7 +425,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(props.rows.first { $0.0 == "Dimensions" }?.1 == "800 \u{00D7} 1800 pixels")
         wc.open(path: dir.appendingPathComponent("GlassScroll/Stripes.png").path, line: nil)
         let tags = try #require(i.fileControls["On Demand Resource Tags"] as? NSTokenField)
-        #expect(tags.isEnabled && tags.placeholderString == "Tags")
+        #expect(tags.isEnabled && (tags.placeholderString ?? tags.placeholderAttributedString?.string) == "Tags")
         #expect(wc.debugArea.positionLabel.stringValue.isEmpty)
     }
 }

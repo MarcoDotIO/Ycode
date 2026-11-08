@@ -102,9 +102,9 @@ struct MergeComparisonView: View {
         let row = layout.rows[i]
         let state = editor.state
         let selected = row.hunk != nil && row.hunk == state.currentHunk
-        let decided = selected && (row.hunk.flatMap { state.token(forHunk: $0)?.isDecided } ?? false)
+        // The current change's rules brighten with the panes' focus (§15.2, row 147).
         let input = MergeRowPainter(row: row, layout: layout, currentLeft: currentLeft, currentRight: currentRight,
-                                    isSelected: selected, isDecided: decided)
+                                    isSelected: selected, panesFocused: editor.panesFocused)
         Canvas { ctx, _ in input.draw(&ctx) }
             .frame(width: layout.totalWidth, height: layout.heights[i])
             .accessibilityElement(children: .ignore)
@@ -291,7 +291,7 @@ struct MergeRowPainter {
     let currentLeft: Int
     let currentRight: Int
     let isSelected: Bool
-    let isDecided: Bool
+    let panesFocused: Bool
 
     typealias M = MergeSheetMetrics
 
@@ -330,7 +330,7 @@ struct MergeRowPainter {
         if let r = row.right { side(&ctx, r, runs: layout.rightRuns, x: rx, current: currentRight, font: font) }
         // The selected change's rules, across both panes and the gutter.
         if isSelected {
-            let rule = isDecided ? p.decidedRule : p.selectedRule
+            let rule = p.changeRule(panesFocused: panesFocused)
             if row.isFirstOfHunk { fill(CGRect(x: 0, y: 0, width: layout.totalWidth, height: 1), rule) }
             if row.isLastOfHunk { fill(CGRect(x: 0, y: h - 1, width: layout.totalWidth, height: 1), rule) }
         }
@@ -341,7 +341,7 @@ struct MergeRowPainter {
         let p = layout.palette
         let lh = CGFloat(M.lineHeight), cw = CGFloat(M.cellWidth)
         let segs = MergeSheetLayout.wrap(s.text, columns: layout.columns)
-        // Changed words: 16 tall, whole cells, never the spaces (§6).
+        // Changed runs: 16 tall, whole cells, a run's inner spaces included (§15.1).
         for (k, seg) in segs.enumerated() {
             for w in s.words {
                 let a = max(w.lowerBound, seg.cells.lowerBound), b = min(w.upperBound, seg.cells.upperBound)

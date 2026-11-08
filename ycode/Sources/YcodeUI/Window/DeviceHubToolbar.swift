@@ -109,8 +109,10 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
             return g
         case Self.zoom:
             let labels = ["Zoom Out", "Zoom to Fit", "Zoom To Actual Size", "Zoom In"]
-            let images = ["minus.magnifyingglass", "arrow.up.left.and.down.right.magnifyingglass", "1.magnifyingglass", "plus.magnifyingglass"]
-                .enumerated().compactMap { image($0.element, labels[$0.offset]) }
+            // Zoom to Fit is Ycode's own drawing (§14.1: four outward arrowheads in the lens).
+            let images = ["minus.magnifyingglass", "", "1.magnifyingglass", "plus.magnifyingglass"].enumerated().compactMap {
+                $0.element.isEmpty ? DeviceControlGlyphImage.zoomToFit() : image($0.element, labels[$0.offset])
+            }
             let g = NSToolbarItemGroup(itemIdentifier: id, images: images, selectionMode: .selectOne, labels: labels,
                                        target: self, action: #selector(zoomChosen(_:)))
             for (sub, l) in zip(g.subitems, labels) { sub.toolTip = l }

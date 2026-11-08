@@ -10,6 +10,7 @@
 import Foundation
 import OVRender
 import SwiftUI
+import YcodeDeviceModel
 import YcodeRemoteViewer
 
 @MainActor
@@ -217,7 +218,10 @@ struct ChromeGlyph: View {
         func rect(_ r: CGRect, _ radius: CGFloat) -> Path { Path(roundedRect: r, cornerRadius: radius) }
         let r = s * 0.4
         switch name {
-        case "minus.magnifyingglass", "plus.magnifyingglass", "1.magnifyingglass", "arrow.up.left.and.down.right.magnifyingglass":
+        case DeviceWindowFrame.zoomToFitSymbol:
+            // The macOS window's drawing (DeviceControlGlyphs.zoomToFit, row 156), at the size it takes there.
+            drawShared(DeviceControlGlyphs.zoomToFit, in: &ctx, centre: c, scale: s / 16, color: color)
+        case "minus.magnifyingglass", "plus.magnifyingglass", "1.magnifyingglass":
             // A lens with a handle, and its mark inside.
             let lc = CGPoint(x: c.x - s * 0.08, y: c.y - s * 0.08), lr = s * 0.3
             stroke(circle(lc.x, lc.y, lr))
@@ -234,8 +238,7 @@ struct ChromeGlyph: View {
                 p.addLine(to: CGPoint(x: lc.x + m * 0.1, y: lc.y - m))
                 p.addLine(to: CGPoint(x: lc.x + m * 0.1, y: lc.y + m))
                 stroke(p, lw * 0.9)
-            default:
-                stroke(line(CGPoint(x: lc.x - m, y: lc.y - m), CGPoint(x: lc.x + m, y: lc.y + m)), lw * 0.9)
+            default: break
             }
         case "keyboard":
             stroke(rect(CGRect(x: c.x - s * 0.45, y: c.y - s * 0.28, width: s * 0.9, height: s * 0.56), s * 0.1))
@@ -315,6 +318,33 @@ struct ChromeGlyph: View {
         default:
             stroke(circle(c.x, c.y, r))
         }
+    }
+
+    /// A shared glyph (`DeviceControlGlyphs`, the shapes the macOS window
+    /// draws) centred at `centre`, `scale` points per glyph point.
+    static func drawShared(_ g: DeviceControlGlyphs.Glyph, in ctx: inout GraphicsContext, centre c: CGPoint, scale k: CGFloat, color: Color) {
+        func pt(_ p: DeviceControlGlyphs.Point) -> CGPoint { CGPoint(x: c.x + CGFloat(p.x) * k, y: c.y + CGFloat(p.y) * k) }
+        func path(_ shape: DeviceControlGlyphs.Shape) -> Path {
+            var p = Path()
+            switch shape {
+            case .roundedRect(let x, let y, let w, let h, let r):
+                p = Path(roundedRect: CGRect(x: c.x + CGFloat(x) * k, y: c.y + CGFloat(y) * k, width: CGFloat(w) * k, height: CGFloat(h) * k),
+                         cornerRadius: CGFloat(r) * k)
+            case .arc(let centre, let r, let from, let to):
+                let pts = DeviceControlGlyphs.arcPoints(centre: centre, radius: r, from: from, to: to, steps: 32)
+                for (i, q) in pts.enumerated() { if i == 0 { p.move(to: pt(q)) } else { p.addLine(to: pt(q)) } }
+            case .polygon(let pts), .polyline(let pts):
+                for (i, q) in pts.enumerated() { if i == 0 { p.move(to: pt(q)) } else { p.addLine(to: pt(q)) } }
+                if case .polygon = shape { p.closeSubpath() }
+            case .disc(let centre, let r):
+                p = Path(ellipseIn: CGRect(x: c.x + CGFloat(centre.x - r) * k, y: c.y + CGFloat(centre.y - r) * k, width: CGFloat(2 * r) * k, height: CGFloat(2 * r) * k))
+            }
+            return p
+        }
+        for shape in g.strokes {
+            ctx.stroke(path(shape), with: .color(color), style: StrokeStyle(lineWidth: CGFloat(g.lineWidth) * k, lineCap: .round, lineJoin: .round))
+        }
+        for shape in g.solids { ctx.fill(path(shape), with: .color(color)) }
     }
 }
 #endif

@@ -126,12 +126,15 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let first = rect(pane.cards[0], in: w)
         #expect(abs(first.minY - 98) <= 1, "first card at \(first)")
         #expect(abs(rect(pane.cards[1], in: w).minY - 223) <= 1.5, "second card at \(rect(pane.cards[1], in: w))")
-        // Rows: 37.5 for one line; separators 1 point inset 10.
+        // Rows: content-sized (R6.3: a pop-up row 37.25, a switch row 36.5);
+        // separators 1 point inset 10.
         let navigation = pane.cards[1]
         let rows = navigation.rowViews.compactMap { $0 as? SettingsRowView }
         #expect(rows.map(\.label.stringValue) == ["Navigator size", "Bookmark navigator detail", "Find navigator detail", "Issue navigator detail",
                                                   "Window tabs have independent sidebar widths", "Automatically unlock files", "File extensions"])
-        for r in rows where r.help == nil { #expect(abs(r.frame.height - 37.5) <= px(w), "\(r.label.stringValue) \(r.frame.height)") }
+        for r in rows where r.help == nil {
+            #expect(abs(r.frame.height - SettingsRowMetrics.height(r.rowKind)) <= 0.75, "\(r.label.stringValue) \(r.frame.height)")
+        }
         let separators = navigation.rows.arrangedSubviews.compactMap { $0 as? SettingsSeparatorView }
         #expect(separators.count == rows.count - 1 && separators.allSatisfy { $0.frame.height == 1 })
         // Labels left at card + 10 (text), no colons; pop-ups' circles 13.5 inside, switches 10.
@@ -145,8 +148,8 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             if c is NSPopUpButton { #expect((c as? NSPopUpButton)?.cell is SettingsCardPopUpCell) }
         }
         #expect(rows[4].controls.first is NSSwitch && rows[5].controls.first is NSSwitch && rows[0].controls.first is NSPopUpButton)
-        // Help text: secondary colour, 11 points on a 14-point pitch, the
-        // first baseline 19 under the label's, at most 416 wide.
+        // Help text: secondary colour, 11 points on a 14-point pitch, its cap
+        // top 17.5 under the label's (R6.3), at most 416 wide.
         let restore = try #require(pane.cards[0].rowViews.first as? SettingsRowView)
         let help = try #require(restore.help)
         #expect(help.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == .secondaryLabelColor)
@@ -154,7 +157,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(style?.minimumLineHeight == 14 && style?.maximumLineHeight == 14)
         #expect(help.frame.width <= 416.5)
         let gap = (help.frame.minY + help.firstBaselineOffsetFromTop) - (restore.label.frame.minY + restore.label.firstBaselineOffsetFromTop)
-        #expect(abs(gap - 19) <= 0.5, "help baseline gap \(gap)")
+        #expect(abs(gap - SettingsRowView.helpBaselineGap) <= 0.5, "help baseline gap \(gap)")
         #expect(rows[4].help != nil)
         // The card's colour and radius.
         var fill: NSColor?

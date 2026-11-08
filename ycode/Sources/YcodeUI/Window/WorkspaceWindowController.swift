@@ -58,6 +58,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     }
     let leftAreaObservation = LeftAreaObservation()
     let imageViewerBox = ImageViewerBox()
+    let inspectorFollowBox = InspectorFollow()   // +FileSwitch.swift
     let inspectorSlideBox = InspectorSlideState()
     /// The coding assistant (WorkspaceWindowController+CodingAssistant.swift).
     let codingAssistantHolder = CodingAssistantHolder()
@@ -834,7 +835,12 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     public private(set) var assetEditor: AssetCatalogEditorController? { didSet { updateAssetInspector(previous: oldValue) } }
 
     /// The Interface Builder document editor (read-only), while it is shown.
-    public private(set) var interfaceEditor: InterfaceBuilderController? { didSet { updateInterfaceInspectors() } }
+    /// Clearing it when none was shown leaves the inspector alone: every
+    /// file switch clears it, and the rebuild doubled the switch's work
+    /// (`editor-area.md` H.7, council row 163).
+    public private(set) var interfaceEditor: InterfaceBuilderController? {
+        didSet { if oldValue != nil || interfaceEditor != nil { updateInterfaceInspectors() } }
+    }
 
     /// While an Interface Builder document is shown, the inspector area
     /// adds its Identity, Attributes, Size and Connections inspectors.
@@ -1661,7 +1667,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         }
         editor.pathComponents = jumpPath(for: url)
         refreshEditorMarks()
-        inspector.show(file: url)
+        showInspectorAfterEditor(file: url)
         if let line { editor.reveal(line: line) }
     }
 
@@ -1948,7 +1954,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             // §4.3.3: a new conversation in the Coding Assistant pane
             // (coding-assistant.md §4).
             let item = NSToolbarItem(itemIdentifier: id)
-            item.image = NSImage(systemSymbolName: WorkspaceChrome.newConversation.symbols[0], accessibilityDescription: "New Conversation")
+            item.image = ToolbarGradientGlyph.newConversation()   // H.9, row 166
             item.label = "New Conversation"
             item.toolTip = "New Conversation"
             item.isBordered = true

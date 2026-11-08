@@ -38,7 +38,9 @@ extension WorkspaceShellModel {
                                              rows: [InspectorRow(key: "", value: .tags(placeholder: isImage ? "Tags" : "Only resources are taggable",
                                                                                        enabled: isImage))]))
             if isImage {
-                let rows = (ImageHeaderInfo.read(url)?.rows ?? ImageHeaderInfo.placeholderRows).map { InspectorRow(key: $0.0, value: .text($0.1)) }
+                // "--" in all four, as the reference shows for an image
+                // selected in the navigator (`editor-area.md` H.7, row 162).
+                let rows = ImageHeaderInfo.placeholderRows.map { InspectorRow(key: $0.0, value: .text($0.1)) }
                 sections.append(InspectorSection(title: "Image Properties", rows: rows))
                 sections.append(InspectorSection(title: "Localization", rows: [InspectorRow(key: "", value: .button("Localize…"))]))
             }

@@ -152,15 +152,21 @@ public enum NavigatorTree {
     }
 
     /// The rows expanded at first open, when no expansion was saved
-    /// (`reference-ui-5.md` §5.1, N4): the root and its first child that
-    /// can expand (the first group). A package opens with both "Sources"
-    /// and "Tests" expanded, their children collapsed
-    /// (`reference-ui-6.md` §5.3, N4). Expansion keys, see `expansionKey`.
+    /// (`navigators.md`; `editor-area.md` H.6, council row 160): the root
+    /// and **every group or folder that is a direct child of the main
+    /// group**, deeper ones collapsed (round 6; rounds 4–6 all showed a
+    /// second top-level group expanded). A root whose children are not
+    /// groups or folders (a workspace's projects) keeps its first child
+    /// that can expand. A package opens with both "Sources" and "Tests"
+    /// expanded, their children collapsed (`reference-ui-6.md` §5.3, N4).
+    /// Expansion keys, see `expansionKey`.
     public static func initiallyExpanded(_ root: NavigatorNode) -> [String] {
         if isPackageRoot(root) {
             let folders = root.children.filter { $0.kind == .folder && ($0.name == "Sources" || $0.name == "Tests") }
             if !folders.isEmpty { return [root.expansionKey] + folders.map(\.expansionKey) }
         }
+        let groups = root.children.filter { $0.kind == .group || $0.kind == .folder }
+        if !groups.isEmpty { return [root.expansionKey] + groups.map(\.expansionKey) }
         return [root.expansionKey] + (root.children.first(where: \.isExpandable).map { [$0.expansionKey] } ?? [])
     }
 

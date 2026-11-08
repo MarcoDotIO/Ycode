@@ -713,6 +713,96 @@ should show the two opposite arrows.
 - The posture buttons' order when the device is rotated, and whether the
   current posture follows a posture change made from the Device menu.
 
+## 14. Council round 6 (2026-11-07): the device's scale at Zoom to Fit
+
+One Retina still of each window, **1100 × 800**, sidebar hidden, the
+Settings inspector shown (x 820.5–1100), **light** appearance, the window
+key. The device was a new iPhone Duo (iOS 27.1) at its Home screen, in
+its closed posture (the cover display, **466 × 678 points**,
+`foldable.md`). Ycode `0f1408a4` showed the same simctl device, which it
+does not operate, with a black screen and its capsules disabled. Values
+in window points, half-point precision. Checklist rows 154–156 in
+`fidelity-council.md`. The council's top finding this round; the
+capsules, toolbar, title and inspector layout match within a point.
+
+### 14.1 Which zoom segment was selected
+
+Both windows had the **second of the four zoom segments** selected:
+Zoom to Fit (§4.2, §11.4). A judge read it as Actual Size; the selected
+glyph is the magnifier holding four small arrowheads pointing outward
+(Zoom to Fit), and the third segment, the magnifier holding a "1", was
+not selected. Ycode's Zoom to Fit glyph is a magnifier holding one
+diagonal two-headed arrow; draw four outward arrowheads instead (Ycode's
+own drawing).
+
+### 14.2 The frame and the screen, measured
+
+| | Reference | Ycode now |
+|---|---|---|
+| Screen (the cover display's picture) | x **289–537**, y **224–584**: **248 × 360** | x 195–626.5, y 90–717.5: 431.5 × 627.5 |
+| Scale (screen points per device point) | **0.532** across, **0.531** down: about **0.53** | **0.926** |
+| Frame, outer box (with the button bars) | x **274.5–548.5**, y **213–592.5**: 274 × 379.5 | x 180.5–640.5, y 78–729.5: 460 × 651.5 |
+| Frame band (top, right, bottom) | **8.5**: 4.5 of black (#000000) next to the screen, then about 4 of mid grey (#505050–#6F6F6F) outside it | 11.5: a 1-point grey rim (#525252) outside 10.5 of near-black #121212 |
+| Frame band, hinge side (left, closed posture) | **14.5**: 4.5 of black, then a **10-point grey step** (#444344–#575755), the folded half's edge seen behind the cover, running from y 221 to 587 | 11.5, like the other sides |
+| Button bars | **two on the top edge** near the middle, x 401–435.5 and 444–478.5 (34.5 long, 8.5 apart), 2.5 high above the band (y 213–215.5); **one on the right edge**, x 545.5–548.5, y 323.5–383 (59.5 long). None on the left (hinge) edge | three bars on the left edge (y 186–215.5, 238–293.5, 309.5–365) and one on the right (y 254–332.5) |
+| Centre | x **411.5**, y **402.75** | x 410.5, y 403.75 |
+| Gap to the toolbar's bottom (52) and to the capsules' top (755.5) | **161** above, **163** below | 26 above, 26 below |
+
+In device points the reference's band is about 16 (8.5 ÷ 0.531), its
+hinge-side step about 19, the top bars about 65 long and 16 apart, the
+right bar about 112 long, starting about 208 below the frame's top. The
+1.7 the council quoted is the ratio of the scales (0.926 ÷ 0.531 = 1.74).
+
+**What Ycode does now.** I.13's interim rule (§11.2: one device point to
+one Mac point, shrunk only to fit between the toolbar and the capsules
+with a margin) shrinks the 678-point screen to the free height minus 26
+above and below, so the frame fills 93 % of the free height. The
+reference fills 54 %.
+
+### 14.3 The scale rule: what the captures settle
+
+- **Settled.** At Zoom to Fit in the **1100 × 800** window, sidebar
+  hidden, inspector shown, the reference draws the Duo's cover at about
+  **0.53** of its point size and centres the frame between the toolbar
+  and the capsules. Rounds 3, 4, 5 and 6 measured the same box (274 ×
+  379.5) in this window in both appearances; it is not an effect of the
+  appearance or the build.
+- **Not settled: whether the scale follows the window size.** Every
+  round captured the one window size, so the captures cannot tell a
+  fixed scale from a fit with a large margin. 0.53 is not a fraction the
+  candidates explain: fitting the frame to the free height would give
+  about 0.93 with Ycode's 26-point margins and nearly 1 without; the device's physical size on this display would give
+  about 0.83 (127 Mac points per inch against the device's 153 points
+  per inch); fitting the open posture's inner display (669 × 951 points)
+  to the free height would give about 0.71. §4.2 (level 1) says Zoom to
+  Fit rescales with the window, which a fixed scale would contradict.
+
+**Target until a second window size is captured.** At Zoom to Fit, scale
+the device so that **the frame fills 54 % of the free height** (the
+toolbar's bottom to the capsules' top: 379.5 of 703.5 here) **and at
+most 33 % of the canvas width** (274 of 820.5), whichever is smaller,
+and centre it in that space. In the captured window this gives the
+reference's 0.53 exactly, and it rescales with the window as §4.2
+requires. Draw the band at about 16 device points (8.5 Mac points at this
+scale) in two tones (black inside, mid grey outside), the hinge-side step
+for a foldable's closed posture, and the button bars where the reference
+draws them for the cover (Ycode's own drawing; the places are the
+observed layout).
+
+Zoom In and Zoom Out step from this scale; Actual Size stays §4.2's
+physical size. The open and half-open postures, a classic iPhone and an
+iPad were not captured, so the 54 % / 33 % rule is extrapolated for them.
+
+### 14.4 Not settled by round 6
+
+- The scale rule (§14.3): capture the same device at Zoom to Fit in a
+  second window size (for example 1400 × 1000) and with the inspector
+  hidden, and a classic iPhone and an iPad in the 1100 × 800 window.
+- The open posture's frame and scale (the posture buttons were not
+  pressed).
+- What the reference shows for a device it cannot drive (both rounds
+  showed a running device in the reference).
+
 ## I. Ycode implementation (HUB-UI, 2026-10-28)
 
 Clean-room work from this spec, `simulator-features.md` §7 and its
@@ -1547,6 +1637,78 @@ appearance resolution, the light palette).
 - **Row 132.** Rotate is Ycode's drawing (`DeviceControlGlyphs.rotate`): a rounded square with a curved arrow over its top-left corner pointing right and one under its bottom-right corner pointing left, about 19 × 21.5, on both IDEs (macOS no longer asks the system for a symbol).
 - **Linux device window (cross-platform-parity.md §13).** `DeviceWindowFrame` (YcodeRemoteViewer) lays the SDL window out as the macOS device window: a 52-point toolbar (the device's name and OS; [Capture Keyboard │ resize mode] [Zoom Out · Zoom to Fit · Actual Size · Zoom In] [More Actions], 36-point capsules right-aligned over the canvas; the tabs [Settings · Reports · Info] over the inspector), the canvas with the control capsules, and the 280-point Settings inspector (`DeviceInspectorContent`: the macOS cards and rows, 260 wide, 42-point rows; every row disabled with a note until the window can read the device's settings; `RemoteDeviceWindow.settingsContent` is where they go). `ycode-sim-viewer` draws the toolbar and the inspector with OpenViews (rendered to pixels, `DeviceChrome.swift`); the live picture stays the SDL window's (OpenViews has no live-picture view). More Actions hangs from the toolbar and shows or hides the inspector. Ycode's choices: one device per window, so no sidebar, Add Device, Filter or Open in New Window; Zoom In and Out step through Zoom to Fit, Point Accurate and Pixel Accurate. `YCODE_VIEWER_BARE=1` keeps the bare window.
 
+
+### I.16 Council round 6: the scale at Zoom to Fit, the band, the Zoom to Fit glyph (B6-C, 2026-11-07)
+
+Clean-room work from §14 (checklist rows 154–156 of `fidelity-council.md`,
+"Round 6"), with Apple's public AppKit documentation. No Apple binary,
+Xcode, Device Hub or Simulator was opened, run or observed.
+
+- **Row 154, Zoom to Fit.** One rule for both IDEs, in one place:
+  `DeviceZoom.hubFit(frame:in:)` (YcodeDeviceModel) scales the frame's outer
+  box (`DeviceFrameGeometry.outerBox`: the body, a foldable cover's hinge
+  step and the button bars) to **379.5/703.5 (54 %) of the free height**
+  (the toolbar's bottom to the capsules' top) and **at most 274/820.5
+  (33 %) of the canvas width**, whichever is smaller (between 0.05 and 4),
+  and the drawing is centred in that space, which centres the body with its
+  step. The two shares are the only numbers to refit when a second window
+  size is captured (§14.4). macOS: the hub canvas's Zoom to Fit
+  (`DeviceCanvasView.effectiveScale`); the compact window keeps its own
+  rule (§2.2). Linux: `ViewerLayout` applies it when the device window has
+  its toolbar and inspector (`RemoteDeviceSession.hubFit`), in the canvas
+  above the capsules; that window now opens at the hub's 1100 × 800 (canvas
+  820 × 748) and keeps its size when the device turns or unfolds, as the
+  hub does (**Ycode's choice**: before, it took the device's shape); the
+  bare window (`YCODE_VIEWER_BARE=1`) keeps fitting the device with a
+  12-point margin. Zoom In and Out step from the fitted scale.
+
+  Measured in Ycode (1100 × 800, sidebar hidden, inspector shown, the Duo's
+  cover): scale **0.5308**, screen 247.5 × 360 at x 289.5, y 224, frame
+  273 × 379.5 from y 213: 161 above and 163 below. At other sizes the rule
+  extrapolates linearly with the window: 1400 × 1000 with the inspector,
+  0.682; 1100 × 800 without the inspector, 0.531 (the height decides in
+  both). The cover is width-bound once the canvas is narrower than about
+  1.16 times the free height (818 at 800 tall), so a narrower window
+  shrinks it at once. In the captured window an iPhone 18 Pro draws at
+  about 0.42 (height-bound), an iPad (A16) at about 0.31, and the **open**
+  Duo (951 × 669) at about 0.28, width-bound: its screen only 264 wide, the
+  rule's weakest extrapolation. None of these is checked against the
+  reference.
+- **Row 155, the band and the buttons.** `DeviceFrameGeometry`: a phone's
+  band is 16 points (an iPad's 20) in two tones (`innerBand` 8.5 of black
+  next to the screen, the rest mid grey #5E5E5E; `Palette`); a watch keeps
+  its one-tone band. A foldable's cover (panel 1, the closed posture) has
+  `hingeStep`, a darker grey (#4B4B4B) rounded rectangle under the cover
+  standing 11.5 out of the band on the hinge side (the left, upright), 10
+  short of the cover's top and bottom: 8.5 of black and 19 of grey there,
+  27.5 in all (14.5 window points at 0.531). Its buttons: Volume Up and
+  Volume Down as bars on the top edge (65 long, 16 apart, from 227 of the
+  498-point body), Sleep/Wake on the right edge (112 long, from 203 of
+  710), none on the hinge side; a phone's bars stand 5 points out. The open
+  posture's buttons are unchanged. The macOS `DeviceFrameView` and the
+  Linux `RemoteDeviceWindow` draw the same layers from the shared geometry
+  and palette (the step, the buttons, the grey body, the black ring, the
+  screen).
+- **Row 156, the Zoom to Fit glyph.** `DeviceControlGlyphs.zoomToFit`: a
+  lens (radius 4.4, 1.3 stroke) holding four filled arrowheads pointing to
+  its diagonal corners, and a handle to the bottom right, in the 16 × 15
+  box of the toolbar's other magnifiers. macOS draws it as a template image
+  (`DeviceControlGlyphImage.zoomToFit`) in the hub's and the compact
+  window's zoom segments; Linux draws the same shapes in the toolbar
+  (`DeviceWindowFrame.zoomToFitSymbol`, `ChromeGlyph.drawShared`).
+- **Pictures on Linux without a simulator host.** The viewer's script has
+  `device-type <type id>` (`RemoteDeviceSession.preview(spec:)`): the
+  window draws that type's frame and a black screen before any hello.
+
+Tests: `DeviceFrameR6Tests` (YcodeDeviceModel: the scale and placement in
+the captured window, the rule at other sizes, the two tones, the step and
+the cover's buttons, the step turning, the glyph's arrowheads),
+`DeviceWindowR6Tests` (YcodeRemoteViewer: the framed window's size and
+scale, the bare window, `device-type`, the glyph's name), `DeviceHubR6Tests`
+(YcodeUI: the hub's scale, screen, frame and gaps, the rule at 1400 × 1000
+and with the inspector hidden, the band's colours read back, the segment's
+image); `WatchWindowTests` follows the rule.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -1588,6 +1750,8 @@ appearance resolution, the light palette).
 | Gap list (§9) | — | comparison with `ycode-sim-viewer` and `specs/ide/devices.md`; Ycode decisions |
 | Council round 4 (§12): the capsules in dark, the toolbar's enabled states | 3 | Council round 4 device still (Device Hub and Ycode, dark, 2x): capsule boxes from pixels differing from the canvas, rim and fill samples, glyph ink boxes and colours, toolbar glyph brightness |
 | Council round 5 (§13): the second capsule's items for a foldable, sizes, centres and colours | 3 | Council round 5 device still (Device Hub and Ycode, dark, 2x): horizontal and vertical colour runs through the capsules, glyph ink boxes and colours |
+| Council round 6 (§14): the selected zoom segment, the frame's and the screen's boxes, the scale, the band, the button bars, the gaps to the toolbar and the capsules | 3 | Council round 6 device still (Device Hub and Ycode, light, 2x, 1100 × 800): colour runs along rows and columns through the frame and the screen, classified as wallpaper, black band, grey band and canvas; rounds 3–5's stills for the same box; the cover display's point size from `foldable.md` and `uikit-feel.md` (level 3) |
+| §14.3's interim scale rule | — | Ycode decision fitted to the one captured window size |
 | Ycode implementation, round 3 (§I.13): the capsules' layout, the Linux glyphs and More Actions, the cards, the canvas placement | — | §11's measurements; Ycode decisions; public AppKit API (`NSToolbarItemGroup.controlRepresentation`, `NSToolbarItem.isHidden`), SDL 3's public `SDL_GetSystemTheme` (level 1) |
 | Ycode implementation (§I): frame proportions, symbols, steps, banners, lifecycle, persistence, the answers to Q1–Q13 | — | Ycode decisions; public AppKit API (`NSSplitViewController`, `NSToolbarItemGroup`, `NSMenuToolbarItem`, `NSGlassEffectView`, `NSTrackingSeparatorToolbarItem`), public SF Symbols names, AVFoundation (`AVAssetWriter`) and Core Graphics (`CGDisplayScreenSize`) documentation (level 1) |
 | Device panel data (§I.1): pixels, scale, pixels per inch, corner radii | — | Ycode's own device types (`Sources/ycode-simd/DeviceTypes.swift`, `device-capabilities.md`, `foldable.md` §10) |

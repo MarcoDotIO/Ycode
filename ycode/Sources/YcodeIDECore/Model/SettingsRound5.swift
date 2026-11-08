@@ -72,11 +72,11 @@ public enum SettingsAppearanceLayout {
     public static let colorRowHeight: CGFloat = 56
     public static let colorLabelCapTop: CGFloat = 13
     /// The slider: x 421.5–624 (221.5–424 inside the card), a 14-point
-    /// track and a knob about 27 across.
+    /// track and a knob about 28 across (R6.1).
     public static let sliderX: CGFloat = 221.5
     public static let sliderWidth: CGFloat = 202.5
     public static let sliderTrackHeight: CGFloat = 14
-    public static let sliderKnob: CGFloat = 27
+    public static var sliderKnob: CGFloat { SettingsAppearanceR6.knobDiameter }
     /// The colour well: a 48 × 28 capsule 10 inside the card, a 3-point rim.
     public static let wellSize = CGSize(width: 48, height: 28)
     public static let wellRim: CGFloat = 3
@@ -105,7 +105,8 @@ public enum SettingsR5Palette {
     public static let segmentSelected: Pair = (0x0077F9, 0x0A7CFF)
     public static let pushButton: Pair = (0xE4E4E4, 0x3D3D3D)
     public static let pushButtonLabel: Pair = (0x232323, 0xE0E0E0)
-    public static let wellRim: Pair = (0xE2E2E2, 0x4A4A4A)
+    /// The well's 3-point rim (#DFDFDF light, R6.1).
+    public static let wellRim: Pair = SettingsAppearanceR6.wellRim
     /// Components' subtitles, "Last used" and the info button (R5.2).
     public static let subtitle: Pair = (0x7C7C7C, 0x9D9D9D)
     /// Components' platform symbols: the accent colour in both appearances.

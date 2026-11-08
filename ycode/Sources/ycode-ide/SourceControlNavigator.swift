@@ -23,9 +23,9 @@ struct SourceControlNavigator: View {
                 scm.mode = SourceControlShellModel.Mode(rawValue: i) ?? .changes
             }
             .padding(.horizontal, CGFloat(RepositoriesViewStyle.modeControlInset))
-            // y 88 under the selector, the rows from 117 (the macOS
-            // navigator's; cross-platform-parity.md §7).
-            .padding(.top, 7)
+            // y 90 under the selector, the rows from 119 (the macOS
+            // navigator's; cross-platform-parity.md §7; 2 lower, H.9, row 166).
+            .padding(.top, 7 + CGFloat(RepositoriesViewStyle.modeControlDrop))
             .padding(.bottom, 3)
             if !scm.hasRead {
                 EmptyNavigator(lines: ["Source Control", "Reading the repository…"])

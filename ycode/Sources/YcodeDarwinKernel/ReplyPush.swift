@@ -128,6 +128,59 @@ public final class HeldPushCounter: @unchecked Sendable {
     private struct Servicer { weak var thread: ThreadContext? }
     /// A leaf lock.
     private let servicer = Mutex<Servicer>(Servicer())
+    /// The request-tied hand-off (`YCODE_HANDOFF_PUSH=request`, §4.14): the
+    /// counters of the workloops whose servicers asked this workloop for a
+    /// thread while they held requests (`sources`: their pushes count here
+    /// until those requests are answered), and the counters this one lends
+    /// its push to (`dependents`). A leaf lock, never held while another lock
+    /// is taken.
+    private struct Weak { weak var counter: HeldPushCounter? }
+    private struct Links {
+        var sources: [Weak] = []
+        var dependents: [Weak] = []
+    }
+    private let links = Mutex<Links>(Links())
+
+    /// The highest class this workloop's servicer carries: its own held
+    /// requests and those of the workloops it serves a hand-off for; −1 none.
+    var effectiveMaxClass: Int {
+        var m = Self.maxClass(counts.load(ordering: .relaxed))
+        guard SchedPolicy.handoffRequestTied else { return m }
+        let sources = links.withLock { $0.sources.compactMap(\.counter) }
+        for c in sources { m = max(m, Self.maxClass(c.counts.load(ordering: .relaxed))) }
+        return m
+    }
+
+    /// The servicer of `source`'s workloop, which holds requests, asked this
+    /// workloop for a thread: this workloop's servicer carries `source`'s push
+    /// until its requests are answered. True when the link is new.
+    @discardableResult
+    func lend(from source: HeldPushCounter) -> Bool {
+        guard source !== self else { return false }
+        let added = links.withLock { l -> Bool in
+            l.sources.removeAll { $0.counter == nil }
+            guard !l.sources.contains(where: { $0.counter === source }) else { return false }
+            l.sources.append(Weak(counter: source))
+            return true
+        }
+        guard added else { return false }
+        source.links.withLock { l in
+            l.dependents.removeAll { $0.counter == nil }
+            l.dependents.append(Weak(counter: self))
+        }
+        refreshServicer()
+        return true
+    }
+
+    /// `source` holds no request any longer: it lends nothing.
+    private func unlend(_ source: HeldPushCounter) {
+        links.withLock { $0.sources.removeAll { $0.counter == nil || $0.counter === source } }
+        refreshServicer()
+    }
+
+    private func refreshServicer() {
+        if let t = servicer.withLock({ $0.thread }), t.isAlive { t.kernel?.refreshSchedClass(t) }
+    }
 
     /// The highest class a packed count word holds; −1 none.
     static func maxClass(_ w: UInt64) -> Int {
@@ -142,7 +195,7 @@ public final class HeldPushCounter: @unchecked Sendable {
     func attach(_ ctx: ThreadContext) {
         servicer.withLock { $0.thread = ctx }
         ctx.schedPushes.withLock { $0.workloop = self }
-        if counts.load(ordering: .relaxed) != 0 { ctx.kernel?.refreshSchedClass(ctx) }
+        if effectiveMaxClass >= 0 { ctx.kernel?.refreshSchedClass(ctx) }
     }
 
     /// `ctx` stopped servicing it.
@@ -153,13 +206,28 @@ public final class HeldPushCounter: @unchecked Sendable {
             p.workloop = nil
             return true
         }
-        if had, counts.load(ordering: .relaxed) != 0 { ctx.kernel?.refreshSchedClass(ctx) }
+        if had, effectiveMaxClass >= 0 { ctx.kernel?.refreshSchedClass(ctx) }
     }
 
-    /// Adds (`sign` 1) or removes (−1) `units` of push; the servicer's class follows.
+    /// Adds (`sign` 1) or removes (−1) `units` of push; the servicer's class
+    /// follows, and so do the servicers this counter lends to; when its last
+    /// request is answered it stops lending.
     func change(_ units: UInt64, sign: Int) {
-        if sign > 0 { counts.wrappingAdd(units, ordering: .relaxed) } else { counts.wrappingSubtract(units, ordering: .relaxed) }
-        if let t = servicer.withLock({ $0.thread }), t.isAlive { t.kernel?.refreshSchedClass(t) }
+        let now: UInt64
+        if sign > 0 { now = counts.wrappingAdd(units, ordering: .relaxed).newValue } else { now = counts.wrappingSubtract(units, ordering: .relaxed).newValue }
+        refreshServicer()
+        let dependents = links.withLock { l -> [HeldPushCounter] in
+            let d = l.dependents.compactMap(\.counter)
+            if now == 0 { l.dependents = [] }
+            return d
+        }
+        guard !dependents.isEmpty else { return }
+        if now == 0 {
+            for d in dependents { d.unlend(self) }
+            SchedStats.handoffsEnded.wrappingAdd(UInt64(dependents.count), ordering: .relaxed)
+        } else {
+            for d in dependents { d.refreshServicer() }
+        }
     }
 }
 

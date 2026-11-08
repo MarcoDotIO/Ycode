@@ -156,7 +156,9 @@ import Testing
         #expect(knob.minX == 1 && knob.width == 11 && knob.minY == 3 && abs(knob.maxY - (ruler.bounds.height - 3)) < 0.01, "\(knob)")
         // Lines of the right pane where each change starts.
         let rows = sheet.canvas.rows
-        let lines = rows.compactMap(\.right).count
+        // Counted as an editor counts them: the empty line after the final
+        // line break too (§15.3).
+        let lines = rows.compactMap(\.right).count + 1
         let starts = rows.filter(\.isFirstOfHunk).compactMap { $0.right?.number }
         #expect(sheet.ruler.marks.map(\.position) == starts.map { (Double($0) - 0.5) / Double(lines) })
         let s = try base.snapshot(wc)

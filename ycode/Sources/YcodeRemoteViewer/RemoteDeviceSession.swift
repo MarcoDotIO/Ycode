@@ -269,16 +269,43 @@ public final class RemoteDeviceSession: @unchecked Sendable {
     /// window), a foldable's other panel or turn. Nil before the hello and
     /// while the frame is the same, so the person's own resizing stays.
     public func windowFitIfNeeded() -> (width: Double, height: Double)? {
-        guard hello != nil else { return nil }
+        guard hello != nil || previewing else { return nil }
         let g = geometry
         guard g != fittedGeometry else { return nil }
+        let first = fittedGeometry == nil
         fittedGeometry = g
+        if hubFit && scaleMode == .fit {
+            // The device window at Zoom to Fit: the hub's window at first
+            // (its canvas; the device scales into it, §14.3), then the
+            // window stays as it is when the device turns or unfolds, as the
+            // macOS hub's does.
+            return first ? Self.hubCanvas : nil
+        }
         return ViewerLayout.windowSize(geometry: g, scale: layout.scale)
+    }
+
+    /// The device window's canvas when it first shows a device: the macOS
+    /// hub window's 1100 × 800 less the toolbar and the inspector.
+    public static let hubCanvas = (width: 1100 - DeviceWindowFrame.inspectorWidth, height: 800 - DeviceWindowFrame.toolbarHeight)
+
+    /// The window has the device window's toolbar and inspector, so Zoom to
+    /// Fit follows the macOS hub's rule (ViewerLayout, `DeviceZoom.hubFit`).
+    public var hubFit = false
+
+    /// A device type drawn without a server (a script's `device-type`, for
+    /// pictures of the window): its frame, a black screen.
+    public private(set) var previewing = false
+
+    /// Shows `spec`'s frame before (or without) a server's hello.
+    public func preview(spec s: DeviceFrameSpec) {
+        guard hello == nil else { return }
+        spec = s
+        previewing = true
     }
 
     public var layout: ViewerLayout {
         ViewerLayout(geometry: geometry, mode: scaleMode, windowWidth: windowWidth, windowHeight: windowHeight,
-                     pixelDensity: pixelDensity, deviceScale: panel?.scale ?? hello?.scale ?? spec.panels[0].scale)
+                     pixelDensity: pixelDensity, deviceScale: panel?.scale ?? hello?.scale ?? spec.panels[0].scale, hubFit: hubFit)
     }
 
     /// The shown picture's size in points (touch space as shown).

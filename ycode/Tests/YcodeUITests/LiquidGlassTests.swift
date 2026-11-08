@@ -57,9 +57,12 @@ import Testing
         let scroll = nav.scrollView
         let inRoot = scroll.convert(scroll.bounds, to: nav.view)
         #expect(abs(inRoot.maxY - sel.maxY) <= 0.5 && abs(inRoot.minY - field.minY) <= 0.5, "\(inRoot)")
-        // The scroll bar's track: 3 below the selector, 11 above the filter capsule.
-        #expect(abs(scroll.scrollerInsets.top - sel.height - 3) <= 0.5 && abs(scroll.scrollerInsets.bottom - field.height - 11) <= 0.5,
-                "\(scroll.scrollerInsets)")
+        // The scroll bar's track: 3 below the selector, 11 above the filter
+        // capsule. The scroll view insets its scrollers by the content
+        // insets and the scroller insets together (council row 167).
+        let ci = scroll.contentInsets, si = scroll.scrollerInsets
+        #expect(abs(ci.top + si.top - sel.height - 3) <= 0.5 && abs(ci.bottom + si.bottom - field.height - 11) <= 0.5,
+                "\(ci) \(si)")
         // The first row sits 7 below the selector capsule.
         let row0 = nav.outlineView.convert(nav.outlineView.rect(ofRow: 0), to: nav.view)
         #expect(nav.outlineView.numberOfRows == 0 || abs(sel.minY - row0.maxY - NavigatorAreaController.firstRowGap) <= 0.5, "\(row0) \(sel)")

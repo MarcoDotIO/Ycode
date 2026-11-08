@@ -691,6 +691,94 @@ scroller with grey ticks" is this knob.
 | 129 | Both IDEs: in dark an 11-point knob (#A2A2A2, x 1 in the strip) over the visible part of the track (3 inside the pane's top and bottom; the whole track when the file fits), marks #FDB9B5 / #D4D4D4 at (line − 0.5) ÷ lines of the right pane's logical lines (`rulerMarks`, `rulerMarkY`, `rulerKnob`). Light keeps §4.4's strip without a knob. |
 | 130 | The alert's and the sheet's `MergeButton`s and drawn controls answer the accessibility hit test (an `NSControl` without a cell answered nothing). `MergeSheetR5UITests` runs the capture driver's search (§13.2: application element, children only, role and title) and its press in a separate process (`xcrun swift`) against the test's own application, with the window ordered in off every display: Merge is found at application → window → sheet → button, enabled, with the press action, its frame covering the drawn button (AppKit adds a point on each side, as the reference's 82 × 22), the default and cancel attributes, and the press opens the sheet in 0.3 ms; the sheet's Cancel and Merge are found the same way. Off every display the window server's hit test finds no window, so the hit test is checked through AppKit's own (`accessibilityHitTest`). |
 
+## 15. Council round 6: word runs, the current change's rules, the ruler in light, the alert's order (2026-11-07)
+
+Round 6 repeated round 5's conflict session (Retina, 120 fps, the window
+at display (56, 36), a 60-point margin below it) in the **light**
+appearance, with Ycode `0f1408a4`. Values in window points of the 1400 ×
+880 window; times in ms from the click the capture tool posted. The
+sheet is now whole in Ycode (§14.1 met) and the resolved state matches
+(§14.3's focus rule met: the file row turns grey with the red badge in
+both). Checklist rows 146–148 and 168 in `fidelity-council.md`.
+
+### 15.1 Changed-word runs (refines §6)
+
+The highlight fill is #FF9A9D on the conflict row's #FFDCDD in both
+apps; the sheet's cell is 8.0 wide. Runs measured on conflict 03 (before
+any choice), x in window points:
+
+| Line | Left pane, reference | Left pane, Ycode now | Right pane, reference | Right pane, Ycode now |
+|---|---|---|---|---|
+| 9 | **Good** 355.5–387.5 (4 cells), **morning** 395.5–451.5 (7) | **"Good** 349–389 (5: the quote too), **morning,** 397–461 (8: the comma too) | **Welcome** 926.5–982.5 (7), **aboard** 991–1038.5 (6) | **"Welcome** 920–984, **aboard,** 992–1048 |
+| 13 | **Farewell** 355.5–419.5 (8) | **"Farewell,** 349–429 (10) | **See you soon** 926.5–1022.5 (**12 cells, one run**, its two spaces filled) | **"See** 920–952, **you** 960–984, **soon,** 992–1032 (three runs) |
+
+(Ycode's text also starts 1.5 points right of the reference's.)
+
+**The rule the reference follows.** Split each side's line into tokens:
+a run of word characters (letters, digits, underscore), a run of
+whitespace, or **one other character** (every quote, comma, bracket and
+operator is a token of its own). Match the two token sequences (longest
+common subsequence). Fill each **maximal run of consecutive unmatched
+tokens** as one box, whitespace inside the run included; matched tokens
+stay unfilled. On line 9 the space between "Good" and "morning" matches
+the space between "Welcome" and "aboard", so each side has two runs; on
+line 13 the left has no space between its quote and comma for the
+right's spaces to match, so "See you soon" is one unmatched run. Ycode
+splits on whitespace only (so quotes and commas join their words) and
+fills each word on its own.
+
+**After a choice** (conflict 04) both apps keep the left pane's fills at
+the cells they had before the choice, over the new text (so they fall
+across "Welcome aboard" in fragments): open question 6 is answered for
+this case, the fills are not recomputed, and Ycode does the same.
+
+### 15.2 The current change's rules, and Choose Right's timing (refines §6, §14.3)
+
+| Event | Reference | Ycode now |
+|---|---|---|
+| The conflict's 1-point rules (top and bottom of its rows, both panes and the gutter) turn from #DA5559 to **#FF656A** | **113 ms after the click on the token**, before the menu opens | only when the choice is applied: about 1.67 s after the token click (457 ms after the item's click) |
+| Choose Right's highlight, from the click on the item | on at **165** (round 5: 151) | on at 57, again at 73 and 140 (row 128, unchanged) |
+| The menu's fade | 215–319 | 207–323 |
+| The left pane's new text | **452**; the changed region is the left pane's line and the token (x 356–810) | **457**; the changed region spans both panes and the gutter (x 244–1338), because the rules change in the same frame |
+
+So §6's "#FF656A once a choice has been made" reads better as **the
+current change's rules are #FF656A while the panes have the focus**: the
+token click moves the focus into the panes (§14.3, 148 ms in round 5)
+and the rules brighten with it (113 ms here). **Target:** draw the
+current change's rules #FF656A whenever the panes are focused, #DA5559
+when the file list is; with that, the text change is the only repaint at
+the choice. The judges' 303 against 417 ms is the tool's segment
+starting at each app's first highlight (165 against 57); the fade and
+the text change already match.
+
+### 15.3 The right pane's overview ruler in light (refines §14.4)
+
+| | Reference | Ycode now |
+|---|---|---|
+| Knob | none drawn in light (the strip stays white over the track) | none |
+| Marks | 1-point lines, #FDB9B5 conflicts at y **423** and **571**, #D4D4D4 the clean change at **719**: (line − 0.5) ÷ 19 of a track **105–815** (710), as in dark | the same colours at y 439.5, 597.5, 755.5: the same fraction of a track **105–853** (748): 16.5–36.5 lower |
+
+**Target:** the track ends at 815 in light as in dark (§14.4), so the
+marks land on the reference's y.
+
+### 15.4 The alert's accessibility children (refines §13.2)
+
+The children of the alert's sheet element, in order:
+
+| # | Reference | Ycode now |
+|---|---|---|
+| 1 | an image, 18 × 18, at the alert's bottom-left (empty on screen; described as a source-control status image) | the message text (296 × 36) |
+| 2 | **Merge** button, 82 × 22 | the informative text (296 × 32) |
+| 3 | **Cancel** button, 60 × 22 | Cancel, 60 × 22 |
+| 4 | the message text, 296 × **34** | Merge, 81 × 22 |
+| 5 | the application icon image, 66 × 66 | — |
+| 6 | the informative text, 296 × **30** | — |
+
+**Target:** the reference's order (the default button before the cancel
+button, both before the texts); expose the icon as an image with a
+description (Ycode's own words); the status image is optional (nothing
+is drawn for it). The buttons' frames already match.
+
 ## Open questions
 
 Each has a Ycode answer in §12, marked "Ycode's choice, open question".
@@ -710,7 +798,8 @@ Each has a Ycode answer in §12, marked "Ycode's choice, open question".
    items were not captured.
 5. Alignment when the two sides of a change have different line counts.
 6. Whether the changed-word fills are recomputed after a choice (the
-   capture showed them at the old positions).
+   capture showed them at the old positions). Answered for Choose Right
+   by round 6 (§15.1): they are not.
 7. The context menu for the current branch row and for remote branches,
    tags and stashes; the Integrate ▸ Merge path (not captured).
 8. Flat mode of the file list, and a sheet with several conflicted files.
@@ -745,3 +834,4 @@ Each has a Ycode answer in §12, marked "Ycode's choice, open question".
 | §13.2: the reference's Merge button as found (role, title, frame, action, press time) | 3 | The round 5 conflict manifest's result for the accessibility press |
 | §13.2: default and cancel button attributes, static texts in alerts | 1 | AppKit accessibility documentation (`NSAccessibility` protocol) |
 | §14: the sheet below the window, the buttons, Choose Right's row, badge, highlight and fade timing, the ruler in dark | 3 | Council round 5 stills `02-merge-start-alert`, `03-conflict-at-rest`, `04-conflict-choose-right-after` (app mode with a 60-point margin) and recording `04-conflict-choose-right` (120 fps) of both apps, dark; vertical and horizontal colour runs, per-frame samples of the file row, its badge and the menu item, timed against the driver's posted clicks |
+| §15: changed-word runs, the current change's rules and Choose Right's timing, the ruler in light, the alert's children | 3 | Council round 6 stills `02-merge-start-alert`, `03-conflict-at-rest`, `04-conflict-choose-right-after` and the alert's accessibility tree (`02-merge-start-alert-tree`), recording `04-conflict-choose-right` (120 fps), both apps, light: highlight runs on a pixel row inside the fill, colour runs through the ruler, per-frame changed regions and one-point colour samples timed against the posted clicks |

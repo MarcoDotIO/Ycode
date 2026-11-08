@@ -5,8 +5,12 @@
 // as a short ridged cylinder and the side button as a long flat bar on its
 // right edge, and the Ultra types the Action button on the left. Everything
 // is in device points; a view scales it. Ycode decision: the band and
-// button positions are Ycode's own proportions, not measured from any
-// device or picture.
+// button positions are Ycode's own proportions, except where council round
+// 6 measured the reference's drawing (device-hub.md §14.2, row 155): a
+// phone's or iPad's band is about 16 points in two tones (black next to the
+// screen, mid grey outside), a foldable's cover shows the folded half's edge
+// as a grey step on its hinge side, and the cover's buttons are two bars on
+// its top edge and one on its right edge.
 
 import Foundation
 #if canImport(CoreGraphics)
@@ -150,31 +154,74 @@ public struct DeviceFrameGeometry: Equatable, Sendable {
     public var screen: CGRect
     public var screenRadii: CornerRadii
     public var buttons: [Button]
+    /// The band's black inner part next to the screen (device points); the
+    /// rest of the band, outside it, is mid grey. Nil: one tone (a watch,
+    /// or no band).
+    public var innerBand: Double?
+    /// A foldable's cover (closed posture): the folded half's edge seen
+    /// behind the cover on the hinge side, drawn under the body.
+    public var hingeStep: CGRect?
+    public var hingeStepRadii = CornerRadii(all: 0)
     /// A partially open iPhone Duo: the hinge line and the half drawn in
     /// shade (Ycode's flat stand-in for the reference's perspective view).
     public var hinge: FrameSegment?
     public var shadedArea: CGRect?
 
-    /// How far buttons stand out from the body.
+    /// How far buttons stand out from the body (a watch's side and Action
+    /// buttons, an iPad's).
     public static let protrusion: Double = 3
+    /// How far a phone's buttons stand out (§14.2: the cover's bars stand
+    /// 2.5 and 3 window points out at a scale of 0.531, about 5 device points).
+    public static let phoneProtrusion: Double = 5
     /// How far a watch's Digital Crown stands out from the body.
     public static let crownProtrusion: Double = 8
 
     /// The band's width per family (Ycode decision).
     public static func band(_ family: DeviceFamily) -> Double {
         switch family {
-        case .phone: 12
+        case .phone: 16
         case .pad: 20
         case .vision: 0
         case .watch: 16
         }
     }
 
+    /// The band's black inner part (§14.2: 4.5 of the 8.5 window points at a
+    /// scale of 0.531, about 8.5 device points); nil: a one-tone band.
+    public static func innerBand(_ family: DeviceFamily) -> Double? {
+        switch family {
+        case .phone, .pad: 8.5
+        case .vision, .watch: nil
+        }
+    }
+
+    /// The hinge-side step of a foldable's cover (§14.2): it stands this far
+    /// out of the cover's band (the band's 7.5 points of grey plus this make
+    /// the reference's 10 window points of grey at 0.531), and stops this far
+    /// short of the cover's top and bottom edges.
+    public static let hingeStepWidth: Double = 11.5
+    public static let hingeStepInset: Double = 10
+
+    /// The band's colours (sRGB): black next to the screen, mid grey outside
+    /// it (§14.2: #505050–#6F6F6F), the hinge-side step a darker grey
+    /// (#444344–#575755), the buttons the band's grey.
+    public enum Palette {
+        public static let inner: UInt32 = 0x000000
+        public static let outer: UInt32 = 0x5E5E5E
+        public static let step: UInt32 = 0x4B4B4B
+        public static let button: UInt32 = 0x5E5E5E
+        public static let pressedButton: UInt32 = 0x8C8C8C
+    }
+
     /// The space left round the body for what stands out of it: the
     /// buttons, a watch's crown (the same on every side, so the screen
     /// stays at the drawing's centre).
     public static func margin(_ family: DeviceFamily) -> Double {
-        family == .watch ? crownProtrusion : protrusion
+        switch family {
+        case .watch: crownProtrusion
+        case .phone: phoneProtrusion
+        default: protrusion
+        }
     }
 
     /// The frame for `spec`'s panel `panelIndex`, the device turned
@@ -195,12 +242,26 @@ public struct DeviceFrameGeometry: Equatable, Sendable {
             return
         }
         let b = Self.band(spec.family), m = Self.margin(spec.family)
-        let body = CGRect(x: m, y: m, width: screenSize.width + 2 * b, height: screenSize.height + 2 * b)
-        let screen = CGRect(x: m + b, y: m + b, width: screenSize.width, height: screenSize.height)
-        var g = DeviceFrameGeometry(size: CGSize(width: body.width + 2 * m, height: body.height + 2 * m), body: body,
-                                    bodyRadii: screenRadii.grown(by: b), screen: screen, screenRadii: screenRadii, buttons: [])
         let inner = spec.isFoldable && panelIndex == 1
-        g.buttons = Self.buttons(spec: spec, inner: inner, body: body)
+        // A foldable's cover: the folded half's edge on the hinge side (the
+        // left of the upright cover, whose small corners are there).
+        let cover = spec.isFoldable && panelIndex == 0
+        let step = cover ? Self.hingeStepWidth : 0
+        let body = CGRect(x: m + step, y: m, width: screenSize.width + 2 * b, height: screenSize.height + 2 * b)
+        let screen = CGRect(x: m + step + b, y: m + b, width: screenSize.width, height: screenSize.height)
+        let bodyRadii = screenRadii.grown(by: b)
+        var g = DeviceFrameGeometry(size: CGSize(width: body.width + step + 2 * m, height: body.height + 2 * m), body: body,
+                                    bodyRadii: bodyRadii, screen: screen, screenRadii: screenRadii, buttons: [])
+        g.innerBand = Self.innerBand(spec.family)
+        if cover {
+            // From the drawing's left edge to the cover's middle (the rest
+            // is under the cover), its outer corners those of the cover's
+            // hinge side.
+            let inset = Self.hingeStepInset
+            g.hingeStep = CGRect(x: m, y: body.minY + inset, width: step + body.width / 2, height: body.height - 2 * inset)
+            g.hingeStepRadii = CornerRadii(topLeft: bodyRadii.topLeft, topRight: 0, bottomRight: 0, bottomLeft: bodyRadii.bottomLeft)
+        }
+        g.buttons = Self.buttons(spec: spec, inner: inner, cover: cover, body: body)
         if inner, posture == .halfOpen {
             g.hinge = FrameSegment(from: CGPoint(x: body.midX, y: body.minY), to: CGPoint(x: body.midX, y: body.maxY))
             g.shadedArea = CGRect(x: screen.minX, y: screen.minY, width: screen.width / 2, height: screen.height)
@@ -220,14 +281,18 @@ public struct DeviceFrameGeometry: Equatable, Sendable {
 
     /// The buttons of an upright body (Ycode decision: a phone has the
     /// action button and volume on its left edge and the side button on its
-    /// right; an iPad its top button on the top edge near the right corner
+    /// right; a foldable's cover, as council round 6 measured it (§14.2),
+    /// two bars on its top edge right of the middle (Volume Up, Volume Down:
+    /// 65 long, 16 apart, from 227 of the 498-point body) and the side button
+    /// on its right edge (112 long, from 203 of 710) and nothing on its hinge
+    /// side; an iPad its top button on the top edge near the right corner
     /// and volume on the right edge near the top; an open iPhone Duo keeps
     /// the cover's side button and volume on its right edge and the action
     /// button on its top edge; a watch has the crown in the upper part of
     /// its right edge, the side button below it, and an Ultra the Action
     /// button on its left edge).
-    static func buttons(spec: DeviceFrameSpec, inner: Bool, body: CGRect) -> [Button] {
-        let m = protrusion, t = protrusion + 2  // a bar tucks 2 points under the body
+    static func buttons(spec: DeviceFrameSpec, inner: Bool, cover: Bool = false, body: CGRect) -> [Button] {
+        let m = spec.family == .phone ? phoneProtrusion : protrusion, t = m + 2  // a bar tucks 2 points under the body
         let W = body.width, H = body.height
         func left(_ y: Double, _ len: Double) -> CGRect { CGRect(x: body.minX - m, y: body.minY + y * H, width: t, height: len * H) }
         func right(_ y: Double, _ len: Double) -> CGRect { CGRect(x: body.maxX - 2, y: body.minY + y * H, width: t, height: len * H) }
@@ -244,6 +309,9 @@ public struct DeviceFrameGeometry: Equatable, Sendable {
         case .pad:
             return [Button(kind: .top, rect: top(0.80, 0.07)),
                     Button(kind: .volumeUp, rect: right(0.07, 0.055)), Button(kind: .volumeDown, rect: right(0.14, 0.055))]
+        case .phone where cover:
+            return [Button(kind: .volumeUp, rect: top(227.0 / 498, 65.0 / 498)), Button(kind: .volumeDown, rect: top(308.0 / 498, 65.0 / 498)),
+                    Button(kind: .side, rect: right(203.0 / 710, 112.0 / 710))]
         case .phone where inner:
             return [Button(kind: .action, rect: top(0.60, 0.035)),
                     Button(kind: .side, rect: right(0.22, 0.17)),
@@ -269,6 +337,8 @@ public struct DeviceFrameGeometry: Equatable, Sendable {
             let h = size.height
             body = Self.turnedOnce(body, height: h)
             screen = Self.turnedOnce(screen, height: h)
+            hingeStep = hingeStep.map { Self.turnedOnce($0, height: h) }
+            hingeStepRadii = hingeStepRadii.turned(1)
             shadedArea = shadedArea.map { Self.turnedOnce($0, height: h) }
             buttons = buttons.map { Button(kind: $0.kind, rect: Self.turnedOnce($0.rect, height: h)) }
             hinge = hinge.map { s in
@@ -278,6 +348,25 @@ public struct DeviceFrameGeometry: Equatable, Sendable {
             screenRadii = screenRadii.turned(1)
             size = CGSize(width: size.height, height: size.width)
         }
+    }
+
+    // MARK: Outline
+
+    /// The frame's outer box: the body, the hinge-side step and the buttons
+    /// (what council round 6 measured as the frame, 274 × 379.5 window
+    /// points for the Duo's cover; §14.2).
+    public var outerBox: CGRect {
+        var r = body
+        if let s = hingeStep { r = r.union(s) }
+        for b in buttons { r = r.union(b.rect) }
+        return r
+    }
+
+    /// The black inner part of the band (the screen grown by `innerBand`)
+    /// and its corner radii; nil for a one-tone band.
+    public var innerBandRect: (rect: CGRect, radii: CornerRadii)? {
+        guard let w = innerBand, body != screen else { return nil }
+        return (screen.insetBy(dx: -w, dy: -w), screenRadii.grown(by: w))
     }
 
     // MARK: Hit testing

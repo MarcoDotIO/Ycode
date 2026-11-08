@@ -5145,6 +5145,318 @@ about 1.25 × slower per core than the reference Mac for this code): 24.5 s
   are on by default for `--device` runs, with the band and the reply push
   (`ycode-simd/main.swift`); setting either to `0` turns it off.
 
+## 26. Thread starts, datamigrator, the guest code on the path (agent B3-BOOT10, 2026-11-07)
+
+§25.8's next steps: datamigrator inside the system-shell check-in, the
+guest code on the critical path (SpringBoard, chronod), and a hand-off that
+knows its work item. Target: home_s ≤ 21.4 s, full boot, every service on
+(networking and the Duo's inner panel included).
+
+### 26.1 Conditions
+
+Thor; a fresh copy of the golden device (the source of §20–§25), aged nine
+times at its path before any timed series (five boots held 5 s after home,
+four held 120 s; home 62.6, 24.5, 25.4, 25.8, 26.5, 25.8, 23.7, 24.2,
+23.8 s; the first boot ran the data migration). Builds: *base* =
+`29ba87dd` (the main line: band, reply, transit and watch pushes on for
+device runs); *tree* = `5507599b` (§26.4's switches), *tree2* =
+`0f1fce58` (with §26.5's first version) and *tree3* = `6bef6664` (its
+second), every new switch off by default, so with no variable set each is
+the main line's program plus a counter (§26.4). Frame-profile boots as §24
+(`YCODE_FRAME_PROFILE_BOOT=120`): `p-def` (tree, defaults, home 25.3 s),
+`p-sc` (`YCODE_START_CLASS=1`, 24.6 s), `p-uiw`
+(`YCODE_HOST_SCHED_UI_WEIGHT=4000`, 24.9 s), `p-all` (start class, 8
+creator threads, `YCODE_FAST_TRAP_HOST_CLASS=push`, 24.8 s), `p-req`
+(*tree2*: start class, 8 creators, `YCODE_HANDOFF_PUSH=request`, 26.7 s),
+`p-ereq2` (*tree3*: the same with the strict band, 26.1 s). Boot-profile
+boots (§1, `YCODE_BOOT_PROFILE`, guest PC timeline of SpringBoard at
+1 000 Hz, `…_PC_RAW`; run ended by itself at 45 s): `bp-def`, `bp-sc`,
+`bp-cr` (`YCODE_VCPU_CREATORS=6`), `bp-sccr` (start class, 8 creators). A
+trace boot `tr-def` (`YCODE_SYNC_PUSH_TRACE=backboardd,com.apple.datamigrator`,
+`YCODE_IMPORTANCE_TRACE`, `YCODE_ADAPTIVE_HOLD_TRACE`) and `tr-req` (*tree2*,
+as `p-req`, `YCODE_SYNC_PUSH_TRACE=donotdisturbd,SpringBoard`). Timed series as
+§24.4 (the shared boot-timing lock, no other `ycode-simd`, a 1-minute load
+under 4 before each boot, arms rotated each round, n = 5 per arm): A
+(18:44–19:21), B (19:28–19:56), C (20:01–20:18).
+
+### 26.2 Step 1: datamigrator inside the check-in
+
+backboardd asks `com.apple.datamigrator` (launchd starts it on demand,
+"ipc (mach)") whether the device must migrate, and SpringBoard's
+system-shell check-in waits for the answer (`first-boot.md` §1, §6 item 3).
+In `tr-def` and the profiles:
+
+| | `p-def` | `tr-def` | `p-all` |
+|---|---|---|---|
+| backboardd's request sent | 8.38 s | 7.18 s | 5.86 s |
+| answered (first; second) | 10.40 s; 10.58 s | 10.11 s; 10.47 s | 7.10 s; 7.2 s |
+| request to last answer | 2.20 s | 3.29 s | 1.3 s |
+| SpringBoard's loader done (§26.3) | 10.9 s | — | 10.7 s |
+
+- **The class is not the cause.** datamigrator is not held (Adaptive, two
+  boosts at spawn from backboardd's queued message), its main thread and
+  the request's workloop run at df/ui under the reply and watch pushes, and
+  in `p-def` none of its threads waited at the band's gate before the
+  answer.
+- **Its own start is mostly the reference's work.** Spawn to its libSystem
+  milestone 0.87–1.02 s (`bp-*`: 0.25–0.28 s of guest code in the loader,
+  0.30 s CPU), then 0.5–0.7 s of guest code in its initializers before the
+  check-in: 1.0–1.3 s from the request in `p-all`, against the reference's
+  0.4–0.6 s for the whole check-in, 0.5–0.75 s at the Thor's speed
+  (§10.4); the difference is run-queue wait.
+- **What is Ycode's: thread starts.** After its check-in the request waits
+  for datamigrator's first workqueue thread, and the second request for
+  another: `p-def` 0.75 s for the first, BOOT9's `p-tw` 0.63 and 0.60 s;
+  in `tr-def` the request was taken 1.1 s after the check-in. datamigrator's
+  4 thread starts waited 3.8 s in all (`bp-def`). Every first use of a vCPU
+  waits for one of two vCPU creator threads (§26.4).
+- **And backboardd asks late.** The reference's backboardd decides
+  migration 2.9–4.4 s after the boot call (§23.6, fresh boots); Ycode's
+  asks at 7.2–8.4 s. Before that its main thread waits for four of its own
+  new pthreads in turn: 411, 553, 368 and 235 ms (`p-def`), each a thread
+  start in the creator queue.
+- **On the path?** In `p-def` and `p-all` the answer came before
+  SpringBoard's own loader ended, so the check-in did not wait (BOOT9's
+  `p-tr`, a slow boot, waited 1.73 s). With the fixes of §26.4 (`p-all`)
+  backboardd asks 2.5 s earlier and the answers take 1.3 s instead of
+  2.2 s: the chain ends 3.5 s before SpringBoard's loader instead of 0.3 s.
+
+### 26.3 Step 2: guest code on the critical path
+
+`p-def`'s critical path (`--boot --join`, home 25.3 s): SpringBoard 16.5 s
+(guest code 13.8 s, host run queue 1.2 s), chronod 4.9 s (guest 3.2 s, run
+queue 1.0 s), diagnosticd 1.2 s, localizationswitcherd 0.75 s, cfprefsd
+0.44 s, launchd_sim 0.40 s.
+
+**SpringBoard.** From its spawn (0.54 s) to its libSystem milestone
+(9.9–10.4 s after spawn, every `bp-*` boot) its main thread is the loader:
+the PC timeline puts 99.9 % of its samples in `dyld_sim` (5 998 of 6 003
+from 0 to 10.5 s). The loader's CPU is 7.9 s (7.5–7.6 s of guest code,
+`m_guest_s`), close to SpringBoard's loader alone (§6.2: 7.0 s of guest
+code) and to the reference's 4.9–6.2 s at the Thor's speed (§10.4, 1.25×);
+its run-queue wait inside `KVM_RUN` is 1.5–1.9 s in every arm. After the
+milestone (10.5–25.5 s, 6 536 samples): libswiftCore 28.6 %, libobjc
+14.6 % (with `libobjcMsgSend` 5.8 %), code outside the shared cache 8.1 %
+(Ycode's three host libraries and anonymous mappings, about 4 % of all the
+process's samples), `dyld_sim` 7.6 % (`dlopen`s), CoreFoundation 7.5 %,
+libsystem_malloc 6.3 %, UIKitCore 3.6 %, Foundation 2.4 %, libxpc 2.3 %,
+libdispatch 2.0 %; no image of a Ycode service, no polling library. The
+images are attributed by their `__TEXT` ranges in the runtime's
+`dyld_sim_shared_cache_arm64.map` (a text listing read as data; no
+symbols). After the loader the main thread's long waits are other
+programs' work (below). So SpringBoard's guest code is the
+reference's work at the Thor's speed; what is Ycode's is the run queue
+(1.2–1.7 s of the main thread, also with class ui's weight at 4 000,
+`p-uiw`: 1.2 s) and the waits below.
+
+**chronod.** launchd starts chronod on demand at 5.4–10 s (a client's
+message; `bp-*`: 5.6–10.0 s) and its loader takes 4.6–8.0 s to its
+milestone (2.8–3.1 s guest code, 1.9–3.6 s of run-queue wait: a df loader
+among the boot's other loaders). At 11.2–11.4 s SpringBoard's workqueue
+thread sends it a synchronous request (`first-boot.md` §6 item 2) and
+SpringBoard's main thread later waits for that thread: the rest of
+chronod's loader is on the path (`p-def` 11.25–14.9 s: guest 2.45 s, run
+queue 0.89 s; `p-sc` 11.4–14.9 s). The request's push reaches chronod's
+main thread at once (its class goes from df to ui at 11.39 s, the queued
+request's credit), but its host thread keeps df: the loader's traps (`stat64`,
+`vm_allocate`, `vm_deallocate`) are fast traps, and §4.7 applies a class
+only at the end of a locked trap. With `YCODE_FAST_TRAP_HOST_CLASS=push`
+(`p-all`) the raise is applied at the next fast trap: chronod's run queue
+while SpringBoard waits 0.92 → 0.30 s, and chronod leaves the path.
+Then it waits 0.6–0.8 s for localizationswitcherd (started by an event
+publisher at about 13 s), whose own start is on the path in `p-def` and
+`p-sc` (0.5 s).
+
+**Ycode-induced, by kind.**
+
+| Kind | Where | Size | Fix |
+|---|---|---|---|
+| Thread starts: the vCPU creator queue | every first use of a vCPU: datamigrator (3.8 s summed), backboardd's main thread (1.6 s), SpringBoard (9.7 s summed over 107 starts) | `bp-def`: 1 759 starts waited 428 ms on average (p90 1.34 s), 752 thread-s; the queue 407 ms on average | §26.4 |
+| A pushed thread's host class applied only at locked traps | chronod's loader under SpringBoard's request | 0.6 s of run queue on the path | `YCODE_FAST_TRAP_HOST_CLASS=push` |
+| The hand-off inside a server (§25.5) | donotdisturbd, SpringBoard main thread | `p-def` 1.1 s, `p-all` 1.2 s on the path (BOOT9's `p-tw` 0.3 s), the serving thread at the band's gate | §26.5 |
+| Log back-pressure (§12, §13) | SpringBoard's sends to diagnosticd | 0.6–1.8 s of the main thread (reference: 1–4 % of a sender's time) | not changed |
+| Run queue of a ui thread | SpringBoard's main thread | 1.2–1.7 s | not traced to a Ycode cause; class ui's weight ×10 (`p-uiw`): 1.5 → 1.2 s in one boot |
+| Timeouts, polling | SpringBoard's main thread | no timed wait and no wait of 100 ms or more that is not another program's work (failing or repeated traps were not traced) | — |
+
+### 26.4 The fix: thread starts (`scheduling-policy.md` §4.15)
+
+Every guest thread that is the first to use one of its process's vCPUs
+(1 386–1 469 of 1 486–1 584 starts by home) needs a host thread, made by one
+of the VMM's vCPU creator threads (`thread-latency.md` §3), and a creation
+that needs a new vCPU first waits for KVM's grace period (25–150 ms,
+`creation.create_vcpu` p90 33 ms). Two creator threads serve the whole
+boot, first in, first out (claimed creations first), each in the cgroup of
+the thread whose request started it. Since `thread-latency.md` §6 (boots of 160–270 s) thread
+starts were off the path; in a 25 s boot they are in every chain that
+starts a process or a thread on the way to home.
+
+| Boot | starts waiting for a creation | mean | p50 | p90 | thread-s | the creation queue, mean (p50) |
+|---|---|---|---|---|---|---|
+| `bp-def` (2 creators) | 1 759 | 428 ms | 84 ms | 1 342 ms | 752 | 407 ms (59 ms) |
+| `bp-sc` (start class) | 1 684 | 128 ms | 59 ms | 336 ms | 215 | 108 ms (34 ms) |
+| `bp-cr` (6 creators) | 1 622 | 52 ms | 21 ms | 134 ms | 85 | 26 ms (0.2 ms) |
+| `bp-sccr` (start class, 8 creators) | 1 700 | 55 ms | 17 ms | 134 ms | 93 | 28 ms (0.03 ms) |
+
+- **More creator threads** (`YCODE_VCPU_CREATORS=8`, an existing switch):
+  the grace periods of different creations overlap, and a start that needs
+  only a host thread no longer waits behind them.
+- **The start class** (`YCODE_START_CLASS=1`, new): a host thread takes its
+  new guest thread's host class before the first instruction; a host
+  thread parked below df waits at df; the creator threads run at ui.
+  Counted in every boot (the `sched:` report's new `thread starts by the
+  host thread's class`): by home 1 386–1 469 starts ran on a new host
+  thread (in the creator's cgroup until their first locked trap), 100–115
+  on a reused one, 10–23 of them in a lower class than the thread's.
+- **Raises at fast traps** (`YCODE_FAST_TRAP_HOST_CLASS=push`, an existing
+  switch, §26.3).
+
+Tests: `StartClassTests` (a start takes the thread's class at once, down
+as well as up; the start class includes the image's push; parking moves
+only threads below df; a creator thread runs at ui; off, nothing moves),
+with `SchedPolicyTests` and `HostPlacementTests`.
+
+### 26.5 Step 3: a hand-off tied to the request (`YCODE_HANDOFF_PUSH=request`)
+
+The profiles show the hand-off at the band default, not only under the
+strict band: SpringBoard's main thread waited 0.9 + 0.2 s (`p-def`) and
+1.2 s (`p-all`) on donotdisturbd, whose serving thread was darwin-bg at the
+band's gate for the whole wait. A tag cannot come from the guest's
+vouchers: Ycode refuses a message that carries one
+(`MACH_SEND_INVALID_VOUCHER`), so libdispatch runs without Mach vouchers and
+adopts none through `bsdthread_ctl`. The narrowest tag Ycode sees is the
+request itself: `scheduling-policy.md` §4.14's new form `=request` lends the
+held requests of the dispatching thread's workloop to the workloop it asks a
+thread from, until they are answered (not for the drain, as §25.5's forms
+did; nothing is carried after the reply; no chains). Tests:
+`RequestHandoffTests` (the lent push lasts until the last answer and follows
+the requests' class; a counter does not lend to itself; own and lent
+requests combine).
+
+In boots (`tr-req`, start class and 8 creators): 1 850 hand-offs by home,
+961 of them ended by their requests' last answer. A first version lent only
+on a new thread request (or one whose QoS rose); libdispatch pokes an
+existing request while the workloop is being drained, so *tree3*
+(`6bef6664`) lends on those pokes too. Neither removed the donotdisturbd
+wait in the profiles: `p-req` (band default) 1.20 s, `p-ereq2` (strict
+band, *tree3*) 4.45 s. In both, SpringBoard's request reached a handler
+that parked at once, and the work was done by another donotdisturbd thread
+that was not servicing either workloop at the time: it had ended a send of
+its own at class bg (darwin-bg, its earlier push gone) and waited at the
+band's gate from then (4.45 s in `p-ereq2`, from 12.52 s, 31 ms before
+SpringBoard's request) until the CPUs had room. Ycode cannot tell that this
+thread will run the request's item; xnu's push would reach it through the
+item's queue (its drain lock's turnstile), which Ycode does not see. Series
+B and C measure the form (§26.6).
+
+### 26.6 Timed series
+
+| Series | Arm | n | median home_s | mean ± sd | range | kernel lock held at home, median | CPU s at home, median | guest fatal |
+|---|---|---|---|---|---|---|---|---|
+| A | default (band, reply, transit and watch pushes) | 5 | **25.07** | 24.88 ± 0.50 | 24.19–25.45 | 4.0 s | 327 | 0 |
+| A | + 8 creator threads (`YCODE_VCPU_CREATORS=8`) | 5 | 24.30 | 24.25 ± 0.19 | 23.97–24.43 | 4.0 s | 321 | 0–1 |
+| A | + start class + 8 creators | 5 | **23.92** | 23.79 ± 0.26 | 23.38–23.99 | 4.0 s | 319 | 0 |
+| A | + start class + 8 creators + raises at fast traps (`YCODE_FAST_TRAP_HOST_CLASS=push`) | 5 | 23.73 | 23.78 ± 0.17 | 23.62–23.98 | 3.9 s | 316 | 0 |
+| B | start class + 8 creators + the request-tied hand-off (`YCODE_HANDOFF_PUSH=request`, *tree2*) | 5 | 25.01 | 25.30 ± 1.62 | 23.79–27.83 | 4.2 s | 346 | 0–2 |
+| B | strict band (`YCODE_BG_BAND_EASE_MS=500`) + start class + 8 creators | 5 | 28.54 | 28.41 ± 0.90 | 27.23–29.42 | 3.5 s | 265 | 1 |
+| B | strict band + start class + 8 creators + the request-tied hand-off (*tree2*) | 5 | **25.54** | 25.09 ± 1.33 | 23.09–26.51 | 3.8 s | 287 | 0–1 |
+| C | start class + 8 creators (*tree3*) | 5 | **24.25** | 24.08 ± 0.63 | 23.11–24.64 | 4.1 s | 315 | 0 |
+| C | strict band + start class + 8 creators + the request-tied hand-off, also on pokes (*tree3*) | 5 | 25.05 | 25.10 ± 0.56 | 24.45–25.78 | 3.8 s | 300 | 0–2 |
+
+- **Thread starts: −1.1 s** by the mean (25.07 → 23.92 s by the median),
+  the ranges apart (every boot with the start class and 8 creators,
+  23.38–23.99 s, ahead of every default boot, 24.19–25.45 s), 8 CPU s less
+  at home, no guest fatal condition. More creator threads alone give −0.6 s;
+  the start class adds −0.5 s on top.
+- **Raises at fast traps add nothing measurable** (the same mean, a
+  smaller spread): chronod leaves the path in `p-all` but the path then runs
+  through donotdisturbd's hand-off (§26.3).
+- **The request-tied hand-off is slower at the band default** (+1.5 s by
+  the mean against A's arm without it, 27 CPU s more, a wide spread), as
+  §25.6's forms were: while a request is unanswered the lent push brings the
+  borrowing workloop's other work forward, and at the band default the
+  gate would have let it run soon anyway.
+- **Under the strict band it is worth −3.3 s** (28.41 → 25.09 s by the
+  mean, the ranges apart but for one boot: 23.09–26.51 against
+  27.23–29.42 s) at 22 CPU s more; with the start class and 8 creators the
+  strict band is 1.3 s behind the default with them (A: 23.79 s) at 32 CPU s
+  less (287 against 319), against §25.6's 2.7 s behind with the held
+  hand-off. Its best boot (23.09 s) is the fastest of this section.
+- **C repeats it in one series**: the strict band with the start class,
+  8 creators and the request-tied hand-off (now also on pokes) is 1.0 s
+  behind the default with the start class and 8 creators (25.10 against
+  24.08 s by the mean, ranges overlapping only at 24.45–24.64 s), at 15 CPU s
+  less. The start-class arm itself ran 0.3 s slower than in A (the same
+  arm, 24.08 against 23.79 s: the spread between series).
+
+### 26.7 Service fidelity
+
+`scripts/ycode-launchd-spawns` over 700 s, one boot each, one after another
+on the same device copy (a first default boot, `fid-def`, ran while a test
+build loaded the host and was discarded):
+
+| | default (*tree*) | start class + 8 creators (*tree3*) |
+|---|---|---|
+| home_s of the boot | 25.46 | 24.75 |
+| all starts | 506 (233 labels) | 514 (238 labels) |
+| restart loops (facetimemessagestored, managedappdistributiond, mlhostd, proactiveeventtrackerd, intelligencetasksd, fileindexerd) | 67, 64, 62, 68, 12, 1 | 67, 64, 62, 68, 15, 1 |
+| other daemons and agents | 172 | 177 |
+| per-process domains | 57 | 57 |
+| apps | 3 | 3 |
+| starts by reason (xpc event, Mach IPC, demand, speculative) | 320, 101, 37, 32 | 326, 103, 36, 32 |
+| guest fatal conditions in 700 s | 12 | 15 |
+
+The one label that differs by more than one start is intelligencetasksd's
+restart loop (12 → 15, with the three more fatal conditions; it is a loop of
+§24.5 and §25.7, 10–11 there). Eight one-off jobs started once in one boot
+and not in the other (geocorrectiond, mapssyncd, agentstored, idcredd,
+cksharingmanagementd, nanomapscd and an embedded-speech instance with the
+fixes; parsec-fbf and a Screen Time widget extension without), the labels of
+§20.9, §24.5 and §25.7. pairedsyncd started once in both. Fidelity is
+otherwise unchanged.
+
+### 26.8 How far from 21.4 s, and the recommendation
+
+- **The default: 25.07 s** on this copy (A; 24.88 ± 0.50), 1.17 × the
+  reference. **With the start class and 8 creator threads: 23.92 s**
+  (23.79 ± 0.26; C: 24.25 s, 24.08 ± 0.63), **1.12–1.13 ×**, 2.5–2.9 s
+  short of 21.4 s, 8 CPU s less at home, every boot of A's arm ahead of
+  every default boot.
+- **What they fix.** Thread starts waited 428 ms on average for a vCPU
+  creator thread; with both, 55 ms. That shortens every chain that starts a
+  process or a thread on the way to home: backboardd asks datamigrator
+  2.5 s earlier and is answered in 1.3 s instead of 2.2 s (§26.2), its main
+  thread no longer waits 1.6 s for its own new pthreads, and thread starts
+  on the critical path fall from 0.28–0.54 s (`p-def`, `p-sc`: chronod's,
+  diagnosticd's) to 0.08–0.09 s (`p-all`, `p-req`).
+- **Where the rest is** (`p-all`, home 24.8 s, `--join`): SpringBoard's own
+  guest code 15.2 s (62 %; its loader is 7.5–7.6 s of guest code, the
+  reference's work at the Thor's speed, §26.3), SpringBoard waiting for a
+  host CPU 1.7 s, diagnosticd 2.0 s (the log path: its run queue after
+  wakeups, event-lock waits, wakeup latency), donotdisturbd's serving thread
+  at the band's gate 1.2 s (§26.5's inversion), kernel-lock waits and trap
+  service about 1.5 s. 23.9 s / 1.25 ≈ 19.1 s.
+- **Recommendation (the owner decides).** Turn on `YCODE_START_CLASS=1` and
+  `YCODE_VCPU_CREATORS=8` for device runs: no service named, −1.1 s, less
+  CPU, a smaller spread, fidelity as §26.7. Keep
+  `YCODE_FAST_TRAP_HOST_CLASS` off (no gain on top), class ui's weight at
+  400 (`YCODE_HOST_SCHED_UI_WEIGHT`: one boot, 0.3 s of SpringBoard's run
+  queue) and `YCODE_HANDOFF_PUSH` off at the band default (`=request` is
+  slower there). Keep `YCODE_BG_BAND_EASE_MS`
+  off: with the start class, 8 creators and `YCODE_HANDOFF_PUSH=request` the
+  strict band is 1.0–1.3 s behind the default (−3.3 s from the request-tied
+  hand-off, from §25.6's 2.7 s behind to 1.0 s) at 15–32 CPU s less; if it
+  is made the default later, `=request` belongs with it.
+- **Next.** (1) The inversion on a server's own queue (§26.5): the
+  request's push should reach the thread that owns the queue the handler
+  needs (xnu: the workloop's owner, `NOTE_WL_DISCOVER_OWNER`, which Ycode
+  records as the workloop's owner), not only the next servicer; (2) the log
+  path's drain rate (§12, §13: SpringBoard's main thread waits 0.6–1.8 s on
+  diagnosticd, the reference's senders 1–4 % of their time); (3)
+  SpringBoard's run queue under a saturated host.
+- **Adopted 2026-11-07:** `YCODE_START_CLASS=1` and `YCODE_VCPU_CREATORS=8`
+  are on by default for `--device` runs (`ycode-simd/main.swift`), with the
+  band and the reply, transit and watch-port pushes.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -5247,6 +5559,10 @@ about 1.25 × slower per core than the reference Mac for this code): 24.5 s
 | Waits of SpringBoard's and backboardd's threads, their kinds (trap and options), the serving threads' classes and gate time; §22.4's list re-read; the critical paths with `--join` (§24.1) | 3 | B3-BOOT8's Thor runs of Ycode's own simulator: profiles `fp/p-band`, `p-ease`, `p-rpe`, `p-rpe3`, `p-rp5`, `p-rpe5` (frame profile with scheduling state and gate events), §22's `p-ease` re-read; `ycode-frame-profile --wait-tree`, `--join`, `--edge-list`; `ana/*.txt` |
 | runningboardd, containermanagerd, biomed, cfprefsd and the others' process types (§24.1) | 2 | the runtime's launchd plists, read as property lists |
 | The reply push's counters, series Z1, Z3, Z4, CPU at home, fidelity counts (§24.3–§24.5) | 3 | B3-BOOT8's Thor runs (`ab-Z1-image.txt`, `ab-Z3.txt`, `ab-Z4.txt`, `runs/smoke-*`, `runs/fid-*`; `scripts/ycode-launchd-spawns`) |
+| datamigrator's chain, backboardd's and datamigrator's thread starts, chronod's push and run queue, the critical paths (§26.2–§26.3) | 3 | B3-BOOT10's Thor runs of Ycode's own simulator: profiles `fp/p-def`, `p-sc`, `p-uiw`, `p-all`, `p-req`, `p-ereq2`; trace boots `tr-def`, `tr-req`; `ycode-frame-profile --boot --join`, `--thread`, `--wait-tree`; BOOT9's `p-tw` re-read |
+| SpringBoard's guest code by image (§26.3) | 2, 3 | the boot profile's PC timeline (`bp/*.pcraw`) attributed with the runtime's `dyld_sim_shared_cache_arm64.map` (install names and `__TEXT` ranges, read as data); per-image loader columns of `bp/*` |
+| Thread-start and creation latency, starts by the host thread's class (§26.4) | 3 | boot profiles `bp/def`, `sc`, `cr`, `sccr` (`# latency`, `start_wait_ms`); the `sched:` report at home |
+| Series A, B and C, CPU at home, fidelity counts (§26.6–§26.7) | 3 | `ab-A.txt`, `ab-B.txt`, `ab-C.txt`, `runs/fid-*` (`scripts/ycode-launchd-spawns`) |
 
 Level 5 was not used. `.claude/Xcode.app`, `research/dirty/` and Ghidra
 were not opened.
@@ -5316,3 +5632,10 @@ devices named `ycode-test-simobs5-*`, deleted afterwards. No binary was
 disassembled or decompiled, Ghidra was not opened, and the Simulator
 app's window and Xcode's GUI were not used. Its raw data stays in the
 git-ignored `research/dirty/simobs5/`.
+§26 (agent B3-BOOT10) is clean-room work: only Ycode's own simulator ran
+(on the Thor, with the runtime copy as a black box; its shared cache's
+`.map` listing, image install names and `__TEXT` ranges only, and the
+guest's `launchd.log` of Ycode's own boots read as data), and only
+`specs/`, Ycode's code, and xnu's and libdispatch's open-source
+thread-start, workqueue and voucher behaviour (as cited in
+`scheduling-policy.md` §4.14–§4.15, nothing copied) were used.

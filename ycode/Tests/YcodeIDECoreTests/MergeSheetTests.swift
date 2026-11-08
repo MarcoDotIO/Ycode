@@ -55,9 +55,10 @@ struct MergeSheetTests {
         // The left pane is the current branch's version with the clean
         // change applied; no conflict markers.
         #expect(s.leftLines.last == "I" && !s.leftLines.contains { $0.hasPrefix("<<<<<<<") })
-        // Changed words, cell-exact, spaces not included.
-        #expect(rows[1].left?.words == [15..<18, 19..<25])
-        #expect(rows[1].right?.words == [15..<22, 23..<29])
+        // Changed runs, cell-exact (§15.1): the quotes match, so they are
+        // not filled; "Hello" and its comma are one run.
+        #expect(rows[1].left?.words == [16..<18, 19..<24])
+        #expect(rows[1].right?.words == [16..<22, 23..<28])
         #expect(s.stepperText == "1/3" && s.currentHunk == 0)
         #expect(s.rulerMarks(rows: rows).map(\.isConflict) == [true, true, false])
     }
@@ -83,7 +84,7 @@ struct MergeSheetTests {
         #expect(s.sheetRows[1].left?.text == "let greeting = \"Hello, world\"")
         #expect(s.token(forHunk: 0)?.glyph == "1" && s.token(forHunk: 0)?.isDecided == true)
         // The word fills stay at the cells they had (as captured).
-        #expect(s.sheetRows[1].left?.words == [15..<18, 19..<25])
+        #expect(s.sheetRows[1].left?.words == [16..<18, 19..<24])
         #expect(!s.canMerge)
         s.choose(.ours, forHunk: 1)
         #expect(s.currentHunk == 1 && s.token(forHunk: 1)?.glyph == "2" && s.token(forHunk: 1)?.isSelected == true)

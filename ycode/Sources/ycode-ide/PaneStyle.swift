@@ -51,6 +51,11 @@ extension ShellColors {
     /// The filled Name field (label colour at 10 %) and pop-ups (11.5 %).
     var inspectorFieldFill: Color { rgb((218, 218, 219), (59, 60, 61)) }
     var inspectorPopUpFill: Color { rgb((214, 214, 215), (62, 63, 64)) }
+    /// A resource's On Demand Resource Tags field: #E0E0E1 in light
+    /// (`editor-area.md` H.7, council row 162), the field fill in dark; its
+    /// "Tags" placeholder #707071 in light.
+    var inspectorTagsFill: Color { rgb((224, 224, 225), (59, 60, 61)) }
+    var inspectorTagsPlaceholder: Color { rgb((112, 112, 113), (130, 131, 132)) }
     /// Target Membership's box border (label colour at 35 %).
     var inspectorTableBorder: Color { rgb((166, 166, 167), (113, 113, 114)) }
 

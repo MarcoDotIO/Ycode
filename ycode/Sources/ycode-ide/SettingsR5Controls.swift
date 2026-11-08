@@ -155,8 +155,8 @@ struct SettingsSegments: View {
     }
 }
 
-/// The card push button ("Choose…"): 24 tall, fully rounded, #E4E4E4 with
-/// a #232323 label.
+/// The card push button ("Choose…"): 24 tall, a rounded rectangle of
+/// radius 6 (R6.1), #E4E4E4 with a #232323 label.
 struct SettingsPushButton: View {
     var title: String
     var target: String
@@ -173,9 +173,9 @@ struct SettingsPushButton: View {
                 .lineLimit(1)
                 .padding(.horizontal, SettingsAppearanceLayout.pushButtonPadding)
                 .frame(height: SettingsAppearanceLayout.pushButtonHeight)
-                .background(Capsule(style: .continuous).fill(p.pushButton))
+                .background(RoundedRectangle(cornerRadius: SettingsAppearanceR6.pushButtonRadius, style: .circular).fill(p.pushButton))
                 .opacity(isEnabled ? 1 : 0.45)
-                .contentShape(Capsule())
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
@@ -192,33 +192,43 @@ struct SettingsPaneSeparator: View {
 
 // MARK: Colour rows
 
-/// The colour slider: the colour's strength over the editor's background
-/// (`ThemeColorRows.tint`), a 14-point gradient track and a round knob.
+/// The colour slider (R6.1): a 14-point track in one hue, from a pale
+/// tint at the left to the full colour at the right
+/// (`ThemeColorRows.paleTint`), with a 1-point darker edge, and a knob
+/// about 28 across (a white rim around the colour under it) at the row's
+/// strength. A built-in theme's row is read-only but drawn in full.
 struct ThemeColorSlider: View {
+    /// The full colour (the track's right end).
     var base: (r: Double, g: Double, b: Double)
-    var background: (r: Double, g: Double, b: Double)
     var value: Binding<Double>
     var target: String
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         let L = SettingsAppearanceLayout.self
+        let R = SettingsAppearanceR6.self
         let k = L.sliderKnob
-        let pale = ThemeColorRows.tint(base, over: background, strength: 0)
-        let shown = ThemeColorRows.tint(base, over: background, strength: value.wrappedValue)
+        let pale = ThemeColorRows.paleTint(base, strength: 0)
+        let shown = ThemeColorRows.paleTint(base, strength: value.wrappedValue)
+        let e = R.trackEdgeFactor
         ZStack(alignment: .leading) {
-            Capsule(style: .continuous)
-                .fill(LinearGradient(colors: [settingsColor(pale), settingsColor(base)], startPoint: .leading, endPoint: .trailing))
-                .frame(height: L.sliderTrackHeight)
+            ZStack {
+                Capsule(style: .continuous)
+                    .fill(LinearGradient(colors: [settingsColor(ThemeColorRows.darker(pale, e)), settingsColor(ThemeColorRows.darker(base, e))],
+                                         startPoint: .leading, endPoint: .trailing))
+                Capsule(style: .continuous)
+                    .fill(LinearGradient(colors: [settingsColor(pale), settingsColor(base)], startPoint: .leading, endPoint: .trailing))
+                    .padding(R.edgeWidth)
+            }
+            .frame(height: L.sliderTrackHeight)
             ZStack {
                 Circle().fill(Color.white).shadow(color: Color.black.opacity(0.2), radius: 2, y: 0.5)
-                Circle().fill(settingsColor(shown)).padding(3)
+                Circle().fill(settingsColor(shown)).padding(R.knobRim)
             }
             .frame(width: k, height: k)
             .offset(x: CGFloat(value.wrappedValue) * (L.sliderWidth - k))
         }
         .frame(width: L.sliderWidth, height: k)
-        .opacity(isEnabled ? 1 : 0.5)
         .contentShape(Rectangle())
         .gesture(DragGesture(minimumDistance: 0).onChanged { g in
             guard isEnabled else { return }
@@ -229,28 +239,29 @@ struct ThemeColorSlider: View {
     }
 }
 
-/// The colour well: a 48 × 28 capsule, a 3-point grey rim around the
-/// colour; a click shows #RRGGBB in a popover to edit (empty: the system's).
+/// The colour well: a 48 × 28 capsule, a 3-point #DFDFDF rim around the
+/// colour (the knob's), the colour edged 1 point darker (R6.1); a click
+/// shows #RRGGBB in a popover to edit (empty: the system's).
 struct ThemeColorWell: View {
-    var color: Color
+    var color: (r: Double, g: Double, b: Double)
     var hex: String
     var target: String
     var onCommit: (String?) -> Void
     @State private var editing = false
     @State private var text = ""
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         let p = SettingsPalette(scheme)
         let L = SettingsAppearanceLayout.self
+        let R = SettingsAppearanceR6.self
         Button { text = hex; editing = true } label: {
             ZStack {
                 Capsule(style: .continuous).fill(p.wellRim)
-                Capsule(style: .continuous).fill(color).padding(L.wellRim)
+                Capsule(style: .continuous).fill(settingsColor(ThemeColorRows.darker(color, R.wellEdgeFactor))).padding(L.wellRim)
+                Capsule(style: .continuous).fill(settingsColor(color)).padding(L.wellRim + R.edgeWidth)
             }
             .frame(width: L.wellSize.width, height: L.wellSize.height)
-            .opacity(isEnabled ? 1 : 0.5)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(target)
@@ -336,7 +347,8 @@ struct SettingsInfoButton: View {
 
 /// One Components row: 51.5 tall, the symbol centred 26 inside the card,
 /// the title 51 inside (cap top 13.5 under the row's top), the subtitle 15
-/// under it, "Last used …" ending 34.5 inside, the info button 11.5 inside.
+/// under it (a size 3.25 further right), "Last used …" at the subtitle's
+/// size ending 34.5 inside, the info button 11.5 inside.
 struct ComponentsRowView: View {
     var row: ComponentsRow
     var info: () -> Void
@@ -351,8 +363,10 @@ struct ComponentsRowView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text(verbatim: row.title).font(SettingsFonts.label).foregroundStyle(p.label).lineLimit(1)
                     .shellTarget("settings components title \(row.glyph.rawValue)")
+                // A size starts 3.25 right of the title; "Built-in" does not (R6.2).
                 Text(verbatim: row.subtitle).font(.system(size: L.subtitleFontSize)).foregroundStyle(p.subtitle).lineLimit(1)
                     .padding(.top, L.subtitleBaselineGap - 13)
+                    .padding(.leading, row.subtitleInset)
             }
             // A 13-point text's cap top is about 3 under its frame's top.
             .padding(.leading, L.titleInset)
@@ -360,7 +374,8 @@ struct ComponentsRowView: View {
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
                 if let used = row.lastUsed {
-                    Text(verbatim: used).font(SettingsFonts.label).foregroundStyle(p.subtitle).lineLimit(1)
+                    // At the subtitle's size (R6.2).
+                    Text(verbatim: used).font(.system(size: SettingsComponentsR6.lastUsedFontSize)).foregroundStyle(p.subtitle).lineLimit(1)
                         .padding(.trailing, L.lastUsedTrailingInset - L.infoTrailingInset - L.infoSize)
                 }
                 SettingsInfoButton(label: "About \(row.title)", target: "settings components info \(row.glyph.rawValue)", action: info)

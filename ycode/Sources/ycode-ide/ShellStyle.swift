@@ -178,16 +178,31 @@ struct GlassCircleButton: View {
     var help: String
     var diameter = CGFloat(WorkspaceChrome.toolbarItemHeight)
     var isEnabled = true
+    /// A gradient fill for the glyph, start and end as 0xRRGGBB (New
+    /// Conversation's, `editor-area.md` H.9, row 166); nil: the toolbar's glyph colour.
+    var gradient: (start: UInt32, end: UInt32)?
     var target: String
     var action: () -> Void
     @Environment(\.colorScheme) private var scheme
 
+    static func rgb(_ v: UInt32) -> Color {
+        Color(.sRGB, red: Double(v >> 16 & 0xFF) / 255, green: Double(v >> 8 & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+    }
+
     var body: some View {
         let c = ShellColors(scheme)
         Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 15))
-                .foregroundStyle(c.toolbarIcon)
+            Group {
+                if let gradient {
+                    LinearGradient(colors: [Self.rgb(gradient.start), Self.rgb(gradient.end)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .frame(width: 20, height: 20)
+                        .mask { Image(systemName: symbol).font(.system(size: 15)) }
+                } else {
+                    Image(systemName: symbol)
+                        .font(.system(size: 15))
+                        .foregroundStyle(c.toolbarIcon)
+                }
+            }
                 .opacity(isEnabled ? 1 : ShellColors.disabledGlyphOpacity)
                 .frame(width: diameter, height: diameter)
                 .background { Circle().fill(c.capsuleFill).overlay { Circle().stroke(c.capsuleStroke, lineWidth: 1) } }

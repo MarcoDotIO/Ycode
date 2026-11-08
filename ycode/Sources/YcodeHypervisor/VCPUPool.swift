@@ -875,7 +875,11 @@ public final class VCPUPool: @unchecked Sendable {
             var state = worker.pending!
             worker.pending = nil
             worker.running = true
+            let startingContext = worker.context
             lock.unlock()
+            // The host thread may still have the last thread's host class
+            // (`YCODE_START_CLASS`, scheduling-policy.md §4.15).
+            Self.runStartHook?(startingContext)
             worker.threadCPUBaseNanoseconds = hostThreadCPUNanoseconds()
             if Self.profiling { noteStarted(worker) }
 
@@ -924,6 +928,17 @@ public final class VCPUPool: @unchecked Sendable {
     /// or parked (set by the VMM before the first image: the kernel's
     /// background band stops counting that host thread).
     nonisolated(unsafe) public static var runEndedHook: (() -> Void)?
+
+    /// Called on a vCPU's host thread when it takes a guest thread (its
+    /// context), before the thread's first instruction (set by the VMM:
+    /// `YCODE_START_CLASS` gives the host thread that thread's host class
+    /// at once, scheduling-policy.md §4.15).
+    nonisolated(unsafe) public static var runStartHook: ((AnyObject?) -> Void)?
+
+    /// Called on each vCPU creator thread when it starts (set by the VMM:
+    /// `YCODE_START_CLASS`). The host threads it creates begin in its host
+    /// priority.
+    nonisolated(unsafe) public static var creatorStartHook: (() -> Void)?
 
     /// The CPU number (TPIDR_EL0) of a thread on `worker`: the state's own
     /// when it has one, else the vCPU index modulo the guest CPU count.
@@ -1640,6 +1655,7 @@ final class VCPUCreator: @unchecked Sendable {
     }
 
     private func run() {
+        VCPUPool.creatorStartHook?()
         while let next = take(waiting: true) { next.pool.createReserved(next.creation) }
     }
 }

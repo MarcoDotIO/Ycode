@@ -26,12 +26,13 @@ struct IssueCapsule: View {
             HStack(spacing: 0) {
                 ForEach(Array(parts.enumerated()), id: \.offset) { pair in
                     let part = pair.element
-                    if pair.offset > 0 { Color.clear.frame(width: CGFloat(k.partGap), height: 1) }
+                    if pair.offset > 0 { Color.clear.frame(width: CGFloat(k.gap(symbolsOnly: symbolsOnly)), height: 1) }
                     Button(action: action) {
                         HStack(spacing: CGFloat(k.symbolToCount)) {
                             IssueSymbol(kind: part.kind)
                             if !symbolsOnly {
-                                Text(verbatim: "\(part.count)").font(.system(size: CGFloat(k.countSize))).foregroundStyle(c.label).lineLimit(1)
+                                Text(verbatim: "\(part.count)").font(.system(size: CGFloat(k.countSize)))
+                                    .foregroundStyle(IssueSymbol.color(k.countColor(dark: scheme == .dark))).lineLimit(1)
                                     .fixedSize()
                             }
                         }
@@ -59,13 +60,14 @@ struct IssueCapsule: View {
 /// circle with a white cross for errors and test failures (G.8).
 struct IssueSymbol: View {
     var kind: IssueSummary.Kind
+    @Environment(\.colorScheme) private var scheme
 
     static func color(_ rgb: UInt32) -> Color {
         Color(.sRGB, red: Double(rgb >> 16 & 0xFF) / 255, green: Double(rgb >> 8 & 0xFF) / 255, blue: Double(rgb & 0xFF) / 255)
     }
 
     var body: some View {
-        let fill = Self.color(kind.fill)
+        let fill = Self.color(kind.fill(dark: scheme == .dark))
         let w = CGFloat(IssueSummary.Capsule.symbolWidth)
         ZStack {
             switch kind {

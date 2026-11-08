@@ -1166,6 +1166,333 @@ choice until a capture without issues).
   first).
 - **Step 13 (Sol):** "Ycode omits Inner" is wrong; both show Inner.
 
+## Council round 6 measurements (2026-11-07)
+
+Round 6 repeated round 5's main session (Retina, 120 fps, foreground, key
+window, 1400 × 880 then 1100 × 880) and conflict session, but in the
+**light** appearance (round 5 was dark), with Ycode `0f1408a4`. Ycode's
+steps 01–08 were re-run at a 1-minute load of 11–15, the reference's at
+10–13, so this round's scroll and flick timings are comparable; steps
+10–18 ran at a load of 9–13 for both. Values in window points, times in
+ms from the first action the capture tool posted (its manifest), frame
+times from the recorder's frame list; the recorder writes a frame only
+when the window changes, so a value held over several frames is a hold.
+Checklist rows 142–145, 157–167 and 169 in `fidelity-council.md`.
+These values supersede §G where they differ.
+
+### H.1 Momentum flick at the top of the file (step 04; supersedes F.7)
+
+The step scrolls Long.swift from 600 points down back to the top: 8
+gesture events of 40 points 8.3 ms apart, then momentum events decaying
+with a 0.33 s time constant (about 1544 points more), the same events
+for both apps. The offset below is the content's scroll position, found
+per frame by matching the frame's text area (x 300–700, y 110–790)
+against the stills at offset 0 and 600; negative values are **past the
+top** (the content pulled down, empty space above it).
+
+**Both apps stretch past the top and spring back.** The judges' "no
+overshoot in the reference" is not borne out: the tool's progress
+measure follows changed pixels, which barely change while the content
+is pulled down, so it saw the stretch only in Ycode.
+
+Reference:
+
+| ms | 77 | 90 | 102 | 115 | 127 | 139 | 150 | 162–187 | 200 | 226 | 250 | 273 | 297 | 323 | 348 | 374 | 410 | 446 | 487 | 524 | 560 | 607 | 645 | 696 | 782 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| offset | 600 | 4 | −30 | −74 | −90 | −109 | −115 | **−119** | −115 | −103 | −90 | −76 | −67 | −55 | −42 | −34 | −23 | −17 | −12 | −8 | −5 | −3 | −2 | −1 | 0 |
+
+Ycode now:
+
+| ms | 76 | 87–108 | 119 | 130–150 | 160–168 | 178–207 | 219 | 230–252 | 263–284 | 295 | 315–338 | 346 | 366 | 387 | 407 | 437 | 464 | 488 | 529 | 558 | 611 | 645 | 704 | 745 | 828 | 870 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| offset | 600 | 560 | 450 | 201 | −44 | −94 | −184 | **−199** | −190 | −168 | −154 | −126 | −106 | −96 | −77 | −55 | −46 | −35 | −26 | −17 | −12 | −8 | −4 | −2 | −1 | 0 |
+
+| | Reference | Ycode now |
+|---|---|---|
+| Reaching the top | the whole 600 points in **one frame** at 90 ms | in four steps, 87 to 160 ms |
+| Stretch past the top | to **119**, 72 ms after reaching the top (162 ms), held about 25 ms | to **199** (1.67 times), at 230 ms, held about 22 ms |
+| Spring back from the peak | a **critically damped spring, ω ≈ 13.6 per second** (rms error 0.014 of the stretch): half back 122 ms after the peak, 10 % left at 313, under a point at 509 | the **same spring** (ω ≈ 13.4, rms 0.013): half at 135, 10 % at 306, under a point at 576 |
+| No oscillation | none: the offset never passes 0 on the way back | none |
+| Settled | about **700 ms** (−1 at 696, 0 at 782) | about 870 ms |
+| Position updates | **every recorded frame** (11–13 ms) | **every 2–3 frames** (about 30 per second): 20–45 ms holds throughout |
+
+The spring is x(t) = A (1 + ω t) e^(−ω t), with A the stretch at the
+peak and t from the peak. Ycode's return already matches it; what
+differs is the depth of the stretch, the late arrival at the top and the
+update rate. **Target:** for this input the stretch peaks at about **120
+points** about 70 ms after the content reaches the edge (a stiffer
+resistance than Ycode's now: about 0.6 of Ycode's stretch for the same
+momentum), then the same critically damped return (ω about 13.5 per
+second, no oscillation), settled within about 700 ms of the first
+gesture event; apply the gesture's pending deltas in the first frame the
+content moves; draw a new position every display frame. Round 4's F.7
+target (reach the end in about 60 ms) stands; this round the reference
+took one frame.
+
+### H.2 Hiding and showing the inspector (steps 10, 11; supersedes G.1)
+
+The inspector's left edge at y 700: shown at **1140.5** (Ycode 1141.5),
+hidden at 1399.5 (the window's edge). Progress is the share of the
+travel.
+
+**Reference, hide:**
+
+| ms | 70 | 83 | 98 | 111 | 137 | 164 | 179 | 206 | 219 | 235 | 248 | 273 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| progress | 0 | 0.02 | 0.16 | 0.25 | 0.38 | 0.51 | 0.67 | 0.82 | 0.91 | 0.94 | 0.99 | 1 |
+
+**Ycode, hide:**
+
+| ms | 75 | 88 | 134 | 185 | 209 | 244 | 253 | 273 |
+|---|---|---|---|---|---|---|---|---|
+| progress | 0 | 0.01 | 0.18 | 0.49 | 0.80 | 0.95 | 0.99 | 1 |
+
+**Reference, show:**
+
+| ms | 89 | 102 | 114 | 129 | 155 | 168 | 195 | 208 | 234 | 249 | 275 | 287 | 313 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| progress | 0 | 0.02 | 0.04 | 0.12 | 0.19 | 0.31 | 0.44 | 0.58 | 0.71 | 0.82 | 0.91 | 0.96 | 1 |
+
+**Ycode, show:**
+
+| ms | 89 | 99 | 121 | 142 | 165 | 176 | 198 | 239 | 286 | 318 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| progress | 0 | 0.12 | 0.24 | 0.37 | 0.51 | 0.64 | 0.77 | 0.86 | 0.98 | 1 |
+
+| | Reference hide | Ycode hide | Reference show | Ycode show |
+|---|---|---|---|---|
+| Motion | **77–273 (196 ms)** | 82–273 (191 ms) | **95–326 (231 ms)** | 94–318 (224 ms) |
+| Positions drawn | 11, longest hold **27 ms** | 7, longest hold **51 ms** | 13, longest hold 27 ms | 9, holds of **41 and 47 ms** over the last 23 % |
+| Half the travel | 87 ms into the motion (44 %) | 104 ms (54 %) | 105 ms (45 %) | 71 ms (32 %) |
+| Best named curve (rms error) | **ease-out (0, 0, 0.58, 1)**, 0.068; linear 0.097 | ease-in-out, 0.093; ease-out 0.225 | **ease-in-out (0.42, 0, 0.58, 1)**, 0.048; free fit (0.45, 0.20, 0.60, 1), 0.025 | ease-out, 0.053; ease-in-out 0.191 |
+| After the motion | the toolbar's items settle at 284–309 | a 9-pixel repaint at the editor's right edge (x 1386–1398, y 118–124) at **346** | nothing | the same kind of repaint (x 1126–1138, y 118–124) at **369** |
+
+The start and the duration now match the reference within 10 ms. The
+curves are **swapped**: the reference hides with a fast start (16 % of
+the travel 21 ms in, about ease-out) and shows with ease-in-out; Ycode
+hides with ease-in-out and shows with ease-out. The judges' 377 and 368
+ms are Ycode's motion plus the late repaint at the editor's right edge.
+
+**Target:** hide from about 77 ms over about 195 ms, ease-out; show from
+about 95 ms over about 230 ms, ease-in-out (the keyframes above are the
+reference); a new position at least every 27 ms; nothing redrawn after
+the motion ends (the editor's scroll indicator must not repaint 70–90 ms
+later).
+
+### H.3 Narrowing the window (step 17; supersedes G.4)
+
+| | Reference | Ycode now |
+|---|---|---|
+| Content relayout | one frame at **116 ms** (rounds 4 and 5: 105 and 219) | one frame at **375** |
+| The size request returns | at 222 ms | at **1247** (the caret kept blinking while it waited) |
+| Overflow capsule | appears with the content frame **at the width of the items it absorbs** and shrinks to its circle; its left rim stays at 796.5 | appears **at its final size** (x 796–833) |
+| The "»" glyph | at **full size** (x 814–824) from the content frame | grows from a one-point dot at x 832 to 813.5–823.5 over 229 ms (452 to 604+) |
+
+The reference's capsule right edge, ms from its content frame:
+
+| ms | 0 | 13 | 28 | 41 | 56 | 69 | 84 | 97 | 112 | 125 | 140 | 153 | 167 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| right edge | 920.5 | 906 | 895 | 883.5 | 864.5 | 857 | 846 | 842.5 | 839.5 | 836 | 835 | 834 | 833.5 |
+
+124 wide at its first frame, 37 at rest; half the change by about 45 ms
+(ease-out). **Target:** relayout within about 120 ms of the request and
+return the request without waiting for the layout; the overflow capsule
+morphs from the absorbed items' extent to its circle over about 165 ms,
+ease-out, with the "»" at full size from its first frame.
+
+### H.4 Wrapping and the jump bar at 1100 with a split (step 17)
+
+**Text areas (left pane).** Column 0 starts at **x 341.5** in both apps;
+the cell advance is **8.04** (F.2). The reference's minimap starts with a
+one-point separator at **486.5–487.5** (minimap 487.5–549.5, lane
+549.5–560.5, pane divider 563.5–566.5); Ycode's separator is at 488–489
+(minimap 489–551, lane 551–562): Ycode's text area is **1.5 wider**, not
+narrower (145 against 146.5 to the separator). Both panes are equal
+within 1.5 in both apps.
+
+**Where the rows break.** Column k spans 341.5 + 8.04 k to 341.5 + 8.04
+(k + 1); 17 columns end at **478.2**, 18 at **486.2**.
+
+| Row (Long.swift) | Reference | Ycode now |
+|---|---|---|
+| "import Foundation" (17 characters from column 0, the end of its logical line) | one row, ink to 476.5 | the same |
+| Line 6, first row: "Block 00, line" then "0:" (the "0:" would end at column 17, 486.2) | breaks before "0:" | the same |
+| Line 6, second row from column 5: "0: a comment", then a space, then "line" | **breaks before "comment"**: "0: a" / "comment" | keeps "0: a comment" (ink to 476.5) |
+
+"0: a comment" ends at column 16, exactly where "import Foundation"
+ends, so both fit the container; the only difference is the **space
+after "comment"**, which would occupy column 17 (to 486.2). The
+reference therefore wraps a word to the next row when the word **and the
+space after it** do not fit, unless the word ends its logical line. This
+is the third round (4, 5, 6) to show it on this line, and no captured
+row contradicts it. The container's edge lies between 478.2 and 486.2
+(0.3–8.3 inside the minimap's separator); G.2's "about 10.5 before the
+minimap" (476.5) is too narrow, since "import Foundation" fits. **Target:**
+the space rule above (row 88's hypothesis, now the rule); Ycode's 17
+columns already match, so its container width needs no change.
+
+**The jump bar's collapse order.** The left pane's jump bar, ink
+extents:
+
+| Part | Reference at 1400 (step 16) | Reference at 1100 (step 17) | Ycode at 1400 | Ycode at 1100 |
+|---|---|---|---|---|
+| Close, grid | 304–315, 326–338.5 | the same | 301–311, 327.5–339.5 | the same |
+| Project | icon 361.5–374.5, title "GlassScroll" 380.5–437.5 | **icon only** 361.5–374.5 | icon and title 361.5–437 (no gap) | icon and title (kept) |
+| Chevron | 444.5–446.5 | 381.5–383.5 | 441–444 | the same |
+| Group | icon 457–469.5, title 475.5–532.5 | **icon only** 394–406.5 | icon 448.5–463, title 467–524 | icon only 448.5–463 |
+| Chevron | 539.5–541.5 | 413.5–415.5 | 528–531 | 469.5–472.5 |
+| File | icon 552.5–564, "Long" 571–595 | icon 426.5–438, **"Lo" fading out**, 445–458 | icon 535.5–553.5, "Long" 558–582 | icon 477–495, "Long" 499.5–523.5 |
+| Chevron | 601.5–603.5 | 464–466 | 586–589 | 527.5–530.5 |
+| Last item ("No Selection") | 613–678, **the item colour** | **whole**, 475.5–540.5 | 593–658, a lighter secondary grey | **cut**, "No Se" fading out at the pane's edge (562) |
+
+Reference spacing: icon to title **6**, title to chevron **7**, chevron
+(2 wide) to the next icon **10.5**, chevron to a title without icon 9.5.
+Ycode's: 0–4, 4, 4.5 (its chevron 3 wide), so its full path is 20
+shorter. In the 1100 window the reference's path ends at 540.5, **23
+inside** the pane's right edge (563.5).
+
+Collapse order seen (the full path needs 316.5, 179 is available): **(1)**
+the leading items' titles go and their icons stay (the project's and the
+group's: −126); **(2)** then the file's title is cut from its end with a
+fade (24 → 13); **(3)** the last item stays whole. Ycode drops only the
+group's title and cuts the last item. **Target:** the reference's spacing
+and order; the last item is cut only when everything before it is
+reduced to icons and the file title to its minimum; "No Selection" and
+the other path items in one colour (the active pane's label colour, the
+inactive pane's grey). Which leading title goes first when only one must
+go was not seen (both went at this width).
+
+### H.5 The issue capsule and the jump-bar stepper in light (conflict 01, 03; refines G.8)
+
+**With no issues, neither shows.** This round's main project had no
+issues: the reference showed no issue capsule in the toolbar and no
+stepper in any jump bar in any main step. This settles round 5's open
+question; G.8's "hidden when there are none" is the rule. The conflict
+project had a warning before the merge and an error and a warning during
+it.
+
+| Part | Reference, conflict 01 (one warning; 1400 window) | Reference, conflict 03 (an error and a warning; window behind the sheet) |
+|---|---|---|
+| Capsule | x **811–872** (61 wide), y 8–44 (36), a hairline rim #BFBFBF, fill #F9F9F9 (the toolbar capsules' light material); **7.5 after** the scheme capsule (its right rim at 803) | x **819–930** (111 wide), 8 after the scheme capsule, which ended at 811 this time |
+| First symbol | a **yellow triangle (#F5C200) with a white exclamation mark**, 17.5 × 16, x 827.5–845 (16.5 inside the capsule) | a **red circle with a white cross**, 17 wide, x 835.5–852.5 (16.5 inside) |
+| Its count | "1", black #000000, ink x 850–854 (5 after the symbol), 9.5 tall | "1", ink x 858–862 (5.5 after) |
+| Second pair | — | the yellow triangle x 886.5–904 (**24.5** after the first count), its "1" at 909–913 |
+| Trailing inset | 18 from the count's ink to the rim | 17 |
+| Toolbar after it | unchanged | the last toolbar group showed one item and a pop-up chevron: the wider capsule pushed the group into its overflow form |
+| Jump-bar stepper | back chevron x 1084.5–1091 (6.5 × 11.5, **#7F7F7F**), the warning symbol 1099.5–1110.5 (11 × 10.5, **#FFCB00**), forward chevron 1118–1124.5, y 60.5–72: round 5's places | — |
+
+The stepper showed in conflict 01 although that editor showed "No
+Selection" (no file open): it belongs to the editor's jump bar whenever
+the workspace has issues, not to a file. In light the chevrons are
+#7F7F7F (round 5's dark: #9D9D9D). **Target:** G.8's elements with these
+light values; hidden with no issues.
+
+### H.6 The plain group at first open (row 113)
+
+Step 01's before still, the project navigator:
+
+| Row | Kind | Reference | Ycode now |
+|---|---|---|---|
+| GlassScroll (the project) | project | expanded | expanded |
+| GlassScroll | synchronized folder, a child of the main group | expanded | expanded |
+| Models | folder inside it | collapsed | collapsed |
+| Plain | `PBXGroup`, a child of the main group | **expanded** | **collapsed** |
+| Sub | `PBXGroup` inside Plain | collapsed | — |
+
+**Why: not restored state.** Each round's project is generated fresh into
+a new folder (`/private/tmp/ycode-council-rN/…`) with no user data (the
+generator writes none), the reference is launched with saved window state
+ignored, and no setup step touches the navigator before step 01. Rounds
+4, 5 and 6 all showed Plain expanded. So this is the reference's
+**first-open default**: the project row and **every group or folder that
+is a direct child of the main group** are expanded; anything deeper is
+collapsed. `navigators.md` ("the project row and its first group") has
+only the first of them, and Ycode implements that. **Target:** at first
+open, with no saved navigator state, expand the project row and all of
+its main group's direct children that are groups or folders (the
+Products group stays hidden). Restoring a saved state in a later session
+was not captured. Step 13's click then lands on Sub, as in the reference.
+
+### H.7 The image inspector and file switches (steps 05, 07; refines G.5, G.6)
+
+G.5's spacing is met: every row from "Identity and Type" to "Target
+Membership" is within a point of the reference.
+
+| | Reference | Ycode now |
+|---|---|---|
+| On Demand Resource Tags field | x 1148–1396, y 289–313, fill **#E0E0E1** | x 1145–1394, y 288.5–312.5, fill #D5D5D6 |
+| Its placeholder | #707071, starts **6.5** inside the field, **vertically centred** (ink 296–306) | #6B6B6B, 2.5 inside, **3 below the field's top** (ink 291.5–301.5) |
+| Dimensions, Resolution, Color Space, Alpha Channel | **"--"** in all four (two hyphens, ink 9.5 wide from x 1226.5), the third round in a row (1.2 s after the selection, the image long shown) | the image's values ("800 × 1800 pixels", "RGB", "No"); Resolution "--" |
+
+| Switch | Reference | Ycode now |
+|---|---|---|
+| Long.swift → Bands.swift (07) | navigator, jump bar and the new text at **216**; the inspector one frame later (230); **no empty-editor frame** this round | everything at 272, one frame |
+| → Stripes.png (05) | navigator and the **empty viewer** at 205; the inspector at **286**; a small text change at 645; the image at **1022** | everything, image included, at 266 |
+
+**Targets:** the placeholder 6.5 in and centred; the field fill
+#E0E0E1; the four image properties "--" when the image is selected from
+the navigator (owner's rule 1: match; F.8's acceptance of filled values
+is withdrawn); new content within about 210 ms of the click. The
+inspector following the editor by one frame (text) or about 80 ms
+(image), and the empty viewer before an image, are the reference's
+order; F.8 still lets Ycode draw the image as soon as it is ready.
+
+### H.8 The Add Editor button and the split (step 16; refines G.7)
+
+The button's background (x 925–965 in the reference, 915–955 in Ycode,
+y 10–42) per frame, from the click on it:
+
+| Event | Reference | Ycode now |
+|---|---|---|
+| Hover | 59 ms | 65 |
+| Pressed (the glyph darkens) | 293 | 247 |
+| A **single darker frame** (about 15 ms) | **351** | none |
+| Fade into the menu-open state (a light grey rounded square behind the glyph) | 486 → 708 | 459 → 741 |
+| The split | **738 ms after** the press on "Editor Pane On Right" (round 5: 858) | not within the 1196 ms the recording ran after the press (round 5: the same); in the after still |
+
+Round 5's bright 110 ms highlight and 400 ms fade are gone; the judges'
+332 ms is the fade into the menu-open state, which the reference also
+draws (about 220 ms). **Target:** add the single darker frame on the
+press; the rest is met. The split's latency stays open (row 140): capture
+with a 3-second post-roll.
+
+### H.9 Glyph colours and toolbar items (steps 01–18, conflict 01)
+
+| Item | Reference | Ycode now |
+|---|---|---|
+| Navigator filter glyph (a circle with three lines) | 14.5 × 13 (x 50–64.5, y 851.5–864.5), **#777777**, 1-point stroke; its chevron 6 × 4, #777778 | 13.5 × 14, **#000000**, 1–1.5 stroke; chevron #000000 |
+| Trailing toolbar | a **standalone circle** x 879.5–916.5 (37 wide) holding a filled cloud glyph with a small blue dot at its lower right, 7.5 before the Add Editor capsule (924–1002); then the capsule 1009.5–1133.5 | **no circle**; the capsules at 922.5–1002 and 1009–1133 (within 1.5) |
+| Leading capsule | a list glyph (navigator) and a sparkle glyph | a sidebar glyph and a speech bubble |
+| Item left of the scheme capsule | a speech bubble with a plus, in a **pink-to-purple gradient** | a black outline bubble |
+| Source Control navigator (conflict 01) | the Changes │ Repositories control y **90–106**; "Changes" ink 45 wide; rows from 90; **filled grey** group glyphs (repository, Branches, Recents, Tags); branch rows a blue fork with a curved branch | control y 88–104 (2 higher); "Changes" 41 wide (about 9 % smaller type); rows 1.5–3.5 higher; outline glyphs; a Y-shaped branch glyph |
+
+Ycode draws its own glyphs (no artwork is copied); the targets are the
+colour, weight, fill style and the items' presence and grouping. The
+cloud circle stands for a cloud-service status Ycode does not have:
+owner's decision whether Ycode shows an equivalent status there (for
+example its simulator host's), designed by rule 2.
+
+### H.10 Items raised by one judge, checked
+
+- **Navigator scroller (step 15, Opus: "about 25 shorter").** Reference:
+  track y **91.5–849.5** (758), thumb 298.5–735.5 (**437**); Ycode: track
+  127.5–836 (708.5: it starts 36 lower and ends 13.5 higher), thumb
+  327–711 (384). Thumb share of the track 0.577 against 0.542; at the
+  reference's track length Ycode's thumb would be about 26 shorter, as
+  the judge said. Ycode had one row fewer (H.6), which would lengthen
+  its thumb, so the content or inset heights differ as well. Target: the
+  scroller runs from just below the navigator's top bar to just above
+  its bottom bar (the content's scroll insets), and its thumb is the
+  visible share of the content.
+- **Welcome window path (step 18, Opus).** The reference's recent
+  project row shows the path with the temporary folder's link resolved
+  ("/private/tmp/…"); Ycode shows it as opened ("/tmp/…"). The inspector's
+  Full Path shows the unresolved form in both apps. Target: the Welcome
+  list shows the real path (symbolic links resolved); the inspector keeps
+  the opened path.
+- **Property names "reddish" (Gemini)** and **step 08's scroller "visible
+  at rest" (Gemini):** not borne out (round 6 summary).
+
 ## Evidence
 
 - Commands, shortcuts and the assistant/counterparts behavior: Apple's
@@ -1223,4 +1550,16 @@ choice until a capture without issues).
   button states from per-frame changed regions and region means; issue
   elements from ink boxes and colour runs; all times against the
   session manifest's action times. Measured in the dirty room; prose
+  only here.
+- Council round 6 (H.1–H.10), level 3: the round 6 session's Retina
+  stills and 120 fps recordings of both apps (foreground, key window,
+  light). The flick's offsets from matching each frame's text area
+  against the stills at offsets 0 and 600, and a least-squares fit of a
+  critically damped spring to the return; inspector keyframes from the
+  per-frame edge at y 700 and named-curve fits; the overflow capsule
+  from rim positions per frame; wrap columns and jump-bar parts from
+  per-row ink ends and ink clusters on the stills; button states from
+  region means per frame; the first-open state from the before still,
+  the test project's generator and the capture scripts (our code); all
+  times against the session manifests. Measured in the dirty room; prose
   only here.

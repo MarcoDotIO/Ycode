@@ -537,7 +537,12 @@ public final class MergeFileListView: NSView, NSTextFieldDelegate {
     // The list takes the focus (its selection is then the accent); a click
     // in the panes, the gutter or on a token moves it there (§14.3).
     public override var acceptsFirstResponder: Bool { true }
-    public override func becomeFirstResponder() -> Bool { needsDisplay = true; return true }
+    public override func becomeFirstResponder() -> Bool {
+        needsDisplay = true
+        // The current change's rules dim with the panes' focus (§15.2).
+        controller?.canvas.needsDisplay = true
+        return true
+    }
     public override func resignFirstResponder() -> Bool { needsDisplay = true; return true }
 
     /// The list (or its Filter field) has the keyboard focus.

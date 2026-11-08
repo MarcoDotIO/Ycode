@@ -18,7 +18,12 @@ public enum RepositoriesViewStyle {
     /// The mode control's inset from each side of the navigator, and its height.
     public static let modeControlInset = 9.0
     public static let modeControlHeight = 16.0
-    /// The segments' title size: "Changes" 45 wide in ink (`fidelity-council.md`
-    /// row 114; at 11 points it was 49.5).
-    public static let modeControlFontSize = 10.0
+    /// The segments' title size: "Changes" 45 wide in ink (`editor-area.md`
+    /// H.9, council row 166: Ycode's 10-point titles were 41 wide, about
+    /// 9 % smaller; the system font's "Changes" is 44.7 at 11 points).
+    public static let modeControlFontSize = 11.0
+    /// The control's drop below the header row's centre, and the rows' below
+    /// their usual top (H.9: the control y 90–106, 2 lower than Ycode's;
+    /// the rows 1.5–3.5 lower).
+    public static let modeControlDrop = 2.0
 }

@@ -393,6 +393,8 @@ final class JumpBar: NSView {
     var onToggleMinimap: (() -> Void)?
     /// Split panes: focus and the close button (JumpBar+Panes.swift).
     let paneState = JumpBarPaneState()
+    /// The path's views and their fit (JumpBar+Path.swift).
+    let pathState = JumpBarPathState()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -422,6 +424,13 @@ final class JumpBar: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    /// The path gives way by the reference's order (JumpBar+Path.swift):
+    /// laid out once to find where it starts, then fitted.
+    override func layout() {
+        super.layout()
+        if applyPathFit() { super.layout() }
+    }
 
     /// The band is the editor's background, nearly opaque, so the text
     /// scrolling beneath shows as a faint veil; then a 2-point separator
@@ -470,6 +479,7 @@ final class JumpBar: NSView {
     func setPath(_ components: [(String, String)]) {
         lastComponents = components
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        pathState.reset()
         closeButton = nil
         relatedItemsButton = nil
         if showsPaneCloseButton, !showsCloseButton { addPaneCloseButton() }   // JumpBar+Panes.swift
@@ -528,20 +538,10 @@ final class JumpBar: NSView {
             if !showsPaneCloseButton { addEmptyDivider() }
             stack.addArrangedSubview(label("No Selection", secondary: false))
         }
-        for (i, (title, symbol)) in components.enumerated() {
-            if i > 0 { stack.addArrangedSubview(chevronLabel()) }
-            if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
-                let iv = NSImageView(image: img)
-                iv.contentTintColor = pathIconTint(symbol: symbol, title: title)
-                stack.addArrangedSubview(iv)
-            }
-            // The middle components give way first (E.2 item 4).
-            stack.addArrangedSubview(pathLabel(title, middle: i > 0 && i < components.count - 1))
-        }
-        if let symbolTitle, !components.isEmpty {
-            stack.addArrangedSubview(chevronLabel())
-            stack.addArrangedSubview(label(symbolTitle, secondary: symbolTitle == "No Selection"))
-        }
+        // The path, spaced and fitted by ink (JumpBar+Path.swift, H.4).
+        for (i, (title, symbol)) in components.enumerated() { addPathPart(title: title, symbol: symbol, first: i == 0) }
+        if let symbolTitle, !components.isEmpty { addPathLast(symbolTitle) }
+        needsLayout = true
     }
 
     func label(_ s: String, secondary: Bool) -> NSTextField {
@@ -631,12 +631,12 @@ final class JumpBar: NSView {
         for v in [prev, pop, next] as [NSView] { issueStack.addArrangedSubview(v) }
     }
 
-    /// A stepper chevron: 6.5 × 11.5, the secondary label colour.
+    /// A stepper chevron: 6.5 × 11.5, #7F7F7F in light (H.5).
     private func stepperChevron(_ symbol: String, _ name: String) -> NSButton {
         let b = iconButton(symbol, name)
         b.image = b.image?.withSymbolConfiguration(.init(pointSize: 11, weight: .regular))
         b.imageScaling = .scaleProportionallyDown
-        b.contentTintColor = .secondaryLabelColor
+        b.contentTintColor = JumpBarIssueStepper.chevronColor
         b.widthAnchor.constraint(equalToConstant: CGFloat(IssueStepper.chevronWidth)).isActive = true
         b.heightAnchor.constraint(equalToConstant: CGFloat(IssueStepper.chevronHeight)).isActive = true
         return b
@@ -644,12 +644,7 @@ final class JumpBar: NSView {
 
     /// An issue kind's symbol in its colours: white mark on yellow, white
     /// cross on red (G.8).
-    static func issueSymbol(_ kind: IssueStepper.Kind) -> NSImage? {
-        let fill: NSColor = kind == .error ? .systemRed : .systemYellow
-        return NSImage(systemSymbolName: kind.symbol, accessibilityDescription: "Issues")?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .regular)
-                .applying(NSImage.SymbolConfiguration(paletteColors: [.white, fill])))
-    }
+    static func issueSymbol(_ kind: IssueStepper.Kind) -> NSImage? { JumpBarIssueStepper.symbol(kind) }
 
     @objc private func previousIssueClicked() { onPreviousIssue?() }
     @objc private func nextIssueClicked() { onNextIssue?() }

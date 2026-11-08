@@ -235,12 +235,15 @@ struct FileInspectorView: View {
                 }
             }
         case .tags(let placeholder, let enabled):
+            // H.7 (row 162): the placeholder's ink 6.5 in, centred; the
+            // field #E0E0E1 in light (the macOS `ResourceTagsField`).
             Text(verbatim: placeholder).font(ShellFonts.small).tracking(ShellFonts.smallTracking)
-                .foregroundStyle(enabled ? c.tertiaryLabel : c.inspectorDimmed)
+                .foregroundStyle(enabled ? c.inspectorTagsPlaceholder : c.inspectorDimmed)
                 .lineLimit(1)
-                .padding(.horizontal, 6)
+                .padding(.leading, enabled ? 6.25 : 6)
+                .padding(.trailing, 6)
                 .frame(maxWidth: .infinity, minHeight: enabled ? 24 : 22, alignment: .leading)
-                .background { if enabled { RoundedRectangle(cornerRadius: 6, style: .continuous).fill(c.inspectorFieldFill) } }
+                .background { if enabled { RoundedRectangle(cornerRadius: 6, style: .continuous).fill(c.inspectorTagsFill) } }
         case .button(let title):
             // Localize…: as wide as the value area, 16 tall, filled, centred.
             Text(verbatim: title).font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.inspectorText)

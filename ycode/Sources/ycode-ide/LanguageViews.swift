@@ -375,6 +375,8 @@ struct LanguageSheets: ViewModifier {
 /// and choosing one goes to its line.
 struct DocumentItemsMenu: View {
     var model: WorkspaceShellModel
+    /// The pane has the focus (its path in the label colour, else grey).
+    var isActive = true
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -390,14 +392,10 @@ struct DocumentItemsMenu: View {
             }
         } label: {
             // Plain text after the chevron, as the macOS jump bar: the
-            // symbol's name, or "No Selection" in the tertiary colour
-            // (`cross-platform-parity.md` §4).
-            if let s = f.caretSymbol {
-                Text(verbatim: s.name).font(ShellFonts.small).foregroundStyle(c.label).lineLimit(1)
-            } else {
-                Text(verbatim: WorkspaceChrome.jumpBarNoSymbol).font(ShellFonts.small)
-                    .foregroundStyle(c.tertiaryLabel).lineLimit(1)
-            }
+            // symbol's name, or "No Selection", in the path's colour
+            // (`editor-area.md` H.4, row 145).
+            Text(verbatim: f.caretSymbol?.name ?? WorkspaceChrome.jumpBarNoSymbol).font(ShellFonts.small)
+                .foregroundStyle(isActive ? c.label : c.secondaryLabel).lineLimit(1)
         }
         .menuStyle(.borderlessButton)
         .buttonStyle(.plain)
