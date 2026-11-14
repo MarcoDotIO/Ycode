@@ -23,7 +23,9 @@ public struct ToolbarFit: Equatable, Sendable {
     public var editorModesInOverflow = false
     /// The scheme capsule shows glyphs only.
     public var schemeGlyphsOnly = false
-    /// The activity view's width cap (nil: its whole subtitle).
+    /// The cap on the activity view's mark and text (nil: its whole
+    /// subtitle). The view's leading pad, which follows the system's gap
+    /// before it, comes on top and is not part of the steps.
     public var activityWidth: CGFloat?
     public init(editorModesInOverflow: Bool = false, schemeGlyphsOnly: Bool = false, activityWidth: CGFloat? = nil) {
         self.editorModesInOverflow = editorModesInOverflow
@@ -41,10 +43,13 @@ public struct ToolbarFit: Equatable, Sendable {
     /// fit for this step.
     public func accepts(overflowed: [String]) -> Bool { Set(overflowed).isSubset(of: overflowAllowance) }
 
-    /// The narrowest the activity view gets.
+    /// The narrowest cap on the activity view's mark and text.
     public static let activityMinimum: CGFloat = 72
 
     /// The steps in order, from nothing given up to the tightest.
+    /// `activityNatural` is the width the activity view's mark and text
+    /// need, without its leading pad: a value that does not change with the
+    /// toolbar's layout, so a fit and the layouts after it use one list.
     public static func steps(activityNatural: CGFloat) -> [ToolbarFit] {
         var out = [ToolbarFit(), ToolbarFit(schemeGlyphsOnly: true), ToolbarFit(editorModesInOverflow: true, schemeGlyphsOnly: true)]
         var w = activityNatural

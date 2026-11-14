@@ -47,4 +47,19 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(!steps[1].accepts(overflowed: ["editorModes"]))
         #expect(steps[2].accepts(overflowed: ["editorModes"]) && !steps[2].accepts(overflowed: ["editorModes", "history"]))
     }
+
+    /// B10: the public runner (macOS 27.0.1 at 1x) capped the activity view
+    /// at 188 at 1150 points, a step of a 222-point natural width, and at
+    /// 124 and 90 at 1100 and 1050, steps of 226: the width the steps
+    /// followed then held the view's leading pad, which moved by 4 between
+    /// the layouts. The steps are a pure function of one natural width
+    /// (now without the pad), so only a changing input splits them.
+    @Test func toolbarFitStepsOfTheRunnersWidths() {
+        let caps222 = ToolbarFit.steps(activityNatural: 222).compactMap(\.activityWidth)
+        let caps226 = ToolbarFit.steps(activityNatural: 226).compactMap(\.activityWidth)
+        #expect(caps222 == [188, 154, 120, 86, 72])
+        #expect(caps226 == [192, 158, 124, 90, 72])
+        #expect(!caps226.contains(188) && caps226.contains(124) && caps226.contains(90))
+        #expect(ToolbarFit.steps(activityNatural: 222) == ToolbarFit.steps(activityNatural: 222))
+    }
 }

@@ -178,13 +178,15 @@ extension WorkspaceWindowController {
         guard let window, let frame = window.contentView?.superview, window.toolbar != nil, !toolbarControls.fitting, !isInspectorSliding else { return }
         toolbarControls.fitting = true
         toolbarControls.fitRuns += 1
-        // The steps follow the activity view's natural width; when the
-        // fit's own layout changed it (the gap before the view), one more
-        // fit uses the new width.
-        let natural = activityView.naturalWidth
+        // The steps follow the activity view's natural width without its
+        // leading pad, so the fit's own layout (which measures the gap
+        // before the view and sets the pad) cannot change them. When that
+        // layout changed the pad, the view is wider or narrower: one more
+        // fit measures with it.
+        let natural = activityView.naturalFrameWidth
         defer {
             toolbarControls.fitting = false
-            if abs(activityView.naturalWidth - natural) >= 1 { scheduleToolbarFit() }
+            if abs(activityView.naturalFrameWidth - natural) >= 1 { scheduleToolbarFit() }
         }
         // The first try lays out the whole frame (the toolbar's room follows
         // the areas' dividers); the steps only change toolbar items, so later

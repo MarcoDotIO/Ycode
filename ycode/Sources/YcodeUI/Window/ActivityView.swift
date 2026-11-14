@@ -17,8 +17,9 @@ public final class ActivityView: NSView {
     public var isBusy = false { didSet { if oldValue != isBusy { updateBusy() } } }
     /// The workspace is a package (the mark is the same for both, row 212).
     public var isPackage = false
-    /// The widest the view may be (the toolbar sets it when room is short,
-    /// reference-ui-6.md §2.2); the subtitle truncates to fit.
+    /// The widest the mark and the text may be (the toolbar sets it when
+    /// room is short, reference-ui-6.md §2.2); the subtitle truncates to
+    /// fit. The leading pad comes on top, as with `naturalWidth`.
     public var maximumWidth: CGFloat = .greatestFiniteMagnitude { didSet { if oldValue != maximumWidth { changed() } } }
 
     let icon = NavigatorFlatIconView()
@@ -94,25 +95,38 @@ public final class ActivityView: NSView {
         needsDisplay = true
     }
 
-    /// The natural width changed (the toolbar refits, §2.2).
+    /// The view's natural width (with its pad) changed: the toolbar refits
+    /// (§2.2).
     public var onNaturalWidthChange: (() -> Void)?
     private var lastNaturalWidth: CGFloat = 0
 
     func changed() {
         invalidateIntrinsicContentSize()
         needsDisplay = true
-        let w = naturalWidth
+        let w = naturalFrameWidth
         if abs(w - lastNaturalWidth) >= 1 { lastNaturalWidth = w; onNaturalWidthChange?() }
     }
 
-    /// The width the name and the whole subtitle need.
+    /// The width the mark, the name and the whole subtitle need, without
+    /// the leading pad: the width the toolbar's steps follow
+    /// (`ToolbarFit.steps(activityNatural:)`). The pad is left out because
+    /// it follows the gap measured in the laid-out toolbar, which changes
+    /// from one layout to the next (B10: 27.0 at 1x, or Back | Forward in
+    /// the overflow); steps that followed it changed between a fit and
+    /// the next layout.
     public var naturalWidth: CGFloat {
         let name = (workspaceName as NSString).size(withAttributes: [.font: Self.nameFont]).width
         let line = (status as NSString).size(withAttributes: [.font: Self.statusFont]).width
-        return ceil(textStart + max(name, line) + 2 + Self.sideInset)
+        return ceil(Self.textInset + max(name, line) + 2 + Self.sideInset)
     }
 
-    public override var intrinsicContentSize: NSSize { NSSize(width: max(textStart + 40, min(naturalWidth, maximumWidth)), height: 34) }
+    /// The whole view at its natural width: the leading pad, then
+    /// `naturalWidth`.
+    public var naturalFrameWidth: CGFloat { leadingPad + naturalWidth }
+
+    public override var intrinsicContentSize: NSSize {
+        NSSize(width: max(textStart + 40, leadingPad + min(naturalWidth, maximumWidth)), height: 34)
+    }
 
     public override func layout() {
         super.layout()
