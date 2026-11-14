@@ -72,6 +72,14 @@ One commit on `main` that states the new version everywhere it is stated. `Ycode
   `flatpak make-current --user io.github.MarcoDotIO.Ycode master` straight after, and uninstall the test branch at
   the end.
 
+- [ ] **The aarch64 simulator tree** (`guest-tools` job, then the aarch64 `flatpak` job): the `guest-tools` job
+  builds `ylaunch` and the guest agents on the Mac runner (`packaging/flatpak/build-guest-tools.sh`), and the
+  aarch64 build puts them in the tree (`YCODE_GUEST_TOOLS`). The job then runs
+  `packaging/flatpak/check-sim-tree.sh` on the tarball, on the plain Ubuntu 24.04 runner with nothing from the
+  build on `PATH`: a failure there is a release blocker. Run it once more **by hand** on an arm64 simulator host
+  with a runtime, so that a device boots from the tree and streams JPEG:
+  `packaging/flatpak/check-sim-tree.sh Ycode-<version>-aarch64.tar.xz --runtime-root <RuntimeRoot>`.
+
 ## 4. Tag and publish
 
 - [ ] **Tag the version commit** `v<version>` and push the tag (**by hand**: `git tag v<version>`,

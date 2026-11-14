@@ -1,0 +1,313 @@
+{
+  "issue": 81,
+  "targets": [
+    "xcode",
+    "ycode"
+  ],
+  "compare_order": [
+    "xcode",
+    "ycode"
+  ],
+  "name": "council-r9-icons",
+  "title": "Council round 9 (#81), as round 8 (same steps, ids and order): Council round 8 (#81), new: the project navigator's file icons. GlassScroll with a Python, a JSON and a Markdown file added to its synchronized folder (make-icons-project.py), Long.swift selected; one still with each app's own Appearance set to Dark, one set to Light, then back to System.",
+  "project": {
+    "generator": "make-icons-project.py",
+    "path": "icons/GlassScroll/GlassScroll.xcodeproj"
+  },
+  "window": {
+    "size": [
+      1400,
+      880
+    ],
+    "display": "builtin",
+    "title": "{project}",
+    "timeout": 90
+  },
+  "focus": "foreground",
+  "launch_settle": 3.0,
+  "record": {
+    "fps": 120,
+    "codec": "prores4444",
+    "pre": 0.4,
+    "post": 1.2
+  },
+  "steps": [
+    {
+      "id": "icons-appearance-dark",
+      "note": "Each app's own Appearance set to Dark (Settings > Appearance), Settings closed.",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "description": "AppearanceDark",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "title": "Dark",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "none"
+    },
+    {
+      "id": "navigator-icons-dark",
+      "note": "Round 8: the project navigator in dark with Long.swift selected: Swift, Python (convert.py), JSON (palette.json), Markdown (NOTES.md), PNG and folder icons in one list. Crop sheet of the navigator.",
+      "do": [
+        {
+          "click": {
+            "role": "AXRow",
+            "text": "Long|Long.swift"
+          }
+        },
+        {
+          "wait": 1.5
+        }
+      ],
+      "record": false,
+      "still": "after",
+      "crop": [
+        0,
+        40,
+        320,
+        470
+      ]
+    },
+    {
+      "id": "icons-appearance-light",
+      "note": "Each app's own Appearance set to Light, Settings closed.",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "description": "AppearanceLight",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "title": "Light",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "none"
+    },
+    {
+      "id": "navigator-icons-light",
+      "note": "Round 8: the same navigator in light. Crop sheet of the navigator.",
+      "do": [
+        {
+          "wait": 1.0
+        }
+      ],
+      "record": false,
+      "still": "after",
+      "crop": [
+        0,
+        40,
+        320,
+        470
+      ]
+    },
+    {
+      "id": "icons-appearance-restore",
+      "note": "Each app's own Appearance set back to System.",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "description": "AppearanceAuto",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "title": "System",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    }
+  ]
+}

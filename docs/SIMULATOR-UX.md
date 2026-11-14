@@ -124,6 +124,15 @@ there `ycode sim remote boot|shutdown|create|log` do its device actions.
   (commands: `ycode/Sources/ycode-sim-viewer/ScriptRunner.swift`).
 - The host: `ycode-host-setup --report`, `--apply`, then `--report` again
   while `ycode-simhost serve` runs (§1.2–§1.4).
+- A release's simulator tree on a plain host:
+  `packaging/flatpak/check-sim-tree.sh Ycode-<version>-aarch64.tar.xz
+  [--runtime-root <RuntimeRoot>]` unpacks it into a fresh folder and, with
+  nothing from a build environment, checks its layout and guest tools, that
+  its programs load and work (the translator's self-test, `ycode-simd
+  --check-encoders`), `ycode-simhost` check, serve, identity and pair, and with
+  a runtime and `/dev/kvm` a device that boots, streams JPEG frames with
+  tiles, takes a screenshot and stops. The release runs it on
+  `ubuntu-24.04-arm`.
 
 ## 9. Results
 
@@ -169,13 +178,37 @@ read-only iOS 27.1 runtime, an iPhone 18 Pro, and the template iOS app
 | 6.x | Device Hub | not walked: Ycode.app's hub lists `simctl` devices and drives the host over ssh; covered by `YcodeDeviceUITests`/`YcodeUITests` (pass) | no hub on Linux (open item) | no hub |
 | 7 | Errors | – | pass (offline host); the others by tests | – |
 
-Host problems the walk found that are outside this round's files (the
-orchestrator has them): the 1.0.0-beta.2 aarch64 release's simulator tree
-cannot render on Ubuntu 24.04 (its `ycode-airc` needs glibc 2.44 and
-`libxml2.so.16`; its JPEG frames are empty against the system's
-`libjpeg.so.8`, so viewers must ask for zlib), and it has no guest tools
-(`ylaunch`). The walk used a `ycode-airc` built from source on the host, the
-guest tools built on the Mac, and `--encoding zlib`.
+Host problems the walk found that were outside that round's files: the
+1.0.0-beta.2 aarch64 release's simulator tree could not render on Ubuntu
+24.04 (its `ycode-airc` needed glibc 2.44 and `libxml2.so.16`; its JPEG frames
+were empty against the system's `libjpeg.so.8`, so viewers had to ask for
+zlib), and it had no guest tools (`ylaunch`). The walk used a `ycode-airc`
+built from source on the host, the guest tools built on the Mac, and
+`--encoding zlib`. Branch `b3-armtree` fixed all three (2026-11-08, below).
+
+### The release's simulator tree on a plain host (2026-11-08)
+
+The aarch64 tarball built by `build-flatpak.sh` from branch `b3-armtree`
+(with `YCODE_GUEST_TOOLS`), unpacked on the arm64 host (Ubuntu 24.04, glibc
+2.39) and run with nothing from a build on `PATH` or `LD_LIBRARY_PATH`:
+
+| # | Step | Result |
+|---|---|---|
+| — | `check-sim-tree.sh <tarball> --runtime-root …` | 34 passed, 0 failed: layout and guest tools, every simulator program loads, `ycode-airc selftest`, JPEG (libjpeg ABI 62, the tree's own) and zlib, `ycode-simhost` check, serve, identity, pair, stop; a new device's home screen at 88 s, 22 JPEG frames all with tiles, screenshot, Home, stop in 11 s |
+| 1.2 | Host setup report (`--sim-tree` the tree, test ports) | 3.6 s; **fixed**: libjpeg reported missing (no `/sbin` on `PATH`; a release carries its own), LLVM 18 and SPIRV-Tools asked of a release |
+| 1.3 | Apply | pass, 3.8 s (5 steps) |
+| 1.4 | Check while the service runs | pass, 3.6 s |
+| 2.1 | Pair (client: the Mac's `ycode`) | pass, 1.2 s |
+| 2.2 | Info, devices | pass |
+| 3.3 | Create a device | pass, 1.6 s |
+| 4.3–4.5 | Run an app (`ycode sim remote run … --no-view`) | pass: installed and launched by the tree's `ylaunch`; first boot of the empty device home at 60 s, app open after the settled home screen |
+| 4.8 | Stop | pass, 14 s (the device is saved) |
+| 4.9 | Run again | pass, warm: home 7 s after start, app open at 15 s |
+| 5 | The display stream | JPEG frames with tiles (the 1.0.0-beta.2 tree: 1 frame of 36 bytes, 0 tiles, on the same host) |
+
+The tarball's `ycode`, IDE and viewer still need glibc 2.43 and OpenSSL 3.2
+(libcurl, SDL 3), so on this host the client was the Mac; see
+`docs/SIMULATOR-LINUX.md` §5.1.
 
 ### Open items
 
@@ -188,7 +221,8 @@ guest tools built on the Mac, and `--encoding zlib`.
   on the device (the link has no "terminate app" request).
 - New SwiftUI template apps do not build on Linux: `#Preview` needs Apple's
   `PreviewsMacros` plug-in.
-- The release's simulator tree on a plain distribution (above).
+- The aarch64 tarball's `ycode`, IDE and viewer on a distribution older than
+  freedesktop 26.08 (libcurl needs glibc 2.43 and OpenSSL 3.2, SDL 3 glibc 2.43).
 
 ## Evidence
 

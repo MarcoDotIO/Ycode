@@ -138,6 +138,7 @@ public final class SourceControlCoordinator {
         owner.knownRepository = .some(read.repository)
         let previous = snapshot
         snapshot = read
+        owner.session.noteConflicts(read)   // an unresolved merge is an issue (row 188)
         if read.baselinesMayDiffer(from: previous) {
             for e in owner.editorArea.allEditors where e.fileURL != nil && e.changeBaselines != nil { e.refreshSourceChanges() }
         }

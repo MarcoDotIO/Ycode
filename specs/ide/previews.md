@@ -91,6 +91,17 @@ In the focused Swift file, outside comments and string literals:
   `~/Library/Developer/Ycode/DerivedData/Previews/ModuleCache` (an absolute,
   normalized path: a `..` in it made clang see two caches), each
   generation's own install name `@rpath/payload-<n>.dylib`.
+  **Module cache location** (Ycode's own rule): a module cache records
+  absolute paths, and one reused after its folder moved (a project copied
+  to another drive, a symlinked folder pointed at a copy) crashed the
+  compiler with signal 11. Each preview cache has a stamp beside it,
+  `<cache>.location`, holding the cache's real path with symlinks
+  resolved; before every host or payload compile, a cache whose stamp is
+  missing or names another path is emptied and stamped again. A compile
+  whose log shows a compiler crash ("failed due to signal", "Stack dump:")
+  runs once more with an emptied cache; a code error is never retried. The
+  Linux payload compile uses the toolchain's own cache first and retries a
+  crash with an empty cache beside the output.
 - **Plan** (`PreviewPlan`): `{generation, payload, regions[]}`; a region
   is a preview index, a rectangle of the device's screen in points, a
   scale, and its traits (`style` light/dark, `dynamicType` as a

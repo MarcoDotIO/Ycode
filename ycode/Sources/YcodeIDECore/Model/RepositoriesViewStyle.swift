@@ -8,9 +8,11 @@ import Foundation
 public enum RepositoriesViewStyle {
     /// Each group's symbol, near the reference's (a stacked drive, a clock,
     /// a tag, a tray, a globe) among the names both IDEs draw (the Linux
-    /// IDE's symbol artwork has these).
-    public static let groupSymbols = ["Branches": "square.stack.3d.up.fill", "Recents": "clock", "Tags": "tag.fill",
-                                      "Stashes": "tray", "Remotes": "globe"]
+    /// IDE's symbol artwork has these). Recents and Stashes are filled like
+    /// the others (`editor-area.md` H.9, council row 166: filled grey group
+    /// glyphs; OpenViews draws its own `clock.fill` and `tray.fill`).
+    public static let groupSymbols = ["Branches": "square.stack.3d.up.fill", "Recents": "clock.fill", "Tags": "tag.fill",
+                                      "Stashes": "tray.fill", "Remotes": "globe"]
     /// The repository row's symbol: a filled drive.
     public static let repositorySymbol = "externaldrive.fill"
     /// The groups collapsed at first (row ids "group:<title>").

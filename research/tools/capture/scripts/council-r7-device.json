@@ -1,0 +1,816 @@
+{
+  "name": "council-r7-device",
+  "issue": 81,
+  "title": "Round 7 (#81): round 6's steps, ids and order unchanged (step 01), then the device window's scale (round 6 open question): Zoom to Fit at a second window size (1400 x 900; the built-in display is 982 pt tall), with the inspector hidden, and a classic iPhone (ycode-test-council-classic, iPhone 17, iOS 27.2) and an iPad (ycode-test-council-ipad, iPad Air 11-inch (M4), iOS 27.2) besides the Duo. Council round 6 (#81): the simulator device window. Reference: Device Hub 27.1 (Xcode 27 has no Simulator app) showing ycode-test-council-iphone. Ycode: its Device Hub showing the same simctl device. Ycode opens the GlassScroll test project first: its Device Hub item needs a workspace window. As in round 5, Ycode cannot show a booted simulator here (its simulators run on a Linux host); it shows its control capsules disabled for this device.",
+  "targets": [
+    "devicehub",
+    "ycode"
+  ],
+  "compare_order": [
+    "devicehub",
+    "ycode"
+  ],
+  "project": {
+    "generator": "make-test-project.py",
+    "path": "GlassScroll/GlassScroll.xcodeproj"
+  },
+  "project_targets": [
+    "ycode"
+  ],
+  "window": {
+    "size": [
+      1100,
+      800
+    ],
+    "display": "builtin",
+    "title": "ycode-test-council-iphone",
+    "wait_title": null,
+    "first_window_wait": 6.0,
+    "timeout": 90
+  },
+  "focus": "foreground",
+  "launch_settle": 1.0,
+  "setup_settle": 2.0,
+  "record": {
+    "fps": 120,
+    "codec": "prores4444",
+    "pre": 0.4,
+    "post": 1.5
+  },
+  "per_target_setup": {
+    "devicehub": [
+      {
+        "menu": "View > Show Sidebar"
+      },
+      {
+        "wait": 1.0
+      },
+      {
+        "select": {
+          "role": "AXRow",
+          "text~": "ycode-test-council-iphone",
+          "scope": "app"
+        }
+      },
+      {
+        "wait": 2.0
+      },
+      {
+        "menu": "View > Hide Sidebar"
+      },
+      {
+        "wait": 1.0
+      }
+    ],
+    "ycode": [
+      {
+        "menu": "Ycode > Open Developer Tool > Device Hub"
+      },
+      {
+        "wait": 3.0
+      },
+      {
+        "select": {
+          "role": "AXRow",
+          "text~": "ycode-test-council-iphone",
+          "scope": "app"
+        }
+      },
+      {
+        "wait": 1.5
+      },
+      {
+        "press": {
+          "role": "AXButton",
+          "description": "Sidebar",
+          "scope": "app"
+        }
+      },
+      {
+        "wait": 1.0
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "device-home-at-rest",
+      "note": "The device window with ycode-test-council-iphone (iPhone Duo, iOS 27.1) selected, sidebar hidden (the sidebar lists every device on this Mac). Reference: the running device's Home screen. Ycode: what it shows for a simctl device it does not run (its simulators run on a Linux host).",
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "device-duo-fit-1100",
+      "note": "Round 7: the Duo at Zoom to Fit (pressed) in 1100 x 800 with the inspector: the zoom state step 01 is compared at, made explicit. The tree records the zoom buttons' states.",
+      "per_target": {
+        "devicehub": {
+          "do": [
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "tree": "zoom",
+              "depth": 12
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "tree": "zoom",
+              "depth": 12
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "device-duo-fit-1400",
+      "note": "Round 7: the Duo at Zoom to Fit after the window is moved and resized to 1400 x 900 (the second window size), inspector shown.",
+      "per_target": {
+        "devicehub": {
+          "do": [
+            {
+              "move": [
+                56,
+                40
+              ]
+            },
+            {
+              "resize": [
+                1400,
+                900
+              ]
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "move": [
+                56,
+                40
+              ]
+            },
+            {
+              "resize": [
+                1400,
+                900
+              ]
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "device-duo-fit-1400-no-inspector",
+      "note": "Round 7: the same with the inspector hidden (View > Inspectors > Hide Inspector).",
+      "per_target": {
+        "devicehub": {
+          "do": [
+            {
+              "menu": "View > Inspectors > Hide Inspector"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "menu": "View > Inspectors > Hide Inspector"
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "label": "Hide Inspector",
+                "scope": "app"
+              },
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "device-duo-fit-1100-no-inspector",
+      "note": "Round 7: back to 1100 x 800, inspector still hidden.",
+      "per_target": {
+        "devicehub": {
+          "do": [
+            {
+              "resize": [
+                1100,
+                800
+              ]
+            },
+            {
+              "move": [
+                206,
+                111
+              ]
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "resize": [
+                1100,
+                800
+              ]
+            },
+            {
+              "move": [
+                206,
+                111
+              ]
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "device-classic-fit-1100",
+      "note": "Round 7: a classic (non-foldable) iPhone, ycode-test-council-classic (iPhone 17, iOS 27.2), at Zoom to Fit in 1100 x 800 with the inspector shown. Sidebar shown only to pick the device, hidden before the still.",
+      "per_target": {
+        "devicehub": {
+          "do": [
+            {
+              "menu": "View > Inspectors > Show Inspector"
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "menu": "View > Show Sidebar"
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text~": "ycode-test-council-classic",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 2.5
+            },
+            {
+              "menu": "View > Hide Sidebar"
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "menu": "View > Inspectors > Show Inspector"
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "label": "Show Inspector",
+                "scope": "app"
+              },
+              "fallback": true
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "description": "Sidebar",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text~": "ycode-test-council-classic",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 2.5
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "description": "Sidebar",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "device-classic-fit-1400-no-inspector",
+      "note": "Round 7: the classic iPhone at Zoom to Fit in 1400 x 900, inspector hidden.",
+      "per_target": {
+        "devicehub": {
+          "do": [
+            {
+              "move": [
+                56,
+                40
+              ]
+            },
+            {
+              "resize": [
+                1400,
+                900
+              ]
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "menu": "View > Inspectors > Hide Inspector"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "move": [
+                56,
+                40
+              ]
+            },
+            {
+              "resize": [
+                1400,
+                900
+              ]
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "menu": "View > Inspectors > Hide Inspector"
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "label": "Hide Inspector",
+                "scope": "app"
+              },
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "device-ipad-fit-1100",
+      "note": "Round 7: an iPad, ycode-test-council-ipad (iPad Air 11-inch (M4), iOS 27.2), at Zoom to Fit in 1100 x 800 with the inspector shown.",
+      "per_target": {
+        "devicehub": {
+          "do": [
+            {
+              "resize": [
+                1100,
+                800
+              ]
+            },
+            {
+              "move": [
+                206,
+                111
+              ]
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "menu": "View > Inspectors > Show Inspector"
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "menu": "View > Show Sidebar"
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text~": "ycode-test-council-ipad",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 2.5
+            },
+            {
+              "menu": "View > Hide Sidebar"
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "resize": [
+                1100,
+                800
+              ]
+            },
+            {
+              "move": [
+                206,
+                111
+              ]
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "menu": "View > Inspectors > Show Inspector"
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "label": "Show Inspector",
+                "scope": "app"
+              },
+              "fallback": true
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "description": "Sidebar",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text~": "ycode-test-council-ipad",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 2.5
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "description": "Sidebar",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "device-ipad-fit-1400-no-inspector",
+      "note": "Round 7: the iPad at Zoom to Fit in 1400 x 900, inspector hidden.",
+      "per_target": {
+        "devicehub": {
+          "do": [
+            {
+              "move": [
+                56,
+                40
+              ]
+            },
+            {
+              "resize": [
+                1400,
+                900
+              ]
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "menu": "View > Inspectors > Hide Inspector"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "move": [
+                56,
+                40
+              ]
+            },
+            {
+              "resize": [
+                1400,
+                900
+              ]
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "menu": "View > Inspectors > Hide Inspector"
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "label": "Hide Inspector",
+                "scope": "app"
+              },
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXRadioButton",
+                "help": "Zoom to Fit",
+                "scope": "app"
+              }
+            },
+            {
+              "menu": "View > Zoom to Fit",
+              "fallback": true
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    }
+  ]
+}

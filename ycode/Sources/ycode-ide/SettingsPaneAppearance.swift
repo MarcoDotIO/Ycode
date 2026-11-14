@@ -12,9 +12,10 @@ import YcodeSyntax
 /// window-on-wallpaper thumbnails, the bordered preview with line numbers
 /// and no wrapping, Theme / Fonts / Editor centred between two full-width
 /// separators) over a list that scrolls on its own: Theme (a Choose…
-/// push button) and Name, one 56-point colour row per element (a strength
-/// slider and a colour well), the theme file's buttons. Built-in themes are
-/// read-only.
+/// push button) and Name, then the cards of R7.1 (Foreground and Background
+/// sliders, Background Gradient, Customize All Colors, Plain Text and the
+/// syntax rows as colour buttons), the theme file's buttons. Built-in themes
+/// are read-only.
 struct AppearanceSettingsPane: View {
     @State private var segment = 0
     @State private var importing = false
@@ -126,11 +127,17 @@ struct AppearanceSettingsPane: View {
                 Text(verbatim: theme.name).font(SettingsFonts.label).foregroundStyle(p.label).lineLimit(1).shellTarget("settings theme name")
             }
         }
-        SettingsSection(nil, content: {
-            ForEach(ThemeColorRows.all, id: \.key) { row in
-                ThemeColorRowView(title: row.title, key: row.key, theme: theme, shown: Self.shownColor(row.key, palette), editable: !builtIn)
-                    .id("\(theme.name)/\(row.key)")
+        // R7.1: [Foreground, Background, Background Gradient] [Customize All
+        // Colors] [Plain Text] [the syntax rows], 10 apart; the note last.
+        let R = SettingsAppearanceR7.self
+        let cards = R.cards(customizeAllColors: R.isOn(.customizeAllColors, in: theme))
+        ForEach(Array(cards.dropLast().enumerated()), id: \.offset) { _, card in
+            SettingsSection(nil, cardFollows: true) {
+                ForEach(card, id: \.title) { row in listRow(row, theme: theme, palette: palette, builtIn: builtIn) }
             }
+        }
+        SettingsSection(nil, content: {
+            ForEach(cards.last ?? [], id: \.title) { row in listRow(row, theme: theme, palette: palette, builtIn: builtIn) }
         }, footer: {
             if builtIn { FootNote(text: "Built-in themes cannot be changed; duplicate one to edit it.") }
         })
@@ -143,6 +150,31 @@ struct AppearanceSettingsPane: View {
                     SettingsPushButton(title: "Export\u{2026}", target: "settings theme export") { exporting = true }
                 }
             }
+        }
+    }
+
+    /// One row of the Theme list after Theme and Name (R7.1): a switch, a
+    /// slider row or a colour-only row. A built-in theme's rows and switches
+    /// are read-only but drawn in full.
+    @ViewBuilder
+    func listRow(_ row: SettingsAppearanceR7.Row, theme: EditorTheme, palette: SourcePalette, builtIn: Bool) -> some View {
+        let R = SettingsAppearanceR7.self
+        switch row {
+        case .toggle(let sw):
+            SettingsRow(sw.title, kind: .toggle) {
+                SettingsSwitch(isOn: Binding(get: { R.isOn(sw, in: theme) }, set: { on in
+                    guard !builtIn else { return }
+                    Preferences.shared.editSelectedTheme { R.set(sw, on, in: &$0) }
+                }), label: sw.title)
+                .allowsHitTesting(!builtIn)
+                .shellTarget("settings theme switch \(sw.rawValue)")
+            }
+        case .slider(let title, let key):
+            ThemeColorRowView(title: title, key: key, theme: theme, shown: Self.shownColor(key, palette), editable: !builtIn, style: .slider)
+                .id("\(theme.name)/\(key)/slider")
+        case .color(let title, let key):
+            ThemeColorRowView(title: title, key: key, theme: theme, shown: Self.shownColor(key, palette), editable: !builtIn, style: .colorOnly)
+                .id("\(theme.name)/\(key)/color")
         }
     }
 
@@ -319,50 +351,6 @@ struct SettingsFixedRow<Control: View>: View {
         .padding(.bottom, 2 * raise)
         .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
         .background(p.card)
-    }
-}
-
-/// One colour of the selected theme (R5.1's Foreground row, R6.1): 56
-/// tall, the label at the top-left, the slider and the well centred. The
-/// track's hue, the knob's strength and the well's colour come from
-/// `ThemeColorRows.display` (a grey takes Ycode's hue for the row).
-struct ThemeColorRowView: View {
-    var title: String
-    var key: String
-    var theme: EditorTheme
-    var shown: ThemeColor
-    var editable: Bool
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        let p = SettingsPalette(scheme)
-        let L = SettingsAppearanceLayout.self
-        let resolved = (shown.redFraction, shown.greenFraction, shown.blueFraction)
-        let d = ThemeColorRows.display(key, in: theme, resolved: resolved)
-        let current = ThemeColorRows.paleTint(d.full, strength: d.strength)
-        ZStack(alignment: .topLeading) {
-            Text(verbatim: title).font(SettingsFonts.label).foregroundStyle(p.label).lineLimit(1)
-                .padding(.leading, SettingsLayout.labelInset)
-                .padding(.top, L.colorLabelCapTop - 3)
-            // The slider x 421.5–624, the well 632–680 (8 apart, 10 inside the card).
-            HStack(spacing: 8) {
-                Spacer(minLength: 0)
-                ThemeColorSlider(base: d.full, value: Binding(get: { d.strength }, set: { v in
-                    guard editable else { return }
-                    Preferences.shared.editSelectedTheme { ThemeColorRows.setStrength(key, full: d.full, strength: v, in: &$0) }
-                }), target: "settings color slider \(key)")
-                .allowsHitTesting(editable)
-                ThemeColorWell(color: current, hex: ThemeColorRows.value(key, in: theme) ?? "", target: "settings color \(key)") { hex in
-                    Preferences.shared.editSelectedTheme { ThemeColorRows.setTyped(key, hex, in: &$0) }
-                }
-                .allowsHitTesting(editable)
-            }
-            .padding(.trailing, SettingsLayout.controlInset)
-            .frame(height: L.colorRowHeight)
-        }
-        .frame(maxWidth: .infinity, minHeight: L.colorRowHeight, maxHeight: L.colorRowHeight, alignment: .topLeading)
-        .background(p.card)
-        .accessibilityHint(editable ? "" : "Built-in themes cannot be changed")
     }
 }
 

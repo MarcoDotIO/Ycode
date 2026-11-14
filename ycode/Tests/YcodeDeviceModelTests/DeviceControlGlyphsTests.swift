@@ -7,24 +7,68 @@ import Testing
 struct DeviceControlGlyphsTests {
     typealias G = DeviceControlGlyphs
 
-    /// Row 132: Rotate is a square with an arrow at two opposite corners,
-    /// about 19 × 21.5: one over the top-left corner pointing right, one
-    /// under the bottom-right corner pointing left.
+    /// Rows 132 and 175: Rotate is a square with a small hooked arrow at
+    /// two opposite corners, the top right and the bottom left (§15.6),
+    /// about 20 × 17.5 (round 5 measured 19 × 21.5 for its own description).
     @Test func rotateHasTwoOppositeArrows() {
         let g = G.rotate
         let box = G.inkBox(g)
-        #expect(abs((box.maxX - box.minX) - 19) <= 1 && abs((box.maxY - box.minY) - 21.5) <= 1, "\(box)")
+        #expect(abs((box.maxX - box.minX) - 20) <= 1 && abs((box.maxY - box.minY) - 17.5) <= 1, "\(box)")
         let heads = g.solids.compactMap { s -> [G.Point]? in if case .polygon(let p) = s { p } else { nil } }
         #expect(heads.count == 2)
-        // The tips: one above the square pointing right (its tip right of
-        // its base), one below pointing left.
-        let top = heads.first { $0[0].y < 0 }, bottom = heads.first { $0[0].y > 0 }
-        #expect((top?[0].y ?? 0) < -5.5 && (top?[0].x ?? 0) > (top.map { ($0[1].x + $0[2].x) / 2 } ?? 0))
-        #expect((bottom?[0].y ?? 0) > 5.5 && (bottom?[0].x ?? 0) < (bottom.map { ($0[1].x + $0[2].x) / 2 } ?? 0))
+        // The hooks: one at the top-right corner pointing down (its tip
+        // below its base), one at the bottom-left pointing up.
+        let tr = heads.first { $0[0].x > 0 }, bl = heads.first { $0[0].x < 0 }
+        let h = G.rotateHalfSide
+        #expect((tr?[0].x ?? 0) > h && (tr?[0].y ?? 0) > (tr.map { ($0[1].y + $0[2].y) / 2 } ?? 0))
+        #expect((bl?[0].x ?? 0) < -h && (bl?[0].y ?? 0) < (bl.map { ($0[1].y + $0[2].y) / 2 } ?? 0))
+        // The arcs are centred on those corners.
+        let arcs = g.strokes.compactMap { s -> G.Point? in if case .arc(let c, _, _, _) = s { c } else { nil } }
+        #expect(arcs == [G.Point(h, -h), G.Point(-h, h)])
         // The two arrows are the same shape turned half a turn.
-        if let t = top, let b = bottom {
+        if let t = tr, let b = bl {
             for (p, q) in zip(t, b) { #expect(abs(p.x + q.x) < 0.001 && abs(p.y + q.y) < 0.001) }
         }
+    }
+
+    /// Row 175: Home is a 3 × 3 grid of rounded squares (not circles).
+    @Test func homeIsAGridOfRoundedSquares() {
+        let g = G.home
+        #expect(g.solids.count == 9)
+        for s in g.solids {
+            guard case .roundedRect(_, _, let w, let h, let r) = s else { Issue.record("\(s)"); continue }
+            #expect(w == h && r > 0 && r < w / 2)
+        }
+        let box = G.inkBox(g)
+        #expect(abs((box.maxX - box.minX) - 12.5) <= 1 && abs((box.maxY - box.minY) - 12.5) <= 1, "\(box)")
+    }
+
+    /// Row 175: the half-open posture is a flat sheet (no spine line) whose
+    /// top and bottom edges curve slightly.
+    @Test func halfOpenIsAFlatSheetWithCurvedEdges() {
+        let g = G.posture(.halfOpen)
+        #expect(g.strokes.count == 1)
+        guard case .polygon(let pts) = g.strokes[0] else { Issue.record("not a polygon"); return }
+        // The top edge is lower at the middle than at the ends, smoothly.
+        let top = pts.prefix(pts.count / 2)
+        #expect(top.count > 4 && top.first!.y < top[top.count / 2].y && top.last!.y < top[top.count / 2].y)
+    }
+
+    /// Row 174: the toolbar's layout glyph (an outline window with a top bar
+    /// and a right panel) and the compact-window arrows on the rising
+    /// diagonal, pointing in.
+    @Test func toolbarGlyphs() {
+        let l = G.layout
+        #expect(l.solids.isEmpty && l.fills.isEmpty && l.strokes.count == 3)
+        if case .roundedRect = l.strokes[0] {} else { Issue.record("outline first") }
+        let c = G.compactWindow
+        let shafts = c.strokes.compactMap { s -> [G.Point]? in if case .polyline(let p) = s, p.count == 2 { p } else { nil } }
+        #expect(shafts.count == 2)
+        for s in shafts {
+            // From a corner on the rising diagonal (x and y of opposite signs) toward the centre.
+            #expect(s[0].x * s[0].y < 0 && hypot(s[1].x, s[1].y) < hypot(s[0].x, s[0].y))
+        }
+        #expect(Set(shafts.map { $0[0].x > 0 }) == [true, false])
     }
 
     /// Row 131: the postures' sizes and colours.

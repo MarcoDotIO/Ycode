@@ -15,7 +15,8 @@ extension WorkspaceShellModel {
     /// The expanded rows to start with: the saved set, else the first-open
     /// default.
     static func initialExpansion(for model: WorkspaceModel, stateURL: URL?) -> Set<String> {
-        let saved = stateURL.map(WorkspaceUserState.load(from:))?.expandedRows
+        // Rows below the main group's children open collapsed (navigators.md round 7 §4).
+        let saved = stateURL.map(WorkspaceUserState.load(from:))?.expandedRows.map { NavigatorTree.reopenedExpansion($0, root: model.root) }
         return Set(saved ?? NavigatorTree.initiallyExpanded(model.root))
     }
 

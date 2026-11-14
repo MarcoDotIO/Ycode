@@ -26,7 +26,9 @@
 //   chrome more|close|hover <control>|click <control>|appearance light|dark
 //                                      the window's chrome: open or close More Actions, hover a
 //                                      capsule control until its tooltip shows, click one (a
-//                                      DeviceCommand name: home, screenshot, recordScreen, …)
+//                                      DeviceCommand name: home, screenshot, recordScreen, …);
+//                                      with the toolbar also `toolbar <item>`, `inspector show|hide`
+//                                      and `window <w>x<h>` (the window's size)
 //   stats-begin / stats-end [label]    frames, bytes, guest frames, and the stage medians over the span
 //   latency-summary [label]            the input latencies so far
 //   audio-summary                      the sound's packets, losses and timing so far

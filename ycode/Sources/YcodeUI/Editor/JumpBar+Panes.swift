@@ -85,9 +85,12 @@ extension JumpBar {
         d.translatesAutoresizingMaskIntoConstraints = false
         d.widthAnchor.constraint(equalToConstant: 1).isActive = true
         d.heightAnchor.constraint(equalToConstant: 14).isActive = true
-        if let last = stack.arrangedSubviews.last { stack.setCustomSpacing(8, after: last) }
+        // E.2 item 3: the grid at +36 (13 wide since round 10, row 247),
+        // the divider at +58, the path's first ink at +71.5 (the first
+        // icon adds its lead-in).
+        if let last = stack.arrangedSubviews.last { stack.setCustomSpacing(58 - 36 - CGFloat(JumpBarLeading.gridSide), after: last) }
         stack.addArrangedSubview(d)
-        stack.setCustomSpacing(10, after: d)
+        stack.setCustomSpacing(71.5 - 59 - Self.firstIconLeadIn, after: d)
     }
 
     /// The empty bar's divider after the grid button (`editor-area.md`
@@ -103,8 +106,10 @@ extension JumpBar {
         stack.setCustomSpacing(Self.emptyDividerGaps.after, after: d)
     }
 
-    /// Room before and after the empty bar's divider.
-    static let emptyDividerGaps: (before: CGFloat, after: CGFloat) = (12, 13.5)
+    /// Room before and after the empty bar's divider: the divider at 33.5
+    /// in after the 13-point grid at 13 (round 10, row 247), "No Selection"
+    /// 13.5 after it.
+    static let emptyDividerGaps: (before: CGFloat, after: CGFloat) = (33.5 - CGFloat(JumpBarLeading.gridX + JumpBarLeading.gridSide), 13.5)
     /// Where "No Selection" starts in the empty bar (its ink, from the bar's
     /// leading edge: x 337.5 in a bar at 290).
     static let emptyTextStart: CGFloat = 47.5

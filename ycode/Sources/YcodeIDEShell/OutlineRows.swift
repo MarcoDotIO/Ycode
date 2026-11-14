@@ -41,6 +41,8 @@ public struct OutlineRow: Identifiable, Equatable, Sendable {
     /// A symbol at the row's right end (a test's result diamond).
     public var trailingSymbol: String?
     public var trailingTint: Tint = .secondary
+    /// A project row's logo or Ycode mark (nil: `symbol`; `NavigatorRowIcon`, row 192).
+    public var icon: NavigatorRowIcon?
 
     public static func == (a: Self, b: Self) -> Bool {
         a.id == b.id && a.level == b.level && a.title == b.title && a.detail == b.detail && a.symbol == b.symbol && a.tint == b.tint
@@ -48,7 +50,7 @@ public struct OutlineRow: Identifiable, Equatable, Sendable {
             && a.match?.before == b.match?.before && a.match?.match == b.match?.match && a.match?.after == b.match?.after
             && a.lineLimit == b.lineLimit && a.isDimmed == b.isDimmed && a.opens == b.opens && a.isEdited == b.isEdited
             && a.badge == b.badge && a.trailing == b.trailing && a.detailIsSecondary == b.detailIsSecondary
-            && a.trailingSymbol == b.trailingSymbol && a.trailingTint == b.trailingTint
+            && a.trailingSymbol == b.trailingSymbol && a.trailingTint == b.trailingTint && a.icon == b.icon
     }
 }
 
@@ -69,6 +71,7 @@ public enum OutlineRows {
                                   isExpandable: item.children != nil, isExpanded: open, opens: item.isFile,
                                   isEdited: item.path.map(edited.contains) ?? false,
                                   badge: item.isFile ? item.path.flatMap { badges[$0] } : nil))
+            out[out.count - 1].icon = NavigatorRowIcon.of(kind: item.kind, name: item.name, path: item.path)
             if open { for c in item.children ?? [] { walk(c, level + 1) } }
         }
         walk(root, 0)

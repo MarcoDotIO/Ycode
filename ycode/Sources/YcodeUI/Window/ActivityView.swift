@@ -1,42 +1,44 @@
 import AppKit
 import YcodeIDECore
 
-/// The toolbar's activity view (`reference-ui-6.md` §3.1): the workspace's
-/// icon, or a small spinner while an action runs, then two lines, the
-/// workspace name and the activity subtitle (truncated in the middle).
+/// The toolbar's activity view (`reference-ui-6.md` §3.1): Ycode's mark
+/// (council round 9, row 212, the owner's rule 4), or the build ring while
+/// an action runs, then two lines, the workspace name and the activity
+/// subtitle (truncated in the middle).
 /// Issue counts are in their own capsule (`IssueCapsuleView`).
 @MainActor
 public final class ActivityView: NSView {
     public var workspaceName = "" { didSet { changed() } }
     /// The activity line; empty while idle (no "Ready", reference-ui-5.md §4.3).
-    public var status = "" { didSet { changed() } }
+    public var status = "" { didSet { changed(); needsLayout = true; if isBusy { spinner.setActivity(status) } } }
     public var errors = 0 { didSet { needsDisplay = true } }
     public var warnings = 0 { didSet { needsDisplay = true } }
-    /// An action runs: the spinner replaces the icon.
+    /// An action runs: the build ring replaces the mark.
     public var isBusy = false { didSet { if oldValue != isBusy { updateBusy() } } }
-    /// The workspace's glyph (a package or a project).
-    public var isPackage = false { didSet { icon.image = Self.iconImage(package: isPackage) } }
+    /// The workspace is a package (the mark is the same for both, row 212).
+    public var isPackage = false
     /// The widest the view may be (the toolbar sets it when room is short,
     /// reference-ui-6.md §2.2); the subtitle truncates to fit.
     public var maximumWidth: CGFloat = .greatestFiniteMagnitude { didSet { if oldValue != maximumWidth { changed() } } }
 
-    let icon = NSImageView()
-    let spinner = NSProgressIndicator()
+    let icon = NavigatorFlatIconView()
+    let spinner = BuildRingView()
 
-    /// `liquid-glass.md` §7.1 item 3: the icon is 19 wide and the text
-    /// starts 8 after it.
-    static let iconSize: CGFloat = 19
+    /// Row 212: the mark in a 19.5-point box, the title's first letter 8
+    /// after it.
+    static let iconSize = CGFloat(FileGlyphs.titleMarkSide)
     /// The space before the icon and after the text: none (the activity
     /// view has no glass shape, `specs/ide/liquid-glass.md` §2.2).
     static let sideInset: CGFloat = 0
     /// Where the text starts (after the icon) with no leading pad.
     static var textInset: CGFloat { sideInset + iconSize + 8 }
     /// From the toolbar item before this view (Back | Forward) to the icon:
-    /// the reference's control ends at x 371 and its icon starts at 385
-    /// (`liquid-glass.md` §7.1, `metrics.md` §14). The system's gap before
-    /// a view item differs between macOS versions (4 points on 27.2, 8 on
-    /// 27.0), so the view pads its leading end up to this gap.
-    static let gapAfterNeighbor: CGFloat = 14
+    /// the reference's control ends at x 371 and its 19.5-point tile spans
+    /// 383.5–403 (round 9, row 212; `liquid-glass.md` §7.1 had 385 for a
+    /// 19-point icon). The system's gap before a view item differs between
+    /// macOS versions (4 points on 27.2, 8 on 27.0), so the view pads its
+    /// leading end up to this gap.
+    static let gapAfterNeighbor: CGFloat = 12.5
     /// The toolbar control before this view, whose trailing edge the icon
     /// keeps `gapAfterNeighbor` from.
     public weak var leadingNeighbor: NSView? { didSet { needsLayout = true } }
@@ -46,19 +48,13 @@ public final class ActivityView: NSView {
     var textStart: CGFloat { leadingPad + Self.textInset }
     static let nameFont = NSFont.boldSystemFont(ofSize: 13)
     static let statusFont = NSFont.systemFont(ofSize: 11)
-    static func iconImage(package: Bool) -> NSImage? {
-        NSImage(systemSymbolName: package ? "shippingbox" : "folder.badge.gearshape", accessibilityDescription: nil)
-    }
+    /// Ycode's mark at the title's size (the same for every project).
+    static func iconImage() -> NSImage { NavigatorRowImages.ycodeMark(side: iconSize) }
 
     public override init(frame: NSRect) {
         super.init(frame: frame)
-        icon.image = Self.iconImage(package: false)
-        icon.imageScaling = .scaleProportionallyUpOrDown
-        // The project's colour family, as in the navigator (not a document glyph).
-        icon.contentTintColor = .systemBlue
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
+        icon.image = Self.iconImage()
+        icon.imageScaling = .scaleNone
         spinner.isHidden = true
         for v in [icon, spinner] as [NSView] { addSubview(v) }
         setContentHuggingPriority(.defaultHigh, for: .horizontal)
@@ -90,7 +86,11 @@ public final class ActivityView: NSView {
     func updateBusy() {
         spinner.isHidden = !isBusy
         icon.isHidden = isBusy
-        if isBusy { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
+        // Row 236: each build fills the ring from its 15° start to n/m.
+        if isBusy {
+            spinner.reset()
+            spinner.setActivity(status)
+        }
         needsDisplay = true
     }
 
@@ -117,9 +117,36 @@ public final class ActivityView: NSView {
     public override func layout() {
         super.layout()
         updateLeadingPad()
-        let r = NSRect(x: Self.sideInset + leadingPad, y: (bounds.height - Self.iconSize) / 2, width: Self.iconSize, height: Self.iconSize)
+        // Row 237: at a fixed centre, the toolbar's centre line (where the
+        // title's capitals sit without a subtitle), whether or not a
+        // subtitle shows; only the title and subtitle move.
+        let mid = iconMidY
+        let r = NSRect(x: Self.sideInset + leadingPad, y: mid - Self.iconSize / 2, width: Self.iconSize, height: Self.iconSize)
         icon.frame = r
         spinner.frame = r
+    }
+
+    /// The name's rectangle (y up, as drawn) and the subtitle's line height.
+    var nameLayout: (rect: NSRect, lineHeight: CGFloat) {
+        let nameH = NSAttributedString(string: "X", attributes: [.font: Self.nameFont]).size().height
+        let lineHeight = status.isEmpty ? 0 : NSAttributedString(string: "X", attributes: [.font: Self.statusFont]).size().height
+        let top = (bounds.height - nameH - lineHeight) / 2
+        return (NSRect(x: textStart, y: top + lineHeight, width: max(0, bounds.width - textStart - Self.sideInset), height: nameH), lineHeight)
+    }
+
+    /// The middle of the name's capitals (y up).
+    var titleCapMidY: CGFloat {
+        let r = nameLayout.rect, f = Self.nameFont
+        let baseline = r.maxY - f.ascender
+        return baseline + f.capHeight / 2
+    }
+
+    /// The mark's (and the ring's) centre (y up, row 237): the middle of
+    /// the name's capitals when no subtitle shows, at any subtitle.
+    var iconMidY: CGFloat {
+        let nameH = NSAttributedString(string: "X", attributes: [.font: Self.nameFont]).size().height
+        let top = (bounds.height - nameH) / 2
+        return top + nameH - Self.nameFont.ascender + Self.nameFont.capHeight / 2
     }
 
     /// Pads the leading end so the icon sits `gapAfterNeighbor` after the
@@ -170,11 +197,9 @@ public final class ActivityView: NSView {
                                                                            .foregroundColor: active ? NSColor.labelColor : NSColor.tertiaryLabelColor])
         let line = NSAttributedString(string: shownStatus, attributes: [.font: Self.statusFont,
                                                                         .foregroundColor: active ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor])
-        let nameH = name.size().height
-        let lineHeight = status.isEmpty ? 0 : line.size().height
-        let top = (bounds.height - nameH - lineHeight) / 2
+        let (nameRect, lineHeight) = nameLayout
         // Flipped drawing is not used: y grows upward.
-        if !status.isEmpty { line.draw(at: NSPoint(x: textStart, y: top)) }
-        name.draw(in: NSRect(x: textStart, y: top + lineHeight, width: width, height: nameH))
+        if !status.isEmpty { line.draw(at: NSPoint(x: textStart, y: nameRect.minY - lineHeight)) }
+        name.draw(in: NSRect(x: textStart, y: nameRect.minY, width: width, height: nameRect.height))
     }
 }

@@ -39,7 +39,7 @@ struct FileInspectorView: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(sections.enumerated()), id: \.offset) { pair in
                 if pair.offset > 0 {
-                    let g = ruleGaps(before: pair.element.title)
+                    let g = ruleGaps(before: pair.element.title, after: sections[pair.offset - 1].title)
                     rule(c, before: g.before, after: g.after)
                 }
                 heading(pair.element.title, c)
@@ -62,17 +62,19 @@ struct FileInspectorView: View {
         .padding(.top, Self.belowTabBar + CGFloat(WorkspaceChrome.inspectorContentTopInset) - Self.firstHeadingRaise)
     }
 
-    /// An image's sections below the tags (G.5, row 135; the macOS
-    /// inspector's `InspectorStyle.Resource`).
-    var isResource: Bool { sections.contains { $0.title == "Image Properties" } }
+    /// A resource's sections below the tags (G.5, row 135; rows 230; the
+    /// macOS inspector's `InspectorStyle.Resource`): an image's, or a
+    /// Markdown or JSON file's Localization straight after the tags.
+    var isResource: Bool { sections.contains { $0.title == "Localization" } }
 
-    /// The gaps around the rule above a section's header.
-    func ruleGaps(before title: String) -> (before: CGFloat, after: CGFloat) {
+    /// The gaps around the rule above a section's header (`previous`: the
+    /// section above the rule).
+    func ruleGaps(before title: String, after previous: String = "") -> (before: CGFloat, after: CGFloat) {
         typealias R = ResourceInspectorRhythm
         guard isResource else { return (Self.ruleGap, Self.ruleGap) }
         return switch title {
         case "Image Properties": (CGFloat(R.tagsToRule), CGFloat(R.ruleToHeader))
-        case "Localization": (CGFloat(R.propertiesToRule), CGFloat(R.ruleToHeader))
+        case "Localization": (CGFloat(previous == "Image Properties" ? R.propertiesToRule : R.tagsToRule), CGFloat(R.ruleToHeader))
         case "Target Membership": (CGFloat(R.buttonToRule), CGFloat(R.ruleToHeader))
         default: (Self.ruleGap, Self.ruleGap)
         }
@@ -219,18 +221,27 @@ struct FileInspectorView: View {
         case .text(let s):
             wrapped(s, width: 164, c.inspectorText)
         case .steppers(let list, let enabled):
-            HStack(alignment: .top, spacing: 6) {
+            // W7.5 (row 193): per width a field (64 or 65 × 21) showing the
+            // value right-aligned, its stepper 19 × 24 right after it, the
+            // label centred under the field, as the macOS inspector draws it.
+            let W = InspectorWidthsRow.self
+            HStack(alignment: .top, spacing: CGFloat(W.pairGap)) {
                 ForEach(Array(list.enumerated()), id: \.offset) { pair in
-                    VStack(spacing: 1) {
-                        HStack(spacing: 6) {
-                            // The value's 10-point column, then the stepper's
-                            // 17-point frame (the macOS small stepper's).
+                    let fieldWidth = CGFloat(W.fieldWidths[min(pair.offset, W.fieldWidths.count - 1)])
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(alignment: .top, spacing: 0) {
                             Text(verbatim: "\(pair.element.value)").font(ShellFonts.small).tracking(ShellFonts.smallTracking)
                                 .foregroundStyle(enabled ? c.inspectorText : c.inspectorDimmed)
-                                .frame(width: 10, alignment: .leading)
-                            StepperLook(enabled: enabled).frame(width: 17)
+                                .padding(.trailing, 5)
+                                .frame(width: fieldWidth, height: CGFloat(W.fieldHeight), alignment: .trailing)
+                                .background { RoundedRectangle(cornerRadius: 5, style: .continuous).fill(c.inspectorPopUpFill) }
+                                .padding(.top, 1.5)
+                                .accessibilityLabel(pair.element.title)
+                            StepperLook(enabled: enabled)
+                                .frame(width: CGFloat(W.stepperWidth), height: CGFloat(W.stepperHeight))
                         }
-                        Text(verbatim: pair.element.title).font(.system(size: 9)).foregroundStyle(c.secondaryLabel)
+                        Text(verbatim: pair.element.title).font(.system(size: CGFloat(W.labelSize))).foregroundStyle(c.secondaryLabel)
+                            .frame(width: fieldWidth)
                     }
                 }
             }
@@ -249,6 +260,8 @@ struct FileInspectorView: View {
             Text(verbatim: title).font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.inspectorText)
                 .frame(maxWidth: .infinity, minHeight: 16, maxHeight: 16)
                 .background { RoundedRectangle(cornerRadius: 5, style: .continuous).fill(c.inspectorPopUpFill) }
+                // Inset from the content's edges (row 230), as on macOS.
+                .padding(.horizontal, CGFloat(ResourceInspectorRhythm.localizeInset))
         case .membership(let members):
             MembershipBox(members: members)
         }

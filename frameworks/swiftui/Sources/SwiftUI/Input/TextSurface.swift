@@ -103,6 +103,18 @@ public final class TextSurfaceConnection {
     /// drawing, not a layout of the whole window.
     public func setNeedsDisplay() { services.requestDisplay() }
 
+    /// Runs `fire` once at the start of the next display frame with the
+    /// frame's time, replacing `owner`'s earlier request (nil cancels it).
+    /// An animation the surface drives itself (a spring after a scroll)
+    /// asks again from `fire` to move on every frame.
+    public func requestFrame(_ owner: AnyObject, fire: (@MainActor (TimeInterval) -> Void)?) {
+        guard let fire else {
+            services.requestFrame(owner, fire: nil)
+            return
+        }
+        services.requestFrame(owner) { t in MainActor.assumeIsolated { fire(t) } }
+    }
+
     /// The caret moved: tells the input method where it is now.
     public func caretMoved() {
         guard let c = client(), services.focus.focusedClient === c else { return }

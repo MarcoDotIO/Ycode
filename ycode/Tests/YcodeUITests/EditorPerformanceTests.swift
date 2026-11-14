@@ -44,8 +44,13 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             for _ in 0..<n { tv.insertText("x", replacementRange: tv.selectedRange()) }
             return Date().timeIntervalSince(t0) / Double(n) * 1000
         }
+        // The full re-highlight is the slow baseline (more than a second a
+        // keystroke in a debug build): a few keystrokes measure it. The whole
+        // test runs on the main actor without a suspension, so every
+        // keystroke here held every other suite's main-actor work (30 of
+        // them held it for two minutes in a full run).
         SourceEditorController.incrementalEditing = false
-        let before = type(30)
+        let before = type(5)
         SourceEditorController.incrementalEditing = true
         let after = type(30)
         #expect(e.lastHighlightWasIncremental)
@@ -78,7 +83,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
     /// 20,000-line Swift file. Full highlight (lexical, then swift-syntax's
     /// parse), the incremental highlight per keystroke, and keystroke to
     /// repaint (typed through the typing rules, then drawn).
-    @Test func typingOn20kLines() throws {
+    @Test func typingOn20kLines() async throws {
         _ = NSApplication.shared
         let dir = ycodeDir.appendingPathComponent(".build-ide/perf")
         try? FileManager.default.removeItem(at: dir)
@@ -109,16 +114,24 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         }
         #expect(e.lastHighlightWasIncremental)
         // The highlighter alone, on a copy of the text: the lexical pass,
-        // then the parser pass, per keystroke.
-        let doc = SyntaxDocument(text: tv.string, language: .swift)
-        var lexical = 0.0, parser = 0.0
-        for _ in 0..<30 {
-            let h0 = Date()
-            doc.replace(NSRange(location: at, length: 0), with: "y")
-            let h1 = Date()
-            doc.refine()
-            lexical += h1.timeIntervalSince(h0)
-            parser += Date().timeIntervalSince(h1)
+        // then the parser pass, per keystroke. It needs no view, so it runs
+        // off the main actor: other suites' main-actor work goes on meanwhile.
+        final class Copy: @unchecked Sendable {
+            let doc: SyntaxDocument
+            init(_ doc: SyntaxDocument) { self.doc = doc }
+        }
+        let copy = Copy(SyntaxDocument(text: tv.string, language: .swift))
+        let (lexical, parser) = try await offMain { () -> (Double, Double) in
+            var lexical = 0.0, parser = 0.0
+            for _ in 0..<30 {
+                let h0 = Date()
+                copy.doc.replace(NSRange(location: at, length: 0), with: "y")
+                let h1 = Date()
+                copy.doc.refine()
+                lexical += h1.timeIntervalSince(h0)
+                parser += Date().timeIntervalSince(h1)
+            }
+            return (lexical, parser)
         }
         print(String(format: "EDITOR-PERF 20k lines: open %.0f ms (lexical colors), swift-syntax parse %.0f ms, incremental highlight %.2f ms lexical + %.1f ms parser pass per keystroke, keystroke-to-repaint %.1f ms",
                      openMs, parseMs, lexical / 30 * 1000, parser / 30 * 1000, total / 30 * 1000))

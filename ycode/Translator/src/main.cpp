@@ -13,6 +13,7 @@
 //   ycode-airc serve [--cache DIR] [--timeout SECONDS] [--no-isolate] [--dump-dir DIR]
 //   ycode-airc replay DIR [--changed-only]
 //   ycode-airc corpus [--json REPORT.json] [--quiet] [--timeout SECONDS] [--opt] [--loop-limit N] [--library LIB.metallib]... PATH...
+//   ycode-airc selftest   (translates a small kernel of its own: LLVM and SPIRV-Tools load and work here)
 //
 // Exit status: 0 success, 1 translation error (a JSON error document is
 // printed on stdout by `translate`), 2 usage or I/O error.
@@ -53,7 +54,11 @@
 #include "metallib.h"
 #include "translator.h"
 
+#include "llvm/AsmParser/Parser.h"
 #include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
@@ -152,12 +157,15 @@ static bool isBitcode(const std::string &d) {
 // version string plus the size and modification time of the running
 // executable, so that a rebuilt translator never reads translations an
 // earlier build made (the version string alone does not change between
-// builds). Computed once.
+// builds). Computed once. A packaged ycode-airc runs under its own dynamic
+// loader (packaging/flatpak/build-ycode.sh), so /proc/self/exe is that
+// loader: its wrapper names the executable in YCODE_AIRC_SELF.
 static const std::string &buildIdentity() {
     static const std::string id = [] {
         std::string s = kTranslatorVersion;
         struct stat st;
-        if (stat("/proc/self/exe", &st) == 0) {
+        const char *self = getenv("YCODE_AIRC_SELF");
+        if (stat(self && *self ? self : "/proc/self/exe", &st) == 0) {
 #if defined(__APPLE__)
             long long ns = (long long)st.st_mtimespec.tv_sec * 1000000000LL + st.st_mtimespec.tv_nsec;
 #else
@@ -353,6 +361,66 @@ static int cmdList(int argc, char **argv) {
         return 1;
     }
     return 0;
+}
+
+// `selftest`: a compute kernel of ours (a loop with a constant trip count,
+// as in tests/ir/control-flow.sh), parsed from LLVM text, written as
+// bitcode and translated. It shows that this ycode-airc's LLVM and
+// SPIRV-Tools load and work on this machine (a release's smoke check runs it).
+static int cmdSelftest() {
+    static const char *kIR = R"IR(
+target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:256-v256:256:256-v512:512:512-v1024:1024:1024-n8:16:32"
+target triple = "air64-apple-ios13.0.0-simulator"
+define void @four(ptr addrspace(1) %out, ptr addrspace(1) %in, i32 %gid) {
+entry:
+  br label %loop
+loop:
+  %i = phi i32 [0, %entry], [%n, %loop]
+  %s = phi i32 [0, %entry], [%s2, %loop]
+  %g = zext i32 %gid to i64
+  %q = getelementptr i32, ptr addrspace(1) %in, i64 %g
+  %v = load i32, ptr addrspace(1) %q, align 4
+  %s2 = add i32 %s, %v
+  %n = add i32 %i, 1
+  %done = icmp eq i32 %n, 4
+  br i1 %done, label %exit, label %loop
+exit:
+  %p = getelementptr i32, ptr addrspace(1) %out, i64 %g
+  store i32 %s2, ptr addrspace(1) %p, align 4
+  ret void
+}
+!air.kernel = !{!0}
+!0 = !{ptr @four, !1, !2}
+!1 = !{}
+!2 = !{!3, !4, !5}
+!3 = !{i32 0, !"air.buffer", !"air.location_index", i32 0, i32 1, !"air.read_write", !"air.address_space", i32 1, !"air.arg_type_size", i32 4, !"air.arg_type_align_size", i32 4, !"air.arg_type_name", !"uint", !"air.arg_name", !"out"}
+!4 = !{i32 1, !"air.buffer", !"air.location_index", i32 1, i32 1, !"air.read", !"air.address_space", i32 1, !"air.arg_type_size", i32 4, !"air.arg_type_align_size", i32 4, !"air.arg_type_name", !"uint", !"air.arg_name", !"in"}
+!5 = !{i32 2, !"air.thread_position_in_grid", !"air.arg_type_name", !"uint", !"air.arg_name", !"gid"}
+)IR";
+    llvm::LLVMContext ctx;
+    llvm::SMDiagnostic diag;
+    std::unique_ptr<llvm::Module> m = llvm::parseAssemblyString(kIR, diag, ctx);
+    if (!m) {
+        fprintf(stderr, "ycode-airc selftest: the test kernel does not parse: %s\n", diag.getMessage().str().c_str());
+        return 1;
+    }
+    std::string bitcode;
+    llvm::raw_string_ostream os(bitcode);
+    llvm::WriteBitcodeToFile(*m, os);
+    os.flush();
+    try {
+        TranslateOptions opts;
+        TranslateResult t = translate(bitcode, "four", sha256Hex(bitcode), -1, opts);
+        if (t.spirv.size() < 5 || t.spirv[0] != 0x07230203) {
+            fprintf(stderr, "ycode-airc selftest: no SPIR-V module came out\n");
+            return 1;
+        }
+        printf("ycode-airc selftest: ok (%zu SPIR-V words)\n", t.spirv.size());
+        return 0;
+    } catch (const Error &e) {
+        fprintf(stderr, "ycode-airc selftest: %s: %s\n", e.code.c_str(), e.detail.c_str());
+        return 1;
+    }
 }
 
 static int cmdTranslate(int argc, char **argv) {
@@ -884,7 +952,7 @@ int main(int argc, char **argv) {
                 "usage: ycode-airc version | list IN.metallib | translate IN.metallib [-f NAME] [-o OUT.spv] [-r OUT.json] "
                 "[-S OUT.spvasm] [--opt] [--link-vertex VS.metallib[:NAME]] [--constant INDEX=VALUE]... [--cache DIR] | "
                 "serve [--cache DIR] [--timeout S] [--no-isolate] [--dump-dir DIR] | replay DIR [--changed-only] | "
-                "corpus [--json REPORT] [--quiet] [--timeout S] [--opt] [--library LIB.metallib]... PATH...\n");
+                "corpus [--json REPORT] [--quiet] [--timeout S] [--opt] [--library LIB.metallib]... PATH... | selftest\n");
         return 2;
     }
     std::string cmd = argv[1];
@@ -901,6 +969,7 @@ int main(int argc, char **argv) {
     if (cmd == "translate") return cmdTranslate(argc - 2, argv + 2);
     if (cmd == "serve") return cmdServe(argc - 2, argv + 2);
     if (cmd == "corpus") return cmdCorpus(argc - 2, argv + 2);
+    if (cmd == "selftest") return cmdSelftest();
     fprintf(stderr, "ycode-airc: unknown command %s\n", cmd.c_str());
     return 2;
 }

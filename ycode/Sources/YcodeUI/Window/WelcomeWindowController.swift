@@ -271,21 +271,22 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
         if !entries.isEmpty { table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false) }
     }
 
-    /// How much lower than AppKit's `center()` the window sits
-    /// (`editor-area.md` F.11, checklist row 112: the same 480 × 629
-    /// frame, 8 points lower).
-    public static let belowSystemCentre: CGFloat = 8
-
-    /// Centres the window as the reference does: AppKit's centring, 8
-    /// points lower, kept on the screen.
+    /// Places the window as the reference does (round 10, row 241;
+    /// `WelcomePlacement`): on the screen it opens on, not on the workspace
+    /// window, centred horizontally on the visible frame, its top 28 % of
+    /// the free height below the visible frame's top, never above it.
     func placeOnScreen() {
         guard let window else { return }
-        window.center()
-        var origin = window.frame.origin
-        origin.y -= Self.belowSystemCentre
-        if let visible = window.screen?.visibleFrame { origin.y = max(origin.y, visible.minY) }
-        window.setFrameOrigin(origin)
+        guard let visible = visibleFrameOverride ?? window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame else { return window.center() }
+        let o = WelcomePlacement.origin(width: Double(window.frame.width), height: Double(window.frame.height),
+                                        visible: (Double(visible.minX), Double(visible.minY), Double(visible.width), Double(visible.height)))
+        window.setFrameOrigin(NSPoint(x: o.x, y: o.y))
     }
+
+    /// The visible frame to place the window in (tests set it); otherwise
+    /// the window's screen once it has one, else the screen with the key
+    /// window (the system's main screen).
+    var visibleFrameOverride: NSRect?
 
     /// Shows the window (centered the first time) and refreshes the list.
     public func present() {
@@ -310,19 +311,23 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
     /// folder (each text is its own tooltip).
     public func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let url = entries[row]
-        let cell = NSTableCellView()
+        let cell = RecentCellView()
         // §1.4 (W5): a package has a package glyph, not a folder.
         let icon = NSImageView(image: Self.rowIcon(url))
+        icon.imageScaling = .scaleProportionallyUpOrDown
         let name = NSTextField(labelWithString: RecentProjects.displayName(url))
-        name.font = .systemFont(ofSize: 13, weight: .semibold)
+        // W7.6 (row 194): the reference's sizes and place; the path whole,
+        // or cut in the middle when it cannot fit.
+        let R = WelcomeRecentRow.self
+        name.font = .systemFont(ofSize: CGFloat(R.titleSize), weight: .semibold)
         name.toolTip = name.stringValue
         name.lineBreakMode = .byTruncatingTail
         let folder = NSTextField(labelWithString: RecentProjects.folderText(url))
-        folder.font = .systemFont(ofSize: 11)
+        folder.font = .systemFont(ofSize: CGFloat(R.pathSize))
         folder.textColor = .secondaryLabelColor
         folder.toolTip = folder.stringValue
-        // metrics.md §13.4: the path keeps its end ("…/captures/…").
-        folder.lineBreakMode = .byTruncatingHead
+        folder.lineBreakMode = .byTruncatingMiddle
+        cell.pathField = folder
         for v in [icon, name, folder] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             cell.addSubview(v)
@@ -333,22 +338,23 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
             icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: GlassBars.enabled ? Self.recentTextLeading - 40 : 4),
             icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 32), icon.heightAnchor.constraint(equalToConstant: 32),
-            name.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
-            name.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: GlassBars.enabled ? -16 : -4),
-            name.bottomAnchor.constraint(equalTo: cell.centerYAnchor, constant: 1),
+            name.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8 + CGFloat(R.textShift)),
+            name.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: GlassBars.enabled ? -CGFloat(R.trailingInset) : -4),
+            name.bottomAnchor.constraint(equalTo: cell.centerYAnchor, constant: 1 + CGFloat(R.titleDrop)),
             folder.leadingAnchor.constraint(equalTo: name.leadingAnchor),
-            folder.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: GlassBars.enabled ? -16 : -4),
-            folder.topAnchor.constraint(equalTo: cell.centerYAnchor, constant: 1),
+            folder.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: GlassBars.enabled ? -CGFloat(R.trailingInset) : -4),
+            folder.topAnchor.constraint(equalTo: cell.centerYAnchor, constant: 1 + CGFloat(R.pathDrop)),
         ])
         return cell
     }
 
-    /// A row's icon: a package glyph for a package folder, else the
-    /// file's icon.
+    /// A row's icon: a package glyph for a package folder, else Ycode's
+    /// own mark (W7.6: never the system's document icon, which is another
+    /// app's artwork).
     static func rowIcon(_ url: URL) -> NSImage {
         if isPackage(url), let glyph = NSImage(systemSymbolName: "shippingbox", accessibilityDescription: "Package")?
             .withSymbolConfiguration(.init(pointSize: 24, weight: .regular)) { return glyph }
-        return NSWorkspace.shared.icon(forFile: url.path)
+        return ProductIcon.image
     }
 
     /// A package entry: a folder (not a project or workspace) holding a
@@ -595,6 +601,17 @@ final class RecentRowView: NSTableRowView {
         guard selectionHighlightStyle != .none else { return }
         (isEmphasized ? NSColor.selectedContentBackgroundColor : NSColor.unemphasizedSelectedContentBackgroundColor).setFill()
         NSBezierPath(roundedRect: bounds.insetBy(dx: Self.inset, dy: 0), xRadius: Self.cornerRadius, yRadius: Self.cornerRadius).fill()
+    }
+}
+
+/// A recent row's cell: its path turns #B3CEF1 on the selection (W7.6).
+final class RecentCellView: NSTableCellView {
+    weak var pathField: NSTextField?
+    static let selectedPath = NSColor(srgbRed: CGFloat(WelcomeRecentRow.selectedPathColor >> 16 & 0xFF) / 255,
+                                      green: CGFloat(WelcomeRecentRow.selectedPathColor >> 8 & 0xFF) / 255,
+                                      blue: CGFloat(WelcomeRecentRow.selectedPathColor & 0xFF) / 255, alpha: 1)
+    override var backgroundStyle: NSView.BackgroundStyle {
+        didSet { pathField?.textColor = backgroundStyle == .emphasized ? Self.selectedPath : .secondaryLabelColor }
     }
 }
 

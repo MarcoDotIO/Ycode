@@ -1,0 +1,473 @@
+{
+ "issue": 81,
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "project": {
+  "generator": "make-test-project.py",
+  "path": "GlassScroll/GlassScroll.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ },
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "prores4444",
+  "pre": 0.4,
+  "post": 1.2
+ },
+ "name": "council-r10-extra",
+ "title": "Council round 10 (#81), as round 9 (same sessions, steps, ids and order). Council round 9 (#81), as round 8 (same steps, ids and order): Council round 8 (#81), as round 7: Council round 7 (#81), extra steps for round 6's open questions, in a fresh instance of each app on the GlassScroll test project: a flick down to the bottom edge, a slower flick up to the top, the jump bar with a split editor at 1250 pt (and a deeper path), Settings > Appearance with the Foreground slider moved (and set back) and the list scrolled, the plain group expanded and the workspace closed (council-r9-reopen.json reopens the same copy in a later session).",
+ "steps": [
+  {
+   "id": "select-long",
+   "note": "Open Long.swift (as main step 01).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Long|Long.swift"
+     }
+    }
+   ],
+   "record": false,
+   "still": "none",
+   "settle": 1.0
+  },
+  {
+   "id": "editor-to-bottom",
+   "note": "Click in the text and press cmd+down (end of document), then a linear 600 pt drag back up (120 events), so the next flick starts 600 pt above the bottom, as main step 04 starts 600 pt below the top.",
+   "do": [
+    {
+     "click": [
+      715,
+      450
+     ]
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "key": "cmd+down"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "scroll": {
+      "at": [
+       715,
+       450
+      ]
+     },
+     "dy": 600,
+     "steps": 120,
+     "interval": 0.008333
+    }
+   ],
+   "record": false,
+   "still": "after",
+   "settle": 0.8
+  },
+  {
+   "id": "editor-flick-bottom",
+   "note": "Round 7: main step 04's flick mirrored, down to the bottom edge: 8 gesture events of 40 pt down, then momentum decaying with a 0.33 s time constant. The stretch past the bottom edge and the return.",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       715,
+       450
+      ]
+     },
+     "dy": -320,
+     "steps": 8,
+     "interval": 0.008333,
+     "momentum": true,
+     "momentum_tau": 0.33
+    }
+   ],
+   "record": {
+    "post": 2.0
+   }
+  },
+  {
+   "id": "editor-to-top-600",
+   "note": "cmd+up (start of document), then a linear 600 pt drag down, the start of main step 04.",
+   "do": [
+    {
+     "key": "cmd+up"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "scroll": {
+      "at": [
+       715,
+       450
+      ]
+     },
+     "dy": -600,
+     "steps": 120,
+     "interval": 0.008333
+    }
+   ],
+   "record": false,
+   "still": "after",
+   "settle": 0.8
+  },
+  {
+   "id": "editor-flick-up-slow",
+   "note": "Round 7: a slower flick up to the top: 8 gesture events of 15 pt (120 pt, 1800 pt/s against main step 04's 4800), then momentum with the same 0.33 s time constant (about 590 pt), so the content reaches the top at a lower speed.",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       715,
+       450
+      ]
+     },
+     "dy": 120,
+     "steps": 8,
+     "interval": 0.008333,
+     "momentum": true,
+     "momentum_tau": 0.33
+    }
+   ],
+   "record": {
+    "post": 2.0
+   }
+  },
+  {
+   "id": "split-editor",
+   "note": "Add an editor pane on the right (as main step 16).",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuButton",
+      "description": "Add Editor"
+     }
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "press": {
+      "role": "AXMenuItem",
+      "title": "Editor Pane On Right|Add Editor Pane on Right|Add Editor on Right",
+      "scope": "app"
+     }
+    }
+   ],
+   "record": false,
+   "still": "after",
+   "settle": 1.5
+  },
+  {
+   "id": "jumpbar-split-1250",
+   "note": "Round 7: the window resized to 1250 x 880 with the split: which leading jump-bar title collapses first when only one must go (at 1100 both went).",
+   "do": [
+    {
+     "resize": [
+      1250,
+      880
+     ]
+    }
+   ],
+   "record": {
+    "post": 1.2
+   },
+   "crop": [
+    290,
+    52,
+    850,
+    30
+   ]
+  },
+  {
+   "id": "jumpbar-split-1250-deep",
+   "note": "Round 7: Models expanded and Model01.swift opened in the focused pane: a deeper path (GlassScroll > GlassScroll > Models > Model01) in the jump bar at 1250.",
+   "do": [
+    {
+     "set": {
+      "role": "AXRow",
+      "text": "Models"
+     },
+     "attr": "AXDisclosing",
+     "value": true
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Model01|Model01.swift"
+     }
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": false,
+   "still": "after",
+   "crop": [
+    290,
+    52,
+    850,
+    30
+   ]
+  },
+  {
+   "id": "jumpbar-split-1180",
+   "note": "Round 7: the same at 1180 x 880.",
+   "do": [
+    {
+     "resize": [
+      1180,
+      880
+     ]
+    }
+   ],
+   "record": false,
+   "still": "after",
+   "crop": [
+    290,
+    52,
+    780,
+    30
+   ]
+  },
+  {
+   "id": "settings-appearance",
+   "note": "Settings (cmd+comma) > Appearance, moved to the Settings position of the main session; the first slider's value (Foreground) is remembered and set back to it two steps later; the tree records the pane.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "move": [
+      326,
+      160
+     ],
+     "window": "Appearance"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "remember": "foreground",
+     "find": {
+      "role": "AXSlider",
+      "scope": "app",
+      "index": 0
+     }
+    },
+    {
+     "tree": "appearance",
+     "depth": 16
+    }
+   ],
+   "capture_title": "Appearance",
+   "record": false,
+   "still": "after",
+   "settle": 0.5
+  },
+  {
+   "id": "settings-foreground-slider",
+   "note": "Round 7: the Foreground slider moved from its value to its minimum through Accessibility (AXValue 0), recorded: what changes. Set back in the next step.",
+   "do": [
+    {
+     "set": {
+      "role": "AXSlider",
+      "scope": "app",
+      "index": 0
+     },
+     "attr": "AXValue",
+     "value": 0
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "slider-moved",
+     "depth": 16
+    }
+   ],
+   "capture_title": "Appearance",
+   "record": {
+    "video": true,
+    "mode": "window",
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "settings-foreground-restore",
+   "note": "Round 7: the slider set back to the value remembered in step settings-appearance.",
+   "do": [
+    {
+     "set": {
+      "role": "AXSlider",
+      "scope": "app",
+      "index": 0
+     },
+     "attr": "AXValue",
+     "value": "$foreground"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "slider-restored",
+     "depth": 16
+    }
+   ],
+   "capture_title": "Appearance",
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "settings-appearance-scrolled",
+   "note": "Round 7: the Appearance pane's list scrolled 400 pt down, the rows below the first screen.",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       480,
+       400
+      ]
+     },
+     "dy": -400,
+     "steps": 60,
+     "interval": 0.008333,
+     "window": "Appearance"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "capture_title": "Appearance",
+   "record": {
+    "video": true,
+    "mode": "window",
+    "post": 1.0
+   },
+   "still": "after"
+  },
+  {
+   "id": "settings-close",
+   "note": "Close Settings.",
+   "do": [
+    {
+     "key": "cmd+w"
+    }
+   ],
+   "record": false,
+   "still": "none",
+   "settle": 1.0
+  },
+  {
+   "id": "plain-group",
+   "note": "Round 10: before the still, the left pane (Long.swift) is scrolled 5000 pt down with 120 phase-less wheel events (exact deltas), so the position saved when the workspace closes is well below line 1 (about line 40). Then, as round 7: Round 7: expand Plain and Sub (as main step 13), and collapse Models, the state to be restored in the later session.",
+   "do": [
+    {
+     "set": {
+      "role": "AXRow",
+      "text": "Models"
+     },
+     "attr": "AXDisclosing",
+     "value": false
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "set": {
+      "role": "AXRow",
+      "text": "Plain"
+     },
+     "attr": "AXDisclosing",
+     "value": true
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "set": {
+      "role": "AXRow",
+      "text": "Sub"
+     },
+     "attr": "AXDisclosing",
+     "value": true
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "scroll": {
+      "at": [
+       420,
+       450
+      ]
+     },
+     "dy": -5000,
+     "steps": 120,
+     "interval": 0.008333
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": false,
+   "still": "after",
+   "crop": [
+    0,
+    80,
+    290,
+    520
+   ]
+  },
+  {
+   "id": "close-workspace",
+   "note": "Round 7: close the workspace window (File > Close Window), so each app saves its user state in the project copy.",
+   "do": [
+    {
+     "menu": "File > Close Window|Close Project"
+    },
+    {
+     "wait": 3.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ]
+}

@@ -98,3 +98,18 @@ public enum ProductIconGeometry {
     public static let chevron = [(322.0, 290.0), (512.0, 486.0), (702.0, 290.0)]
     public static let caret = [(512.0, 616.0), (512.0, 752.0)]
 }
+
+/// The app icon's small master (`packaging/icon/ycode-icon-small.svg`, for
+/// 16 to 32 pixels): a larger field and thicker marks. The project
+/// navigator's top row shows it at 16 points (`LanguageLogos`, row 192).
+public enum ProductIconSmallGeometry {
+    public static let side = 1024.0
+    public static let fieldTop = ProductIconGeometry.fieldTop, fieldBottom = ProductIconGeometry.fieldBottom
+    public static let chevronColor = ProductIconGeometry.chevronColor, caretColor = ProductIconGeometry.caretColor
+    /// The field from 40 to 984, each corner a cubic from 224 along the edge
+    /// with its control 93 from the corner.
+    public static let fieldMin = 40.0, fieldMax = 984.0, cornerStart = 224.0, cornerControl = 93.0
+    public static let strokeWidth = 150.0
+    public static let chevron = [(270.0, 262.0), (512.0, 512.0), (754.0, 262.0)]
+    public static let caret = [(512.0, 648.0), (512.0, 796.0)]
+}

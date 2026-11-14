@@ -486,8 +486,8 @@ struct NewConversationToolbarButton: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        GlassCircleButton(symbol: WorkspaceChrome.newConversation.symbols[0], help: WorkspaceChrome.newConversation.toolTips[0],
-                          gradient: WorkspaceChrome.newConversationGradient, target: "tb new conversation") { assistant.togglePrompt() }
+        // Row 214: Ycode's own gradient glyph and hover (AssistantButtonGlyphView.swift).
+        AssistantCircleButton(help: WorkspaceChrome.newConversation.toolTips[0], target: "tb new conversation") { assistant.togglePrompt() }
             .popover(isPresented: $assistant.isPromptShown, arrowEdge: .bottom) {
                 let c = ShellColors(scheme)
                 VStack(alignment: .leading, spacing: 8) {

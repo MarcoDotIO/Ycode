@@ -71,8 +71,29 @@ public struct PointerEvent: Sendable, Equatable {
     }
 }
 
+/// Where a scroll event is in a touchpad gesture, or in the momentum that
+/// follows one (B6-OPENVIEWS, ScrollGestureTracker.swift). A wheel notch has
+/// none: `.none` in both phases.
+public enum ScrollPhase: UInt8, Sendable, Hashable {
+    /// Not part of a gesture (a wheel notch), or no momentum.
+    case none
+    /// The gesture's (or the momentum's) first event.
+    case began
+    case changed
+    /// The fingers left the touchpad (or the momentum ran out); no delta.
+    case ended
+    /// Interrupted (a new gesture stops the momentum of the last one).
+    case cancelled
+}
+
 /// A scroll-wheel or two-finger scroll step. `delta` is in points; positive
 /// y scrolls towards the top of the content (wheel moved away from the user).
+///
+/// A touchpad gesture's events carry `phase` (began, changed, ended); the
+/// momentum after the fingers leave carries `momentumPhase` (began, changed,
+/// ended or cancelled), with `phase` none. Back ends that do not report
+/// phases deliver `.none`; the application host infers them from precise
+/// deltas and synthesizes the momentum (`ScrollGestureTracker`).
 public struct ScrollEvent: Sendable, Equatable {
     public var window: PlatformWindowID
     public var location: CGPoint
@@ -81,15 +102,31 @@ public struct ScrollEvent: Sendable, Equatable {
     public var isPrecise: Bool
     public var modifiers: KeyModifiers
     public var timestamp: TimeInterval
+    /// The touchpad gesture's phase (none for wheel notches and momentum).
+    public var phase: ScrollPhase
+    /// The momentum's phase (none during the gesture itself).
+    public var momentumPhase: ScrollPhase
 
     public init(window: PlatformWindowID, location: CGPoint, delta: CGSize, isPrecise: Bool = false,
-                modifiers: KeyModifiers = [], timestamp: TimeInterval) {
+                modifiers: KeyModifiers = [], timestamp: TimeInterval, phase: ScrollPhase = .none,
+                momentumPhase: ScrollPhase = .none) {
         self.window = window
         self.location = location
         self.delta = delta
         self.isPrecise = isPrecise
         self.modifiers = modifiers
         self.timestamp = timestamp
+        self.phase = phase
+        self.momentumPhase = momentumPhase
+    }
+
+    /// True when the event carries a gesture or momentum phase.
+    public var hasPhase: Bool { phase != .none || momentumPhase != .none }
+
+    /// True for the events after a gesture's first: its changes and end, and
+    /// all of its momentum. They belong to the view the gesture began over.
+    public var continuesGesture: Bool {
+        momentumPhase != .none || phase == .changed || phase == .ended || phase == .cancelled
     }
 }
 

@@ -7,6 +7,11 @@ extension SourceEditorController {
     /// toolbar and the jump bar redraws, and so does the window's bottom
     /// bar (`onContentMovedUnderBars`).
     func contentMovedUnderBars() {
+        // While the window's layout moves (the inspector's slide, a live
+        // resize) the bars hold their drawing and draw once at the end
+        // (`EditorBlurMotion`, council round 8, row 204): the clip view's
+        // bounds change on every frame of it.
+        if EditorBlurMotion.isHolding || bandBackdrop.inLiveResize { return }
         bandBackdrop.needsDisplay = true
         onContentMovedUnderBars?()
     }

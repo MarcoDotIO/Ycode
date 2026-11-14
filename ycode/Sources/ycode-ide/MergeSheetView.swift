@@ -123,13 +123,11 @@ struct MergeContentBox: View {
     }
 }
 
-/// Ycode's own glyphs for the sheet (no system artwork): a Swift file's
-/// orange, a folder's blue.
+/// The sheet's file tints: the navigator's for the file's type
+/// (`FileGlyphs.tint`, round 9), other files the accent.
 enum MergeGlyphs {
-    static let swiftOrange: UInt32 = 0xF26B33
-
     static func fileTint(_ name: String, _ p: MergeSheetPalette) -> UInt32 {
-        URL(fileURLWithPath: name).pathExtension == "swift" ? swiftOrange : p.accent
+        FileGlyphs.tint(WorkspaceChrome.iconTint(kind: .file, name: name))?.hex(dark: p == .dark) ?? p.accent
     }
 }
 
@@ -192,7 +190,7 @@ struct MergeFileList: View {
         let p = palette
         return Button(action: action) {
             Text(verbatim: title).font(.system(size: 11))
-                .foregroundStyle(Color(mergeHex: on ? p.accent : p.label))
+                .foregroundStyle(Color(mergeHex: on ? p.segmentLabel : p.label))
                 .frame(width: width, height: CGFloat(M.segmentHeight))
                 .background { if on { Capsule(style: .continuous).fill(Color(mergeHex: p.segmentPill)) } }
                 .contentShape(Rectangle())
@@ -219,8 +217,9 @@ struct MergeFileList: View {
                 Text(verbatim: r.title).font(.system(size: 13)).foregroundStyle(ink).lineLimit(1)
                     .padding(.leading, 5)
             } else {
-                Image(systemName: WorkspaceChrome.fileSymbol(r.title)).font(.system(size: 11))
-                    .foregroundStyle(lit ? Color.white : Color(mergeHex: MergeGlyphs.fileTint(r.title, p)))
+                // The navigator's glyph in its tint, white when lit (round 9, row 211).
+                FileGlyphImage(fileName: r.title, box: FileGlyphs.navigatorBox(NavigatorRowIcon.ofFile(r.title)),
+                               tint: lit ? Color.white : Color(mergeHex: MergeGlyphs.fileTint(r.title, p)))
                     .frame(width: 14.5)
                     .padding(.leading, CGFloat(M.fileIconX) - 15 + indent)
                 Text(verbatim: r.title).font(.system(size: 13)).foregroundStyle(ink).lineLimit(1)
@@ -302,20 +301,11 @@ struct MergeJumpBar: View {
                     Rectangle().fill(Color(mergeHex: p.columnRule)).frame(width: 1, height: 16).padding(.leading, 9)
                     Image(systemName: "chevron.left").font(.system(size: 10)).foregroundStyle(ink).frame(width: 6.5).padding(.leading, 8.5)
                     Image(systemName: "chevron.right").font(.system(size: 10)).foregroundStyle(ink).frame(width: 6.5).padding(.leading, 13)
-                    HStack(spacing: 6) {
-                        ForEach(Array(path.enumerated()), id: \.offset) { pair in
-                            let i = pair.offset
-                            let symbol = i == 0 ? (editor.isPackage ? "shippingbox" : "folder.badge.gearshape")
-                                : i == path.count - 1 ? WorkspaceChrome.fileSymbol(editor.state.currentFile ?? "") : "folder.fill"
-                            let tint: UInt32 = i == 0 ? p.accent : i == path.count - 1 ? MergeGlyphs.fileTint(editor.state.currentFile ?? "", p) : p.folder
-                            Image(systemName: symbol).font(.system(size: 11)).foregroundStyle(Color(mergeHex: tint))
-                            Text(verbatim: pair.element).font(.system(size: 12)).foregroundStyle(label).lineLimit(1)
-                            MergePathSeparator(color: ink)
-                        }
-                        if !path.isEmpty {
-                            Text(verbatim: MergeSheetText.noSelection).font(.system(size: 12)).foregroundStyle(label).lineLimit(1)
-                        }
-                    }
+                    // Round 10, row 240: the main jump bar's components (rows
+                    // 211, 247): the project's Ycode mark 13 × 13, a group's
+                    // folder, the file's glyph, 11-point names, its 3 × 10
+                    // chevrons and spacing (MergePathComponents).
+                    MergePathComponents(path: path, fileName: (editor.state.currentFile ?? "") as String, label: label)
                     .padding(.leading, 11.5)
                     Spacer(minLength: 0)
                 }

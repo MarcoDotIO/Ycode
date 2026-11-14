@@ -209,6 +209,7 @@ final class DisplayServer: @unchecked Sendable {
     func start() {
         log("display server: listening on \(listener.address) (encodings: \(encodings.joined(separator: ", ")); "
             + "input: \(input == nil ? "not delivered" : "delivered"))")
+        if let why = ycodec_jpeg_problem() { log("display server: no JPEG encoder: " + String(cString: why)) }
         if Self.videoOffered, VideoFrameEncoder.available { log("display server: NVENC: \(VideoFrameEncoder.capabilityLine)") }
         let t = Thread { [self] in acceptLoop() }
         t.name = "display-accept"
@@ -403,6 +404,24 @@ final class DisplayClientSession: @unchecked Sendable {
 
     func sendNotice(_ text: String) { try? connection.send(.notice(text)) }
 
+    /// Tiles of `encoding` failed (a JPEG library that stopped working, or
+    /// one of another ABI): said in the host's log and to the viewer, and
+    /// the stream goes on with zlib from a full frame, instead of frames
+    /// without those tiles. False when there is nothing to fall back to:
+    /// the viewer gets the reason and the session ends.
+    func tilesFailed(_ encoding: DisplayEncoding, failed: Int) -> Bool {
+        let why = encoding == .jpeg ? ycodec_jpeg_problem().map { " (" + String(cString: $0) + ")" } ?? "" : ""
+        guard let to = TileEncoder.fallback(after: encoding, zlibAvailable: ycodec_zlib_available() != 0) else {
+            server.log("display server: ERROR: the \(encoding.name) encoder failed on \(failed) tile(s)\(why); no other encoder, closing the stream")
+            sendStatus(phase: "error", message: "the host's \(encoding.name) encoder failed\(why)")
+            return false
+        }
+        server.log("display server: WARNING: the \(encoding.name) encoder failed on \(failed) tile(s)\(why); the stream falls back to \(to.name)")
+        sendNotice("WARNING: the host's \(encoding.name) encoder failed\(why); the stream falls back to \(to.name), "
+                   + "expect \(DisplayCodecChoice.expectation(to.name))")
+        return true
+    }
+
     /// The frame record was rewritten (FrameRecordWatcher).
     func recordChanged() {
         // A/B diagnostic (YCODE_DISPLAY_AB=1): the watcher is ignored in odd seconds.
@@ -439,8 +458,13 @@ final class DisplayClientSession: @unchecked Sendable {
             h.quality = min(100, max(1, h.quality))
             h.downscale = min(4, max(1, h.downscale))
             // The first of the client's list this server offers (§14).
+            let wishedJPEG = (h.encodings?.first ?? h.encoding) == "jpeg"
             h.encoding = DisplayCodecChoice.serverPick(hello: h, offered: server.encodings)
             if DisplayEncoding(name: h.encoding) == nil { h.encoding = server.encodings.first ?? "zlib" }
+            if wishedJPEG, h.encoding != "jpeg", let why = ycodec_jpeg_problem() {
+                sendNotice("WARNING: this host has no JPEG encoder (\(String(cString: why))); the stream is \(h.encoding), "
+                           + "expect \(DisplayCodecChoice.expectation(h.encoding))")
+            }
             condition.withLock { window = XRFrameWindow(window: h.frameWindow.map { min(64, max(0, $0)) }) }
             if let req = h.xr, server.spatial, condition.withLock({ xr == nil }) {
                 let input = server.input
@@ -620,6 +644,8 @@ final class DisplayClientSession: @unchecked Sendable {
         var still: StillRefinement?
         var video: VideoFrameEncoder?
         var videoFailed = false
+        // Tiles of this encoding failed: the stream went on with zlib (tilesFailed).
+        var tilesFailedFor: DisplayEncoding?
         var videoNeedsKey = true
         var lastRecord: FrameRecord?
         var phase = ""
@@ -732,7 +758,8 @@ final class DisplayClientSession: @unchecked Sendable {
                 if let (tag, estimated) = shown, let surface = capture {
                     lastXRTag = (tag, estimated)
                     var enc = DisplayEncoding(name: s.encoding) ?? .zlibBGRA
-                    if enc.isVideo && xrState.videoFailed { enc = server.encodings.contains("jpeg") ? .jpeg : .zlibBGRA }
+                    if enc.isVideo && xrState.videoFailed { enc = server.encodings.contains("jpeg") && tilesFailedFor != .jpeg ? .jpeg : .zlibBGRA }
+                    if enc == tilesFailedFor { enc = .zlibBGRA }
                     // Video is at the device's pixel size (§14), one encoder per view.
                     let downscale = enc.isVideo ? 1 : s.downscale
                     let base = UnsafeRawPointer(surface.memory.host)
@@ -780,7 +807,14 @@ final class DisplayClientSession: @unchecked Sendable {
                             tiles = [coded.tile]
                             isFull = coded.idr
                         } else {
-                            tiles = encoder!.encodeAll(rects, mirror: m!)
+                            let (encoded, failed) = encoder!.encodeAllChecked(rects, mirror: m!)
+                            if failed > 0 {
+                                guard tilesFailed(enc, failed: failed) else { break }
+                                tilesFailedFor = enc
+                                xrState.keyframe()
+                                continue
+                            }
+                            tiles = encoded
                         }
                         let t1 = monotonicNanoseconds()
                         encodeNanoseconds += t1 - t0
@@ -834,7 +868,8 @@ final class DisplayClientSession: @unchecked Sendable {
             }
             if xrState == nil, wanted, allowed, flowOpen, let surface = server.presentedSurface(record) {
                 var enc = DisplayEncoding(name: s.encoding) ?? .zlibBGRA
-                if enc.isVideo && videoFailed { enc = server.encodings.contains("jpeg") ? .jpeg : .zlibBGRA }
+                if enc.isVideo && videoFailed { enc = server.encodings.contains("jpeg") && tilesFailedFor != .jpeg ? .jpeg : .zlibBGRA }
+                if enc == tilesFailedFor { enc = .zlibBGRA }
                 // Video is encoded at the device's pixel size (§14).
                 let downscale = enc.isVideo ? 1 : s.downscale
                 if mirror == nil || mirror!.width != surface.width || mirror!.height != surface.height
@@ -880,8 +915,17 @@ final class DisplayClientSession: @unchecked Sendable {
                         tiles = [coded.tile]
                         isFull = coded.idr
                     } else {
-                        tiles = banded ? encoder!.encodeAll(rects, mirror: mirror!)
-                            : rects.compactMap { encoder!.encode($0, mirror: mirror!) }
+                        let (encoded, failed) = banded ? encoder!.encodeAllChecked(rects, mirror: mirror!)
+                            : rects.reduce(into: ([DisplayTile](), 0)) { acc, r in
+                                if let t = encoder!.encode(r, mirror: mirror!) { acc.0.append(t) } else { acc.1 += 1 }
+                            }
+                        if failed > 0 {
+                            guard tilesFailed(enc, failed: failed) else { break }
+                            tilesFailedFor = enc
+                            condition.withLock { keyframeWanted = true }
+                            continue
+                        }
+                        tiles = encoded
                     }
                     let t1 = monotonicNanoseconds()
                     encodeNanoseconds += t1 - t0

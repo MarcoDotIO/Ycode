@@ -6,9 +6,10 @@ import YcodeIDECore
 /// button per kind with issues, errors first, each its symbol (a red circle
 /// with a white cross; a yellow triangle with a white mark; Ycode's
 /// test-failure diamond) and its count; zero counts are left out and the
-/// capsule is hidden with nothing to show. In a narrow window it shows the
-/// symbols only (`symbolsOnly`, with the scheme capsule's glyphs-only
-/// step). Its sizes are `IssueSummary.Capsule`'s, shared with the Linux
+/// capsule is hidden with nothing to show. In a narrow window it collapses
+/// to the most severe kind's glyph alone (an error's octagon) in a round
+/// capsule of its own (`symbolsOnly`, with the scheme capsule's glyphs-only
+/// step; council round 8, row 198). Its sizes are `IssueSummary.Capsule`'s, shared with the Linux
 /// IDE. Each button opens the Issue navigator (`onClick`).
 @MainActor
 public final class IssueCapsuleView: NSView {
@@ -49,11 +50,12 @@ public final class IssueCapsuleView: NSView {
     /// on the kind's fill (the appearance's: H.5's #F5C200 triangle in
     /// light, G.8's #FFE015 in dark), sized so the triangle's ink is about
     /// 17.5 × 16.
-    public static func symbolImage(_ kind: IssueSummary.Kind, dark: Bool = false) -> NSImage {
+    public static func symbolImage(_ kind: IssueSummary.Kind, dark: Bool = false, collapsed: Bool = false) -> NSImage {
         let fill = rgb(kind.fill(dark: dark))
         let config = NSImage.SymbolConfiguration(pointSize: CGFloat(IssueSummary.Capsule.symbolSize), weight: .regular)
             .applying(NSImage.SymbolConfiguration(paletteColors: [.white, fill]))
-        guard let symbol = NSImage(systemSymbolName: kind.symbol, accessibilityDescription: kind.title)?.withSymbolConfiguration(config) else {
+        let name = collapsed ? kind.collapsedSymbol : kind.symbol
+        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: kind.title)?.withSymbolConfiguration(config) else {
             return NSImage()
         }
         // Drawn once into an image of its own that is not a template: the
@@ -106,12 +108,20 @@ public final class IssueCapsuleView: NSView {
     // measures as empty.
     public override var intrinsicContentSize: NSSize { NSSize(width: max(1, capsuleWidth), height: Self.contentHeight) }
 
+    /// The kinds shown: every kind with issues, or the most severe alone
+    /// with symbols only.
+    public var shownKinds: [IssueSummary.Kind] {
+        IssueSummary.Capsule.shownParts(summary.parts, symbolsOnly: symbolsOnly).map(\.kind)
+    }
+
     func update() {
-        let shown = Set(summary.parts.map(\.kind))
+        let shown = Set(shownKinds)
         for (b, kind) in zip(buttons, IssueSummary.Kind.allCases) {
             b.count = summary.count(kind)
             b.showsCount = !symbolsOnly
             b.isHidden = !shown.contains(kind)
+            // The collapsed capsule's button names every kind it stands for.
+            b.toolTip = symbolsOnly ? summary.parts.map { "\($0.count) \($0.kind.title)" }.joined(separator: ", ") : kind.title
         }
         isHidden = summary.isEmpty
         invalidateIntrinsicContentSize()
@@ -125,7 +135,8 @@ public final class IssueCapsuleView: NSView {
     public override func layout() {
         super.layout()
         let c = IssueSummary.Capsule.self
-        var x = CGFloat(c.leading)
+        // Collapsed: the one glyph centred in the round capsule.
+        var x = CGFloat(symbolsOnly ? c.collapsedSymbolX() : c.leading)
         for b in buttons where !b.isHidden {
             let w = b.contentWidth
             b.frame = NSRect(x: x, y: 0, width: w, height: bounds.height)
@@ -160,7 +171,17 @@ public final class IssuePartButton: NSButton {
             needsLayout = true
         }
     }
-    var showsCount = true { didSet { countLabel.isHidden = !showsCount; needsLayout = true } }
+    var showsCount = true {
+        didSet {
+            countLabel.isHidden = !showsCount
+            guard oldValue != showsCount else { return }
+            // Without its count (a narrow window) the kind shows its
+            // collapsed symbol (an error's octagon).
+            glyph.image = IssueCapsuleView.symbolImage(kind, collapsed: !showsCount)
+            glyph.darkImage = IssueCapsuleView.symbolImage(kind, dark: true, collapsed: !showsCount)
+            needsLayout = true
+        }
+    }
 
     init(kind: IssueSummary.Kind) {
         self.kind = kind

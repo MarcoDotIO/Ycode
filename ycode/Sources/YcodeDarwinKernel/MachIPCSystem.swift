@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import YcodeDarwinABI
 
 /// Mach state shared by every task of one `DarwinSystem` (stage 4b,
@@ -17,7 +18,13 @@ public final class MachIPCSystem: @unchecked Sendable {
     /// the split.
     public internal(set) var portLock: KernelLock?
     var serialCounter: UInt64 = 0
-    var stampCounter: UInt64 = 0
+    /// Readiness and change stamps: atomic, as fine port steps
+    /// (`mach-ipc-locking.md` §4.12) take them under different space locks.
+    let stamps = Atomic<UInt64>(0)
+    var stampCounter: UInt64 {
+        get { stamps.load(ordering: .relaxed) }
+        set { stamps.store(newValue, ordering: .relaxed) }
+    }
     var spaceCounter: UInt64 = 0
     /// The host port (`host_self`); every task's host slot starts here.
     let hostPort: IPCPort
@@ -69,8 +76,7 @@ public final class MachIPCSystem: @unchecked Sendable {
     }
 
     func nextStamp() -> UInt64 {
-        stampCounter += 1
-        return stampCounter
+        stamps.wrappingAdd(1, ordering: .relaxed).newValue
     }
 
     func nextSpaceID() -> UInt64 {

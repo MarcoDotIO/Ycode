@@ -191,8 +191,9 @@ struct SettingsRow<Control: View>: View {
                     .foregroundStyle(p.label)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                // Centred on the label's line, whatever its height.
-                control.frame(height: Self.lineHeight)
+                // Centred on the label's line, whatever its height; a switch
+                // 0.5 lower (10.5 under a 36.5 row's top, R7.1), as on macOS.
+                control.frame(height: Self.lineHeight).offset(y: kind == .toggle ? 0.5 : 0)
             }
             if let help, hasHelp { SettingsHelpText(text: help).padding(.top, Self.helpGap) }
         }
@@ -295,6 +296,9 @@ struct SettingsSwitch: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+        // A switch to accessibility (R7.3), as a toggle: its value 1 or 0.
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityValue(on ? "1" : "0")
     }
 }
 

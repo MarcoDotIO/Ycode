@@ -147,7 +147,14 @@ void ycodec_downscale_bgra(const uint8_t *src, size_t srcBytesPerRow, int srcWid
 #ifdef YCODEC_HAVE_JPEG_HEADER
 #include <jpeglib.h>
 
-static struct {
+/* The library's entry points. A library is used only after a test picture
+ * went through it both ways (j_probe): libjpeg checks the caller's ABI
+ * version and structure size in jpeg_CreateCompress and refuses another
+ * one, so a library of another ABI than this build's header (libjpeg.so.8
+ * under a header of version 62, through the unversioned libjpeg.so) used
+ * to be "available" while every picture failed, and the display stream
+ * sent frames without tiles. */
+struct jfns {
     struct jpeg_error_mgr *(*std_error)(struct jpeg_error_mgr *);
     void (*create)(j_compress_ptr, int, size_t);
     void (*set_defaults)(j_compress_ptr);
@@ -157,7 +164,6 @@ static struct {
     JDIMENSION (*write_scanlines)(j_compress_ptr, JSAMPARRAY, JDIMENSION);
     void (*finish)(j_compress_ptr);
     void (*destroy)(j_compress_ptr);
-    int ok;
     /* Decompression (the viewer's side). */
     void (*d_create)(j_decompress_ptr, int, size_t);
     void (*d_mem_src)(j_decompress_ptr, const unsigned char *, unsigned long);
@@ -166,21 +172,47 @@ static struct {
     JDIMENSION (*d_read_scanlines)(j_decompress_ptr, JSAMPARRAY, JDIMENSION);
     boolean (*d_finish)(j_decompress_ptr);
     void (*d_destroy)(j_decompress_ptr);
-    int d_ok;
-} J;
+};
+static struct jfns J;
+static int jOK, jDecodeOK;
+static char jProblem[512];
 static pthread_once_t jOnce = PTHREAD_ONCE_INIT;
 
-static void j_load(void) {
 #if JPEG_LIB_VERSION >= 80
-    static const char *const names[] = {"libjpeg.so.8", "libjpeg.so", NULL};
+#define YCODEC_JPEG_SONAME "libjpeg.so.8"
 #elif JPEG_LIB_VERSION >= 70
-    static const char *const names[] = {"libjpeg.so.7", "libjpeg.so", NULL};
+#define YCODEC_JPEG_SONAME "libjpeg.so.7"
 #else
-    static const char *const names[] = {"libjpeg.so.62", "libjpeg.so", NULL};
+#define YCODEC_JPEG_SONAME "libjpeg.so.62"
 #endif
-    void *h = open_first(names);
-    if (!h) return;
-#define SYM(field, name) *(void **)&J.field = dlsym(h, name); if (!J.field) return;
+
+struct ycodec_jpeg_job {
+    struct jpeg_error_mgr err;
+    jmp_buf jump;
+    unsigned char *buffer;
+    unsigned long size;
+    uint8_t *row;
+    char *message; /* where the library's last error text goes, or NULL */
+    size_t messageSize;
+};
+
+static void on_error(j_common_ptr c) {
+    struct ycodec_jpeg_job *job = (struct ycodec_jpeg_job *)c->err;
+    if (job->message && job->messageSize > 0) {
+        char text[JMSG_LENGTH_MAX];
+        (*c->err->format_message)(c, text);
+        snprintf(job->message, job->messageSize, "%s", text);
+    }
+    longjmp(job->jump, 1);
+}
+
+static void on_message(j_common_ptr c) { (void)c; }
+
+/* Resolves every entry point of `h`; 0 when all are there. */
+static int j_resolve(void *h, struct jfns *f, char *why, size_t whySize) {
+#define SYM(field, name) \
+    *(void **)&f->field = dlsym(h, name); \
+    if (!f->field) { snprintf(why, whySize, "it has no %s", name); return -1; }
     SYM(std_error, "jpeg_std_error")
     SYM(create, "jpeg_CreateCompress")
     SYM(set_defaults, "jpeg_set_defaults")
@@ -190,7 +222,6 @@ static void j_load(void) {
     SYM(write_scanlines, "jpeg_write_scanlines")
     SYM(finish, "jpeg_finish_compress")
     SYM(destroy, "jpeg_destroy_compress")
-    J.ok = 1;
     SYM(d_create, "jpeg_CreateDecompress")
     SYM(d_mem_src, "jpeg_mem_src")
     SYM(d_read_header, "jpeg_read_header")
@@ -199,37 +230,123 @@ static void j_load(void) {
     SYM(d_finish, "jpeg_finish_decompress")
     SYM(d_destroy, "jpeg_destroy_decompress")
 #undef SYM
-    J.d_ok = 1;
+    return 0;
 }
 
-struct ycodec_jpeg_job {
-    struct jpeg_error_mgr err;
-    jmp_buf jump;
-    unsigned char *buffer;
-    unsigned long size;
-    uint8_t *row;
-};
+static int encode_with(const struct jfns *f, int callerVersion, const uint8_t *pixels, int width, int height, size_t bytesPerRow,
+                       int quality, uint8_t **out, size_t *outSize, char *why, size_t whySize);
+static int decode_with(const struct jfns *f, int callerVersion, const uint8_t *data, size_t size, int width, int height, uint8_t *dst,
+                       size_t dstBytesPerRow, char *why, size_t whySize);
 
-static void on_error(j_common_ptr c) {
-    struct ycodec_jpeg_job *job = (struct ycodec_jpeg_job *)c->err;
-    longjmp(job->jump, 1);
+/* A 16 x 16 test picture through the library both ways, as a caller of ABI
+ * `callerVersion` (this build's JPEG_LIB_VERSION; tests pass another one).
+ * 0 when the picture comes back with about its colours. */
+static int j_probe(const struct jfns *f, int callerVersion, char *why, size_t whySize) {
+    enum { N = 16 };
+    uint8_t picture[N * N * 4], back[N * N * 4];
+    for (int i = 0; i < N * N; i++) {
+        picture[i * 4 + 0] = 40;  /* B */
+        picture[i * 4 + 1] = 120; /* G */
+        picture[i * 4 + 2] = 200; /* R */
+        picture[i * 4 + 3] = 255;
+    }
+    uint8_t *coded = NULL;
+    size_t codedSize = 0;
+    if (encode_with(f, callerVersion, picture, N, N, N * 4, 90, &coded, &codedSize, why, whySize) != 0) return -1;
+    if (!coded || codedSize < 100) {
+        free(coded);
+        snprintf(why, whySize, "a test picture came out as %zu bytes", codedSize);
+        return -1;
+    }
+    int r = decode_with(f, callerVersion, coded, codedSize, N, N, back, N * 4, why, whySize);
+    free(coded);
+    if (r != 0) return -1;
+    for (int c = 0; c < 3; c++) {
+        int d = (int)back[(N * N / 2) * 4 + c] - (int)picture[(N * N / 2) * 4 + c];
+        if (d < -24 || d > 24) {
+            snprintf(why, whySize, "a test picture came back with other colours");
+            return -1;
+        }
+    }
+    return 0;
 }
 
-static void on_message(j_common_ptr c) { (void)c; }
+int ycodec_jpeg_probe_library(const char *name, int callerVersion, char *why, size_t whySize) {
+    char local[256];
+    if (!why || whySize == 0) { why = local; whySize = sizeof local; }
+    why[0] = 0;
+    void *h = dlopen(name, RTLD_NOW | RTLD_LOCAL);
+    if (!h) {
+        snprintf(why, whySize, "%.200s cannot be loaded", name);
+        return -1;
+    }
+    struct jfns f;
+    memset(&f, 0, sizeof f);
+    char inner[200] = "";
+    if (j_resolve(h, &f, inner, sizeof inner) != 0 || j_probe(&f, callerVersion, inner, sizeof inner) != 0) {
+        snprintf(why, whySize, "%.200s: %.200s", name, inner);
+        dlclose(h);
+        return -1;
+    }
+    dlclose(h);
+    return 0;
+}
+
+static void j_load(void) {
+    /* This build's ABI first; the unversioned name (a -dev package's link)
+     * only if it is the same ABI, which the probe checks. */
+    const char *names[] = {getenv("YCODE_JPEG_LIBRARY"), YCODEC_JPEG_SONAME, "libjpeg.so"};
+    char tried[400] = "";
+    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
+        const char *name = names[i];
+        if (!name || !*name) continue;
+        void *h = dlopen(name, RTLD_NOW | RTLD_LOCAL);
+        char why[200] = "", entry[320];
+        if (!h) {
+            snprintf(entry, sizeof entry, "%.100s is not installed", name);
+        } else if (j_resolve(h, &J, why, sizeof why) == 0 && j_probe(&J, JPEG_LIB_VERSION, why, sizeof why) == 0) {
+            jOK = jDecodeOK = 1;
+            jProblem[0] = 0;
+            return;
+        } else {
+            snprintf(entry, sizeof entry, "%.100s: %.200s", name, why);
+            memset(&J, 0, sizeof J);
+            dlclose(h);
+        }
+        size_t used = strlen(tried);
+        snprintf(tried + used, sizeof tried - used, "%s%.320s", used ? "; " : "", entry);
+    }
+    snprintf(jProblem, sizeof jProblem, "no usable libjpeg for this build's ABI (version %d): %.400s", JPEG_LIB_VERSION, tried);
+}
 
 int ycodec_jpeg_available(void) {
     pthread_once(&jOnce, j_load);
-    return J.ok;
+    return jOK;
 }
+
+const char *ycodec_jpeg_problem(void) {
+    pthread_once(&jOnce, j_load);
+    return jOK ? NULL : jProblem;
+}
+
+int ycodec_jpeg_abi_version(void) { return JPEG_LIB_VERSION; }
 
 int ycodec_jpeg_encode_bgra(const uint8_t *pixels, int width, int height, size_t bytesPerRow, int quality,
                             uint8_t **out, size_t *outSize) {
     if (!ycodec_jpeg_available() || width <= 0 || height <= 0) return -1;
+    return encode_with(&J, JPEG_LIB_VERSION, pixels, width, height, bytesPerRow, quality, out, outSize, NULL, 0);
+}
+
+static int encode_with(const struct jfns *f, int callerVersion, const uint8_t *pixels, int width, int height, size_t bytesPerRow,
+                       int quality, uint8_t **out, size_t *outSize, char *why, size_t whySize) {
+    if (width <= 0 || height <= 0) return -1;
     struct jpeg_compress_struct cinfo;
     struct ycodec_jpeg_job job;
     memset(&cinfo, 0, sizeof cinfo);
     memset(&job, 0, sizeof job);
-    cinfo.err = J.std_error(&job.err);
+    job.message = why;
+    job.messageSize = whySize;
+    cinfo.err = f->std_error(&job.err);
     job.err.error_exit = on_error;
     job.err.output_message = on_message;
 #ifndef JCS_EXTENSIONS
@@ -237,13 +354,13 @@ int ycodec_jpeg_encode_bgra(const uint8_t *pixels, int width, int height, size_t
     if (!job.row) return -1;
 #endif
     if (setjmp(job.jump)) {
-        J.destroy(&cinfo);
+        f->destroy(&cinfo);
         free(job.buffer);
         free(job.row);
         return -1;
     }
-    J.create(&cinfo, JPEG_LIB_VERSION, sizeof cinfo);
-    J.mem_dest(&cinfo, &job.buffer, &job.size);
+    f->create(&cinfo, callerVersion, sizeof cinfo);
+    f->mem_dest(&cinfo, &job.buffer, &job.size);
     cinfo.image_width = (JDIMENSION)width;
     cinfo.image_height = (JDIMENSION)height;
 #ifdef JCS_EXTENSIONS
@@ -253,10 +370,10 @@ int ycodec_jpeg_encode_bgra(const uint8_t *pixels, int width, int height, size_t
     cinfo.input_components = 3;
     cinfo.in_color_space = JCS_RGB;
 #endif
-    J.set_defaults(&cinfo);
-    J.set_quality(&cinfo, quality < 1 ? 1 : quality > 100 ? 100 : quality, TRUE);
+    f->set_defaults(&cinfo);
+    f->set_quality(&cinfo, quality < 1 ? 1 : quality > 100 ? 100 : quality, TRUE);
     cinfo.dct_method = JDCT_IFAST;
-    J.start(&cinfo, TRUE);
+    f->start(&cinfo, TRUE);
     while (cinfo.next_scanline < cinfo.image_height) {
         const uint8_t *src = pixels + (size_t)cinfo.next_scanline * bytesPerRow;
 #ifdef JCS_EXTENSIONS
@@ -269,10 +386,10 @@ int ycodec_jpeg_encode_bgra(const uint8_t *pixels, int width, int height, size_t
         }
         JSAMPROW row = job.row;
 #endif
-        J.write_scanlines(&cinfo, &row, 1);
+        f->write_scanlines(&cinfo, &row, 1);
     }
-    J.finish(&cinfo);
-    J.destroy(&cinfo);
+    f->finish(&cinfo);
+    f->destroy(&cinfo);
     free(job.row);
     *out = job.buffer;
     *outSize = (size_t)job.size;
@@ -281,38 +398,36 @@ int ycodec_jpeg_encode_bgra(const uint8_t *pixels, int width, int height, size_t
 
 int ycodec_jpeg_decode_available(void) {
     pthread_once(&jOnce, j_load);
-    return J.d_ok;
-}
-
-struct ycodec_jpeg_djob {
-    struct jpeg_error_mgr err;
-    jmp_buf jump;
-    uint8_t *row;
-};
-
-static void on_derror(j_common_ptr c) {
-    struct ycodec_jpeg_djob *job = (struct ycodec_jpeg_djob *)c->err;
-    longjmp(job->jump, 1);
+    return jDecodeOK;
 }
 
 int ycodec_jpeg_decode_bgra(const uint8_t *data, size_t size, int width, int height, uint8_t *dst, size_t dstBytesPerRow) {
-    if (!ycodec_jpeg_decode_available() || !data || size < 4 || width <= 0 || height <= 0) return -1;
+    if (!ycodec_jpeg_decode_available()) return -1;
+    return decode_with(&J, JPEG_LIB_VERSION, data, size, width, height, dst, dstBytesPerRow, NULL, 0);
+}
+
+static int decode_with(const struct jfns *f, int callerVersion, const uint8_t *data, size_t size, int width, int height, uint8_t *dst,
+                       size_t dstBytesPerRow, char *why, size_t whySize) {
+    if (!data || size < 4 || width <= 0 || height <= 0) return -1;
     struct jpeg_decompress_struct dinfo;
-    struct ycodec_jpeg_djob job;
+    struct ycodec_jpeg_job job;
     memset(&dinfo, 0, sizeof dinfo);
     memset(&job, 0, sizeof job);
-    dinfo.err = J.std_error(&job.err);
-    job.err.error_exit = on_derror;
+    job.message = why;
+    job.messageSize = whySize;
+    dinfo.err = f->std_error(&job.err);
+    job.err.error_exit = on_error;
     job.err.output_message = on_message;
     if (setjmp(job.jump)) {
-        J.d_destroy(&dinfo);
+        f->d_destroy(&dinfo);
         free(job.row);
         return -1;
     }
-    J.d_create(&dinfo, JPEG_LIB_VERSION, sizeof dinfo);
-    J.d_mem_src(&dinfo, data, (unsigned long)size);
-    if (J.d_read_header(&dinfo, TRUE) != JPEG_HEADER_OK || (int)dinfo.image_width != width || (int)dinfo.image_height != height) {
-        J.d_destroy(&dinfo);
+    f->d_create(&dinfo, callerVersion, sizeof dinfo);
+    f->d_mem_src(&dinfo, data, (unsigned long)size);
+    if (f->d_read_header(&dinfo, TRUE) != JPEG_HEADER_OK || (int)dinfo.image_width != width || (int)dinfo.image_height != height) {
+        f->d_destroy(&dinfo);
+        if (why && whySize) snprintf(why, whySize, "a test picture came back with another size");
         return -1;
     }
 #ifdef JCS_EXTENSIONS
@@ -320,19 +435,19 @@ int ycodec_jpeg_decode_bgra(const uint8_t *data, size_t size, int width, int hei
 #else
     dinfo.out_color_space = JCS_RGB;
     job.row = malloc((size_t)width * 3);
-    if (!job.row) { J.d_destroy(&dinfo); return -1; }
+    if (!job.row) { f->d_destroy(&dinfo); return -1; }
 #endif
     dinfo.dct_method = JDCT_IFAST;
     dinfo.do_fancy_upsampling = FALSE;
-    J.d_start(&dinfo);
+    f->d_start(&dinfo);
     while (dinfo.output_scanline < dinfo.output_height) {
         uint8_t *out = dst + (size_t)dinfo.output_scanline * dstBytesPerRow;
 #ifdef JCS_EXTENSIONS
         JSAMPROW row = (JSAMPROW)out;
-        J.d_read_scanlines(&dinfo, &row, 1);
+        f->d_read_scanlines(&dinfo, &row, 1);
 #else
         JSAMPROW row = job.row;
-        J.d_read_scanlines(&dinfo, &row, 1);
+        f->d_read_scanlines(&dinfo, &row, 1);
         for (int x = 0; x < width; x++) {
             out[x * 4 + 0] = job.row[x * 3 + 2];
             out[x * 4 + 1] = job.row[x * 3 + 1];
@@ -341,8 +456,8 @@ int ycodec_jpeg_decode_bgra(const uint8_t *data, size_t size, int width, int hei
         }
 #endif
     }
-    J.d_finish(&dinfo);
-    J.d_destroy(&dinfo);
+    f->d_finish(&dinfo);
+    f->d_destroy(&dinfo);
     free(job.row);
     return 0;
 }
@@ -350,6 +465,16 @@ int ycodec_jpeg_decode_bgra(const uint8_t *data, size_t size, int width, int hei
 #else /* no jpeglib.h at build time */
 
 int ycodec_jpeg_available(void) { return 0; }
+
+const char *ycodec_jpeg_problem(void) { return "this build has no JPEG support (no jpeglib.h when it was built)"; }
+
+int ycodec_jpeg_abi_version(void) { return 0; }
+
+int ycodec_jpeg_probe_library(const char *name, int callerVersion, char *why, size_t whySize) {
+    (void)callerVersion;
+    if (why && whySize) snprintf(why, whySize, "%s: this build has no JPEG support", name);
+    return -1;
+}
 
 int ycodec_jpeg_encode_bgra(const uint8_t *pixels, int width, int height, size_t bytesPerRow, int quality,
                             uint8_t **out, size_t *outSize) {

@@ -91,10 +91,41 @@ public class EditorBlurBackdrop: NSView {
         if window != nil { EditorBlurMotion.register(self) }
     }
 
+    public override func viewWillStartLiveResize() {
+        super.viewWillStartLiveResize()
+        holdDrawing(true)
+    }
+
     public override func viewDidEndLiveResize() {
         super.viewDidEndLiveResize()
+        if !EditorBlurMotion.isHolding { holdDrawing(false) }
         needsDisplay = true
     }
+
+    /// While the window's layout moves (`EditorBlurMotion`, a live resize)
+    /// the layer stretches what this view drew last instead of the view
+    /// drawing the held image again, stretched, on every frame: the same
+    /// picture, without about a fifth of each slide frame's work (council
+    /// round 8, row 204). The view draws again when the motion ends.
+    func holdDrawing(_ hold: Bool) {
+        if hold {
+            guard held == nil else { return }
+            held = (layerContentsRedrawPolicy, layerContentsPlacement)
+            layerContentsPlacement = .scaleAxesIndependently
+            layerContentsRedrawPolicy = .never
+        } else if let held {
+            layerContentsRedrawPolicy = held.policy
+            layerContentsPlacement = held.placement
+            self.held = nil
+            needsDisplay = true
+        }
+    }
+
+    /// The layer's redraw policy and placement before a hold.
+    private var held: (policy: NSView.LayerContentsRedrawPolicy, placement: NSView.LayerContentsPlacement)?
+
+    /// Whether the layer holds its last drawing (tests).
+    public var holdsDrawing: Bool { held != nil }
 }
 
 /// Motion of the window's layout during which the bars keep their last
@@ -117,13 +148,28 @@ public enum EditorBlurMotion {
     static func register(_ b: EditorBlurBackdrop) { backdrops.add(b) }
 
     /// Starts a motion.
-    public static func begin() { holds += 1 }
+    public static func begin() {
+        holds += 1
+        if holds == 1 { for b in backdrops.allObjects { b.holdDrawing(true) } }
+    }
 
     /// Ends a motion: the bars render the content beneath them again.
     public static func end() {
         holds = max(0, holds - 1)
         guard holds == 0 else { return }
+        for b in backdrops.allObjects where !b.inLiveResize { b.holdDrawing(false) }
         for b in backdrops.allObjects { b.needsDisplay = true }
+        // The text views' exact heights, left for the motion's end (row
+        // 204), once the motion's last frame has been committed: the whole
+        // document's layout would otherwise hold that frame back (a run-loop
+        // timer: the run loop commits the frame before it waits for it).
+        let timer = Timer(timeInterval: 0.008, repeats: false) { _ in
+            MainActor.assumeIsolated {
+                guard !isHolding else { return }
+                SourceTextView.settleAllAfterMotion()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
     }
 }
 
@@ -285,7 +331,7 @@ final class MinimapView: NSView {
     /// A click or drag: scroll the editor so this document y (text
     /// points) is centred.
     var onScrollTo: ((CGFloat) -> Void)?
-    private var cache: NSImage?
+    private var cache: RenderedRows?
 
     override var isFlipped: Bool { true }
 
@@ -304,11 +350,6 @@ final class MinimapView: NSView {
                                             fraction: Double(scrollFraction)))
     }
 
-    override func setFrameSize(_ newSize: NSSize) {
-        if newSize.width != frame.width { cache = nil }
-        super.setFrameSize(newSize)
-    }
-
     override func draw(_ dirtyRect: NSRect) {
         // Views do not clip to their bounds: fill only this view's own area.
         Theme.backgroundColor.setFill()
@@ -318,39 +359,82 @@ final class MinimapView: NSView {
         // The visible area: a full-width shade.
         NSColor.labelColor.withAlphaComponent(0.07).setFill()
         NSRect(x: sep, y: top + visibleTop * scale, width: bounds.width - sep, height: visibleHeight * scale).fill()
-        if let image = renderedRows() {
-            image.draw(in: NSRect(x: 0, y: top + textTopInset * scale, width: image.size.width, height: image.size.height),
-                       from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        if let image = renderedRows(), let cg = NSGraphicsContext.current?.cgContext {
+            let rect = NSRect(x: 0, y: top + textTopInset * scale, width: image.size.width, height: image.size.height)
+            cg.saveGState()
+            cg.clip(to: bounds)
+            // The view is flipped: the image's first row at its top.
+            cg.translateBy(x: rect.minX, y: rect.maxY)
+            cg.scaleBy(x: 1, y: -1)
+            cg.draw(image.image, in: CGRect(origin: .zero, size: rect.size))
+            cg.restoreGState()
         }
         NSColor.separatorColor.setFill()
         NSRect(x: 0, y: 0, width: sep, height: bounds.height).fill()
     }
 
-    /// The bars, drawn once per change of text or width.
-    private func renderedRows() -> NSImage? {
-        if let cache { return cache }
-        guard !rows.isEmpty, bounds.width > 0 else { return nil }
+    /// The bars, rendered once per change of the text (or the character
+    /// width or the display's scale) into a bitmap as wide as the longest
+    /// row, then clipped to the view when drawn. (An image with a drawing
+    /// handler ran the handler, every run of every row, on each draw.)
+    private func renderedRows() -> (image: CGImage, size: NSSize)? {
+        let backing = window?.backingScaleFactor ?? 1
+        if let cache, cache.advance == advance, cache.scale == backing { return (cache.image, cache.size) }
+        guard !rows.isEmpty else { return nil }
         let inset = CGFloat(EditorMetrics.minimapSeparator + EditorMetrics.minimapTextInset)
         let charWidth = advance * scale
         let height = min(CGFloat(rows.count) * pitch, 16_000)
-        let width = bounds.width
-        let image = NSImage(size: NSSize(width: width, height: max(1, height)), flipped: true) { [rows, pitch] _ in
-            let bar = CGFloat(EditorMetrics.minimapBarHeight)
-            let ink = CGFloat(EditorMetrics.minimapInk)
+        let longest = rows.reduce(0) { m, runs in max(m, runs.last.map { $0.column + $0.length } ?? 0) }
+        let width = ceil(inset + CGFloat(longest) * charWidth) + 1
+        let pw = Int(ceil(width * backing)), ph = Int(ceil(max(1, height) * backing))
+        guard pw > 0, ph > 0, pw * ph < 64_000_000,
+              let ctx = CGContext(data: nil, width: pw, height: ph, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        // Top-down, in points.
+        ctx.translateBy(x: 0, y: CGFloat(ph))
+        ctx.scaleBy(x: backing, y: -backing)
+        let bar = CGFloat(EditorMetrics.minimapBarHeight)
+        let ink = CGFloat(EditorMetrics.minimapInk)
+        // Each colour resolved once, in this view's appearance.
+        var colors: [NSColor: CGColor] = [:]
+        effectiveAppearance.performAsCurrentDrawingAppearance {
             for (i, runs) in rows.enumerated() {
                 let y = CGFloat(i) * pitch
                 if y > height { break }
                 for r in runs {
-                    let x = inset + CGFloat(r.column) * charWidth
-                    guard x < width else { continue }
-                    r.color.withAlphaComponent(r.color.alphaComponent * ink).setFill()
-                    NSRect(x: x, y: y, width: min(CGFloat(r.length) * charWidth, width - x), height: bar).fill()
+                    let c = colors[r.color] ?? {
+                        let resolved = r.color.withAlphaComponent(r.color.alphaComponent * ink).cgColor
+                        colors[r.color] = resolved
+                        return resolved
+                    }()
+                    ctx.setFillColor(c)
+                    ctx.fill(CGRect(x: inset + CGFloat(r.column) * charWidth, y: y, width: CGFloat(r.length) * charWidth, height: bar))
                 }
             }
-            return true
         }
-        cache = image
-        return image
+        guard let image = ctx.makeImage() else { return nil }
+        renders += 1
+        let size = NSSize(width: width, height: max(1, height))
+        cache = RenderedRows(image: image, size: size, advance: advance, scale: backing)
+        return (image, size)
+    }
+
+    /// Renders of the bars so far (tests).
+    private(set) var renders = 0
+
+    /// The rendered bars and what they were rendered for.
+    struct RenderedRows {
+        var image: CGImage
+        var size: NSSize
+        var advance: CGFloat
+        var scale: CGFloat
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        cache = nil
+        needsDisplay = true
     }
 
     override func mouseDown(with event: NSEvent) { scrollTo(event) }

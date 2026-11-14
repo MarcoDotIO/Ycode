@@ -46,12 +46,22 @@ final class GlassPanel: NSPanel {
         onClose?()
     }
 
-    /// Shows the panel centered over `window`'s upper part, above it.
-    func show(over window: NSWindow) {
+    /// Shows the panel centered over `window`'s upper part, above it: its
+    /// top `top` points below the window's top (nil: 18 % of the window's height).
+    func show(over window: NSWindow, top: CGFloat? = nil) {
         let f = window.frame
         setFrameOrigin(NSPoint(x: (f.midX - frame.width / 2).rounded(),
-                               y: (f.maxY - f.height * 0.18 - frame.height).rounded()))
+                               y: (f.maxY - (top ?? f.height * 0.18) - frame.height).rounded()))
         window.addChildWindow(self, ordered: .above)
         makeKeyAndOrderFront(nil)
+    }
+
+    /// A new height with the top edge where it was (Open Quickly follows
+    /// its results, council round 9, row 215).
+    func setHeightKeepingTop(_ height: CGFloat) {
+        var f = frame
+        f.origin.y += f.height - height
+        f.size.height = height
+        setFrame(f, display: true)
     }
 }

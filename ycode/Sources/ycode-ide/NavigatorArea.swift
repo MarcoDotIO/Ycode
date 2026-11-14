@@ -80,9 +80,7 @@ struct SelectorBar: View {
                         if on {
                             Capsule(style: .continuous).fill(c.panePill).frame(width: CGFloat(pill.width), height: CGFloat(pill.height))
                         }
-                        Image(systemName: pair.element)
-                            .font(.system(size: 14))
-                            .foregroundStyle(c.selectorGlyph)
+                        SelectorGlyphView(symbol: pair.element, color: c.selectorGlyph)   // NavigatorRowIcons.swift (row 192)
                     }
                     .frame(width: 30, height: CGFloat(WorkspaceChrome.selectorHeight))
                     .contentShape(Rectangle())
@@ -269,9 +267,7 @@ struct OutlineRowView: View {
                 }
             }
             .padding(.leading, CGFloat(WorkspaceChrome.disclosureX) + indent)
-            Image(systemName: row.symbol)
-                .font(.system(size: 13))
-                .foregroundStyle(c.tint(row.tint))
+            NavigatorRowIconView(row: row, tint: c.tint(row.tint), unfocusedSelection: isSelected && !isFocused)   // NavigatorRowIcons.swift (rows 192, 208)
                 .frame(width: 16, height: CGFloat(WorkspaceChrome.rowHeight))
             title(c)
                 .padding(.leading, 4)

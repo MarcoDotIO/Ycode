@@ -55,6 +55,7 @@ public enum LinuxViewer {
             ?? .tcp(host: "127.0.0.1", port: 47100)
         public var settings = DisplayClientHello(client: "ycode-sim-viewer-linux", maxFPS: 120, encoding: "jpeg", quality: 80, downscale: 1)
         public var scale = ViewerScaleMode.fit
+        public var scaleChosen = false
         public var bezels = true
         public var status = false
         public var script: String?
@@ -85,6 +86,7 @@ public enum LinuxViewer {
             case "--scale":
                 guard let v = value(a), let m = ViewerScaleMode(argument: v) else { return .exit(64, "--scale fit|point|pixel") }
                 o.scale = m
+                o.scaleChosen = true
             case "--fps":
                 guard let v = value(a).flatMap(Int.init), (1...120).contains(v) else { return .exit(64, "--fps 1-120") }
                 o.settings.maxFPS = v
@@ -200,6 +202,7 @@ public enum LinuxViewer {
         let client = DisplayStreamClient(settings: settings, connect: connector)
         let session = RemoteDeviceSession(client: client, audio: player)
         session.scaleMode = o.scale
+        session.scaleChosen = o.scaleChosen
         session.bezels = o.bezels
         let text = o.script.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }
         if o.script != nil, text == nil { FileHandle.standardError.write(Data("cannot read \(o.script!)\n".utf8)); return 66 }

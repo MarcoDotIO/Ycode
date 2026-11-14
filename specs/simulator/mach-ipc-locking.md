@@ -1,6 +1,7 @@
 # Spec: Mach IPC and kevent delivery off the global kernel lock
 
-Status: **implemented, agent SP-IPC, 2026-10-19.** §3 are hold-time
+Status: **implemented, agent SP-IPC, 2026-10-19; §4.12 (agent B3-BOOT12,
+2026-11-08) implemented and off, measured slower (§6.5).** §3 are hold-time
 reductions inside the kernel lock; §4 is the lock split. Both are on by
 default (each has a switch); §6 has the measurements: home screen 143 s →
 80 s (−44 %) on the Thor. A first version of §4 (a reader-writer gate that
@@ -301,7 +302,11 @@ evaluated anyway.
 
 Fine locks are glibc adaptive mutexes (`PTHREAD_MUTEX_ADAPTIVE_NP`; a
 contender spins briefly before it sleeps); `YCODE_FINE_LOCK_SPIN=0` makes
-them plain.
+them plain. `YCODE_FINE_LOCK_SPIN_US=N` (off by default) makes a contender
+watch the lock for up to N µs before it sleeps, and `YCODE_WAIT_OWN_MUTEX=1`
+lets a waiter on a fine lock's queue sleep on a mutex of its own, the waker
+writing its result under both, so that I2 (§4.4) still holds
+(`scheduling-policy.md` §4.16, `boot-profile.md` §27.2).
 
 ### 4.7 Snapshots
 
@@ -409,6 +414,86 @@ EVFILT_READ|EV_DISPATCH knote on the workqueue kqueue, three rounds of
 park, write, delivery, read and EV_ENABLE; with the split on, the scans
 escalated).
 
+### 4.12 The port lock split: G shared, a lock per space (C27; agent B3-BOOT12, 2026-11-08; off by default, `YCODE_PORT_LOCK_SPLIT=1`)
+
+G was one mutex for every space, port, port set and queued message of the
+system: 876 000–935 000 acquisitions before the home screen, 18–19 % of
+them contended, 31–42 s of summed waits per boot, most of it a contended
+waiter's futex sleep and wakeup for a hold of 2–15 µs, and the event-lock
+holders of busy daemons (diagnosticd) waiting for it while they held their
+event lock (`boot-profile.md` §27.2). xnu has no such lock: each port has
+its own lock and each space its own reader-writer lock, taken in a fixed
+order (space, then port), and a kqueue its own. §4.9's stripes split G by
+receiving space but made G take every stripe, and its holds grew 5 × (§6.4
+of that version).
+
+**Locks.**
+
+| Level | Lock | Taken by | Guards |
+|---|---|---|---|
+| 2 | G, exclusive | every holder of G before this section (`withLock`, waits, snapshots, the restore) | everything it guarded before |
+| 2 | G, shared | fine steps only | nothing by itself: it keeps exclusive holders out |
+| 2.5 | S, one per space (`MachIPC.spaceLock`), in increasing space id | fine steps, under G shared | among fine steps: the space's name table, the ports whose receive right it holds (queue, counters, requests, port sets) and the importance count of its process |
+
+**G as a reader-writer lock.** An exclusive holder takes G's mutex as
+before, marks itself (`writerPending`), and waits until no shared holder
+is in flight; it clears the mark when it lets go. A shared holder adds
+itself to the count and checks the mark (each side writes, then reads the
+other's word, with sequentially consistent atomics, so one of the two sees
+the other); with the mark set it takes itself back and watches the mark
+for up to `YCODE_PORT_LOCK_SHARED_SPIN_US` (default 20) µs, then declines.
+A shared holder never waits for G: an exclusive holder never waits for
+anything but shared holders in flight, and those wait only for space
+locks, so no cycle (§4.8).
+
+**Fine steps.** A fine step (`MachIPC.fineStep`) runs the locked path's own
+code for one Mach operation under G shared and the locks of the spaces
+whose state it touches. It first checks, reading only, that the operation
+stays inside that state and needs nothing else: it never blocks, never
+wakes a waiter (a wait queue's waiters sleep on G's mutex), never takes
+another kernel lock, never creates or kills a port, never moves a receive
+right and carries no push record. While a space's lock is not held the
+check reads of its ports only what changes under G exclusive alone (the
+receiver, whether the port is alive, a kernel object, a special reply
+port, its port sets) and asks for the lock; taking a space lock of a lower
+id than one held means letting go and checking again. If the operation is
+outside what the step serves, it declines with nothing changed and the
+trap runs under G exclusive, as before §4.12. EVFILT_MACHPORT hooks and L0
+work are deferred work (§4.5): under a shared hold every `deferIfFast`
+defers, and the work runs after the step lets go.
+
+| Step | Spaces | Declines when (among others) |
+|---|---|---|
+| A fast `mach_msg`/`mach_msg2` that only sends a simple message | the sender's, the destination's receiver's, the reply port's receiver's | complex; a voucher; a dead, kernel-object or host-held destination; a full queue (it would wait); a receiver waiting on the port or its sets; a send-once destination or reply right with a request boost or reply push; a reply push to start (`YCODE_REPLY_PUSH`, special reply port); importance whose target or credited process is not the receiver's; a dead-name request on a name the send frees; the look-up hold or traffic statistics on; a send and a receive in one trap |
+| A fast `mach_msg`/`mach_msg2` that only receives, and the kevent EVFILT_MACHPORT receive (`receiveForKevent`) | the receiver's, the reply right's port's receiver's (a send right merges into a name) | no message and the receive would wait; complex; a message with a sync-wait or reply push or a push class; importance credited to another process; too large; senders blocked on the queue; an armed send-possible request; a no-senders notification due; a servicing episode with a push or a demand start to end |
+| `mach_port_deallocate` | the caller's, the port's receiver's | a send-once right (its notification); a port set; a dead port under the name (the lazy conversion); a dead-name request on the name; a no-senders notification due; a kernel object |
+| `messageQueued`, `receiveTarget` (kevent's readiness of a name) | the caller's | a dead port under the name |
+| The end of a servicing episode (`workq_kernreturn`'s return, thread exit) | the caller's | a demand start to end; a push class while the thread waits on a request of its own (its requests' classes are G's); importance carried for another process |
+| Ycode's `thread_get_state` (under the caller's event lock, which guards the thread table) | the caller's | a dead port under the name or under a thread's name |
+
+State the fine steps share across spaces is atomic: the readiness and
+change stamps (`MachIPCSystem.stamps`) and two importance counters of the
+scheduling report. A fine step that would take any kernel lock, wait, or
+wake a waiter stops the process (a precondition, as it would deadlock or
+lose a wakeup); `YCODE_LOCK_ORDER_CHECK=1` also stops it when space locks
+are taken out of order or a space's state is changed without its lock.
+
+**Who takes it.** A thread whose host thread runs below class df
+(`YCODE_PORT_LOCK_SPLIT_MIN_CLASS`, default 2) takes the exclusive path:
+an exclusive holder is promoted by the threads that wait for it (§4.7 of
+`scheduling-policy.md`), a shared holder is not, and an exclusive holder
+waits for every shared holder in flight, so a preempted background thread
+inside a fine step held every exclusive acquirer.
+
+**Why it is safe.** Every code path but the fine steps takes G exclusively,
+and an exclusive holder excludes every fine step, so a fine step's state is
+guarded by G for all of them (I1, §4.2) and by the space locks among fine
+steps. A fine step changes only state owned by the spaces it holds (its
+check reads, under those locks, every condition under which the code it
+runs would touch more), and the waits it would cause or end are excluded
+by the check, so I2 (§4.4) holds unchanged: every waiter still sleeps on
+G's mutex and is woken by an exclusive holder.
+
 ## 5. Tests
 
 - `MachIPCLockSplitTests` (lock-order check on): a request/reply storm
@@ -424,6 +509,18 @@ escalated).
   fine-lock waiters; deferred wakeups racing timeouts; posted event-lock
   work never left behind; the held-lock record; a fast round trip while
   another thread holds L0.
+- `PortLockSplitTests` (§4.12, switch suites, lock-order check on):
+  exclusive holders exclude shared ones; space locks in increasing order on
+  both paths; simple traffic in order; reply rights and deallocate balance;
+  port death with queued messages (exactly one send-once notification per
+  sent message); a receive right moving while two images poll it; port-set
+  membership changing under fine steps; a send to a blocked receiver
+  declines; the kevent receive and servicing ends; the storms above and
+  `ThreadStateRaceTests` with the split on. The kernel suite also passes
+  with `YCODE_PORT_LOCK_SPLIT=1 YCODE_IPC_LOCKS_TESTS=1
+  YCODE_LOCK_ORDER_CHECK=1` (533 tests on the Mac, 532 + 161 ABI on the
+  x86-64 workstation), and the IPC suites under ThreadSanitizer report no
+  race in the split's code (only the tests' process-wide switches).
 - The whole kernel suite also runs with the split in every test system and
   the test helpers trying the fast paths first, as the VMM does
   (`YCODE_IPC_LOCKS_TESTS=1`, about 6,000 fast traps per run), with
@@ -507,15 +604,51 @@ traps 1.5 s: `mach_port_deallocate`, `fcntl`, `munmap`, `thread_get_state`,
 `proc_info`, all now without L0; diagnosticd's event-lock waits and wakeup
 latency 2.9 s), behind host-CPU oversubscription and guest code.
 
+### 6.5 B3-BOOT12 (2026-11-08): §4.12
+
+Series E (`boot-profile.md` §28.3: Thor, the aged golden device, every
+service on, n = 10 per arm, arms rotated): the defaults 23.95 ± 0.31 s
+(median 23.96), the split 24.33 ± 0.50 s (median 24.20), **+0.39 s**; with
+the spin of `scheduling-policy.md` §4.16 on both, +0.58 s against the
+defaults' 23.58 s with the spin alone; series F and F2 (§28.5 there, n = 6
+against 7): 24.62 ± 0.52 against 24.43 ± 0.33 s, +0.19 s. At home (one boot
+each, §28.2 there):
+
+| | defaults | split |
+|---|---|---|
+| G acquisitions (exclusive with the split) | 879 000 | 245 000–276 000 |
+| fine steps (shared) | — | 580 000–620 000 |
+| G's contended acquisitions, waits | 137 600, 22.0 s | 51 000–57 000, 47–52 s |
+| wait per contended acquisition | 160 µs | 0.9–1.1 ms |
+| space locks: contended, waited | — | 12 000–14 000, 1.1–1.4 s |
+| exclusive holders waiting for shared ones | — | 34 000–37 000, 4.5 s |
+| L0 held by home | 4.1 s | 5.6–6.1 s |
+
+The moved traffic gets cheaper (space locks are contended 1.5 % of the
+time), but an exclusive holder now waits for the fine steps in flight with
+G's mutex held, so G's remaining acquisitions wait 5–7 × longer, and the
+locked Mach traps, which take L0 before G, hold L0 longer. Keeping threads
+below class df off the shared path (the default) changed nothing measurable
+(the drains are fine steps of every class in flight). What remains
+exclusive is the synchronous IPC protocol, every blocking wait and wakeup,
+the log path's full queues, push records and complex messages.
+
 ## 7. Open items
 
 - ~~The kevent and workqueue fast paths decline for an image with
   EVFILT_READ/EVFILT_WRITE knotes~~ (§4.11). Descriptor readiness under a
   lock per object (pipes, sockets) would remove the escalation too.
 - The port lock is one per system and is now the busiest IPC lock (41–61 s
-  of summed waits per boot, §6.4); the port stripes of §4.9 were measured
-  neutral when G's other users still ran under L0. With the routines off L0
-  (§4.10) a re-measurement of the stripes is due.
+  of summed waits per boot, §6.4; 20–22 s on the 2026-11-07 main line,
+  §6.5). §4.9's stripes (G takes every stripe) and §4.12's reader-writer G
+  with a lock per space (G exclusive waits for the shared holders) both made
+  G's remaining holders slower than the traffic they moved. A split that
+  pays needs the traffic that stays on G gone, not shared: port and port-set
+  wait queues guarded by their space's (or port's) own lock, so that a fine
+  step can block and wake (the synchronous IPC round trip, the log path's
+  full queues), and push and importance records owned by one space. Then G
+  could become a lock for the rare cross-space operations (receive-right
+  moves, port death, snapshots) with no reader count at all.
 - The event lock is one per image; diagnosticd's (every log message passes
   through it, `boot-profile.md` §8.5) is on the boot's critical path: its
   workloop threads' hand-offs are event-lock waits and wakeup latency on an
@@ -541,6 +674,8 @@ latency 2.9 s), behind host-CPU oversubscription and guest code.
 | Measurements (§6) | 3 | Thor harness boots `SX/SPIPC/{base/,}runs/f*`, `m*`, `x1`, `y5` |
 | §4.10, §4.11 and §6.4: port routines under G, descriptor-readiness escalation, their measurements | — / 3 | Ycode design; Thor timed boots of Ycode's simulator (`ide-remote/klock/runs/{P,X}-*`), kernel tests |
 | Level-triggered EVFILT_READ/WRITE readiness, EV_DISPATCH re-enable | 1 | xnu `bsd/kern/kern_event.c` (via `threads-and-events.md`) |
+| A port's message queue, a space and a kqueue have locks of their own in xnu, taken space then port, and IPC wait queues live on the port (§4.12) | 1 | xnu open source `osfmk/ipc/ipc_space.h`, `ipc_port.h`, `ipc_mqueue.c`, `bsd/kern/kern_event.c`, read for behaviour, nothing copied |
+| §4.12 and §6.5: the reader-writer G with space locks, its counters and timed series | — / 3 | Ycode design; Thor boots of Ycode's simulator (`c-def`, `c-split`, `c2-split`, `c2-splitall`, `tp-split`, series E), `PortLockSplitTests`, the kernel suites with the split, ThreadSanitizer runs |
 
 Level 5 was not used. The reference tools folder, `research/` and Ghidra
 were not opened.

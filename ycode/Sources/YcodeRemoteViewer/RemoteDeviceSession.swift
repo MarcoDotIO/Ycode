@@ -48,6 +48,9 @@ public final class RemoteDeviceSession: @unchecked Sendable {
     public private(set) var spec: DeviceFrameSpec = .iPhone18Pro
     public private(set) var notice: (text: String, until: Double)?
     public var scaleMode: ViewerScaleMode = .fit
+    /// The scale was chosen (the `--scale` option, a zoom control or menu
+    /// item): a watch then keeps it instead of opening at Actual Size.
+    public var scaleChosen = false
     public var bezels = true
     /// Window size (units) and output pixels per unit, set by the front end.
     public var windowWidth: Double = 480, windowHeight: Double = 900, pixelDensity: Double = 1
@@ -274,6 +277,11 @@ public final class RemoteDeviceSession: @unchecked Sendable {
         guard g != fittedGeometry else { return nil }
         let first = fittedGeometry == nil
         fittedGeometry = g
+        // A watch opens at its real size, the third zoom segment (council
+        // round 9 row 232; the macOS hub's Physical Size), unless a scale was
+        // chosen. The window keeps the hub's size round it.
+        if first, isWatch, !scaleChosen, scaleMode == .fit { scaleMode = .point }
+        if hubFit && first { return Self.hubCanvas }
         if hubFit && scaleMode == .fit {
             // The device window at Zoom to Fit: the hub's window at first
             // (its canvas; the device scales into it, §14.3), then the
@@ -289,8 +297,12 @@ public final class RemoteDeviceSession: @unchecked Sendable {
     public static let hubCanvas = (width: 1100 - DeviceWindowFrame.inspectorWidth, height: 800 - DeviceWindowFrame.toolbarHeight)
 
     /// The window has the device window's toolbar and inspector, so Zoom to
-    /// Fit follows the macOS hub's rule (ViewerLayout, `DeviceZoom.hubFit`).
+    /// Fit follows the macOS hub's rule (ViewerLayout, `DeviceZoom.hubFit`, §15.2).
     public var hubFit = false
+
+    /// The device's OS as the window's subtitle shows it: the hello's
+    /// ("iOS 27.2"), an iPad's as "iPadOS 27.2" (device-hub.md §15.5).
+    public var osTitle: String { spec.family.osTitle(hello?.osVersion ?? "") }
 
     /// A device type drawn without a server (a script's `device-type`, for
     /// pictures of the window): its frame, a black screen.
@@ -305,7 +317,8 @@ public final class RemoteDeviceSession: @unchecked Sendable {
 
     public var layout: ViewerLayout {
         ViewerLayout(geometry: geometry, mode: scaleMode, windowWidth: windowWidth, windowHeight: windowHeight,
-                     pixelDensity: pixelDensity, deviceScale: panel?.scale ?? hello?.scale ?? spec.panels[0].scale, hubFit: hubFit)
+                     pixelDensity: pixelDensity, deviceScale: panel?.scale ?? hello?.scale ?? spec.panels[0].scale, hubFit: hubFit,
+                     foldable: controlDevice.foldable)
     }
 
     /// The shown picture's size in points (touch space as shown).

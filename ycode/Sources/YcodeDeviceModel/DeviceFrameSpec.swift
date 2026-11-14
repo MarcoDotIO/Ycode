@@ -18,6 +18,24 @@ public enum DeviceFamily: String, Sendable, Codable, CaseIterable {
     case watch
 }
 
+extension DeviceFamily {
+    /// The OS a device of this family shows in the window's subtitle
+    /// (device-hub.md §15.5, row 173): an iPad's is "iPadOS" though its
+    /// runtime is iOS's ("iOS 27.2" → "iPadOS 27.2"); "xrOS" is visionOS;
+    /// other names are kept.
+    public func osTitle(_ title: String) -> String {
+        func replacing(_ prefix: String, with name: String) -> String? {
+            guard title == prefix || title.hasPrefix(prefix + " ") else { return nil }
+            return name + title.dropFirst(prefix.count)
+        }
+        switch self {
+        case .pad: return replacing("iOS", with: "iPadOS") ?? title
+        case .vision: return replacing("xrOS", with: "visionOS") ?? title
+        case .phone, .watch: return title
+        }
+    }
+}
+
 /// Corner radii in points, per corner of a rectangle as shown.
 public struct CornerRadii: Equatable, Sendable {
     public var topLeft: Double
@@ -55,6 +73,11 @@ public struct CornerRadii: Equatable, Sendable {
     }
 
     public var largest: Double { max(topLeft, topRight, bottomRight, bottomLeft) }
+
+    /// No radius below zero.
+    public var clamped: CornerRadii {
+        CornerRadii(topLeft: max(0, topLeft), topRight: max(0, topRight), bottomRight: max(0, bottomRight), bottomLeft: max(0, bottomLeft))
+    }
 }
 
 /// One built-in display of a device type.
@@ -220,15 +243,29 @@ public struct DeviceFrameSpec: Equatable, Sendable {
                                 scale: Double) -> DeviceFrameSpec {
         if let typeID, let s = named(typeID: typeID) { return s }
         if let model, let s = all.first(where: { $0.modelIdentifier == model }) { return s }
-        if let s = all.first(where: { $0.panels[0].pixelWidth == pixelWidth && $0.panels[0].pixelHeight == pixelHeight }) { return s }
+        // The family the type or model names ("…iPad-Air-11-inch-M4",
+        // "iPad16,8"), without regard to case (council round 8, row 196):
+        // a known type of that family with the same display, else a generic
+        // device of that family; with no family named, a model of the watch
+        // family ("Watch8,3") or a screen no wider than a watch's (at most
+        // 211 points) is a watch, 600 points or more an iPad.
+        let named = [typeID, model].compactMap { $0?.lowercased() }.lazy.compactMap { text -> DeviceFamily? in
+            if text.contains("vision") || text.hasPrefix("realitydevice") { return .vision }
+            if text.contains("watch") { return .watch }
+            if text.contains("ipad") { return .pad }
+            if text.contains("iphone") { return .phone }
+            return nil
+        }.first
+        if let s = all.first(where: { $0.panels[0].pixelWidth == pixelWidth && $0.panels[0].pixelHeight == pixelHeight && (named == nil || $0.family == named) }) {
+            return s
+        }
         let points = Double(min(pixelWidth, pixelHeight)) / max(scale, 1)
-        // A model of the watch family ("Watch8,3") or a screen no wider than a
-        // watch's (at most 211 points): a watch; 600 points or more: an iPad.
         let watch = model?.hasPrefix("Watch") == true || points <= 211
+        let family = named ?? (watch ? .watch : points >= 600 ? .pad : .phone)
         return DeviceFrameSpec(typeID: "unknown", name: "Device", modelIdentifier: model ?? "",
-                               family: watch ? .watch : points >= 600 ? .pad : .phone,
+                               family: family,
                                panels: [DevicePanelSpec(name: "LCD", pixelWidth: pixelWidth, pixelHeight: pixelHeight, scale: max(scale, 1),
-                                                        pixelsPerInch: watch ? 326 : scale >= 3 ? 460 : 264,
+                                                        pixelsPerInch: family == .watch ? 326 : scale >= 3 ? 460 : 264,
                                                         cornerRadii: CornerRadii(all: 0))])
     }
 }

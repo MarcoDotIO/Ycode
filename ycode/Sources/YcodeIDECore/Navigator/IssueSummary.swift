@@ -24,6 +24,17 @@ public struct IssueSummary: Equatable, Sendable {
             }
         }
 
+        /// The symbol in a narrow window, where the capsule collapses to the
+        /// most severe kind's glyph alone (`workspace-window.md` W7, council
+        /// round 8, row 198): an error is a filled octagon with a cross
+        /// there; the other kinds keep their symbols.
+        public var collapsedSymbol: String {
+            switch self {
+            case .error: "xmark.octagon.fill"
+            case .warning, .testFailure: symbol
+            }
+        }
+
         /// The symbol's fill as 0xRRGGBB (its mark is white) in dark: the
         /// warning triangle #FFE015 (G.8), the error circle the system red.
         public var fill: UInt32 { fill(dark: true) }
@@ -115,14 +126,30 @@ public struct IssueSummary: Equatable, Sendable {
         public static let countSize: Double = 13
         /// The gap to the scheme capsule before it.
         public static let gapAfterScheme: Double = 7.5
+        /// With symbols only (a narrow window) the capsule is round, about
+        /// 39 wide, and holds the most severe kind's glyph alone, centred
+        /// (council round 8, row 198, at 1100 points with an error and a
+        /// warning: the error's octagon in its own capsule between the
+        /// scheme capsule and Add Editor's).
+        public static let collapsedWidth: Double = 39
         /// The count's colour (0xRRGGBB): black in light (H.5), white in dark.
         public static func countColor(dark: Bool) -> UInt32 { dark ? 0xFFFFFF : 0x000000 }
         /// The gap between parts.
         public static func gap(symbolsOnly: Bool) -> Double { symbolsOnly ? partGapSymbolsOnly : partGap }
 
+        /// The parts the capsule shows: all of them, or with symbols only the
+        /// most severe one alone (`collapsedSymbol`).
+        public static func shownParts(_ parts: [Part], symbolsOnly: Bool) -> [Part] {
+            symbolsOnly ? Array(parts.prefix(1)) : parts
+        }
+
+        /// The symbol's left edge in the capsule for each shown part.
+        public static func collapsedSymbolX() -> Double { (collapsedWidth - symbolWidth) / 2 }
+
         /// The capsule's width for `parts`, given each count's text width.
         public static func width(_ parts: [Part], symbolsOnly: Bool, countWidth: (String) -> Double) -> Double {
             guard !parts.isEmpty else { return 0 }
+            if symbolsOnly { return collapsedWidth }
             var w = leading
             for (i, p) in parts.enumerated() {
                 if i > 0 { w += gap(symbolsOnly: symbolsOnly) }

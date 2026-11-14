@@ -1,0 +1,325 @@
+{
+ "issue": 81,
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "name": "council-r10-owner-json",
+ "title": "Council round 10 (#81), as round 9 (same sessions, steps, ids and order). Round 9 owner's observations (#81), not scored: palette.json opened in each app with its own Appearance set to Dark, then Light, then back to System: the JSON glyph in the navigator and the jump bar. Appearance steps as council-r9-icons.json.",
+ "project": {
+  "generator": "make-icons-project.py",
+  "path": "icons/GlassScroll/GlassScroll.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ },
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "prores4444",
+  "pre": 0.4,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "owner-appearance-dark",
+   "note": "Each app's own Appearance set to Dark (Settings > Appearance), Settings closed.",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "AppearanceDark",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "key": "cmd+w"
+      },
+      {
+       "wait": 1.0
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "press": {
+        "title": "Dark",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "key": "cmd+w"
+      },
+      {
+       "wait": 1.0
+      }
+     ]
+    }
+   },
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "owner-dark-json-open",
+   "note": "Owner's observations: dark, palette.json selected in the navigator and open in the editor: its glyph in the navigator and the jump bar.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "palette|palette.json"
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "hover": [
+      900,
+      500
+     ]
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "owner-appearance-light",
+   "note": "Each app's own Appearance set to Light, Settings closed.",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "AppearanceLight",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "key": "cmd+w"
+      },
+      {
+       "wait": 1.0
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "press": {
+        "title": "Light",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "key": "cmd+w"
+      },
+      {
+       "wait": 1.0
+      }
+     ]
+    }
+   },
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "owner-light-json-open",
+   "note": "Owner's observations: light, palette.json selected in the navigator and open in the editor: its glyph in the navigator and the jump bar.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "palette|palette.json"
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "hover": [
+      900,
+      500
+     ]
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "owner-appearance-restore",
+   "note": "Each app's own Appearance set back to System.",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "AppearanceAuto",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "key": "cmd+w"
+      },
+      {
+       "wait": 1.0
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "press": {
+        "title": "System",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "key": "cmd+w"
+      },
+      {
+       "wait": 1.0
+      }
+     ]
+    }
+   },
+   "record": false,
+   "still": "after"
+  }
+ ]
+}

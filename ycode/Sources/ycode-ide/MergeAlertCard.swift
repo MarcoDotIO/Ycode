@@ -35,6 +35,14 @@ struct MergeAlertCard: View {
             // 168): Merge, Cancel, the message, the icon, the informative
             // text, then the branch pop-up. Nothing here overlaps, so the
             // order does not change the drawing.
+            // Round 7 (§16.1, row 195): an empty status image first, 18 × 18
+            // at the bottom left, with no description; nothing is drawn.
+            Color.clear
+                .frame(width: CGFloat(MergeSheetText.alertStatusImageSide), height: CGFloat(MergeSheetText.alertStatusImageSide))
+                .accessibilityElement()
+                .accessibilityAddTraits(.isImage)
+                .allowsHitTesting(false)
+                .offset(x: CGFloat(MergeSheetText.alertStatusImageOrigin.x), y: h - 20 - CGFloat(MergeSheetText.alertStatusImageSide))
             Button { if !isLeaving { scm.confirmMergeAlert() } } label: {
                 MergeButtonLabel(title: MergeSheetText.merge, isDefault: isReady, palette: p,
                                  width: CGFloat(M.alertMergeWidth), height: CGFloat(M.alertButtonHeight))
@@ -64,11 +72,14 @@ struct MergeAlertCard: View {
                 .frame(width: textWidth, alignment: .topLeading)
                 .offset(x: textX, y: CGFloat(M.alertTitleTop) - 4)
                 .shellTarget("merge alert title")
+            // The icon's element 66 × 66 round the drawn icon (§16.1).
+            let pad = (CGFloat(MergeSheetText.alertIconElementSide) - CGFloat(M.alertIcon)) / 2
             YcodeMark(size: CGFloat(M.alertIcon))
+                .frame(width: CGFloat(MergeSheetText.alertIconElementSide), height: CGFloat(MergeSheetText.alertIconElementSide))
                 .accessibilityElement()
                 .accessibilityLabel(MergeSheetText.alertIconDescription)
                 .accessibilityAddTraits(.isImage)
-                .offset(x: CGFloat(M.alertIconOrigin.x), y: CGFloat(M.alertIconOrigin.y))
+                .offset(x: CGFloat(M.alertIconOrigin.x) - pad, y: CGFloat(M.alertIconOrigin.y) - pad)
             Text(verbatim: alert.message)
                 .font(.system(size: 11))
                 .foregroundStyle(Color(mergeHex: scheme == .dark ? p.label : 0x000000))

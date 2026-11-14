@@ -15,8 +15,9 @@ import Testing
 
     @Test func theCoverAtZoomToFitIsTheReferencesBox() {
         let g = DeviceFrameGeometry(spec: .iPhoneDuo, panelIndex: 0, posture: .closed)
-        let s = DeviceZoom.hubFit(frame: g.outerBox.size, in: Self.capturedArea)
-        // Row 154: the cover at about 0.53 (0.532 across, 0.531 down).
+        let s = DeviceZoom.hubFit(geometry: g, foldable: true, in: Self.capturedArea)
+        // Row 154: the cover at about 0.53 (0.532 across, 0.531 down); round
+        // 7's rule (§15.2) keeps it.
         #expect(abs(s - 0.531) < 0.003, "\(s)")
         // Screen 248 × 360, frame (with the bars) 274 × 379.5.
         #expect(abs(466 * s - 248) < 1 && abs(678 * s - 360) < 1, "\(466 * s) × \(678 * s)")
@@ -33,47 +34,37 @@ import Testing
     }
 
     @Test func theRuleRescalesWithTheWindow() {
+        // Round 7's rule (§15.2) superseded round 6's shares: the Duo through
+        // its 1269-point box, S = 0.98 F − 16.
         let g = DeviceFrameGeometry(spec: .iPhoneDuo, panelIndex: 0, posture: .closed)
-        let box = g.outerBox.size
-        // Taller window: the height share decides.
-        let tall = DeviceZoom.hubFit(frame: box, in: CGSize(width: 1120, height: 1000 - 52 - 44.5))
-        #expect(abs(Double(box.height) * tall - DeviceZoom.hubFitHeightShare * 903.5) < 1e-6)
-        // Narrow canvas: the width share decides.
-        let narrow = DeviceZoom.hubFit(frame: box, in: CGSize(width: 500, height: 703.5))
-        #expect(abs(Double(box.width) * narrow - DeviceZoom.hubFitWidthShare * 500) < 1e-6)
+        let tall = DeviceZoom.hubFit(geometry: g, foldable: true, in: CGSize(width: 1120, height: 1000 - 52 - 44.5))
+        #expect(abs(tall - (0.98 * 904 - 16) / 1269) < 1e-9)
+        // Narrow canvas: the width decides (0.98 W − 16 for the outer box).
+        let narrow = DeviceZoom.hubFit(geometry: g, foldable: true, in: CGSize(width: 260, height: 703.5))
+        #expect(abs(Double(g.outerBox.width) * narrow - (0.98 * 260 - 16)) < 1e-6)
         #expect(narrow < tall)
-        // The shares are the measured ones: 54 % and 33 %.
-        #expect(abs(DeviceZoom.hubFitHeightShare - 0.54) < 0.005 && abs(DeviceZoom.hubFitWidthShare - 0.33) < 0.005)
-        // Extrapolated to devices the reference was not captured with
-        // (device-hub.md I.16): an iPhone 18 Pro and an iPad bound by the
-        // height, the open Duo by the width.
-        func scale(_ g: DeviceFrameGeometry) -> Double { DeviceZoom.hubFit(frame: g.outerBox.size, in: Self.capturedArea) }
-        #expect(abs(scale(DeviceFrameGeometry(spec: .iPhone18Pro)) - 0.42) < 0.005)
-        #expect(abs(scale(DeviceFrameGeometry(spec: .iPadA16)) - 0.31) < 0.005)
-        let open = DeviceFrameGeometry(spec: .iPhoneDuo, panelIndex: 1, posture: .openFlat)
-        #expect(abs(scale(open) - 0.28) < 0.005)
-        #expect(abs(Double(open.outerBox.width) * scale(open) - DeviceZoom.hubFitWidthShare * 820.5) < 1e-6)
-        // The cover turns width-bound below about 1.16 times the free height.
-        #expect(abs(Double(box.width) * DeviceZoom.hubFit(frame: box, in: CGSize(width: 1.15 * 703.5, height: 703.5))
-                    - DeviceZoom.hubFitWidthShare * 1.15 * 703.5) < 1e-6)
         // Limits.
-        #expect(DeviceZoom.hubFit(frame: CGSize(width: 1, height: 1), in: CGSize(width: 10_000, height: 10_000)) == 4)
-        #expect(DeviceZoom.hubFit(frame: .zero, in: Self.capturedArea) == 1)
+        #expect(DeviceZoom.hubFit(silhouetteHeight: 1, outerWidth: 1, in: CGSize(width: 10_000, height: 10_000)) == 4)
+        #expect(DeviceZoom.hubFit(silhouetteHeight: 0, outerWidth: 1, in: Self.capturedArea) == 1)
     }
 
     @Test func theBandIsTwoToneAbout16Points() {
-        for spec in [DeviceFrameSpec.iPhone18Pro, .iPhoneDuo, .iPadA16] {
-            let g = DeviceFrameGeometry(spec: spec)
+        // The Duo keeps round 6's band (§15.3: "the Duo stays as it is").
+        for (spec, panel) in [(DeviceFrameSpec.iPhoneDuo, 0), (.iPhoneDuo, 1)] {
+            let g = DeviceFrameGeometry(spec: spec, panelIndex: panel)
             #expect(g.innerBand == 8.5, "\(spec.typeID)")
             let inner = try! #require(g.innerBandRect)
             #expect(inner.rect == g.screen.insetBy(dx: -8.5, dy: -8.5) && inner.radii == g.screenRadii.grown(by: 8.5))
+            #expect(g.bandRings.map(\.color) == [DeviceFrameGeometry.Palette.outer, DeviceFrameGeometry.Palette.inner])
         }
-        #expect(DeviceFrameGeometry.band(.phone) == 16)
+        #expect(DeviceFrameGeometry.foldableBand == 16)
         // At the captured scale: 8.5 window points, 4.5 of them black.
         #expect(abs(16 * 0.531 - 8.5) < 0.05 && abs(8.5 * 0.531 - 4.5) < 0.05)
         // A watch keeps its one-tone band; no band, no tones.
         #expect(DeviceFrameGeometry(spec: .appleWatchSeries12_46mm).innerBandRect == nil)
+        #expect(DeviceFrameGeometry(spec: .appleWatchSeries12_46mm).bandRings.isEmpty)
         #expect(DeviceFrameGeometry(spec: .iPhone18Pro, bezels: false).innerBandRect == nil)
+        #expect(DeviceFrameGeometry(spec: .iPhone18Pro, bezels: false).bandRingRects.isEmpty)
         // The palette: black inside, mid grey outside, the step darker.
         typealias P = DeviceFrameGeometry.Palette
         #expect(P.inner == 0x000000)

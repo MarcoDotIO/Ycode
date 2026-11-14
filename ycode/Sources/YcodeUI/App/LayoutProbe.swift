@@ -173,12 +173,12 @@ public enum LayoutProbe {
             r.edges("toolbar.run", r.frames["toolbar.run"], x: 208.5, maxX: 281.5, source: "\(src) §3")
             r.edges("toolbar.history", r.frames["toolbar.history"], x: 297.5, maxX: 370.5, source: "\(src) §3")
         }
-        // The activity icon 14 after Back | Forward: x 385 (liquid-glass.md §7.1).
+        // The activity icon 12.5 after Back | Forward: x 383.5 (council round 9, row 212).
         if let history = r.frames["toolbar.history"], wc.activityView.window != nil, !wc.activityView.isHiddenOrHasHiddenAncestor {
             let icon = r.frame("toolbar.activityIcon", r.box(wc.activityView.icon))
             r.measure("toolbar.activityIcon.gapAfterHistory", icon.x - history.maxX, "=", Double(ActivityView.gapAfterNeighbor),
                       source: "liquid-glass.md §7.1")
-            if glass { r.measure("toolbar.activityIcon.x", icon.x, "=", 385, source: "liquid-glass.md §7.1") }
+            if glass { r.measure("toolbar.activityIcon.x", icon.x, "=", 383.5, source: "fidelity-council.md row 212") }
         }
 
         // §2 Navigator.

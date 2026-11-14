@@ -324,6 +324,7 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
 
     public func setScale(_ m: ViewerScaleMode) {
         session.scaleMode = m
+        session.scaleChosen = true
         if m != .fit {
             let scale = ViewerLayout(geometry: session.geometry, mode: m, windowWidth: 1, windowHeight: 1, pixelDensity: session.pixelDensity,
                                      deviceScale: session.panel?.scale ?? session.hello?.scale ?? 3).scale
@@ -396,7 +397,10 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         case .zoomActual: setScale(.point)
         case .zoomIn: setScale(session.scaleMode == .fit ? .point : .pixel)
         case .more: menuOpen.toggle(); hover = nil
-        case .settingsTab, .reportsTab, .infoTab: inspectorTab = item
+        case .settingsTab, .reportsTab, .infoTab:
+            // A tab shows the inspector when it is hidden, as on macOS.
+            inspectorTab = item
+            if !inspectorShown { inspectorShown = true }
         }
         needsRedraw = true
     }
@@ -410,7 +414,7 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
             let rows: [DeviceInspectorContent.Row] = [
                 .init(symbol: "iphone", label: "Name", control: .popUp(session.title), enabled: true),
                 .init(symbol: "cpu", label: "Model", control: .popUp(h?.model ?? session.spec.name), enabled: true),
-                .init(symbol: "gearshape", label: "OS", control: .popUp(h?.osVersion ?? "—"), enabled: true),
+                .init(symbol: "gearshape", label: "OS", control: .popUp(h == nil ? "—" : session.osTitle), enabled: true),
             ]
             return DeviceInspectorContent(cards: [rows], note: nil)
         case .reportsTab: return DeviceInspectorContent(cards: [], note: "No Reports")
@@ -419,7 +423,8 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
     }
 
     /// The toolbar's title and subtitle: the device and its OS.
-    var subtitle: String { session.hello?.osVersion ?? "" }
+    /// (an iPad's OS is "iPadOS 27.2", §15.5).
+    var subtitle: String { session.osTitle }
 
     /// A click on the chrome; true: it was the chrome's (not the device's).
     private func chromeClick(_ x: Double, _ y: Double, alt: Bool) -> Bool {
@@ -449,6 +454,13 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
 
     /// Carries out a capsule control (Alt-click on Rotate: right, as Option-click on macOS).
     public func perform(_ c: DeviceCommand, alt: Bool = false) {
+        // A capsule control while the device is not live says why (row 175:
+        // its glyph stays at full contrast).
+        if let reason = session.controlsUnavailableReason, session.controlGroups.joined().contains(c), c != .recordScreen {
+            session.showNotice(reason, seconds: 3)
+            needsRedraw = true
+            return
+        }
         switch c {
         case .home: session.press(.home)
         case .lock: session.press(.lock)
@@ -459,6 +471,9 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         case .rotateLeft: session.rotate(left: !alt)
         case .rotateRight: session.rotate(left: false)
         case .resetCamera: session.resetCamera()
+        // A watch's capsule (row 234): the frame's buttons, pressed.
+        case .sideButton: session.press(session.displayButton(for: .sideButton))
+        case .digitalCrown: session.press(session.displayButton(for: .crown))
         case .poseClosed: session.fold(to: DevicePosture.closed.angle)
         case .posePartiallyOpen: session.fold(to: DevicePosture.halfOpen.angle)
         case .poseOpen: session.fold(to: DevicePosture.openFlat.angle)
@@ -506,6 +521,13 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         case ("inspector", let k?):
             guard hasChrome, k == "show" || k == "hide" else { return false }
             inspectorShown = k == "show"
+            return true
+        case ("window", let k?):
+            // `chrome window 1400x900`: the window's size (pictures at the council's sizes).
+            let p = k.split(separator: "x").compactMap { Int32($0) }
+            guard p.count == 2, p.allSatisfy({ $0 > 100 }) else { return false }
+            _ = sdl.SetWindowSize(window, p[0], p[1])
+            updateWindowMetrics()
             return true
         default: return false
         }
@@ -619,8 +641,8 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
     private func glyph(_ c0: DeviceCommand, _ cx: Double, _ cy: Double, colour g: ViewerColor, highlighted: Bool) {
         switch c0 {
         case .home:
-            // A 3 × 3 grid of dots.
-            for i in -1...1 { for j in -1...1 { disc(cx + Double(i) * 5, cy + Double(j) * 5, 1.6, g) } }
+            // A 3 × 3 grid of rounded squares (§15.6), the macOS drawing.
+            shared(DeviceControlGlyphs.home, cx, cy, line: g, fill: nil)
         case .screenshot:
             // A camera inside a viewfinder frame.
             let h = 7.5, arm = 3.2
@@ -638,6 +660,11 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
             // Ycode's Rotate (§13.1): a square with curved arrows at two
             // opposite corners, the shapes the macOS window draws too.
             shared(DeviceControlGlyphs.rotate, cx, cy, line: g, fill: nil)
+        case .sideButton:
+            // A watch's side button and Digital Crown (row 234), the macOS drawings.
+            shared(DeviceControlGlyphs.sideButton, cx, cy, line: g, fill: nil)
+        case .digitalCrown:
+            shared(DeviceControlGlyphs.digitalCrown, cx, cy, line: g, fill: nil)
         case .resetCamera:
             // A circular arrow.
             arc(cx, cy, 6.5, 1.4, g, from: -0.35 * Double.pi, to: 1.35 * Double.pi)
@@ -872,21 +899,31 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         defer { origin = (0, 0) }
         let body = l.window(g.body), screen = l.screen
         let framed = session.bezels && session.spec.hasFrame
-        if framed, g.innerBand != nil {
+        if framed, !g.bandRings.isEmpty {
             // The macOS frame's drawing (DeviceFrameView, device-hub.md
-            // §14.2): a foldable cover's hinge step under everything, the
-            // buttons, the band mid grey outside and black next to the screen.
+            // §14.2, §15.3–§15.4): a foldable cover's hinge step under
+            // everything, the buttons, the band's tones outside in (a classic
+            // iPhone's and an iPad's light line, grey band and black; a
+            // foldable's mid grey and black), then flush buttons over the band.
             typealias P = DeviceFrameGeometry.Palette
             if let step = g.hingeStep {
                 polygon(ViewerLayout.roundedPolygon(l.window(step), radii: g.hingeStepRadii, scale: l.scale), ViewerColor(P.step))
             }
-            for b in g.buttons {
+            for b in g.buttons where !b.flush {
                 polygon(ViewerLayout.roundedPolygon(l.window(b.rect), radii: CornerRadii(all: 1.5), scale: l.scale, steps: 3), ViewerColor(P.button))
             }
-            polygon(ViewerLayout.roundedPolygon(body, radii: g.bodyRadii, scale: l.scale), ViewerColor(P.outer))
-            if let inner = g.innerBandRect {
-                polygon(ViewerLayout.roundedPolygon(l.window(inner.rect), radii: inner.radii, scale: l.scale), ViewerColor(P.inner))
+            for ring in g.bandRingRects {
+                polygon(ViewerLayout.roundedPolygon(l.window(ring.rect), radii: ring.radii, scale: l.scale), ViewerColor(ring.color))
             }
+            for b in g.buttons where b.flush {
+                let c = ViewerColor(P.flushButton).bytes
+                color(c.0, c.1, c.2, c.3)
+                fill(l.window(b.rect))
+            }
+        } else if framed, g.drawsWatchCase {
+            // A watch's case (council round 10 rows 250–251), the macOS
+            // frame's profile (`WatchCaseDrawing`, `WatchCaseView`).
+            drawWatchCase(l)
         } else if framed {
             for b in g.buttons {
                 color(0x45, 0x46, 0x4B)
@@ -944,6 +981,61 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
         if let sequence, sequence != drawnSequence {
             drawnSequence = sequence
             session.presented(sequence: sequence, at: t1)
+        }
+    }
+
+    /// A watch's crown, side button and Action button, each rim-outlined and
+    /// dark inside (the crown's ridges on its outer third), under the body's
+    /// rim, band and fade to black (`WatchCaseDrawing`).
+    private func drawWatchCase(_ l: ViewerLayout) {
+        let g = l.geometry
+        for b in g.buttons {
+            shadeProfile(b.rect, radii: b.radii ?? CornerRadii(all: 1.5), stops: WatchCaseDrawing.buttonStops, l)
+            if b.kind == .crown {
+                for seg in WatchCaseDrawing.ridges(crown: b.rect) {
+                    stroke([windowPoint(seg.from, l), windowPoint(seg.to, l)], max(0.5, WatchCaseDrawing.ridgeWidth * l.scale),
+                           ViewerColor(WatchCaseDrawing.ridge))
+                }
+            }
+        }
+        shadeProfile(g.body, radii: g.bodyRadii, stops: WatchCaseDrawing.caseStops, l)
+    }
+
+    private func windowPoint(_ p: CGPoint, _ l: ViewerLayout) -> (Double, Double) {
+        let w = l.window(CGRect(x: p.x, y: p.y, width: 0, height: 0))
+        return (w.x, w.y)
+    }
+
+    /// A profile (device points inside `rect`'s outline) shaded between its
+    /// stops: a strip of quads from each stop's outline to the next one's,
+    /// each vertex in its stop's colour, then the last stop's colour to the
+    /// centre; one geometry call.
+    private func shadeProfile(_ rect: CGRect, radii: CornerRadii, stops: [WatchCaseDrawing.Stop], _ l: ViewerLayout) {
+        guard stops.count >= 2 else { return }
+        let rings = stops.map { st in WatchCaseDrawing.outline(rect, radii: radii, inset: st.inset).map { windowPoint($0, l) } }
+        let n = rings[0].count
+        var verts: [SDLVertex] = []
+        var idx: [Int32] = []
+        for (ring, st) in zip(rings, stops) {
+            let c = WatchCaseDrawing.colour([st], at: 0)
+            for p in ring {
+                verts.append(SDLVertex(x: Float(p.0 + origin.x), y: Float(p.1 + origin.y), r: Float(c.r), g: Float(c.g), b: Float(c.b),
+                                       a: Float(c.a), u: 0, v: 0))
+            }
+        }
+        for k in 0..<(rings.count - 1) {
+            let a = Int32(k * n), b = Int32((k + 1) * n)
+            for i in 0..<Int32(n) {
+                let j = (i + 1) % Int32(n)
+                idx += [a + i, a + j, b + j, a + i, b + j, b + i]
+            }
+        }
+        // The innermost outline, filled as a fan (it is convex).
+        let last = Int32((rings.count - 1) * n)
+        for i in 1..<Int32(n - 1) { idx += [last, last + i, last + i + 1] }
+        let count = Int32(verts.count)
+        _ = verts.withUnsafeMutableBytes { v in
+            idx.withUnsafeBufferPointer { sdl.RenderGeometry(renderer, nil, v.baseAddress!, count, $0.baseAddress, Int32(idx.count)) }
         }
     }
 

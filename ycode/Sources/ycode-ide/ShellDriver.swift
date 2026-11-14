@@ -51,8 +51,20 @@ import OVPlatform
 //   YCODE_IDE_MOTION4=<p>   council round 4's chrome rows (ShellDriver+Motion4.swift)
 //   YCODE_IDE_PARITY5=<p>   the cross-platform parity audit's states (ShellDriver+Parity5.swift)
 //   YCODE_IDE_CHROME5=<p>   council round 5 chrome: the issue capsule, the activity subtitle (ShellDriver+Chrome5.swift)
+//   YCODE_IDE_CHROME7=<p>   council round 7 group D: restore on reopen, logos, indexing, the alert, Welcome (ShellDriver+Chrome7.swift)
+//   YCODE_IDE_CHROME8=<p>   council round 8 group A: appearance switch, narrow issues, reopen scroll (ShellDriver+Chrome8.swift)
+//   YCODE_IDE_FILETYPES9=<p> council round 9 group C: no server diagnostics for Markdown and JSON, the File inspector (ShellDriver+FileTypes9.swift)
+//   YCODE_IDE_CHROME9=<p>   council round 9 group A2: assistant button, Open Quickly, No Selection, overflow gap (ShellDriver+Chrome9.swift)
+//   YCODE_IDE_GLYPHS9=<p>   council round 9 group A1: file glyphs, selection states, the title's mark and ring (ShellDriver+Glyphs9.swift)
+//   YCODE_IDE_CHROME10=<p>  council round 10 group A: glyphs on whole pixels, jump bar, Open Quickly, ring (ShellDriver+Chrome10.swift)
 //   YCODE_IDE_SETTINGS5=<p> Settings' round 5 panes and the wizard's host step (ShellDriver+Settings5.swift)
+//   YCODE_IDE_SETTINGS7=<p> Settings ▸ Appearance's round 7 list, scrolled, and its accessibility tree (ShellDriver+Settings7.swift)
 //   YCODE_IDE_PANES5=<p>    the inspector's slide timed, an image's inspector (ShellDriver+Panes5.swift)
+//   YCODE_IDE_FLICK6=<p>    round 6's flick curve and filled Source Control glyphs (ShellDriver+Flick6.swift)
+//   YCODE_IDE_EDITOR7=<p>   round 7's editor rows: flicks to the edges, final line, re-wrap, jump bar (ShellDriver+Editor7.swift)
+//   YCODE_IDE_MOTION8=<p>   round 8's motion rows: the slide's frames, the flicks, selection (ShellDriver+Motion8.swift)
+//   YCODE_IDE_MOTION9=<p>   round 9's group B rows: the top line, flicks, caret, instances (ShellDriver+Motion9.swift)
+//   YCODE_IDE_WINDOWCLOSE9=<p>  closing Settings and the wizard, then File ▸ Quit, from Welcome (ShellDriver+WindowClose.swift)
 //   YCODE_IDE_ORGANIZER=<p> Window ▸ Organizer's walk (OrganizerDriver.swift)
 //   YCODE_IDE_CONFLICT=<p>  the merge alert and merge sheet walk (ShellDriver+Conflicts.swift)
 //   YCODE_IDE_TESTS=<p>     testing's walk (ShellDriver+Tests.swift)
@@ -97,7 +109,10 @@ enum ShellDriver {
                         "YCODE_IDE_SETTINGS_VERIFY", "YCODE_IDE_EDITORS", "YCODE_IDE_LSP",
                         "YCODE_IDE_IME", "YCODE_IDE_POLISH", "YCODE_IDE_DEBUG2", "YCODE_IDE_ASSISTANT",
                         "YCODE_IDE_DOWNLOAD_WALK", "YCODE_IDE_ACCOUNTS", "YCODE_IDE_CONFLICT", "YCODE_IDE_SIMDEBUG", "YCODE_IDE_SIMUX", "YCODE_IDE_ORGANIZER", "YCODE_IDE_IB", "YCODE_IDE_PREVIEWS",
-                        "YCODE_IDE_GLASS4", "YCODE_IDE_R4EDITOR", "YCODE_IDE_MOTION4", "YCODE_IDE_PARITY5", "YCODE_IDE_SETTINGS5", "YCODE_IDE_PANES5"]
+                        "YCODE_IDE_GLASS4", "YCODE_IDE_R4EDITOR", "YCODE_IDE_MOTION4", "YCODE_IDE_PARITY5", "YCODE_IDE_SETTINGS5", "YCODE_IDE_PANES5",
+                        "YCODE_IDE_FLICK6", "YCODE_IDE_SETTINGS7", "YCODE_IDE_EDITOR7", "YCODE_IDE_CHROME8", "YCODE_IDE_MOTION8",
+                        "YCODE_IDE_FILETYPES9", "YCODE_IDE_MOTION9", "YCODE_IDE_CHROME9", "YCODE_IDE_GLYPHS9",
+                        "YCODE_IDE_WINDOWCLOSE9", "YCODE_IDE_CHROME10"]
         guard switches.contains(where: { env[$0] != nil }) else { return }
         await pause(0.4)
         say("backend \(OpenViewsAutomation.backendName)")
@@ -136,16 +151,61 @@ enum ShellDriver {
             await settings5Walk(app, prefix: prefix)
             OpenViewsAutomation.terminate()
         }
+        if let prefix = env["YCODE_IDE_SETTINGS7"] {   // ShellDriver+Settings7.swift
+            await settings7Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
         if let prefix = env["YCODE_IDE_PANES5"] {   // ShellDriver+Panes5.swift
             await panes5Walk(app, prefix: prefix)
             OpenViewsAutomation.terminate()
         }
+        if let prefix = env["YCODE_IDE_FLICK6"] {   // ShellDriver+Flick6.swift
+            await flick6Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_EDITOR7"] {   // ShellDriver+Editor7.swift
+            await editor7Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_MOTION8"] {   // ShellDriver+Motion8.swift
+            await motion8Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_MOTION9"] {   // ShellDriver+Motion9.swift
+            await motion9Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_WINDOWCLOSE9"] { await windowClose9Walk(app, prefix: prefix) }   // ShellDriver+WindowClose.swift
         if let prefix = env["YCODE_IDE_PARITY5"] {   // ShellDriver+Parity5.swift
             await parity5Walk(app, prefix: prefix)
             OpenViewsAutomation.terminate()
         }
         if let prefix = env["YCODE_IDE_CHROME5"] {   // ShellDriver+Chrome5.swift
             await chrome5Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_GLYPHS9"] {   // ShellDriver+Glyphs9.swift
+            await glyphs9Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_CHROME8"] {   // ShellDriver+Chrome8.swift
+            await chrome8Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_FILETYPES9"] {   // ShellDriver+FileTypes9.swift
+            await fileTypes9Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_CHROME10"] {   // ShellDriver+Chrome10.swift
+            await chrome10Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_CHROME9"] {   // ShellDriver+Chrome9.swift
+            await chrome9Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_CHROME7"] {   // ShellDriver+Chrome7.swift
+            await chrome7Walk(app, prefix: prefix)
             OpenViewsAutomation.terminate()
         }
         if let prefix = env["YCODE_IDE_GLASS4"] {   // ShellDriver+Glass4.swift

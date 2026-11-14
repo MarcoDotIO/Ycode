@@ -22,6 +22,11 @@ public enum ResourceInspectorRhythm {
     public static let propertiesToRule = 9.0
     /// After Localization's header, to the Localize… button (28 ink to box).
     public static let headerToButton = 13.5
+    /// The Localize… button's inset from the content's edges on each side:
+    /// it starts 3 after the section header's ink and ends 10.5 from the
+    /// inspector's edge (council row 230: 238.5 wide, x 1151–1389.5; D.8's
+    /// image capture 235, x 1152–1387).
+    public static let localizeInset = 2.5
     /// From the Localize… button to the rule under it.
     public static let buttonToRule = 16.5
     /// After Target Membership's header, to its box (18.5 ink to box).

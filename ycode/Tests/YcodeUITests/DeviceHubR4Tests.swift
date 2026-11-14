@@ -36,9 +36,11 @@ import Testing
         defer { w.close() }
         hub.select(row: try #require(hub.rows.firstIndex { $0.identifier == DeviceHubR3Tests.other.identifier }))
         w.contentView?.layoutSubtreeIfNeeded()
-        // The canvas: the capsules in place, every control disabled.
+        // The canvas: the capsules in place, at full contrast with the reason
+        // in their tooltips (round 7, row 175).
         #expect(hub.canvas.showsDisabledControls && !hub.canvas.controls.isHidden)
-        #expect(hub.canvas.controls.groups.joined().allSatisfy { hub.canvas.controls.button(for: $0)?.isEnabled == false })
+        #expect(hub.canvas.controls.groups.joined().allSatisfy { hub.canvas.controls.button(for: $0)?.isEnabled == true })
+        #expect(hub.canvas.controls.configuration.unavailableReason == DeviceCanvasView.notOperatedReason)
         // The button says why there is no window.
         #expect(hub.openCompactWindowFromToolbar() == nil)
         #expect(hub.compactWindows.isEmpty)

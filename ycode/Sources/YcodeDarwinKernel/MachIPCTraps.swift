@@ -895,14 +895,23 @@ extension MachIPC {
         let threadLocks = KernelThreadLocks.current
         let deferWrite = Self.keventWriteAfterPortLock && lock.root != nil && !threadLocks.deferReceiveWrite
         if deferWrite { threadLocks.deferReceiveWrite = true }
-        var answer = lock.withLock {
-            var r = MachReceiveRequest(name: port, options: UInt64(options), buffer: buffer, size: size, timeout: 0)
-            r.mayBlock = false
-            let result = receive(r, context: context, memory: memory)
-            trace("kevent machport receive \(hx(port)) -> \(MachMsgReturn.name(result.code))\(result.note)")
-            return KeventMachReceive(returnCode: result.code, size: result.size, priorityAndQoS: result.priorityAndQoS,
-                                     auxiliarySize: result.auxSize,
-                                     data: result.code == MachMsgReturn.rcvTooLarge ? UInt64(result.identity) : 0)
+        var r = MachReceiveRequest(name: port, options: UInt64(options), buffer: buffer, size: size, timeout: 0)
+        r.mayBlock = false
+        func keventAnswer(_ result: MachReceiveResult) -> KeventMachReceive {
+            KeventMachReceive(returnCode: result.code, size: result.size, priorityAndQoS: result.priorityAndQoS,
+                              auxiliarySize: result.auxSize,
+                              data: result.code == MachMsgReturn.rcvTooLarge ? UInt64(result.identity) : 0)
+        }
+        var answer: KeventMachReceive
+        if PortLockSplit.enabled, !tracesCalls, let result = fineKeventReceive(r, context: context, memory: memory) {
+            // A fine step (`mach-ipc-locking.md` §4.12).
+            answer = keventAnswer(result)
+        } else {
+            answer = lock.withLock {
+                let result = receive(r, context: context, memory: memory)
+                trace("kevent machport receive \(hx(port)) -> \(MachMsgReturn.name(result.code))\(result.note)")
+                return keventAnswer(result)
+            }
         }
         guard deferWrite else { return answer }
         threadLocks.deferReceiveWrite = false

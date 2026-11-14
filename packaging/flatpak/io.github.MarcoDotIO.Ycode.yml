@@ -139,6 +139,27 @@ modules:
         sha256: 5b3a0d099f5c7649e29c0938476c462e71d66ad89a0bde42fa1ba3eb476956c9
         dest: external/spirv-headers
 
+  # libxml2.so.16 for ycode-airc's LLVM (aarch64). The runtime has this soname,
+  # but built with ICU (about 30 MB more to carry); this one is for the
+  # translator's private libraries only (build-ycode.sh copies it there) and is
+  # cleaned up from its staging folder.
+  - name: libxml2-for-airc
+    only-arches: [aarch64]
+    buildsystem: autotools
+    config-opts:
+      - --prefix=/app/airc-staging
+      - --without-python
+      - --without-icu
+      - --without-lzma
+      - --without-zlib
+      - --disable-static
+    cleanup:
+      - /airc-staging
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.4.tar.xz
+        sha256: 98087fd181d9070724f3fbc65c7377db03038eb92bd882374daff44940138821
+
   # 7-Zip's own Linux program (7zz), run as a separate program, never linked: it
   # reads a simulator runtime's disk image (UDIF and APFS) for a runtime download
   # (specs/simulator/runtime-downloads.md, route B). Built without the RAR code
@@ -169,3 +190,8 @@ modules:
         path: source/ycode-source.tar
         strip-components: 0
       - swift-dependencies.json
+      # The simulator's guest tools, built on a Mac (build-guest-tools.sh); empty
+      # unless build-flatpak.sh was given YCODE_GUEST_TOOLS.
+      - type: dir
+        path: guest-tools
+        dest: guest-tools

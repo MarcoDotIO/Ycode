@@ -58,26 +58,46 @@ private struct Sandbox {
     }
 }
 
-/// Awaits `body` for at most `seconds`. Past that the test records an
-/// issue and goes on. A main actor that never yields cannot even report
-/// the timeout, so a watchdog thread stops the test process after twice
-/// the time, with a message, instead of letting the suite hang.
+/// Awaits `body` for at most `seconds` of a main actor that answers. Past
+/// that the test records an issue and goes on.
+///
+/// The time counts in steps of a quarter second, each ending with a hop to
+/// the main actor, and a step that took longer counts as half a second at
+/// most (as `waitUntil` does): in a full run hundreds of main-actor tests
+/// are queued and one hop can wait a minute or more, so `body`'s own hops
+/// (a git call and its result, each on the main actor) took longer than
+/// 180 s of wall-clock time though nothing hung. A main actor that never
+/// answers cannot even report the timeout, so a watchdog thread stops the
+/// test process, with a message, once the main actor has not answered for
+/// twice the time.
 @MainActor
 func waitFor<T: Sendable>(_ what: String, seconds: Double = 180, sourceLocation: SourceLocation = #_sourceLocation,
                           _ body: @escaping @MainActor () async -> T) async -> T? {
     let finished = Latch()
-    let watchdog = DispatchWorkItem {
-        guard !finished.isSet else { return }
-        FileHandle.standardError.write(Data("SourceControlBranchWorkflowTests: \(what) hung for \(Int(seconds * 2)) s with the main actor busy; stopping.\n".utf8))
-        exit(70)
+    let answered = MainActorHeartbeat()
+    let watchdog = Thread {
+        while !finished.isSet {
+            Thread.sleep(forTimeInterval: 1)
+            if !finished.isSet, answered.silence > seconds * 2 {
+                FileHandle.standardError.write(Data("SourceControlBranchWorkflowTests: \(what) hung; the main actor did not answer for \(Int(seconds * 2)) s; stopping.\n".utf8))
+                exit(70)
+            }
+        }
     }
-    DispatchQueue.global().asyncAfter(deadline: .now() + seconds * 2, execute: watchdog)
-    defer { finished.set(); watchdog.cancel() }
+    watchdog.start()
+    defer { finished.set() }
     let result: T?? = await withCheckedContinuation { (c: CheckedContinuation<T??, Never>) in
         let once = ResumeOnce(c)
         Task { @MainActor in once.resume(.some(await body())) }
         Task.detached {
-            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            var waited = 0.0
+            while waited < seconds, !finished.isSet {
+                let step = Date()
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                await MainActor.run {}
+                answered.beat()
+                waited += min(Date().timeIntervalSince(step), 0.5)
+            }
             once.resume(.none)
         }
     }
@@ -105,6 +125,15 @@ private final class Latch: @unchecked Sendable {
     private var value = false
     var isSet: Bool { lock.withLock { value } }
     func set() { lock.withLock { value = true } }
+}
+
+/// When the main actor last answered `waitFor`'s timer.
+private final class MainActorHeartbeat: @unchecked Sendable {
+    private let lock = NSLock()
+    private var last = Date()
+    func beat() { lock.withLock { last = Date() } }
+    /// Seconds since the main actor last answered.
+    var silence: TimeInterval { lock.withLock { Date().timeIntervalSince(last) } }
 }
 
 private final class ResumeOnce<T: Sendable>: @unchecked Sendable {
@@ -222,8 +251,9 @@ private func find(_ items: [OutlineItem], key: String) -> OutlineItem? {
         #expect(sheet.state.stepperText == "1/1" && sheet.state.token(forHunk: 0)?.glyph == "?")
         #expect(!sheet.mergeButton.isEnabled && sheet.mergeButton.title == "Merge")
         // The panes: the current branch on the left, never git's markers.
-        #expect(sheet.canvas.rows.map { $0.left?.text } == ["let a = 1", "let b = 200", "let c = 3"])
-        #expect(sheet.canvas.rows.map { $0.right?.text } == ["let a = 1", "let b = 20", "let c = 3"])
+        // The empty line after the final line break ends both (row 178).
+        #expect(sheet.canvas.rows.map { $0.left?.text } == ["let a = 1", "let b = 200", "let c = 3", ""])
+        #expect(sheet.canvas.rows.map { $0.right?.text } == ["let a = 1", "let b = 20", "let c = 3", ""])
         // Both footers name the current branch (merge-sheet.md §13.7).
         #expect(sheet.state.leftFooter?.branch == "main" && sheet.state.rightFooter?.branch == "main")
         #expect(sheet.state.leftFooter?.isHead == true && sheet.state.leftFooter?.author == "Ycode Test")
@@ -244,7 +274,7 @@ private func find(_ items: [OutlineItem], key: String) -> OutlineItem? {
         #expect(sheet.state.currentHunk == 0 && sheet.canvas.rows[1].left?.text == "let b = 20")
         #expect(sheet.mergeButton.isEnabled && sheet.state.token(forHunk: 0)?.glyph == "1")
         sheet.choose(.oursThenTheirs)
-        #expect(sheet.canvas.rows.compactMap { $0.left?.text } == ["let a = 1", "let b = 200", "let b = 20", "let c = 3"])
+        #expect(sheet.canvas.rows.compactMap { $0.left?.text } == ["let a = 1", "let b = 200", "let b = 20", "let c = 3", ""])
         // By hand (double-click a change's left lines).
         sheet.beginEditing()
         #expect(sheet.state.isEditing && !sheet.canvas.handEditorScroll.isHidden)

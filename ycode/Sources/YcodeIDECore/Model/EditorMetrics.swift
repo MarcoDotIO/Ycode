@@ -146,23 +146,25 @@ public enum EditorMetrics {
     // Round 2 (`editor-area.md` §D.5, key window, Long.swift open): this
     // supersedes the duration and curve above.
 
-    /// From the press to the first motion: hide 50 ms, show 145 ms
-    /// (`editor-area.md` G.1, checklist row 133: hide within about 60, show
-    /// within about 120–170; rounds 4 and 5 measured 48 and 60, 116–129 and
-    /// 170).
-    public static func inspectorSlideDelay(show: Bool) -> Double { show ? 0.145 : 0.050 }
-    /// The motion (`editor-area.md` H.2, council row 158; supersedes G.1's
-    /// 200 ms both ways): hide about 195 ms, show about 230 ms (the
-    /// reference's edge moved 196 and 231 ms; round 5's Ycode, at 200 ms,
-    /// 191 and 224).
-    public static func inspectorSlideMotion(show: Bool) -> Double { show ? 0.230 : 0.195 }
+    /// From the press to the first motion: hide 75 ms, show 170 ms, so the
+    /// first moving frame is drawn about +85 and +180 ms after the press at
+    /// 100 Hz (council round 10, row 248: the means of the reference's two
+    /// captures, whose start moved by +65 and +89 ms between rounds 9 and
+    /// 10 while the show kept starting 80–110 ms after the hide; rounds 4–9
+    /// had hide 43–60 and show 116–170).
+    public static func inspectorSlideDelay(show: Bool) -> Double { show ? 0.170 : 0.075 }
+    /// The motion (row 248; `editor-area.md` H.2): hide about 200 ms (the
+    /// reference 218 and 188 ms in rounds 9 and 10), show about 230 (229
+    /// and 230 ms). Rounds 8–9 had 150 and 280.
+    public static func inspectorSlideMotion(show: Bool) -> Double { show ? 0.230 : 0.200 }
     /// Ease-in-out (0.42, 0, 0.58, 1): the show's curve (H.2).
     public static let inspectorSlideEaseInOut = (x1: 0.42, y1: 0.0, x2: 0.58, y2: 1.0)
     /// Ease-out (0, 0, 0.58, 1): the hide's curve (H.2: 16 % of the travel
     /// 21 ms in).
     public static let inspectorSlideEaseOut = (x1: 0.0, y1: 0.0, x2: 0.58, y2: 1.0)
-    /// The curve of a hide (ease-out) or a show (ease-in-out); round 5 had
-    /// them the other way round (H.2).
+    /// The curve of a hide (ease-out: round 10's 25 % of the travel at +27
+    /// ms, 63 % at +78, 96 % at +167) and of a show (ease-in-out, row 248 and
+    /// H.2; round 8 had read the show as an ease-out).
     public static func inspectorSlideCurve(show: Bool) -> (x1: Double, y1: Double, x2: Double, y2: Double) {
         show ? inspectorSlideEaseInOut : inspectorSlideEaseOut
     }

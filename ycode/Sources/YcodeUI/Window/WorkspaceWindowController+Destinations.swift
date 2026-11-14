@@ -50,7 +50,8 @@ extension WorkspaceWindowController {
             // pop-up's title (reference-ui-6.md §2.4, T2).
             let item = DestinationMenuItem(title: d.name, action: nil, keyEquivalent: "")
             item.representedObject = Self.menuKey(for: d)
-            item.image = NSImage(systemSymbolName: Self.symbol(for: d), accessibilityDescription: nil)
+            // This computer's glyph is tinted blue on a laptop (row 199).
+            item.image = d.kind == .mac ? SchemeCapsuleImages.hostImage() : NSImage(systemSymbolName: Self.symbol(for: d), accessibilityDescription: nil)
             item.osVersion = d.osVersion
             item.name = d.name
             if d.isYcodeRemoteSimulator {
@@ -271,6 +272,19 @@ final class DestinationMenuItem: NSMenuItem {
 /// (`reference-ui-6.md` §2.4, T2). The menu rows show OS versions while
 /// the menu is open.
 final class DestinationPopUpButton: NSPopUpButton, NSMenuDelegate {
+    let glyph = ColourGlyphView()
+
+    override func layout() {
+        super.layout()
+        ColourGlyphView.update(glyph, in: self)   // SchemeCapsuleImages.swift
+    }
+
+    /// This computer's blue laptop in its colour (row 199).
+    override class var cellClass: AnyClass? {
+        get { ColourImagePopUpCell.self }
+        set {}
+    }
+
     override init(frame: NSRect, pullsDown flag: Bool) {
         super.init(frame: frame, pullsDown: flag)
         menu?.delegate = self
@@ -300,11 +314,13 @@ final class DestinationPopUpButton: NSPopUpButton, NSMenuDelegate {
     override func select(_ item: NSMenuItem?) {
         super.select(item)
         invalidateIntrinsicContentSize()
+        needsLayout = true
     }
 
     override func selectItem(at index: Int) {
         super.selectItem(at: index)
         invalidateIntrinsicContentSize()
+        needsLayout = true
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) { versions(true, in: menu) }

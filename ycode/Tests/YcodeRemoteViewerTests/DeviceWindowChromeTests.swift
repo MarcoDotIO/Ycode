@@ -74,12 +74,14 @@ struct DeviceWindowChromeTests {
         // The server does not turn it: Rotate is shown, disabled.
         #expect(phone.controls.first { $0.command == .rotateLeft }?.enabled == false)
         let watch = session(.appleWatchSeries12_46mm)
-        #expect(watch.controlGroups == [[.screenshot, .recordScreen]] && watch.controlCapsules.map(\.width) == [74])
+        // Round 9 row 234: the side button and the Digital Crown lead the watch's one capsule.
+        #expect(watch.controlGroups == [DeviceControlsLayout.watchGroup] && watch.controlCapsules.map(\.width) == [142])
         let vision = session(.visionPro, spatial: true)
         #expect(vision.controlGroups == [[.home, .screenshot, .recordScreen], [.resetCamera]])
-        // Not live yet: every control waits.
+        // Not live yet: the glyphs stay at full contrast (round 7 row 175),
+        // each tooltip says why a press does nothing; Record stays disabled.
         let booting = session(.iPhone18Pro, live: false)
-        #expect(booting.controls.allSatisfy { !$0.enabled })
+        #expect(booting.controls.filter { $0.command != .recordScreen }.allSatisfy { $0.enabled && $0.help.hasSuffix("isn't connected yet.") })
     }
 
     @Test func moreActionsHoldsTheOtherCommands() {

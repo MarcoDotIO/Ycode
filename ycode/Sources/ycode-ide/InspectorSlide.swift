@@ -8,9 +8,10 @@ import YcodeIDEShell
 /// (`WorkspaceWindowController+InspectorSlide.swift`; `editor-area.md`
 /// G.1, H.2; checklist rows 133, 158): the inspector slides rigidly by its
 /// width while the editor resizes live: a hide ease-out (0, 0, 0.58, 1)
-/// over 195 ms from 50 ms after the press, a show ease-in-out (0.42, 0,
-/// 0.58, 1) over 230 ms from 145 ms (`EditorMetrics.inspectorSlideDelay`,
-/// `inspectorSlideMotion`, `inspectorSlideCurve`). The
+/// over 200 ms from 75 ms after the press, a show ease-in-out (0.42, 0,
+/// 0.58, 1) over 230 ms from 170 ms (rows 204, 224, 248;
+/// `EditorMetrics.inspectorSlideDelay`, `inspectorSlideMotion`,
+/// `inspectorSlideCurve`). The
 /// inspector toggle stays at the window's right edge throughout, as the
 /// macOS toolbar keeps it.
 @MainActor

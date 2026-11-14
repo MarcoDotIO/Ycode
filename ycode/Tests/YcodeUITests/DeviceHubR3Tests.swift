@@ -1,4 +1,5 @@
 import AppKit
+import CYcodeTestOffscreen
 import Foundation
 import Testing
 @testable import YcodeDeviceUI
@@ -100,11 +101,14 @@ import YcodeDisplayStream
         settle()
         let tb = try #require(w.toolbar)
         func item(_ id: NSToolbarItem.Identifier) -> NSToolbarItem? { tb.items.first { $0.itemIdentifier == id } }
-        // The resize toggle shares Capture Keyboard's capsule, disabled (§4.7).
-        let group = try #require(item(DeviceHubToolbar.captureGroup) as? NSToolbarItemGroup)
+        // The resize toggle shares Capture Keyboard's capsule, disabled (§4.7);
+        // round 7 (§15.5): two plain items, so no separator between them.
+        let capture = try #require(item(DeviceHubToolbar.captureKeyboard))
+        let resize = try #require(item(DeviceHubToolbar.resize))
         tb.validateVisibleItems()
-        #expect(group.subitems.map(\.label) == ["Capture Keyboard", "Enter resize mode"])
-        #expect(group.subitems[0].isEnabled && !group.subitems[1].isEnabled)
+        #expect(!(capture is NSToolbarItemGroup) && !(resize is NSToolbarItemGroup))
+        #expect(capture.label == "Capture Keyboard" && resize.label == "Enter resize mode")
+        #expect(capture.isEnabled && !resize.isEnabled)
         // A plain "i" for Info.
         let tabs = try #require(item(DeviceHubToolbar.tabs) as? NSToolbarItemGroup)
         #expect(tabs.subitems.last?.image?.accessibilityDescription == "Info" && DeviceHubToolbar.tabSymbols.last == "info")
@@ -190,8 +194,10 @@ import YcodeDisplayStream
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         p.arguments = ["-x", "-o", "-l\(w.windowNumber)", url.path]
-        try? p.run()
-        p.waitUntilExit()
+        YcodeOffscreenOpaqueDuringCapture(w) {
+            try? p.run()
+            p.waitUntilExit()
+        }
     }
 
     static func views<T: NSView>(_ type: T.Type, in v: NSView) -> [T] {

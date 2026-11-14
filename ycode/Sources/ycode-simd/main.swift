@@ -182,6 +182,7 @@ let usage = """
            ycode-simd --shim <shim.bin> --el0 <el0.bin> [--trace] [--timeout-ms N] [--max-exits N]
                       [--vcpus N [--rounds R]]
            ycode-simd --kvm-smoke
+           ycode-simd --check-encoders   (the display stream's JPEG and zlib on this machine; EncoderCheck.swift)
            ycode-simd --camera-list
            ycode-simd --camera-probe [--camera auto|synthetic|/dev/videoN|<id>] [--frames N] [--size WxH] [--fps F]
                       [--pixel-format 420v|420f|BGRA] [--source-format YUYV|MJPG|NV12] [--out <frame.png>] [--scale K]
@@ -819,6 +820,20 @@ if CommandLine.arguments.contains("--device") {
     }
     if getenv("YCODE_VCPU_CREATORS") == nil { setenv("YCODE_VCPU_CREATORS", "8", 0) }
 }
+// Fine-lock spin and the class raise at the next fast trap
+// (boot-profile.md §28–§29, scheduling-policy.md §4.15–§4.16): on together
+// by default for device runs since 2026-11-08. Series S, n = 8 per arm:
+// home 23.75 → 23.34 s (mean; each alone within the spread), fidelity
+// unchanged over 700 s. `YCODE_FINE_LOCK_SPIN_US=0` and
+// `YCODE_FAST_TRAP_HOST_CLASS=0` restore the old behaviour. Both are read
+// lazily, so they are set before any device starts.
+if CommandLine.arguments.contains("--device") {
+    if getenv("YCODE_FINE_LOCK_SPIN_US") == nil { setenv("YCODE_FINE_LOCK_SPIN_US", "50", 0) }
+    if getenv("YCODE_FAST_TRAP_HOST_CLASS") == nil {
+        setenv("YCODE_FAST_TRAP_HOST_CLASS", "push", 0)
+        HostSched.fastTrapClass = .push
+    }
+}
 // A command for a running device (FoldControl.swift, SettingsClient.swift): nothing else starts.
 if isHealthClient(CommandLine.arguments) { runHealthClient(CommandLine.arguments) }
 if isSettingsClient(CommandLine.arguments) { runSettingsClient(CommandLine.arguments) }
@@ -827,6 +842,8 @@ if isPairingCommand(CommandLine.arguments) { runPairingCommand(CommandLine.argum
 if isControlClient(CommandLine.arguments) { runControlClient(CommandLine.arguments) }
 // A privacy change for a device (CameraDevice.swift): nothing else starts.
 if isPrivacyClient(CommandLine.arguments) { runPrivacyClient(CommandLine.arguments) }
+// The display stream's encoders on this machine (EncoderCheck.swift): nothing else starts.
+if EncoderCheck.isRequested(CommandLine.arguments) { EncoderCheck.run() }
 // Scheduling policy (scheduling-policy.md §4.7): with YCODE_HOST_SCHED=cgroup
 // the VMM may re-execute itself in a delegated cgroup before anything starts.
 HostSched.prepareProcess()

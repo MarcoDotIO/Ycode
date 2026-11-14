@@ -55,6 +55,26 @@ package struct ScrollWheelModifier: PrimitiveModifier {
     }
 }
 
+/// Scroll input with its gesture and momentum phases (B6-OPENVIEWS): every
+/// event goes to the action, those without motion (a phase's end) too.
+package final class ScrollInputState: ScrollWheelHandling {
+    var action: (ScrollWheelInput, CGPoint) -> Bool
+    init(_ action: @escaping (ScrollWheelInput, CGPoint) -> Bool) { self.action = action }
+    package func scrollWheel(delta: CGSize, location: CGPoint, frame: CGRect) -> Bool {
+        action(ScrollWheelInput(delta: delta), location)
+    }
+    package func scrollWheel(_ input: ScrollWheelInput, location: CGPoint, frame: CGRect) -> Bool { action(input, location) }
+}
+
+package struct ScrollInputModifier: PrimitiveModifier {
+    package let action: (ScrollWheelInput, CGPoint) -> Bool
+
+    package func _inserted(node: ViewNode) { node.primitiveState = ScrollInputState(action) }
+    package func _updated(old: ScrollInputModifier, node: ViewNode) {
+        if let state = node.primitiveState as? ScrollInputState { state.action = action } else { _inserted(node: node) }
+    }
+}
+
 extension View {
     /// Attaches a gesture; the content's own gestures take precedence.
     public func gesture<T: Gesture>(_ gesture: T, including mask: GestureMask = .all) -> some View {
@@ -120,6 +140,12 @@ extension View {
     /// Scroll-wheel steps over the view (package hook for scroll views).
     package func _onScrollWheel(_ action: @escaping (CGSize, CGPoint) -> Bool) -> some View {
         modifier(ScrollWheelModifier(action: action))
+    }
+
+    /// Scroll events over the view with their phases (package hook for
+    /// views that scroll themselves, B6-OPENVIEWS).
+    package func _onScrollInput(_ action: @escaping (ScrollWheelInput, CGPoint) -> Bool) -> some View {
+        modifier(ScrollInputModifier(action: action))
     }
 }
 

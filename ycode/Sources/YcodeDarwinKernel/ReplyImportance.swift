@@ -41,7 +41,12 @@ extension SchedPolicy {
     /// `YCODE_REPLY_IMPORTANCE` (with importance bookkeeping): a received
     /// importance message with a send-once reply right keeps its boost until
     /// the reply right leaves the receiving space (§4.11). `1` on, `0` off.
-    nonisolated(unsafe) public static var replyImportanceEnabled = flag("YCODE_REPLY_IMPORTANCE", false)
+    nonisolated(unsafe) public static var replyImportanceEnabled = flag("YCODE_REPLY_IMPORTANCE", false) || env("YCODE_REPLY_IMPORTANCE") == "sync"
+    /// `YCODE_REPLY_IMPORTANCE=sync` (`boot-profile.md` §27.3): only a
+    /// request whose sender waits for the reply (a sync-wait or reply push
+    /// record, §4.10, §4.12) keeps its boost until it is answered; any other
+    /// request keeps §4.3's rule (the boost ends with the servicing episode).
+    nonisolated(unsafe) public static var replyImportanceSyncOnly = env("YCODE_REPLY_IMPORTANCE") == "sync"
     /// `YCODE_IMPORTANCE_TRACE=<program>[,<program>...]`: one line for each
     /// user message to a listed program (with its importance and reply), each
     /// request boost tied to a reply right and its end, and each change of a

@@ -8,6 +8,8 @@ import Testing
         "externaldrive", "tray", "arrow.uturn.backward", "clock.arrow.circlepath", "square.and.pencil", "diamond", "diamond.fill",
         "checkmark.diamond.fill", "xmark.diamond.fill", "scope", "t.square", "c.square", "arrow.triangle.branch", "cloud", "tag", "folder",
         "arrow.right.circle", "checkmark.diamond", "list.bullet.rectangle", "doc.text", "hammer", "play.fill",
+        // The Repositories view's filled groups (B6-OPENVIEWS, H.9).
+        "clock.fill", "tray.fill", "tag.fill", "externaldrive.fill",
     ]
 
     @Test func everyNavigatorSymbolIsDrawn() {

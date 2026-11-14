@@ -136,9 +136,15 @@ macOS test target links `Tests/CYcodeTestOffscreen`, which installs itself
 when the test bundle loads, before any test:
 
 - Every window ordered in, and every frame given to a visible window, is
-  moved left of all displays (only when it would touch one; its size and
-  height stay), and AppKit's constraint to a screen is off, so it stays
-  there. Ordering in and out runs without AppKit's window animations,
+  moved 20,000 points left of all displays (only when it would touch one;
+  its size and height stay), and AppKit's constraint to a screen is off, so
+  it stays there. A visible window that moves, resizes or changes screen by
+  any other path (AppKit's own, the window server's, a display added or
+  rearranged) is moved off again at once. Every window is also fully
+  transparent on the window server (`alphaValue` reads what was set), so
+  one that reaches a display anyway shows nothing; a `screencapture -l`
+  helper wraps the capture in `YcodeOffscreenOpaqueDuringCapture`.
+  Ordering in and out runs without AppKit's window animations,
   which draw a document window's fade on a display even when the window is
   off every display. Tests still order windows in when they need the window
   server (accessibility, `screencapture -l`, sheets); they never need a

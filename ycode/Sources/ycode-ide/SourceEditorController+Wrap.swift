@@ -25,6 +25,8 @@ final class EditorWrapState {
     fileprivate var indent: [Int: Int] = [:]
     /// The visual row each line starts on (one more entry: the total).
     fileprivate var firstRow: [Int] = [0, 1]
+    /// The row pitch the rows were made with (a font change re-wraps).
+    fileprivate var lineHeight: CGFloat = 0
 
     func readPreferences() {
         wraps = Preferences.shared.wrapLines
@@ -46,8 +48,12 @@ extension SourceEditorController {
         let w = wrap
         let columns = wrapColumns ?? 0
         let key = (buffer.textRevision, columns, layout.tabWidth, w.indents)
-        if let k = w.key, k == key { return w }
+        if let k = w.key, k == key, w.lineHeight == lineHeight { return w }
+        // A re-wrap of the same text keeps the first visible logical line at
+        // the top, at the same place in its rows (I.4, row 179).
+        let previous = w.key?.revision == buffer.textRevision && w.lineHeight > 0 ? (rows: w.firstRow, pitch: w.lineHeight) : nil
         w.key = key
+        w.lineHeight = lineHeight
         w.starts = [:]
         w.indent = [:]
         let doc = buffer.document
@@ -78,7 +84,27 @@ extension SourceEditorController {
         }
         first[count] = row
         w.firstRow = first
+        if let previous, previous.rows.count == first.count { keepTopLine(old: previous.rows, oldPitch: previous.pitch, new: first) }
         return w
+    }
+
+    /// Moves `top` so the logical line that was at the top under the old
+    /// rows is at the top under the new ones, at the same row of it and the
+    /// same fraction of that row.
+    private func keepTopLine(old: [Int], oldPitch: CGFloat, new: [Int]) {
+        let y = top - Self.topInset
+        guard y > 0, oldPitch > 0, let total = old.last, total > 0 else { return }
+        let row = min(Int(y / oldPitch), total - 1)
+        var lo = 0, hi = old.count - 2
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2
+            if old[mid] <= row { lo = mid } else { hi = mid - 1 }
+        }
+        let n = lo
+        let into = y - CGFloat(old[n]) * oldPitch
+        let k = min(Int(into / oldPitch), max(0, new[n + 1] - new[n] - 1))
+        let fraction = (into - CGFloat(k) * oldPitch) / oldPitch
+        top = Self.topInset + (CGFloat(new[n] + k) + min(max(fraction, 0), 1)) * lineHeight
     }
 
     /// The display columns where line `n`'s continuation rows start.

@@ -440,9 +440,9 @@ extension MachIPC {
            let proc = kernel?.schedProcess, proc.isImportanceDonor, let p = m.destination.port, !p.isKernelObject {
             if p.importanceDonation {
                 m.importance = true
-                kernel?.system.schedStats.importanceMessages &+= 1
+                SchedStats.importanceMessageCount.wrappingAdd(1, ordering: .relaxed)
             } else {
-                kernel?.system.schedStats.refusedByPort &+= 1
+                SchedStats.refusedByPortCount.wrappingAdd(1, ordering: .relaxed)
             }
         }
         if !SchedPolicy.importanceTraced.isEmpty, let p = m.destination.port, !p.isKernelObject {
@@ -485,7 +485,8 @@ extension MachIPC {
     func receivedForScheduling(_ m: KMessage, by context: ThreadContext?) {
         guard let context, let k = context.kernel else { return }
         if m.importance, let p = k.schedProcess, p.isImportanceReceiver {
-            if SchedPolicy.replyImportanceEnabled, case let .sendOnce(reply) = m.reply, reply.active, !reply.isKernelObject {
+            if SchedPolicy.replyImportanceEnabled, !SchedPolicy.replyImportanceSyncOnly || m.syncPush != nil,
+               case let .sendOnce(reply) = m.reply, reply.active, !reply.isKernelObject {
                 // A request: its boost lasts until it is answered (§4.11).
                 attachReplyBoost(reply, process: p, messageID: m.id)
             } else {
@@ -554,8 +555,12 @@ public struct SchedStats: Sendable {
     /// from a donor to a port that does not accept it.
     public var donationPorts = 0
     public var tempOwnerPorts = 0
-    public var importanceMessages: UInt64 = 0
-    public var refusedByPort: UInt64 = 0
+    public var importanceMessages: UInt64 { Self.importanceMessageCount.load(ordering: .relaxed) }
+    public var refusedByPort: UInt64 { Self.refusedByPortCount.load(ordering: .relaxed) }
+    /// Atomic: counted on fine port steps under different space locks
+    /// (`mach-ipc-locking.md` §4.12).
+    static let importanceMessageCount = Atomic<UInt64>(0)
+    static let refusedByPortCount = Atomic<UInt64>(0)
 }
 
 extension DarwinSystem {

@@ -460,14 +460,15 @@ public final class InspectorAreaController: NSViewController {
         name.widthAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
         nameField = name
         content.addArrangedSubview(row("Name", name))
-        let typeRow = row("Type", popUp("Type", ["Default - " + Self.typeName(for: file)]))
+        let info = fileInfo?(file) ?? FileInspectorInfo()
+        shownInfo = info
+        // The type's name from the file's type (council row 229).
+        let typeRow = row("Type", popUp("Type", ["Default - " + Self.typeName(for: file, recordedType: info.recordedType)]))
         content.addArrangedSubview(typeRow)
         let typeRule = addInnerRule()   // metrics.md §13.3: a rule after Type
         // §16.2: 28 from Type's ink to Location's.
         content.setCustomSpacing(0, after: typeRow)
         content.setCustomSpacing(InspectorStyle.afterTypeRule, after: typeRule)
-        let info = fileInfo?(file) ?? FileInspectorInfo()
-        shownInfo = info
         // reference-ui-6.md §6 (I1): a file in a synchronized folder has
         // the folder's location (a disabled pop-up, no folder button);
         // otherwise the pop-up and the folder button are enabled.
@@ -523,14 +524,18 @@ public final class InspectorAreaController: NSViewController {
         // §6 (I1): a package's files show only Identity and Type and Text
         // Settings.
         let isImage = ImageViewerController.handles(file)
+        // A resource (an image, Markdown, JSON): the "Tags" field and the
+        // Localization section (council row 230; `FileTypeRoles`).
+        let isResource = isImage || FileTypeRoles.isResource(file, recorded: info.recordedType)
         if !isProject && !info.isPackageFile {
-            onDemandResourceTags(resource: isImage)
+            onDemandResourceTags(resource: isResource)
             // §16.2: the tags section's rule 4 closer to Full Path's.
             if let i = content.arrangedSubviews.firstIndex(of: pathRule), i + 1 < content.arrangedSubviews.count,
                content.arrangedSubviews[i + 1] is NSBox {
                 content.setCustomSpacing(InspectorStyle.pathRuleToTagsRule, after: pathRule)
             }
             if isImage { imageSections() }   // editor-area.md §C.6
+            if isResource { localizationSection(afterProperties: isImage) }
             targetMembership(file, info)
         }
         // An image has no Text Settings (§C.6).
@@ -551,12 +556,29 @@ public final class InspectorAreaController: NSViewController {
         let tabs = config.indentStyle.map { $0 == .tab } ?? p.indentWithTabs
         let indent = popUp("Indent Using", tabs ? ["Tabs", "Spaces"] : ["Spaces", "Tabs"])
         content.addArrangedSubview(row("Indent Using", indent))
-        let tab = stepper("Tab", config.tabWidth ?? p.tabWidth), ind = stepper("Indent", config.indentSize ?? p.indentWidth)
-        content.addArrangedSubview(row("Widths", NSStackView(views: [tab, ind])))
+        let tab = stepper("Tab", config.tabWidth ?? p.tabWidth, fieldWidth: InspectorWidthsRow.fieldWidths[0])
+        let ind = stepper("Indent", config.indentSize ?? p.indentWidth, fieldWidth: InspectorWidthsRow.fieldWidths[1])
+        let pair = NSStackView(views: [tab, ind])
+        pair.alignment = .top
+        pair.spacing = CGFloat(InspectorWidthsRow.pairGap)
+        // The pair fills the value column to 5 from the inspector's edge,
+        // 3 past the other rows' end (W7.5: x 1003–1175 at 920–1180).
+        let holder = NSView()
+        pair.translatesAutoresizingMaskIntoConstraints = false
+        holder.addSubview(pair)
+        NSLayoutConstraint.activate([
+            pair.leadingAnchor.constraint(equalTo: holder.leadingAnchor), pair.topAnchor.constraint(equalTo: holder.topAnchor),
+            pair.bottomAnchor.constraint(equalTo: holder.bottomAnchor),
+            pair.trailingAnchor.constraint(equalTo: holder.trailingAnchor, constant: InspectorWidthsRow.overhang),
+        ])
+        content.addArrangedSubview(row("Widths", holder))
         if config.providesIndentation {
             indent.isEnabled = false
             for k in ["Tab", "Indent"] { (fileControls[k] as? NSControl)?.isEnabled = false }
-            for k in ["Tab Value", "Indent Value"] { (fileControls[k] as? NSTextField)?.textColor = .disabledControlTextColor }
+            for k in ["Tab Value", "Indent Value"] {
+                (fileControls[k] as? NSTextField)?.textColor = .disabledControlTextColor
+                (fileControls[k] as? NSTextField)?.isEnabled = false
+            }
             let note = NSTextField(wrappingLabelWithString: EditorConfig.indentationNote)
             note.font = .systemFont(ofSize: 11)
             note.preferredMaxLayoutWidth = 150
@@ -581,33 +603,75 @@ public final class InspectorAreaController: NSViewController {
         return b
     }
 
-    /// A value with a stepper and its label under them.
-    private func stepper(_ label: String, _ value: Int) -> NSView {
-        let field = NSTextField(labelWithString: "\(value)")
+    /// An editable value field with its stepper, and its label centred
+    /// under the field (`workspace-window.md` W7.5, row 193).
+    private func stepper(_ label: String, _ value: Int, fieldWidth: Double) -> NSView {
+        let W = InspectorWidthsRow.self
+        let field = NSTextField(string: "\(value)")
         field.font = .systemFont(ofSize: 11)
+        field.alignment = .right
+        field.controlSize = .small
+        field.bezelStyle = .roundedBezel
+        field.identifier = .init(label)
+        field.target = self
+        field.action = #selector(widthTyped(_:))
+        field.setAccessibilityLabel(label)
         let s = NSStepper()
         s.minValue = 1
         s.maxValue = 16
         s.integerValue = value
-        s.controlSize = .small
         s.target = self
         s.action = #selector(stepped(_:))
         s.identifier = .init(label)
+        s.setAccessibilityLabel(label)
         fileControls[label] = s
         fileControls[label + " Value"] = field
         let l = NSTextField(labelWithString: label)
-        l.font = .systemFont(ofSize: 9)
+        l.font = .systemFont(ofSize: CGFloat(W.labelSize))
         l.textColor = .secondaryLabelColor
-        let col = NSStackView(views: [NSStackView(views: [field, s]), l])
-        col.orientation = .vertical
-        col.spacing = 1
-        return col
+        l.alignment = .center
+        let box = NSView()
+        for v in [field, s, l] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            box.addSubview(v)
+        }
+        NSLayoutConstraint.activate([
+            field.leadingAnchor.constraint(equalTo: box.leadingAnchor), field.topAnchor.constraint(equalTo: box.topAnchor, constant: 1.5),
+            field.heightAnchor.constraint(equalToConstant: CGFloat(W.fieldHeight)),
+            s.leadingAnchor.constraint(equalTo: field.trailingAnchor), s.topAnchor.constraint(equalTo: box.topAnchor),
+            s.widthAnchor.constraint(equalToConstant: CGFloat(W.stepperWidth)), s.heightAnchor.constraint(equalToConstant: CGFloat(W.stepperHeight)),
+            s.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            l.centerXAnchor.constraint(equalTo: field.centerXAnchor), l.topAnchor.constraint(equalTo: s.bottomAnchor, constant: 1),
+            l.bottomAnchor.constraint(equalTo: box.bottomAnchor),
+        ])
+        // The width asked for, given up by a point or two where the column is narrower.
+        let w = field.widthAnchor.constraint(equalToConstant: CGFloat(fieldWidth))
+        w.priority = .defaultHigh
+        w.isActive = true
+        field.widthAnchor.constraint(greaterThanOrEqualToConstant: CGFloat(fieldWidth) - 4).isActive = true
+        return box
     }
 
     @objc private func stepped(_ s: NSStepper) {
         let key = s.identifier?.rawValue ?? ""
         (fileControls[key + " Value"] as? NSTextField)?.stringValue = "\(s.integerValue)"
-        if key == "Tab" { Preferences.shared.tabWidth = s.integerValue } else { Preferences.shared.indentWidth = s.integerValue }
+        setWidth(key, s.integerValue)
+    }
+
+    /// A width typed into its field (1–16; anything else puts the value back).
+    @objc private func widthTyped(_ f: NSTextField) {
+        let key = f.identifier?.rawValue ?? ""
+        guard let s = fileControls[key] as? NSStepper else { return }
+        guard let v = Int(f.stringValue.trimmingCharacters(in: .whitespaces)), (1...16).contains(v) else {
+            f.stringValue = "\(s.integerValue)"
+            return
+        }
+        s.integerValue = v
+        setWidth(key, v)
+    }
+
+    private func setWidth(_ key: String, _ value: Int) {
+        if key == "Tab" { Preferences.shared.tabWidth = value } else { Preferences.shared.indentWidth = value }
     }
 
     @objc private func nameCommitted(_ f: NSTextField) {
@@ -634,7 +698,9 @@ public final class InspectorAreaController: NSViewController {
     }
 
     /// A human-readable file type, from the extension.
-    static func typeName(for url: URL) -> String { WorkspaceChrome.fileTypeName(for: url) }
+    static func typeName(for url: URL, recordedType: String? = nil) -> String {
+        WorkspaceChrome.fileTypeName(for: url, recordedType: recordedType)
+    }
 
     // MARK: Image Properties, Localization (editor-area.md §C.6)
 
@@ -659,7 +725,14 @@ public final class InspectorAreaController: NSViewController {
             content.addArrangedSubview(row(k, v, inset: R.propertyInset))
             rowValues.append((k, v))
         }
-        let loc = heading("Localization", ruleBefore: R.propertiesToRule, ruleAfter: R.ruleToHeader)
+    }
+
+    /// A resource's Localization section: after an image's properties, or
+    /// straight after the tags field for Markdown, JSON and other resources
+    /// (council row 230), with the image's rhythm (G.5).
+    private func localizationSection(afterProperties: Bool) {
+        typealias R = InspectorStyle.Resource
+        let loc = heading("Localization", ruleBefore: afterProperties ? R.propertiesToRule : R.tagsToRule, ruleAfter: R.ruleToHeader)
         content.addArrangedSubview(loc)
         content.setCustomSpacing(R.headerToButton, after: loc)
         // editor-area.md §D.8: a pop-up-style button as wide as the value
@@ -675,8 +748,18 @@ public final class InspectorAreaController: NSViewController {
         localize.layer?.backgroundColor = InspectorStyle.popUpFill.cgColor
         localize.heightAnchor.constraint(equalToConstant: 16).isActive = true
         fileControls["Localize"] = localize
-        content.addArrangedSubview(localize)
-        localize.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -Self.horizontalInsets).isActive = true
+        // Inset from the content's edges (row 230), in a full-width holder.
+        let holder = NSView()
+        localize.translatesAutoresizingMaskIntoConstraints = false
+        holder.addSubview(localize)
+        let inset = CGFloat(ResourceInspectorRhythm.localizeInset)
+        NSLayoutConstraint.activate([
+            localize.leadingAnchor.constraint(equalTo: holder.leadingAnchor, constant: inset),
+            localize.trailingAnchor.constraint(equalTo: holder.trailingAnchor, constant: -inset),
+            localize.topAnchor.constraint(equalTo: holder.topAnchor), localize.bottomAnchor.constraint(equalTo: holder.bottomAnchor),
+        ])
+        content.addArrangedSubview(holder)
+        holder.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -Self.horizontalInsets).isActive = true
     }
 
     // MARK: On Demand Resource Tags, Target Membership (§7.3)
@@ -719,7 +802,7 @@ public final class InspectorAreaController: NSViewController {
         guard !info.memberships.isEmpty else { return }
         let tags = fileControls["On Demand Resource Tags"]
         let afterTags = tags != nil && content.arrangedSubviews.last === tags
-        let afterLocalize = fileControls["Localize"].map { content.arrangedSubviews.last === $0 } ?? false
+        let afterLocalize = fileControls["Localize"].map { content.arrangedSubviews.last === $0.superview } ?? false
         typealias R = InspectorStyle.Resource
         // An image's: 16.5 from Localize… to the rule, the box 18.5 below the
         // header's ink (G.5).

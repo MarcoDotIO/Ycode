@@ -199,6 +199,10 @@ public struct MergeDocument: Equatable, Sendable {
     /// share, `merge-sheet.md` §15.3). Documents built from chunks assume
     /// the usual final line break.
     public var theirsEndsWithNewline = true
+    /// The same for the left side's text (the current branch's): its pane
+    /// numbers the empty line after a final line break too (`editor-area.md`
+    /// I.3, council row 178).
+    public var oursEndsWithNewline = true
 
     public init(chunks: [ThreeWayMerge.Chunk], oursLabel: String = "Ours", theirsLabel: String = "Theirs", baseLabel: String = "Base") {
         self.chunks = chunks
@@ -214,6 +218,7 @@ public struct MergeDocument: Equatable, Sendable {
         self.init(chunks: ThreeWayMerge.merge(base: LineDiff.lines(base), ours: LineDiff.lines(ours), theirs: LineDiff.lines(theirs)),
                   oursLabel: oursLabel, theirsLabel: theirsLabel, baseLabel: baseLabel)
         theirsEndsWithNewline = theirs.hasSuffix("\n")
+        oursEndsWithNewline = ours.hasSuffix("\n")
     }
 
     /// A one-sided change takes that side; the same change on both sides

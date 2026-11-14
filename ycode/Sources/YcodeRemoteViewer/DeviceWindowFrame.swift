@@ -11,6 +11,12 @@
 // Ycode's choices where the Linux window differs from the hub: it shows one
 // device (no sidebar, so no Add Device, Filter or sidebar toggle) and has
 // no Open in New Window (it is the device's own window).
+//
+// Council round 7 (device-hub.md §15.5, row 174), as on macOS: the resize
+// toggle is Ycode's outline layout glyph, dimmed, with no separator after
+// Capture Keyboard; the zoom and tab capsules are segmented, a separator
+// between two neighbours neither of which is selected; with the inspector
+// hidden its tabs stay at the toolbar's right end with none selected.
 
 import Foundation
 import YcodeDeviceModel
@@ -63,7 +69,7 @@ public struct DeviceWindowFrame: Equatable, Sendable {
         public var symbol: String {
             switch self {
             case .captureKeyboard: "keyboard"
-            case .resizeMode: "rectangle.inset.filled"
+            case .resizeMode: DeviceWindowFrame.layoutSymbol
             case .zoomOut: "minus.magnifyingglass"
             case .zoomFit: DeviceWindowFrame.zoomToFitSymbol
             case .zoomActual: "1.magnifyingglass"
@@ -79,6 +85,17 @@ public struct DeviceWindowFrame: Equatable, Sendable {
     /// Zoom to Fit's glyph: Ycode's own drawing on both IDEs
     /// (`DeviceControlGlyphs.zoomToFit`, device-hub.md §14.1), not a system symbol.
     public static let zoomToFitSymbol = "ycode.zoomToFit"
+    /// The resize toggle's glyph: Ycode's drawing on both IDEs
+    /// (`DeviceControlGlyphs.layout`, §15.5).
+    public static let layoutSymbol = "ycode.layout"
+
+    /// The capsules drawn as segmented controls (separators between
+    /// unselected neighbours); the others are plain items sharing a capsule.
+    public static let segmentedGroups: [[Item]] = [[.zoomOut, .zoomFit, .zoomActual, .zoomIn], tabs]
+
+    /// The separators' height and colours (sRGB hex).
+    public static let separatorHeight = 16.0
+    public static func separatorColor(dark: Bool) -> UInt32 { dark ? 0x505052 : 0xD5D5D7 }
 
     /// The groups, left to right: each capsule's items.
     public static let groups: [[Item]] = [[.captureKeyboard, .resizeMode], [.zoomOut, .zoomFit, .zoomActual, .zoomIn], [.more]]
@@ -98,20 +115,40 @@ public struct DeviceWindowFrame: Equatable, Sendable {
                    height: max(1, height - Self.toolbarHeight))
     }
 
-    /// The capsules over the canvas, right-aligned to its right edge.
+    /// The capsules over the canvas, right-aligned to its right edge; the
+    /// tabs over the inspector, or with the inspector hidden at the
+    /// toolbar's right end, the other capsules before them (§15.5).
     public var capsules: [(items: [Item], rect: ViewerRect)] {
-        var x = canvas.width - Self.trailingInset
+        let y = (Self.toolbarHeight - Self.capsuleHeight) / 2
+        let tabsWidth = Double(Self.tabs.count) * Self.segmentWidth
+        var tabs: ViewerRect
+        if let i = inspector {
+            tabs = ViewerRect(x: i.x + i.width - Self.trailingInset - tabsWidth, y: y, width: tabsWidth, height: Self.capsuleHeight)
+        } else {
+            tabs = ViewerRect(x: width - Self.trailingInset - tabsWidth, y: y, width: tabsWidth, height: Self.capsuleHeight)
+        }
+        var x = inspector == nil ? tabs.x - Self.groupGap : canvas.width - Self.trailingInset
         var out: [(items: [Item], rect: ViewerRect)] = []
         for g in Self.groups.reversed() {
             let w = Double(g.count) * Self.segmentWidth
             x -= w
-            out.insert((g, ViewerRect(x: x, y: (Self.toolbarHeight - Self.capsuleHeight) / 2, width: w, height: Self.capsuleHeight)), at: 0)
+            out.insert((g, ViewerRect(x: x, y: y, width: w, height: Self.capsuleHeight)), at: 0)
             x -= Self.groupGap
         }
-        if let i = inspector {
-            let w = Double(Self.tabs.count) * Self.segmentWidth
-            out.append((Self.tabs, ViewerRect(x: i.x + i.width - Self.trailingInset - w, y: (Self.toolbarHeight - Self.capsuleHeight) / 2,
-                                               width: w, height: Self.capsuleHeight)))
+        tabs.y = y
+        out.append((Self.tabs, tabs))
+        return out
+    }
+
+    /// The separators' x positions in the toolbar for these selected items:
+    /// inside a segmented capsule, between two neighbours neither of which
+    /// is selected (as AppKit's segmented toolbar groups draw them).
+    public func separators(selected: Set<Item>) -> [Double] {
+        var out: [Double] = []
+        for c in capsules where Self.segmentedGroups.contains(c.items) {
+            for i in 1..<c.items.count where !selected.contains(c.items[i - 1]) && !selected.contains(c.items[i]) {
+                out.append(c.rect.x + Double(i) * Self.segmentWidth)
+            }
         }
         return out
     }
@@ -245,9 +282,10 @@ public struct DeviceChromeRequest: Equatable, Sendable {
     }
 
     /// The items drawn selected: the zoom in effect, Capture Keyboard when
-    /// on, the inspector's tab.
+    /// on, the inspector's tab while the inspector shows (none while it is
+    /// hidden, §15.5).
     public var selectedItems: Set<DeviceWindowFrame.Item> {
-        var s: Set<DeviceWindowFrame.Item> = [inspectorTab]
+        var s: Set<DeviceWindowFrame.Item> = frame.inspectorShown ? [inspectorTab] : []
         switch scaleMode {
         case .fit: s.insert(.zoomFit)
         case .point: s.insert(.zoomActual)

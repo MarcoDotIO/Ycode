@@ -6,6 +6,91 @@ Notable changes to Ycode are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0-beta.3] - 2026-11-14
+
+The Linux IDE gains the Organizer, Interface Builder documents, SwiftUI previews and debugging on a simulator, and both IDEs
+went through more rounds of UI fidelity review against Xcode 27.1. Simulators boot faster and are easier to set up and run
+from the IDE. Ycode also has its own Objective-C runtime, the groundwork for running macOS programs on Linux.
+
+### Added
+
+- **The Linux IDE, Organizer (#77), Settings ▸ Accounts (#74) and conflict editor (#75):** Window ▸ Organizer lists archives
+  and their details. Accounts is in Settings. A merge conflict opens the macOS IDE's merge alert and merge sheet; both IDEs
+  also have Integrate ▸ Merge… and a branch row menu.
+- **The Linux IDE, Interface Builder documents (#79) and SwiftUI previews (#78):** storyboards and xibs open in the Interface
+  Builder editor, and SwiftUI previews show in the canvas. The Library has the full UIKit set (80 storyboard and 79 xib object
+  kinds) with an Attributes inspector for each, in both IDEs (#84). UIKit previews run on a paired simulator host; the macOS
+  IDE asks for a simulator instead of failing.
+- **The Linux IDE, debugging on a simulator (#76):** Run on a simulator host on the same computer runs under the debugger, and
+  Stop works during the build and the run. Run destinations are grouped by My Computer and each simulator host.
+- **Simulators, setup and use (#80):** the setup windows are a paged assistant on macOS and Linux, with a checklist for
+  what a first run needs. The device window has floating control capsules and inspector cards, shows boot progress and tells
+  you when it restarts a running device. The aarch64 release's simulator tree now runs on a plain Ubuntu 24.04 host.
+- **Simulators, UIKit look and feel (#83):** input keeps its timing, still screens are lossless, and a window at 1:1 scale is
+  pixel-exact on macOS and Linux. 167 of 211 measured values match; the others are explained in the specification.
+- **An Objective-C runtime of our own (#86):** written in Rust, with `objc_msgSend` and the method cache in arm64 assembly. It
+  is faster than or tied with upstream objc4 on every benchmark in our suite. The Swift runtime, Concurrency and
+  FoundationEssentials already run under `ycode-simd --macos`: groundwork for macOS programs on Linux (#87, beta 4), not yet
+  a feature you can use.
+- **File icons:** the project navigator, jump bar, merge sheet and Open Quickly show each language's official logo as a
+  single-colour vector glyph, tinted per file type as Xcode tints its own glyphs and white on a focused selected row. The
+  logos come from the MIT-licensed [devicon](https://github.com/devicons/devicon) set (see
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)); Swift shows its bird alone and Python its outline. Markdown, JSON,
+  images and folders use Ycode's own glyphs. The project row and the toolbar's title area show a small Ycode mark, which
+  becomes a progress ring that fills with the build's progress.
+- **The Linux IDE, Open Quickly** (⇧⌘O), with the macOS IDE's layout.
+
+### Changed
+
+- **UI fidelity (#81):** a council of three independent judges scored the IDEs against Xcode 27.1 in rounds 3 to 10. Round 10
+  scored 8.3, 9.0 and 8.9 (mean 8.73; round 8: 8.80, round 9: 8.43 with its new steps), and round 10's rows 236–252 were
+  fixed afterwards. The rounds covered the merge sheet, Settings (the full Theme list, grouped cards, a 710 × 452 window),
+  the device window (Zoom to Fit for every device, the iPad's tablet outline, an "iPadOS" subtitle, the Apple Watch drawn at
+  its real case size with its crown and side button), the editor (scroll momentum and edge stretch, text wrapping, the
+  minimap, the caret kept per file, symbol highlighting only in code), the issue capsule, the coding assistant button, Open
+  Quickly, the jump bar, the inspector slide (the editor keeps its top line) and restoring panes, splits, expansion and the
+  scroll position when you reopen a workspace.
+- **The Linux IDE's chrome** is drawn as on macOS: a hidden title bar with the window's buttons, the menu bar on demand, and
+  matching toolbar, debug area, Welcome window, Settings and wizard. The inspector slides with the macOS timing (see Known
+  limitations for its frame rate).
+- **Simulator boot (#44):** device runs now spin briefly on fine locks and raise host threads at fast traps. The home screen
+  comes up in about 23.3 s (median) on our reference arm64 Linux host, 1.09 times Xcode's simulator, or about 18.6 s once
+  adjusted for per-core speed. A stuck GPU submission no longer stops other clients, and the system UI never loses GPU access.
+- **Linux builds:** `ycode build` builds Swift packages with SwiftPM, in the Flatpak too (#73), and
+  `-showBuildSettings` works for package schemes (#72).
+
+### Fixed
+
+- **Previews:** they no longer crash after a project folder moves. The module cache is tied to the folder's real path, is
+  emptied after a compiler crash, and the build is retried once.
+- **Child processes:** every helper process Ycode starts uses close-on-exec pipes and no blocked signals, and a cancel or
+  timeout stops the helper's whole process group. This fixes a Stop that left a child running and an assistant hang.
+- **Asset compiler:** an app icon set without images warns instead of stopping `ycode`.
+- **Markdown and JSON files** are no longer sent to the Swift language service, so opening one no longer shows a line-1 error
+  and an error count. The File inspector shows their type ("Default - Markdown", "Default - JSON") and, for resource files,
+  the Tags and Localization sections.
+- **The Linux IDE, closing a window:** closing a second window (for example the runtime wizard) no longer crashes the
+  windows still open with NVIDIA's driver on Wayland; all windows now share one Vulkan instance.
+
+### Known limitations
+
+- On Linux, the inspector slide and file selection draw fewer frames than on macOS, because the OpenViews window is rebuilt
+  every frame: the slide shows two or three positions and selection takes about 0.3 s.
+- Ycode shows no live warning on an unbuilt project where Xcode shows one, so the jump bars in a split editor shorten
+  later than Xcode's.
+- Scroll flicks: Xcode's overscroll and momentum differ between a Retina and a standard display for the same input, so
+  Ycode's are not yet tuned to both; this is studied in beta 4.
+- Selecting a file takes about 0.4 s to show it on a busy Mac, against about 0.2 s in Xcode. Markdown files open as text;
+  Xcode renders them.
+- On macOS the gap before the toolbar's overflow button is wider than Xcode's (Ycode keeps the system's overflow item and
+  its animation). On Linux the Welcome window opens where the compositor puts it.
+- Moved to the 1.0.0-beta.4 milestone: #90 Borrow xtool's iOS signing and device-install functions; #89 macOS apps on Linux,
+  stage D (windows and Ycode's AppKit subset); #88 stage C (the process model); #87 stage B (Foundation command-line
+  programs); #85 Simulator display stream over Wi-Fi; #64 and #63 hover, press and focus states; #58 and #57 Liquid Glass
+  materials and scroll-edge effects; #54 OpenViews: the next milestones for the Linux IDE; #50 Remote simulator: debugging
+  and an embedded device view from an x86-64 Linux PC; #43 Signing, distribution and physical devices.
+- Simulators are still slower than Apple's on a Mac, and parts are missing: see [docs/SIMULATOR.md](docs/SIMULATOR.md).
+
 ## [1.0.0-beta.2] - 2026-11-05
 
 The Linux IDE catches up with most of the macOS one: debugging, source control, tests, language features, the structured
@@ -139,6 +224,7 @@ no earlier releases. [The README](https://github.com/MarcoDotIO/Ycode#what-works
 - Physical devices are listed only, and signing and distribution are partial.
 - Simulators are slower than Apple's on a Mac, and parts are missing: see [docs/SIMULATOR.md](docs/SIMULATOR.md).
 
-[Unreleased]: https://github.com/MarcoDotIO/Ycode/compare/v1.0.0-beta.2...HEAD
+[Unreleased]: https://github.com/MarcoDotIO/Ycode/compare/v1.0.0-beta.3...HEAD
+[1.0.0-beta.3]: https://github.com/MarcoDotIO/Ycode/releases/tag/v1.0.0-beta.3
 [1.0.0-beta.2]: https://github.com/MarcoDotIO/Ycode/releases/tag/v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/MarcoDotIO/Ycode/releases/tag/v1.0.0-beta.1

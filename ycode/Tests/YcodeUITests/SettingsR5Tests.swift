@@ -100,9 +100,10 @@ import Testing
         // A wallpaper and a window: the Light thumbnail's top-left is blue, its window white.
         let wall = r4.hex(rep, 540, 87)
         #expect((wall & 0xFF) > ((wall >> 16) & 0xFF) + 40, "wallpaper \(String(wall, radix: 16))")
-        #expect(r4.close(r4.hex(rep, 560, 112), 0xFFFFFF, 6), "window")
+        // (R7.4: a close-up, the window's body below its title area.)
+        #expect(r4.close(r4.hex(rep, 560, 125), 0xFFFFFF, 6), "window")
         // System: left half light, right half dark.
-        #expect(r4.close(r4.hex(rep, 485, 112), 0xFFFFFF, 6) && r4.close(r4.hex(rep, 515, 112), 0x262626, 8))
+        #expect(r4.close(r4.hex(rep, 485, 125), 0xFFFFFF, 6) && r4.close(r4.hex(rep, 515, 125), 0x262626, 8))
         // Captions: cap top 139, the selected bold and #262626, the others #7C7C7C regular.
         for (i, c) in pane.captions.enumerated() {
             let cr = rect(c, in: w)
@@ -197,7 +198,8 @@ import Testing
         try select(wc, w, "Appearance")
         let pane = try #require(wc.pane(ThemesSettingsPane.self))
         #expect(Array(pane.rowTitles.prefix(3)) == ["Theme", "Name", "Foreground"])
-        #expect(pane.colorRows.map(\.key) == ThemeColorRows.all.map(\.key))
+        // R7.1's rows: Foreground, Background; Plain Text; the syntax rows.
+        #expect(pane.colorRows.map(\.key) == SettingsAppearanceR7.cards(customizeAllColors: false).flatMap { $0.compactMap(\.key) })
         let cardA = rect(pane.cards[0], in: w), cardB = rect(pane.cards[1], in: w)
         #expect(abs(cardA.minY - 305) <= 0.5 && abs(cardA.height - (39.5 + 1 + 36)) <= 0.5, "card A \(cardA)")
         #expect(abs(cardB.minY - (cardA.maxY + 10)) <= 0.5 && abs(cardB.minY - 391.5) <= 0.5, "card B \(cardB)")
@@ -226,6 +228,9 @@ import Testing
         pane.duplicateClicked()
         let p = pane.prefs
         #expect(p.themeName == "Ycode Default Copy")
+        // The syntax rows have sliders with Customize All Colors on (R7.1).
+        pane.toggle("Customize All Colors")
+        #expect(p.theme.customizeAllColors == true)
         let kw = try #require(pane.colorRows.first { $0.key == "keyword" }?.view as? ThemeColorRowView)
         #expect(kw.slider.isEnabled && kw.well.isEnabled)
         kw.well.commit("#3366CC")

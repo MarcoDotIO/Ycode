@@ -146,12 +146,30 @@ versioned symbols), 7-Zip 26.05's `7zz` (built from its own source without the R
 code; a runtime download reads the runtime's disk image with it, as a separate
 program), the host-tool wrappers, and the notices.
 
+Both also carry libjpeg (libjpeg-turbo, the SDK's `libjpeg.so.62`) in `lib/`: the
+display stream loads it at run time by the soname its header names, and many
+distributions have only `libjpeg.so.8`.
+
 aarch64 also: the simulator tools, labelled experimental, in
 `/app/lib/ycode-sim`, laid out like the source tree the scripts expect:
-`ycode-simd`, `ycode-simhost`, `ycode-airc` (with libLLVM), the `SimShim` guest
-binaries, the `SimHostLibs` clean-room libraries, `SimGuestFrameworks`, and
-`ycode-sim`. The guest agents (`SimGuestAgents`) are not included: they build only
-on macOS, against the iOS simulator SDK.
+`ycode-simd`, `ycode-simhost`, `ycode-airc`, the `SimShim` guest binaries, the
+`SimHostLibs` clean-room libraries, `SimGuestFrameworks`, the guest tools, and
+`ycode-sim`.
+
+- `ycode-airc` lives in `lib/ycode-sim/airc/` with its own libraries: libLLVM 22,
+  a libxml2 2.15 built without ICU, and the runtime's dynamic loader, C library,
+  libstdc++, libffi, zlib and zstd (`copy-private-runtime.py`).
+  `.build/release/ycode-airc` is a wrapper that starts it under that loader, so
+  it runs on a distribution whose C library is older than freedesktop 26.08's
+  (libLLVM takes `sinh` and `cosh` at `GLIBC_2.44`; Ubuntu 24.04 has 2.39).
+- The guest tools (`ylaunch` and the guest agents of `SimGuestAgents`) are iOS-
+  and watchOS-simulator programs, so they build on a Mac with the simulator SDKs:
+  `packaging/flatpak/build-guest-tools.sh <dir>`, then
+  `YCODE_GUEST_TOOLS=<dir> build-flatpak.sh` puts them in
+  `lib/ycode-sim/SimShim/out/guest-tests/stage7`, where `ycode-simd` and
+  `ycode-simhost` look first. The release workflow builds them in its
+  `guest-tools` job. Without them a device boots but cannot install or launch
+  an app.
 
 The simulator needs a runtime from your own copy of the platform tools. No package
 contains one.
@@ -170,9 +188,21 @@ unpacked:
   that wraps this tarball declares `--talk-name=org.freedesktop.Flatpak` for it, for
   the reason given above.
 
-It is built against freedesktop 26.08 (glibc 2.44), so it needs that runtime, or a
-host with that glibc or newer. Outside a Flatpak the wrappers are not used and tools
-come from the host's `PATH`.
+It is built against freedesktop 26.08 (glibc 2.44), so most of it needs that
+runtime, or a host with that glibc or newer. The aarch64 simulator tree is the
+exception: `ycode-simhost`, `ycode-simd` and the libraries they load need glibc
+2.38 or newer, and `ycode-airc` brings its own (above), so the tree runs on a
+plain Ubuntu 24.04 host. `ycode`, the IDE and the viewer do not run there (libcurl
+needs glibc 2.43 and OpenSSL 3.2, SDL 3 glibc 2.43). Outside a Flatpak the wrappers
+are not used and tools come from the host's `PATH`.
+
+`packaging/flatpak/check-sim-tree.sh <tarball> [--runtime-root DIR]` checks the
+simulator tree on a host with nothing from the build: the layout and guest
+tools, that every simulator program loads, the translator's self-test, the
+display stream's JPEG and zlib, `ycode-simhost` check, serve, identity and pair
+on a test port, and with a runtime and `/dev/kvm` a device that boots, streams
+JPEG frames with tiles, takes a screenshot and stops. The release runs it on
+`ubuntu-24.04-arm` (without a runtime).
 
 ### Testing the installed package
 

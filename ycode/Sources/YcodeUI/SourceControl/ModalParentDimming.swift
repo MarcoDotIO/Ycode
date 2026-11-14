@@ -57,7 +57,7 @@ public final class ModalParentDimming {
                 item.isEnabled = false
             }
         }
-        setAlpha(duration: duration) { _ in Self.textTone }
+        setAlpha(duration: duration) { Self.tone(of: $0) }
     }
 
     /// Puts the window back as it was, fading over `duration`.
@@ -90,6 +90,11 @@ public final class ModalParentDimming {
             for v in views { v.animator().alphaValue = value(v) }
         }
     }
+
+    /// A faded view's share: the issue capsule's symbols and counts at the
+    /// glyphs' disabled tone (`workspace-window.md` W7.2: circle #6F2A27,
+    /// count #6F6F70 in dark), every other view at the text tone.
+    static func tone(of v: NSView) -> CGFloat { v is IssueCapsuleView ? CGFloat(MergeModalTone.glyph) : textTone }
 
     /// A toolbar control that shows glyphs (run, history, the panes and
     /// editor modes): AppKit's disabled state gives its disabled tone. Text

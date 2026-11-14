@@ -1,6 +1,7 @@
 // The offscreen guard; see include/CYcodeTestOffscreen.h.
 
 #import "CYcodeTestOffscreen.h"
+#import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 #import <stdatomic.h>
 #import <unistd.h>
@@ -22,9 +23,19 @@ static NSMutableArray<NSString *> *violations;
 static NSMutableSet<NSNumber *> *reportedWindows;
 static atomic_bool sentinelStarted;
 static dispatch_source_t sentinel;
+/// Window numbers the guard made transparent on the window server (they
+/// still count when one is on a display), and those a test moves past the
+/// guard on purpose (`YcodeOffscreenMoveUnguardedForTesting`).
+static NSMutableSet<NSNumber *> *transparentWindows;
+static NSMutableSet<NSNumber *> *exemptWindows;
+/// Windows being captured (`YcodeOffscreenOpaqueDuringCapture`): opaque for
+/// the length of the capture.
+static NSMutableSet<NSValue *> *capturing;
 
-/// The gap between a moved window and the leftmost display.
-static const CGFloat gap = 2000;
+/// The gap between a moved window and the leftmost display: wider than any
+/// display, so a display attached or rearranged during the run (to the left
+/// of the others) does not reach the windows already moved.
+static const CGFloat gap = 20000;
 
 static void note(NSMutableArray<NSString *> *list, NSString *line) {
     @synchronized(shared) { [list addObject:line]; }
@@ -90,10 +101,19 @@ NSArray<NSString *> *YcodeOffscreenWindowsOnDisplays(void) {
     CFArrayRef list = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID);
     if (!list) return out;
     pid_t me = getpid();
+    NSSet<NSNumber *> *transparent, *exempt;
+    @synchronized(shared) {
+        transparent = [transparentWindows copy];
+        exempt = [exemptWindows copy];
+    }
     for (NSDictionary *info in (__bridge NSArray *)list) {
         if ([info[(__bridge NSString *)kCGWindowOwnerPID] intValue] != me) continue;
+        NSNumber *number = info[(__bridge NSString *)kCGWindowNumber];
+        if ([exempt containsObject:number]) continue;
+        // A transparent window of AppKit's own does not count; one the guard
+        // made transparent does (its frame reached a display all the same).
         double alpha = [info[(__bridge NSString *)kCGWindowAlpha] doubleValue];
-        if (alpha <= 0) continue;
+        if (alpha <= 0 && ![transparent containsObject:number]) continue;
         CGRect b;
         NSDictionary *bounds = info[(__bridge NSString *)kCGWindowBounds];
         if (!bounds || !CGRectMakeWithDictionaryRepresentation((__bridge CFDictionaryRef)bounds, &b)) continue;
@@ -118,7 +138,35 @@ NSArray<NSString *> *YcodeOffscreenWindowsOnDisplays(void) {
 typedef void (*SetFrameIMP)(id, SEL, NSRect, BOOL);
 static SetFrameIMP origSetFrame;
 
+// MARK: Transparency
+
+typedef void (*SetAlphaIMP)(id, SEL, CGFloat);
+typedef CGFloat (*AlphaIMP)(id, SEL);
+static SetAlphaIMP origSetAlpha;
+static AlphaIMP origAlpha;
+static char requestedAlphaKey;
+
+/// The window is fully transparent on the window server from the moment
+/// it exists or is ordered in, whatever alpha it is given: a window that
+/// reaches a display by a path the guard does not know shows nothing there.
+/// `alphaValue` still answers what was asked, and drawing (`cacheDisplay`,
+/// layers) is unchanged.
+static void makeTransparent(NSWindow *w) {
+    if (!origSetAlpha) return;
+    @synchronized(shared) {
+        if ([capturing containsObject:[NSValue valueWithNonretainedObject:w]]) return;
+    }
+    if (!objc_getAssociatedObject(w, &requestedAlphaKey)) {
+        objc_setAssociatedObject(w, &requestedAlphaKey, @(origAlpha(w, @selector(alphaValue))), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (origAlpha(w, @selector(alphaValue)) != 0) origSetAlpha(w, @selector(setAlphaValue:), 0);
+    if (w.windowNumber > 0) {
+        @synchronized(shared) { [transparentWindows addObject:@(w.windowNumber)]; }
+    }
+}
+
 static void park(NSWindow *w, NSString *why) {
+    makeTransparent(w);
     NSRect f = w.frame, p = YcodeOffscreenParkedFrame(f);
     if (NSEqualRects(f, p)) return;
     origSetFrame(w, @selector(setFrame:display:), p, NO);
@@ -161,6 +209,7 @@ static void afterChange(NSWindow *w, NSString *why) {
 /// After the window was ordered in.
 static void afterOrderIn(NSWindow *w, NSString *why) {
     orderingIn -= 1;
+    makeTransparent(w);
     afterChange(w, why);
 }
 
@@ -269,6 +318,23 @@ static void unconstrain(void) {
 
 static void guardWindows(void) {
     Class W = [NSWindow class];
+    origAlpha = (AlphaIMP)method_getImplementation(class_getInstanceMethod(W, @selector(alphaValue)));
+    origSetAlpha = (SetAlphaIMP)replace(W, @selector(setAlphaValue:), ^(NSWindow *w, CGFloat a) {
+        objc_setAssociatedObject(w, &requestedAlphaKey, @(a), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        makeTransparent(w);
+    });
+    replace(W, @selector(alphaValue), ^CGFloat(NSWindow *w) {
+        NSNumber *asked = objc_getAssociatedObject(w, &requestedAlphaKey);
+        return asked ? asked.doubleValue : origAlpha(w, @selector(alphaValue));
+    });
+    typedef id (*InitIMP)(id, SEL, NSRect, NSWindowStyleMask, NSBackingStoreType, BOOL);
+    static InitIMP initIMP;
+    initIMP = (InitIMP)replace(W, @selector(initWithContentRect:styleMask:backing:defer:),
+                               ^id(NSWindow *w, NSRect r, NSWindowStyleMask style, NSBackingStoreType backing, BOOL deferred) {
+        NSWindow *made = initIMP(w, @selector(initWithContentRect:styleMask:backing:defer:), r, style, backing, deferred);
+        if (made) makeTransparent(made);
+        return made;
+    });
     origSetFrame = (SetFrameIMP)replace(W, @selector(setFrame:display:), ^(NSWindow *w, NSRect r, BOOL display) {
         if (placed(w)) {
             NSRect asked = r;
@@ -373,6 +439,30 @@ static void guardWindows(void) {
     });
 }
 
+/// Frames that change without the setters above (AppKit's own paths, the
+/// window server moving a window, a display added, removed or rearranged)
+/// are caught where AppKit reports them: a visible window that moved,
+/// resized, changed screen or visibility, or became key, is moved off again
+/// at once; after a display change every visible window is.
+static void watchWindows(void) {
+    NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+    for (NSNotificationName name in @[NSWindowDidMoveNotification, NSWindowDidResizeNotification, NSWindowDidChangeScreenNotification,
+                                      NSWindowDidChangeOcclusionStateNotification, NSWindowDidBecomeKeyNotification,
+                                      NSWindowDidBecomeMainNotification]) {
+        [center addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *n) {
+            NSWindow *w = n.object;
+            if (![NSThread isMainThread] || ![w isKindOfClass:[NSWindow class]]) return;
+            if (placed(w)) park(w, n.name);
+        }];
+    }
+    [center addObserverForName:NSApplicationDidChangeScreenParametersNotification object:nil queue:nil usingBlock:^(NSNotification *n) {
+        if (![NSThread isMainThread] || !NSApp) return;
+        for (NSWindow *w in NSApp.windows) {
+            if (w.isVisible) park(w, @"a display change");
+        }
+    }];
+}
+
 static void guardModals(void) {
     replace([NSAlert class], @selector(runModal), ^NSModalResponse(NSAlert *a) {
         suppress([NSString stringWithFormat:@"NSAlert runModal \"%@\"", a.messageText]);
@@ -468,6 +558,28 @@ NSArray<NSString *> *YcodeOffscreenViolations(void) {
     if (start) start();
     return copyOf(violations);
 }
+void YcodeOffscreenOpaqueDuringCapture(NSWindow *w, void (NS_NOESCAPE ^capture)(void)) {
+    if (!origSetAlpha) { capture(); return; }
+    park(w, @"a capture");
+    NSValue *key = [NSValue valueWithNonretainedObject:w];
+    NSNumber *asked = objc_getAssociatedObject(w, &requestedAlphaKey);
+    @synchronized(shared) { [capturing addObject:key]; }
+    origSetAlpha(w, @selector(setAlphaValue:), asked ? asked.doubleValue : 1);
+    [CATransaction flush];
+    capture();
+    @synchronized(shared) { [capturing removeObject:key]; }
+    makeTransparent(w);
+    [CATransaction flush];
+}
+
+void YcodeOffscreenMoveUnguardedForTesting(NSWindow *w, NSRect frame) {
+    if (!origSetFrame) return;
+    NSNumber *number = @(w.windowNumber);
+    @synchronized(shared) { [exemptWindows addObject:number]; }
+    origSetFrame(w, @selector(setFrame:display:), frame, NO);
+    @synchronized(shared) { [exemptWindows removeObject:number]; }
+}
+
 NSInteger YcodeOffscreenParkCount(void) {
     if (!shared) return 0;
     @synchronized(shared) { return [shared[@"parks"] integerValue]; }
@@ -490,16 +602,24 @@ __attribute__((constructor)) static void install(void) {
         suppressed = shared[@"suppressed"];
         violations = shared[@"violations"];
         reportedWindows = shared[@"reported"];
+        transparentWindows = shared[@"transparent"];
+        exemptWindows = shared[@"exempt"];
+        capturing = shared[@"capturing"];
         return;
     }
     suppressed = [NSMutableArray array];
     violations = [NSMutableArray array];
     reportedWindows = [NSMutableSet set];
+    transparentWindows = [NSMutableSet set];
+    exemptWindows = [NSMutableSet set];
+    capturing = [NSMutableSet set];
     orderedBy = [NSMutableDictionary dictionary];
     shared = [@{@"suppressed": suppressed, @"violations": violations, @"reported": reportedWindows, @"parks": @0,
+                @"transparent": transparentWindows, @"exempt": exemptWindows, @"capturing": capturing,
                 @"startSentinel": [^{ startSentinel(); } copy]} mutableCopy];
     objc_setAssociatedObject(W, key, shared, OBJC_ASSOCIATION_RETAIN);
     guardWindows();
+    watchWindows();
     guardModals();
     guardMenus();
     guardApp();

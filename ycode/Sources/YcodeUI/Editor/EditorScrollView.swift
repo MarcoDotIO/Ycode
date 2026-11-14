@@ -2,12 +2,13 @@ import AppKit
 import QuartzCore
 import YcodeIDECore
 
-/// The source editor's scroll view. It adds the top bounce of
-/// `editor-area.md` §D.4, E.1 and H.1 (checklist rows 40, 70, 157): when
-/// momentum would carry the text past the top, the text runs on and
-/// springs back (`TopBounce`: about 120 points past the top for the
-/// council's flick, then a critically damped return at ω 13.5 rad/s),
-/// instead of the system's short elastic stop. Everything else is the
+/// The source editor's scroll view. It applies a flick's momentum itself,
+/// one to one up to the edge (`editor-area.md` I.1, row 176), and adds the
+/// bounce of §D.4, E.1, H.1 and I.2 (rows 40, 70, 157, 177): when momentum
+/// would carry the text past the top or the bottom, the text runs on and
+/// springs back (`TopBounce`: about 120 points past the edge for the
+/// council's flick, a few for a slow arrival, then a critically damped
+/// return at ω 13.5 rad/s), instead of the system's short elastic stop. Everything else is the
 /// system's; the text follows a gesture from its first event (no hold),
 /// and the events queued behind one are applied with it, in one frame.
 final class EditorScrollView: NSScrollView {
@@ -36,8 +37,13 @@ final class EditorScrollView: NSScrollView {
         super.flashScrollers()
     }
 
+    /// Bumped by every scroll event (a pinned top line yields to the user).
+    static var scrollGeneration = 0
+
     override func scrollWheel(with event: NSEvent) {
         Self.quietScrollersUntil = 0
+        Self.scrollGeneration &+= 1
+        (documentView as? SourceTextView)?.rowsState.motionAnchor = nil
         apply(event)
         // The scroll events already queued behind this one are applied
         // before the next frame is drawn (`editor-area.md` H.1, council
@@ -140,17 +146,27 @@ final class EditorScrollView: NSScrollView {
     }
 }
 
-/// The top bounce's state: the scroll velocity, and the spring while it
-/// runs. The rest of the momentum sequence after the crossing is taken in;
-/// its end goes to the system once the text is back at the top.
+/// The momentum and the bounce at both edges (`editor-area.md` H.1, I.1,
+/// I.2; council rows 157, 176, 177). Every momentum-phase delta is applied
+/// here one to one, until the momentum ends or an edge is reached: the
+/// system's scroll view ended its own coasting early, whatever the events
+/// still carried (X05 stopped 203.5 short of the top, X03 36.5 short of the
+/// bottom). When a delta would carry the text past the top or the bottom,
+/// the text runs on and springs back (`TopBounce`), and the rest of that
+/// momentum is taken in; its end goes to the system once the text is back.
 @MainActor
 final class EditorTopBounce: NSObject {
+    typealias Edge = EditorFlick.Edge
     private var tracker = TopBounce.VelocityTracker()
     private var gestureVelocity = 0.0
+    /// The share of the momentum applied (round 8, row 205).
+    private var momentumShare = EditorMomentum()
     /// The overscroll when the bounce took over.
     private var startOverscroll = 0.0
     /// The crossing velocity of the running spring (nil: none).
     private(set) var velocity: Double?
+    /// The edge of the running (or last) bounce.
+    private(set) var edge = Edge.top
     /// The spring's clock: the crossing, in display-link time.
     private var start: CFTimeInterval?
     private var link: CADisplayLink?
@@ -164,13 +180,25 @@ final class EditorTopBounce: NSObject {
     /// overscroll (tests and measurement).
     private(set) var lastPeak: CGFloat = 0
     var onFrame: ((CGFloat) -> Void)?
+    /// The momentum points applied so far in this gesture (tests).
+    private(set) var appliedMomentum: CGFloat = 0
 
     var isRunning: Bool { velocity != nil }
 
     /// The top of the document in the clip view's coordinates.
     static func top(of scrollView: NSScrollView) -> CGFloat { -scrollView.contentInsets.top }
 
-    /// Off: the system's own elastic stop (before/after measurements).
+    /// The bottom: the clip view's largest origin the system allows.
+    static func bottom(of scrollView: NSScrollView) -> CGFloat {
+        let clip = scrollView.contentView
+        let saved = (clip as? EditorClipView)?.allowance
+        (clip as? EditorClipView)?.allowance = nil
+        defer { if let saved { (clip as? EditorClipView)?.allowance = saved } }
+        let far = NSRect(origin: NSPoint(x: clip.bounds.minX, y: 1e9), size: clip.bounds.size)
+        return max(top(of: scrollView), clip.constrainBoundsRect(far).minY)
+    }
+
+    /// Off: the system's own momentum and elastic stop (before/after measurements).
     var isEnabled = true
 
     /// Returns true when the event was used here (the system must not see it).
@@ -182,13 +210,15 @@ final class EditorTopBounce: NSObject {
             if isRunning { finish(at: nil) }
             swallowingMomentum = false
             heldEnd = nil
+            appliedMomentum = 0
             tracker.reset()
+            momentumShare.reset()
         }
         if swallowingMomentum, !momentum.isEmpty {
             if momentum.contains(.ended) || momentum.contains(.cancelled) {
                 swallowingMomentum = false
                 if isRunning { heldEnd = event; return true }
-                return false   // the system's own end, at the top
+                return false   // the system's own end, at the edge
             }
             return true
         }
@@ -199,23 +229,49 @@ final class EditorTopBounce: NSObject {
         if momentum.contains(.began) {
             gestureVelocity = tracker.velocity
             tracker.reset()
+            momentumShare.reset()
         }
         tracker.add(delta, at: event.timestamp)
-        guard momentum.contains(.began) || momentum.contains(.changed), delta > 0 else { return false }
+        guard momentum.contains(.began) || momentum.contains(.changed) else { return false }
+        guard delta != 0 else { return true }
+        // The momentum's share (row 205): a decaying gain on each delta,
+        // then, below the stop speed, the rest taken in.
+        let delivered = tracker.hasSample ? tracker.velocity : (gestureVelocity != 0 ? gestureVelocity : delta / 0.0167)
+        guard let applied = momentumShare.applied(delta, at: event.timestamp, speed: delivered) else { return true }
         let clip = scrollView.contentView
-        let top = Self.top(of: scrollView)
-        // A scroll that reaches or passes the top; the system's elastic stop
-        // may already hold the text a little past it.
-        guard clip.bounds.minY - CGFloat(delta) < top else { return false }
-        let v = tracker.hasSample ? tracker.velocity : max(gestureVelocity, delta / 0.0167)
-        begin(velocity: v, from: max(0, top - clip.bounds.minY), in: scrollView)
+        let top = Self.top(of: scrollView), bottom = Self.bottom(of: scrollView)
+        let y = clip.bounds.minY - CGFloat(applied)
+        let crossing: Edge? = applied > 0 && y < top ? .top : applied < 0 && y > bottom ? .bottom : nil
+        if let crossing {
+            let measured = momentumShare.appliedSpeed(delivered, at: event.timestamp)
+            let towards = crossing == .top ? measured : -measured
+            let v = towards > 0 ? towards : abs(applied) / 0.0167
+            let past = crossing == .top ? top - clip.bounds.minY : clip.bounds.minY - bottom
+            appliedMomentum += abs(crossing == .top ? clip.bounds.minY - top : bottom - clip.bounds.minY)
+            begin(edge: crossing, velocity: v, from: max(0, past), in: scrollView)
+            return true
+        }
+        // Every momentum delta at its share (I.1, row 205), inside the document.
+        let kept = min(max(y, min(top, clip.bounds.minY)), max(bottom, clip.bounds.minY))
+        if kept != clip.bounds.minY {
+            appliedMomentum += abs(kept - clip.bounds.minY)
+            clip.scroll(to: NSPoint(x: clip.bounds.minX, y: kept))
+            scrollView.reflectScrolledClipView(clip)
+        }
         return true
     }
 
     /// Starts the bounce `overscroll` points past the top with `velocity`
     /// (points per second).
     func begin(velocity v: Double, from overscroll: CGFloat = 0, in scrollView: NSScrollView) {
+        begin(edge: .top, velocity: v, from: overscroll, in: scrollView)
+    }
+
+    /// Starts the bounce `overscroll` points past `edge` with `velocity`
+    /// (points per second, towards the edge).
+    func begin(edge: Edge, velocity v: Double, from overscroll: CGFloat = 0, in scrollView: NSScrollView) {
         self.scrollView = scrollView
+        self.edge = edge
         let visible = Double(scrollView.contentView.bounds.height - scrollView.contentInsets.top - scrollView.contentInsets.bottom)
         velocity = TopBounce.effectiveVelocity(v, visibleHeight: visible)
         startOverscroll = Double(overscroll)
@@ -248,8 +304,8 @@ final class EditorTopBounce: NSObject {
         guard let v = velocity else { return }
         if start == nil { start = now - frame }
         let t = now - (start ?? now)
-        let x = CGFloat(TopBounce.overscroll(from: startOverscroll, velocity: v, at: t))
-        if TopBounce.isAtRest(from: startOverscroll, velocity: v, at: t) {
+        let x = CGFloat(TopBounce.overscroll(from: startOverscroll, velocity: v, at: t, edge: edge))
+        if TopBounce.isAtRest(from: startOverscroll, velocity: v, at: t, edge: edge) {
             finish(at: 0)
             return
         }
@@ -257,7 +313,7 @@ final class EditorTopBounce: NSObject {
         set(overscroll: x)
     }
 
-    /// Ends the bounce: at `overscroll` (0: back at the top), or where it is (nil).
+    /// Ends the bounce: at `overscroll` (0: back at the edge), or where it is (nil).
     private func finish(at overscroll: CGFloat?) {
         link?.invalidate()
         link = nil
@@ -272,27 +328,40 @@ final class EditorTopBounce: NSObject {
         }
     }
 
-    /// Moves the text `x` points below the top.
+    /// Moves the text `x` points past the bounce's edge.
     private func set(overscroll x: CGFloat) {
         guard let scrollView else { return }
         let clip = scrollView.contentView
-        (clip as? EditorClipView)?.allowedOverscroll = x
-        clip.setBoundsOrigin(NSPoint(x: clip.bounds.minX, y: Self.top(of: scrollView) - x))
+        let editorClip = clip as? EditorClipView
+        editorClip?.allowance = nil
+        let y = edge == .top ? Self.top(of: scrollView) - x : Self.bottom(of: scrollView) + x
+        editorClip?.allowance = x > 0 ? (edge, x) : nil
+        clip.setBoundsOrigin(NSPoint(x: clip.bounds.minX, y: y))
         scrollView.reflectScrolledClipView(clip)
         onFrame?(x)
     }
 }
 
 /// The editor's clip view: it lets the bounce hold the text past the top
-/// (the system's clip view keeps its bounds inside the document).
+/// or the bottom (the system's clip view keeps its bounds inside the
+/// document).
 final class EditorClipView: NSClipView {
+    /// How far past which edge the bounds may go (nil: the system's rule).
+    var allowance: (edge: EditorFlick.Edge, points: CGFloat)?
+
     /// How far past the top the bounds may go (0: the system's rule).
-    var allowedOverscroll: CGFloat = 0
+    var allowedOverscroll: CGFloat {
+        get { allowance?.edge == .top ? allowance?.points ?? 0 : 0 }
+        set { allowance = newValue > 0 ? (.top, newValue) : nil }
+    }
 
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
         var r = super.constrainBoundsRect(proposedBounds)
-        if allowedOverscroll > 0, proposedBounds.minY < r.minY {
-            r.origin.y = max(proposedBounds.minY, r.minY - allowedOverscroll)
+        guard let a = allowance, a.points > 0 else { return r }
+        if a.edge == .top, proposedBounds.minY < r.minY {
+            r.origin.y = max(proposedBounds.minY, r.minY - a.points)
+        } else if a.edge == .bottom, proposedBounds.minY > r.minY {
+            r.origin.y = min(proposedBounds.minY, r.minY + a.points)
         }
         return r
     }

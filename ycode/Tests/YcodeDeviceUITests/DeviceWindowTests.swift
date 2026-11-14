@@ -104,7 +104,8 @@ import YcodeDisplayStream
         let s = session(type: "unknown-type")
         #expect(s.problemText == "Connecting display")
         live(s, .iPadA16)
-        #expect(s.title == "iPad (A16)" && s.subtitle == "iOS 27.1" && s.spec == .iPadA16)
+        // An iPad's OS is iPadOS (device-hub.md §15.5, row 173).
+        #expect(s.title == "iPad (A16)" && s.subtitle == "iPadOS 27.1" && s.spec == .iPadA16)
         #expect(s.isLive && s.hasImage && s.problemText == nil)
         s.displayName = "iPad (A16) (Ycode)"
         s.osTitle = "iOS 27.1"

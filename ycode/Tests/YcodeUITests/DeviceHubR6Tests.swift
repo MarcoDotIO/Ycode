@@ -83,14 +83,14 @@ import Testing
         w.setContentSize(NSSize(width: 1400, height: 1000))
         w.contentView?.layoutSubtreeIfNeeded()
         let free = canvas.deviceArea.size
-        #expect(abs(Double(f.scale) - DeviceZoom.hubFit(frame: f.geometry.outerBox.size, in: free)) < 1e-6)
+        #expect(abs(Double(f.scale) - DeviceZoom.hubFit(geometry: f.geometry, foldable: true, in: free)) < 1e-6)
         #expect(f.scale > at1100)
         Self.record("1400 × 1000, inspector shown: canvas \(free), scale \(f.scale)")
         // The inspector hidden at 1100 × 800: a wider canvas, the height still decides.
         w.setContentSize(NSSize(width: 1100, height: 800))
         hub.splitViewItems.last?.isCollapsed = true
         w.contentView?.layoutSubtreeIfNeeded()
-        #expect(abs(Double(f.scale) - DeviceZoom.hubFit(frame: f.geometry.outerBox.size, in: canvas.deviceArea.size)) < 1e-6)
+        #expect(abs(Double(f.scale) - DeviceZoom.hubFit(geometry: f.geometry, foldable: true, in: canvas.deviceArea.size)) < 1e-6)
         #expect(abs(Double(f.scale) - Double(at1100)) < 0.005)
         Self.record("1100 × 800, inspector hidden: canvas \(canvas.deviceArea.size), scale \(f.scale)")
         // Zoom In steps from the fitted scale.

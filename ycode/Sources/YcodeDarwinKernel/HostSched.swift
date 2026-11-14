@@ -88,6 +88,9 @@ public enum HostSched {
             + startClassReport
             + (SyncHandoff.report.isEmpty ? "" : "; " + SyncHandoff.report)
             + (BackgroundBand.report.isEmpty ? "" : "; " + BackgroundBand.report)
+            + LockStallStats.report
+            + (KernelLock.fineSpinNanoseconds == 0 ? "" : "; fine-lock spins: \(KernelLock.spinAcquisitions.load(ordering: .relaxed)) took the lock, "
+                + "\(KernelLock.spinFailures.load(ordering: .relaxed)) slept")
     }
     /// `YCODE_LOCK_HOLDER_PROMOTION` (default on with a backend; `=0` off):
     /// a thread that finds a kernel lock taken raises the holder's host
@@ -190,6 +193,14 @@ public enum HostSched {
         // cannot be made and systemd-run would fail instead of running us.
         let runtime = getenv("XDG_RUNTIME_DIR").map { String(cString: $0) } ?? "/run/user/\(getuid())"
         guard access(runtime + "/systemd/private", F_OK) == 0 else { return }
+        // systemd-run finds the user's bus through XDG_RUNTIME_DIR (or
+        // DBUS_SESSION_BUS_ADDRESS); started without either (a service, cron,
+        // `env -i`), it failed with "Failed to connect to bus: No medium
+        // found" and the device never started.
+        if getenv("XDG_RUNTIME_DIR") == nil, getenv("DBUS_SESSION_BUS_ADDRESS") == nil {
+            guard access(runtime + "/bus", F_OK) == 0 else { return }
+            setenv("XDG_RUNTIME_DIR", runtime, 1)
+        }
         setenv("YCODE_HOST_SCHED_SCOPE", "1", 1)
         var exe = [CChar](repeating: 0, count: 4096)
         let n = readlink("/proc/self/exe", &exe, exe.count - 1)
@@ -274,7 +285,7 @@ public enum HostSched {
     /// (a host thread with no guest context, or a guest thread before its
     /// first trap returned).
     @inline(__always)
-    static func appliedClass() -> Int {
+    public static func appliedClass() -> Int {
         Int(bitPattern: pthread_getspecific(key)) - 1
     }
 

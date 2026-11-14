@@ -196,6 +196,10 @@ public final class VulkanCompositor: Compositor {
 
     public var backendDescription: String { "vulkan: \(deviceName)" + (deviceIsCPU ? " (CPU)" : "") }
 
+    /// The context's VkInstance (nil once invalidated): contexts with the
+    /// same extensions share one (ov_vulkan.c, "Shared instances").
+    package var instanceHandle: UInt? { ctx.flatMap { ovk_instance($0) }.map { UInt(bitPattern: $0) } }
+
     public func surfaceDidResize() {
         guard let ctx else { return }
         var err = [CChar](repeating: 0, count: 512)

@@ -181,6 +181,13 @@ public enum OpenViewsAutomation {
         h.backend.post(.key(KeyEvent(window: mainWindows[index].platform.id, key: key, modifiers: modifiers, timestamp: h.backend.now)))
     }
 
+    /// The window's close button: the window system's close request,
+    /// through the back end's event queue.
+    public static func requestClose(window index: Int) {
+        guard let h = host, mainWindows.indices.contains(index) else { return }
+        h.backend.post(.window(mainWindows[index].platform.id, .closeRequested))
+    }
+
     /// Typed text, through the back end's event queue.
     public static func type(_ text: String, window index: Int = 0) {
         guard let h = host, mainWindows.indices.contains(index) else { return }
@@ -192,6 +199,35 @@ public enum OpenViewsAutomation {
     public static func scroll(at p: CGPoint, delta: CGSize, window index: Int = 0) {
         guard let h = host, mainWindows.indices.contains(index) else { return }
         h.backend.post(.scroll(ScrollEvent(window: mainWindows[index].platform.id, location: p, delta: delta, timestamp: h.backend.now)))
+    }
+
+    /// A touchpad step at a point: a precise delta without phases, as SDL
+    /// delivers a two-finger scroll; the host infers the gesture and its
+    /// momentum (B6-OPENVIEWS). `timestamp` defaults to now on the back
+    /// end's clock.
+    public static func preciseScroll(at p: CGPoint, delta: CGSize, timestamp: TimeInterval? = nil, window index: Int = 0) {
+        guard let h = host, mainWindows.indices.contains(index) else { return }
+        h.backend.post(.scroll(ScrollEvent(window: mainWindows[index].platform.id, location: p, delta: delta, isPrecise: true,
+                                           timestamp: timestamp ?? h.backend.now)))
+    }
+
+    /// A scroll event as given (phases, precision and time kept), to a main
+    /// window, through the back end's queue: drivers replay a recorded
+    /// gesture with its momentum.
+    public static func postScroll(_ event: ScrollEvent, window index: Int = 0) {
+        guard let h = host, mainWindows.indices.contains(index) else { return }
+        var e = event
+        e.window = mainWindows[index].platform.id
+        h.backend.post(.scroll(e))
+    }
+
+    /// The back end's clock (drivers time their events by it).
+    public static var now: TimeInterval { host?.backend.now ?? 0 }
+
+    /// The host's touchpad phase and momentum constants.
+    public static var scrollGestureConfiguration: ScrollGestureTracker.Configuration? {
+        get { host?.scrollGestures.configuration }
+        set { if let newValue { host?.scrollGestures.configuration = newValue } }
     }
 
     /// Ends the app's run loop.

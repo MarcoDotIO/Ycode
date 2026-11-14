@@ -36,6 +36,9 @@ public final class LanguageService {
     /// Edits the server asks to apply (`workspace/applyEdit`).
     package var onApplyEdit: ((WorkspaceEdit) -> Void)?
     var onIssuesChanged: (() -> Void)?
+    /// The server's work in progress (IndexingProgress.swift, row 189).
+    public private(set) var progress = LanguageProgress()
+    var onProgressChanged: (() -> Void)?
     /// A document's text changed (the path, standardized): its build
     /// issues no longer stand for it (`reference-ui-6.md` §5.2.2).
     var onEdited: ((String) -> Void)?
@@ -45,6 +48,10 @@ public final class LanguageService {
         let notes = client.notifications
         Task { [weak self] in
             for await n in notes {
+                if n.method == "$/progress" {
+                    if self?.progress.apply(n.params) == true { self?.onProgressChanged?() }
+                    continue
+                }
                 if n.method == "workspace/applyEdit" {
                     self?.onApplyEdit?(WorkspaceEdit(n.params["edit"]))
                     continue
@@ -78,13 +85,23 @@ public final class LanguageService {
     }
 
     private func publish(url: URL, _ list: [LSPDiagnostic]) {
+        // Only sources have live issues (row 228), whatever a server sends.
+        guard FileTypeRoles.usesLanguageService(url) else { return }
         let path = url.standardizedFileURL.path
         liveIssues[path] = Self.issues(file: path, list)
         liveDiagnostics[path] = list
         onIssuesChanged?()
     }
 
+    /// Whether the server gets `url` at all: only Swift and C-family
+    /// sources do. Markdown, JSON, property lists, text and images are never
+    /// opened, changed or saved in it, so they get no diagnostics and add
+    /// nothing to the issue counts (council round 9, row 228; `language.md`
+    /// §Features).
+    public static func handles(_ url: URL) -> Bool { FileTypeRoles.usesLanguageService(url) }
+
     public func open(_ url: URL, text: String) {
+        guard Self.handles(url) else { return }
         guard versions[url] == nil else { return change(url, text: text) }
         versions[url] = 1
         textHashes[url] = text.hashValue
@@ -93,6 +110,7 @@ public final class LanguageService {
     }
 
     public func change(_ url: URL, text: String) {
+        guard Self.handles(url) else { return }
         let v = (versions[url] ?? 0) + 1
         versions[url] = v
         client.didChange(url, text: text, version: v)
@@ -154,6 +172,7 @@ extension WorkspaceSession {
         do {
             let service = try await LanguageService(transport: t, root: root, initializationOptions: options)
             service.onIssuesChanged = { [weak self] in self?.languageIssuesChanged() }
+            service.onProgressChanged = { [weak self, weak service] in self?.isIndexing = service?.progress.isActive ?? false }
             service.onEdited = { [weak self] in self?.noteFileEdited($0) }
             language = service
             // The scheme or destination changed while the server started.

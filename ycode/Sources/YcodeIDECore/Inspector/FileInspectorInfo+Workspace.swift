@@ -37,7 +37,12 @@ extension FileInspectorInfo {
             if let (projPath, proj) = project(holding: path, in: model) {
                 let dir = proj.projectDirectory(xcodeprojURL: URL(fileURLWithPath: projPath))
                 info.memberships = proj.targetMemberships(ofFile: path, projectDirectory: dir)
-                if case .synchronized? = proj.place(ofFile: path, projectDirectory: dir) { info.inSynchronizedFolder = true }
+                switch proj.place(ofFile: path, projectDirectory: dir) {
+                case .synchronized?: info.inSynchronizedFolder = true
+                case .reference(let id)?:
+                    info.recordedType = proj[id].flatMap { $0.string("explicitFileType") ?? $0.string("lastKnownFileType") }
+                case nil: break
+                }
             }
         }
         return info

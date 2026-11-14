@@ -1493,6 +1493,400 @@ example its simulator host's), designed by rule 2.
 - **Property names "reddish" (Gemini)** and **step 08's scroller "visible
   at rest" (Gemini):** not borne out (round 6 summary).
 
+## Council round 7 measurements (2026-11-08)
+
+Round 7 repeated rounds 5–6's main session and added harder steps: a
+**slower flick** to the top (X05), a flick **down to the bottom** (X03),
+the jump bar with a split at **1250** and **1180** points (X07–X09), and
+a reopen. Retina, 120 fps, foreground, key window, the system in
+**Dark**, Ycode `0afb3bd7`. **The host's 1-minute load was 250–700**
+(about 20 times round 6's), so every duration and latency below is
+approximate and load-affected; end positions, sizes and colours are
+reliable. Values in window points, times in ms from the capture tool's
+first posted event. Offsets are found per frame by matching the frame's
+text area (x 300–700, y 110–790) against the step's before and after
+stills. Checklist rows 176–181 in `fidelity-council.md`. These values
+supersede §H where they differ.
+
+### I.1 Momentum must carry to the edge (X05 slow flick, X03 bottom flick)
+
+**The input.** X05: 8 gesture events of 15 points 8.3 ms apart (120
+points, **1800 points per second**), then 134 momentum-phase events over
+1.11 s carrying **566.7 points more**, their deltas decaying with a 0.33 s
+time constant: 686.7 points in all, from 600 below the top. X03: main
+step 04's flick mirrored, 8 events of 40 points (4800 per second) then
+173 momentum events carrying 1544 points, from 600 above the bottom.
+Both apps received the same events (the capture tool's own record).
+
+**X05, travel toward the top (600 = the top; above 600 = past it):**
+
+| Reference ms | 113 | 128 | 155 | 181 | 206 | 234 | 260 | 289 | 331 | 361 | 389 | 416 | 441 | 469 | 495 | 508 | 534 | 646 | 727 | 885 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| travel | 15 | 213 | 247 | 294 | 337 | 381 | 416 | 456 | 490 | 523 | 541 | 562 | 576 | 587 | 597 | **600** | **603** | 602 | 601 | 600 |
+
+| Ycode ms | 215 | 242 | 271 | 295 | 323 | 357 | 378 | 426 | 453 | 489 | 525 | 564 | 614 | 667 | 717 | 772 | 838 | 882 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| travel | 15 | 32 | 96 | 125 | 162 | 210 | 243 | 282 | 300 | 319 | 342 | 357 | 374 | 382.5 | 387 | 393.5 | 395 | **396** (rest 396.5) |
+
+| | Reference | Ycode now |
+|---|---|---|
+| Speed, first 100 ms of motion | about 1700 points per second | about 1370 |
+| Speed later | 1090 (220–308 ms), 940 (308–389), 575 (389–469), **330 on reaching the top** (469–508) | 685 (378–489), 440 (489–614), then **126** (614–717) and 55 (717–882): the coasting is cut short |
+| End | **the top**, with a 3-point stretch past it (0.5 % of the travel) and back by about 885 ms | **stops 203.5 short** (at about line 9), never reaching the edge |
+
+**X03, travel toward the bottom (600 = the bottom):**
+
+| Reference ms | 203 | 276 | **296** | 312 | 340 | 385 | 451 | 478 | 515 | 593 | 661 | 1087 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| travel | 554 | 622 | **641** | 638 | 631 | 625 | 619 | 611 | 608 | 604 | 602 | 600 |
+
+| Ycode ms | 222 | 258 | 292 | 328 | 360 | 406 | 450 | 505 | 566 | 612 | 656 | 703 | 761 | 839 | 962 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| travel | 40 | 83 | 131 | 201 | 264 | 360 | 398 | 452 | 480 | 513 | 532 | 543 | 552 | 561 | **564** (rest 563.5) |
+
+The reference reaches the bottom about 230 ms in and stretches **41**
+past it (6.8 % of the travel), then returns with the same critically
+damped spring as at the top (I.2). Ycode decelerates smoothly and stops
+**36.5 short of its own bottom** (its start was 600 above its maximum
+offset, so this is not the missing last line of I.3): it applied only
+about 245 of the 1544 momentum points (X05: about 277 of 567).
+
+**What the reference does.** Its travel follows the delivered event
+deltas, momentum-phase events included, until the edge; what is left
+when the edge is reached feeds the stretch. Ycode ends its own coasting
+early, whatever the events still carry. **Target:** on macOS, apply every
+momentum-phase delta one to one until the gesture's momentum ends or an
+edge is reached (then I.2's stretch); never stop coasting on a timer or
+a speed floor of Ycode's own. On Linux, where Ycode makes the momentum
+itself, start it at the release speed and decay it with a time constant
+of about **0.33 s** (the events above), so that the same flick travels
+the same distance (686.7 points for X05's input) in both IDEs.
+
+### I.2 The stretch past the edge (main 04, X03, X05; supersedes H.1's stretch)
+
+Main step 04 (the fast flick up, 1544 momentum points), travel toward the
+top:
+
+| Reference ms | 79 | 108 | 122 | 136 | 150 | 163 | 177 | 204 | **218** | 245 | 273 | 300 | 327 | 355 | 395 | 436 | 489 | 545 | 626 | 734 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| travel | 240 | 487 | 524 | 597 | 613 | 626 | 634 | 638 | **639** | 635 | 633 | 627 | 622 | 617 | 613 | 609 | 606 | 603 | 601 | 600 |
+
+| Ycode ms | 148 | 178 | 191 | 218 | 230 | **262** | 285 | 296 | 318 | 340 | 360 | 383 | 406 | 441 | 486 | 529 | 573 | 627 | 677 | 737 | 852 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| travel | 40 | 243.5 | 634.5 | 668.5 | 731 | **747** | 744 | 733 | 718 | 706 | 686.5 | 677 | 659.5 | 648 | 630.5 | 617.5 | 611.5 | 606.5 | 604 | 602 | 600 |
+
+| | Reference | Ycode now |
+|---|---|---|
+| Peak stretch, fast flick at the top (04) | **39** (6.5 % of 600), about 80 ms after reaching the top | **147** (24.5 %), about 70 ms after |
+| Peak stretch, fast flick at the bottom (X03) | **41** (6.8 %) | none: Ycode never reached the bottom (I.1) |
+| Peak stretch, slow flick at the top (X05) | **3** (arriving at about 330 points per second) | — (stopped short) |
+| Return from the peak | x(t) = A (1 + ω t) e^(−ω t) with **ω ≈ 13.5 per second**: 44 % left 137 ms after the peak (spring 45 %), 13 % at 284 ms (spring 10.5 %), 5 % at 368 (4 %) | the **same spring**: 52 % at 121 ms (51.6 %), 21 % at 224 (19.6 %), 3.7 % at 389 (3.3 %) |
+| Round 6 (load 11–15), same input | 119 | 199 |
+
+The return is met. The stretch is not: at this load the reference's is
+**0.27 of Ycode's**, at round 6's low load 0.6. Under load the events
+reach the reference in fewer, larger batches (it moves 240 then 487 in
+its first two frames), so it arrives at the edge with less left to
+spend; the low-load value is the like-for-like one. **Target:** a
+stretch that grows with the momentum left at the edge but more slowly
+than Ycode's now: about **120** for main step 04's input at a light load
+(H.1), about 40 when that momentum arrives in batches as here, and a
+few points for X05's slow arrival; the same at the top and the bottom
+edge; the return unchanged (ω about 13.5, no oscillation).
+
+### I.3 The final empty line and the overscroll below it (X03, conflict 03)
+
+Long.swift ends with a newline. At rest after X03:
+
+| | Reference | Ycode now |
+|---|---|---|
+| Last numbered line | **845**, the empty line after the final newline, laid out like any other row (18-point pitch) | **844**: no row for the line after the final newline |
+| Its row | y 443–461, filled with the **current-line highlight #353535** (the editor's background is #252625) because the insertion point is on it (the step's ⌘↓ put it there), the caret at its start | — |
+| Text area | y 84.5 (below the jump bar's hairline at 84) to 843 (the bottom bar's hairline): 758.5 tall | y 84.5–844 |
+| Below the last row at the maximum offset | **382** empty: the last row's bottom (461) is **2.75 above the text area's middle** (463.75) | at its maximum, line 844 sits where the reference draws 845 (the two start positions differ by exactly one line, so Ycode's maximum offset is one row less) |
+
+The merge sheet (conflict 03): Greeting.swift has 18 lines and a final
+newline; the reference numbers **19** in both panes (an empty row 19
+under line 18's "}"); Ycode ends both panes at 18.
+
+**Target:** a document that ends with a line break has one more line,
+empty, after it: numbered in the gutter, able to hold the insertion
+point (⌘↓ goes there), drawn with the current-line highlight when it is
+current; in the source editor and in both merge panes. The maximum
+scroll offset lets that last row's bottom rise to the text area's
+vertical middle (within about 3 points). (Corrected after implementation:
+Ycode's macOS overscroll was half of the whole scroll view, which put the
+last row 68 points too high, and the Linux IDE had none; both now use half
+of the text area.)
+
+### I.4 The inactive split pane across a re-wrap (X06–X09)
+
+| Moment | Reference, left (inactive) pane | Ycode now, left pane |
+|---|---|---|
+| Before the split (after X05) | line 1 at the top (X05 reached the top) | about **line 9** at the top (X05 stopped 203.5 short) |
+| After Add Editor Pane on Right at 1400 (X06; the pane narrower, its rows re-wrap) | line 1 at the top | about **line 26** at the top |
+| After the resize to 1250 (X07) | line 1 at the top | about **line 20** at the top, and the gutter **stale**: 20, 16, 27 drawn over 21, then 22 … beside rows they do not belong to |
+
+The reference's case is the trivial one (line 1 stays line 1), and
+Ycode's start differs because of I.1; but Ycode's own behaviour is still
+wrong twice over: the top line jumps by 6–17 lines at each re-wrap, and
+its gutter is drawn against the old layout. **Target:** when a pane's
+text re-wraps (a split, a window or pane resize, a font change), keep
+the **first visible logical line** at the top, at the same fraction of
+its first row, in every pane, active or not; redraw the gutter in the
+same frame as the text. (Behaviour mid-file in the reference is to be
+confirmed by a later round with the pane scrolled before the split.)
+
+### I.5 The jump bar at 1250 and 1180 with a split (X07–X09; refines H.4)
+
+Long.swift in both panes (X07), then Model01.swift (a deeper path) in
+the right pane (X08), then the window at 1180 (X09). Ink extents:
+
+| Part | Reference X07, left pane | Ycode X07, left pane | Reference X09 (1180), left | Ycode X09, left |
+|---|---|---|---|---|
+| Project | icon **361.5–374.5** (13), "GlassScroll" **380.5–437.5 whole** | icon 361.5–376 (**14.5**), "GlassScrol" 382–435.5, cut with a fade | icon 361.5–374.5, "Glass…" **380.5–404** (23.5), cut | icon 361.5–376, "Glas…" 382–400.5 (18.5), cut |
+| Group | icon only, 457–469.5 | icon only, 456.5–469 | icon only, 422.5–435 | icon only, 421.5–434 |
+| File | icon **490–501.5** (11.5), "Long" 508–532.5 | icon 488.5–503.5 (**15**), "Long" 509–533.5 | icon 455–466.5, "Long" 473–497.5 | icon 453.5–468.5, "Long" 474–498.5 |
+| Last item | "No Selection" 550–615.5 | 551.5–617 | 515–580.5 | 516.5–582 |
+| Pane edge (divider) | 639.5 | 640 | 604.5 | 605 |
+
+| Part | Reference X08, right (active) pane | Ycode X08, right pane |
+|---|---|---|
+| Project | icon 713–726, **"Gl" 732–741 (9), cut with a fade** | icon 712.5–727, **no title** |
+| Two groups | icons only | icons only |
+| File | icon 822.5–834, "Model01" 840.5–883.5 | icon 811–826, "Model01" 831.5–874.5 |
+| Last item | "No Selection" 901.5–967 | 892–957.5: **10 points unused** |
+
+Both apps reserve the same space after the last item (about 23–24
+before the pane's edge), and both drop the groups' titles first. The
+differences:
+- **Ycode's icons are wider.** Project icon 14.5 against 13 (its advance
+  to the title 20.5 against **19**); file icon 15 against **11.5** (advance
+  20.5 against **18**). Its path is 5 points longer, which is exactly
+  the 5 points its project title loses at both widths (X07: 53.5
+  against 57; X09: 18.5 against 23.5).
+- **Ycode drops the project title too soon.** With 10 points to spare in
+  X08 it shows the icon alone; the reference keeps the title cut down
+  to about **9 points** (two letters fading) before it gives it up.
+- The active pane's chevrons are 3 wide in the reference (2 in the
+  inactive pane); Ycode's are 2 in both.
+
+Collapse order (with H.4's at 1100): **(1)** the groups' titles go,
+their icons stay; **(2)** the project's title is cut from its end with a
+fade, down to about 9 points; **(3)** then it goes, its icon stays;
+**(4)** then the file's title is cut; **(5)** the last item stays whole.
+**Target:** that order; icon slots the reference's widths (project 13,
+group 12.5, file 11.5, each followed by 6–6.5 to its title); a title's
+minimum before it goes, about 9 points; active-pane chevrons 3 wide.
+The 1100 (H.4) and 1180 results must not change: at 1180 the reference's
+"Glass…" is 23.5 wide, which Ycode reaches once its icons are narrower.
+
+### I.6 The editor's scroller knob (main 08; a judge's claim, measured)
+
+The vertical scroller at x 1129.5 (the editor's right edge), Bands.swift:
+
+| | Reference | Ycode now |
+|---|---|---|
+| Knob at offset 0 (07, 08 before) | y 90–190 (**100**) | y 90–205.5 (**115.5**) |
+| After the 1200-point scroll (08 after) | y **227.5**–329.5 | y **247.5**–364 |
+| Knob travel per scrolled point | 137.5 ÷ 1200 = knob ÷ 873 | 157.5 ÷ 1200 = knob ÷ 880 |
+
+The judge's "about 10 lower" is the knob's top 20 lower and its centre
+27 lower; the cause is the knob's **length** (15 % longer), since both
+apps move it by the knob's share of a view about 880 tall (the whole
+window: the text runs under the bars). A longer knob means Ycode counts
+a shorter document for the scroller (about 13 % shorter): the missing
+final line (I.3) and, probably, the overscroll below it. **Target:** the
+knob's length is the track times the visible height over the full
+scrollable height **including** the final empty line and the overscroll
+of I.3; 100 points for Bands.swift in this window.
+
+### I.7 Not settled by round 7
+
+- The stretch's law at the edge: only two loads and one input each (I.2).
+  Capture main step 04 and X03 again at a light load.
+- Mid-file top-line preservation in the reference (I.4): scroll the pane
+  to about line 50 before the split and the resize.
+- The jump bar where only the project title must be cut by more than
+  its fade (between 1180 and 1250 with the deep path in the left pane).
+
+## Council round 8: Ycode implementation (B8-B, 2026-11-08)
+
+Rows 204–207 of `fidelity-council.md` (round 8, light load). The
+reference values are the round's rows; this section records what Ycode
+now does on both IDEs.
+
+### J.1 Momentum's share (row 205; revises I.1)
+
+At a light load the reference's slow flick (X05) travels 564 of 600
+points and stops 36 short of the top, so the momentum does not carry its
+events' whole distance (686.7 points delivered). Both IDEs apply each
+momentum-phase delta times a gain that decays from 1 with a time constant
+of **1.42 s** from the momentum's first event, and end the momentum once
+the applied speed (the events' distance over the last 0.1 s, times the
+gain) is below **145 points per second**; the rest of it is taken in
+(`EditorMomentum`). X05 then travels 564.3 with its last movement 770 ms
+after the first event (fractional deltas; 567 for deltas cut to whole
+points). The fast flick (main 04) still reaches the top, 132 ms after its
+first event at about 3690 points per second. On Linux the toolkit's own
+momentum (τ 0.33 s from the release speed) goes through the same model.
+
+### J.2 The stretch (row 207; revises I.2)
+
+The stretch past an edge is P(v) = 190 (v ÷ 3690)^1.44 for a crossing at
+v points per second, limited to 0.28 of the visible height; the run past
+the edge peaks 71 ms after the crossing and returns as the critically
+damped spring of H.1 (ω 13.5). The bounce ends once it is within 1 point
+of the edge. Main 04: 190 points at about 203 ms, back at the top at
+about 750 ms (the reference: about 190 near 167 ms, back by 750–770). A
+slow arrival (330 points per second) stretches about 6 points.
+
+### J.3 The inspector's slide (row 204)
+
+Hide: ease-out (0, 0, 0.58, 1) over **150 ms** from 50 ms after the press
+(the reference: 143 ms; round 6's 195 at a heavy load is superseded).
+Show: the same ease-out over **280 ms** from 145 ms (round 6's ease-in-out
+over 230 is superseded).
+
+Every display frame draws a new position (macOS):
+
+- The pane cannot collapse while it slides. The split view collapses a
+  pane whose divider is set narrower than about half its usual width and
+  opens it only past that, so a show held the edge still for its first
+  40 % and then jumped, and a hide collapsed early; the hide now collapses
+  the pane once, after its last frame.
+- A slide frame does not lay the whole document out: a re-wrap during the
+  slide or a live resize lets TextKit lay out what is on screen, and the
+  exact height (I.6) settles once, after the motion's last frame.
+- The minimap renders its bars once into a bitmap as wide as the longest
+  row and clips it, so a width change renders nothing again.
+- The bars (toolbar band, jump bar, bottom bar) are not drawn per frame:
+  their layers stretch what was drawn last, as the held blurred image was
+  stretched; they draw once when the motion ends.
+- The last position is drawn on time; the slide's end (the hide's
+  collapse, the bars' render, the toolbar's update and fit) follows that
+  frame's commit.
+
+Off every display (a test window stepped at 60 Hz, a host load of 6–16)
+a slide frame costs about 25–35 ms in a debug or a release build alike:
+AppKit's layout and the layer commit, part of it materials the window
+server draws on screen. There the hide shows its last position about
+250–300 ms after the press and the show about 480–500 ms, frames one to
+three display frames apart; whether every display frame is drawn on screen
+is for the council's capture to measure.
+
+The Linux slide is the toolkit's animation on the shared curves; each of
+its frames re-evaluates the window's view graph (about 150–190 ms a frame
+in a release build at a light load), which is the toolkit's cost, not the
+editor's: the Linux slide shows 2–3 positions.
+
+### J.4 Selection and resize (row 206)
+
+The File inspector is rebuilt in the same pass as the editor (round 6's
+deferral, `InspectorFollow`, is off), so both change in one frame. After
+an open, or a re-wrap in one step (a resize request, a split), the first
+frame is drawn before the whole document's layout, which follows it
+(documents over 150 lines, on screen). A live resize holds the bars'
+drawing as the slide does (J.3) and leaves the exact height for its end,
+so its first step draws within a display frame or two of the drag, well
+under the reference's 83 ms. On Linux the editor and the inspector are
+drawn from the same model state and change in one frame.
+
+## Council round 9: Ycode implementation (B9-B, 2026-11-13)
+
+Rows 220–227 of `fidelity-council.md` (round 9: 2x, 120 fps, host load
+6.6–14.4). These values supersede J.1–J.3 where they differ.
+
+### K.1 Momentum and the stretch (rows 220–222; supersede J.1, J.2)
+
+- **Momentum:** every momentum-phase delta applies one to one until the
+  momentum ends or an edge is reached (I.1's rule; round 8's decaying gain
+  and its 145-point-a-second floor are gone: round 9 saw the reference's
+  slow flick reach the top). `EditorMomentum` keeps the gain and the floor
+  as parameters (infinite time constant, no floor).
+- **The stretch** past either edge is P(v) = 35 (v ÷ 3970)^0.71 for a
+  crossing at v points per second (35 is within 4 of both the top's 38 and
+  the bottom's 32), limited to 0.28 of the visible height; the run past the
+  edge still peaks 71 ms after the crossing.
+- **The return** is the critically damped spring from the peak with ω
+  **11.3** at the top and **16.6** at the bottom, over once it is within
+  **half a point** of the edge (a pixel at 2x).
+
+With the council's inputs as I.1 and H.1 give them, on both IDEs' shared
+model:
+
+| Step | Crossing | Stretch, deepest at | At rest | Reference (round 9) |
+|---|---|---|---|---|
+| Main 04, top | 125 ms, about 3970 points a second | **35.0** at 191 ms | **741 ms** | 38 at 203, at rest by 723 |
+| X03, bottom | 125 ms | **35.0** at 191 ms | **566 ms** | 32 at 210, at rest by 557 |
+| X05, top | **625 ms**, about 400 points a second | **6.0** at 691 ms | 1058 ms | about 6 at 466, the top at about 400, at rest by 811 |
+
+X05's documented input (8 events of 15 points, then 566.7 points decaying
+with τ 0.33 s) carries the text only 361 points past the gesture's 120 by
+400 ms, so with the deltas applied one to one it cannot reach the top by
+400 ms without arriving fast; Ycode arrives later, as slowly as the
+reference (round 7's reference arrived at 330 points a second). Round 9's
+own timing of the input is not in the specs: if its X05 delivered more
+than I.1 says (Ycode's round 9 run reached the top at about 160 ms, which
+the documented input cannot do), the arrival time needs the round's input
+to be settled (K.6).
+
+### K.2 The top line through a width change (row 223)
+
+The first visible logical line is pinned when the window's layout starts
+to move (an inspector slide, a live resize of the window) and every re-wrap
+until its end restores that line, at the same depth into its first row;
+line 1 at the top counts too (it was left out, so nothing held it there).
+The end restores it once more, and for 0.3 s after it a scroll the system
+makes on its own (a bounds change of the clip view with no scroll event
+and no new selection) is undone. Each re-wrap during the motion lays out
+the visible rows in that frame. Off every display, the hide from line 1
+keeps the origin at −86 (the jump bar's inset) through all ten frames, the
+container widening on each (666 → 897 points), and mid-file line 49 stays
+at the top; a scroll of 93 points made mid-slide or just after the end is
+undone. The jump itself (to line 6, about 93 points) was not reproduced off
+every display: it is consistent with the text being scrolled to the clip
+view's raw top under the jump bar.
+
+### K.3 The inspector's show (row 224)
+
+The pane stays collapsed until the motion's first frame and opens in that
+frame's pass (it opened to 1 point at the press, so the edge moved at +57
+ms); the show starts 130 ms after the press (round 8: 145), so its first
+moving frame lands near the reference's 136 ms. Durations and curves are
+J.3's. Off every display (debug build, 60 Hz stepping) a slide frame costs
+26–27 ms (median), so the frame rate on screen is for the council to
+measure.
+
+### K.4 Each document's place (row 226)
+
+Each editor keeps, per document, its selection and its top line while the
+window is open; showing a document again restores both (the status bar
+reads the caret), and a document shown for the first time starts at line
+1, column 1. The Linux IDE already kept them (its documents stay open
+with their buffers).
+
+### K.5 Instances of the selected symbol (row 227)
+
+`SymbolInstances`: after the highlighting delay, only when the insertion
+point is in an identifier in code (not in a comment, a string, a keyword,
+a number, an attribute or a directive), every instance of that identifier
+in code is highlighted; words in comments and strings never are. Both IDEs
+use it (the Linux IDE had no instance highlighting; it now draws them in
+the macOS colour, yellow at 30 %).
+
+### K.6 Not settled by round 9's implementation
+
+- X05's input timing at 2x (K.1), and the start latency and frame spacing
+  of the flick to the bottom (row 222: Ycode started 112–133 ms after the
+  input with frames about 22 ms apart): neither reproduces off every
+  display; an on-screen trace of the first scroll event's frame is needed.
+- Selecting Bands (row 225): off every display a debug build's open costs
+  about 77 ms (the line index and folds 10, the syntax 24, the File
+  inspector 16, the rest under 7 each) plus about 20 ms to draw; whether
+  the council's 261 ms is this work, the navigator's click handling or the
+  build kind needs an on-screen trace.
+
 ## Evidence
 
 - Commands, shortcuts and the assistant/counterparts behavior: Apple's
@@ -1508,6 +1902,10 @@ example its simulator host's), designed by rule 2.
   commands, history buttons and the assistant jump bar:
   `reference-ui-5.md` §2.2, §6.1 (level 3).
 - OPEN QUESTION: whether split history is shared with the tab.
+- Council round 8, Ycode implementation (J.1–J.4): Ycode's own tests and
+  measurements (`CouncilRound8GroupBTests`, `CouncilRound8MotionTests`,
+  `YCODE_IDE_MOTION8`); the reference values are those of
+  `fidelity-council.md` rows 204–207 (level 3).
 - Council round 1 (C.1–C.8), level 3: the session's 1x stills and
   recordings of the reference (black box). Glyph ink boxes and colour
   runs give C.1–C.5. Row matching between stills gives the travel. Per-frame
@@ -1563,3 +1961,14 @@ example its simulator host's), designed by rule 2.
   the test project's generator and the capture scripts (our code); all
   times against the session manifests. Measured in the dirty room; prose
   only here.
+- Council round 7 (I.1–I.6), level 3: the round 7 session's Retina
+  stills and 120 fps recordings of both apps (foreground, key window,
+  dark, host load 250–700). Travel per frame from matching each frame's
+  text area against the step's before and after stills; the input
+  events from the capture tool's session record (our code); the spring
+  checked against the return at three points; last-line rows, the
+  current-line fill and the text area's hairlines from colour runs and
+  gutter ink rows; the inactive pane from its stills; jump-bar parts
+  from ink clusters along the bar and the pane dividers from column
+  profiles; the scroller knob from its run along its column. Measured in
+  the dirty room; prose only here.

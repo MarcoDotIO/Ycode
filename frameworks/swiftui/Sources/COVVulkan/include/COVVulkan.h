@@ -45,8 +45,10 @@ typedef struct {
 /* Loads the Vulkan loader; 0 on success. */
 int ovk_load(char *err, size_t errlen);
 
-/* Creates an instance with `extensions` (the window system's), and a device.
- * `with_swapchain` enables VK_KHR_swapchain on the device. */
+/* Creates a device on an instance with `extensions` (the window system's).
+ * Contexts with the same extensions share one instance, destroyed when the
+ * last context is (ov_vulkan.c, "Shared instances"). `with_swapchain`
+ * enables VK_KHR_swapchain on the device. */
 ovk_context *ovk_create(const char *const *extensions, uint32_t extension_count, int with_swapchain,
                         char *err, size_t errlen);
 void ovk_destroy(ovk_context *c);

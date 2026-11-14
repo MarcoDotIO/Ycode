@@ -68,13 +68,20 @@ struct JumpBar: View {
                 .padding(.leading, CGFloat(JumpBarPaneLayout.closeX) - 6)
                 .shellTarget("jump bar close")
             }
-            Image(systemName: "square.grid.2x2").font(.system(size: 11)).foregroundStyle(c.secondaryLabel)
-                .frame(width: CGFloat(JumpBarEmpty.gridWidth))
-                .padding(.leading, closable ? CGFloat(JumpBarPaneLayout.gridX - JumpBarPaneLayout.closeX - JumpBarPaneLayout.closeWidth) - 2 : 0)
+            // Ycode's grid, 13 × 13 at 13 in (round 10, row 247; JumpBarLeading).
+            JumpBarGridGlyph()
+                .padding(.leading, closable ? CGFloat(JumpBarPaneLayout.gridX - JumpBarPaneLayout.closeX - JumpBarPaneLayout.closeWidth) - 2
+                    : CGFloat(JumpBarLeading.gridX) - 6)
                 .help("Navigate to Related Items")
+            if !closable, path != nil {
+                // With a file: the 1 × 12 divider at 35, the path's ink from 49.
+                JumpBarDividerLine()
+                    .padding(.leading, CGFloat(JumpBarLeading.dividerX - JumpBarLeading.gridX - JumpBarLeading.gridSide) - 2)
+                    .padding(.trailing, CGFloat(JumpBarLeading.pathX - JumpBarLeading.dividerX - JumpBarLeading.dividerWidth - JumpBarEmpty.pathLead) - 2)
+            }
             if closable {
                 Rectangle().fill(c.separator).frame(width: 1, height: 14)
-                    .padding(.leading, CGFloat(JumpBarPaneLayout.dividerX - JumpBarPaneLayout.gridX - JumpBarEmpty.gridWidth) - 2)
+                    .padding(.leading, CGFloat(JumpBarPaneLayout.dividerX - JumpBarPaneLayout.gridX - JumpBarLeading.gridSide) - 2)
                     .padding(.trailing, CGFloat(JumpBarPaneLayout.pathX - JumpBarPaneLayout.dividerX - 1) - 2)
             }
             if path != nil {
@@ -95,7 +102,7 @@ struct JumpBar: View {
                                             .foregroundStyle(isActive ? c.label : c.secondaryLabel).lineLimit(1).fixedSize()
                                             .shellTarget("jump bar symbol")
                                     }
-                                }, hasLast: focusedLast || lastTitle != nil)
+                                }, hasLast: focusedLast || lastTitle != nil, fileName: path.map { ($0 as NSString).lastPathComponent })
             } else {
                 // No file open: a 1-point divider after the grid button, then
                 // "No Selection" in the bar's text colour from 47.5 in
@@ -103,7 +110,7 @@ struct JumpBar: View {
                 HStack(spacing: 0) {
                     if !closable {
                         Rectangle().fill(c.separator).frame(width: 1, height: 14)
-                            .padding(.leading, CGFloat(JumpBarEmpty.dividerX) - 6 - 2 - CGFloat(JumpBarEmpty.gridWidth))
+                            .padding(.leading, CGFloat(JumpBarEmpty.dividerX - JumpBarLeading.gridX - JumpBarLeading.gridSide) - 2)
                     }
                     Text("No Selection").font(ShellFonts.small).foregroundStyle(c.label)
                         .padding(.leading, closable ? 0 : CGFloat(JumpBarEmpty.textX - JumpBarEmpty.dividerX - 1))
@@ -284,7 +291,37 @@ struct CaretPositionLabel: View {
 /// The empty jump bar's layout from the bar's leading edge (`editor-area.md`
 /// F.10): the grid button, the divider, "No Selection" from 47.5.
 enum JumpBarEmpty {
-    static let gridWidth = 14.0
     static let dividerX = 33.5
     static let textX = 47.5
+    /// From the path view's start to its first icon's ink (measured on the
+    /// x86 parity shots).
+    static let pathLead = 0.0
+}
+
+/// The Related Items grid (round 10, row 247): Ycode's four 6 × 6
+/// squares in the reference's grey, on the pixel grid, as the macOS
+/// `JumpBarGridButton`.
+struct JumpBarGridGlyph: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let v = JumpBarLeading.gridColor(dark: scheme == .dark)
+        FileGlyphView(drawing: JumpBarLeading.grid,
+                      color: Color(.sRGB, red: Double(v >> 16 & 0xFF) / 255, green: Double(v >> 8 & 0xFF) / 255, blue: Double(v & 0xFF) / 255))
+            .accessibilityLabel("Related Items")
+            .shellTarget("jump bar grid")
+    }
+}
+
+/// The 1 × 12 divider after the grid (#E6E6E6 / #3C3C3C), as the macOS
+/// `JumpBarDividerView`.
+struct JumpBarDividerLine: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let v = JumpBarLeading.dividerColor(dark: scheme == .dark)
+        Rectangle().fill(Color(.sRGB, red: Double(v >> 16 & 0xFF) / 255, green: Double(v >> 8 & 0xFF) / 255, blue: Double(v & 0xFF) / 255))
+            .frame(width: CGFloat(JumpBarLeading.dividerWidth), height: CGFloat(JumpBarLeading.dividerHeight))
+            .shellTarget("jump bar divider")
+    }
 }

@@ -1,0 +1,50 @@
+{
+  "issue": 81,
+  "targets": [
+    "xcode",
+    "ycode"
+  ],
+  "compare_order": [
+    "xcode",
+    "ycode"
+  ],
+  "window": {
+    "size": [
+      1400,
+      880
+    ],
+    "display": "builtin",
+    "title": "{project}",
+    "timeout": 90
+  },
+  "focus": "foreground",
+  "launch_settle": 3.0,
+  "record": {
+    "fps": 120,
+    "codec": "prores4444",
+    "pre": 0.4,
+    "post": 1.2
+  },
+  "name": "council-r8-reopen",
+  "title": "Council round 8 (#81), as round 7: Council round 7 (#81): the GlassScroll copy left by council-r8-extra (Plain and Sub expanded, Models collapsed, workspace closed) reopened in a new instance of each app: is the navigator's expansion restored?",
+  "project": {
+    "generator": "make-test-project.py",
+    "path": "GlassScroll/GlassScroll.xcodeproj",
+    "reuse_from": "council-r8-extra"
+  },
+  "steps": [
+    {
+      "id": "reopen-navigator",
+      "note": "Round 7: the navigator as the app reopens the project in a later session.",
+      "record": false,
+      "still": "after",
+      "settle": 2.0,
+      "crop": [
+        0,
+        80,
+        290,
+        520
+      ]
+    }
+  ]
+}

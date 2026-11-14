@@ -34,6 +34,10 @@ import threading
 import time
 
 
+# DisplayEncoding's values (display-stream.md §4.3, §14).
+ENCODINGS = {1: "jpeg", 2: "zlib", 3: "h264", 4: "hevc", 5: "hevc444"}
+
+
 def now():
     return time.monotonic()
 
@@ -89,12 +93,13 @@ class Probe:
                 buf = buf[4 + n:]
                 t = now()
                 if kind == 0x03:
-                    seq, gframe, _srv, iseq, _w, _h, _enc, flags, tiles = struct.unpack_from("<QQQIHHBBH", payload)
+                    seq, gframe, _srv, iseq, _w, _h, enc, flags, tiles = struct.unpack_from("<QQQIHHBBH", payload)
                     with self.cond:
                         self.frames.append((t, seq, gframe, iseq, len(payload), tiles, flags & 1, self.phase))
                         self.cond.notify_all()
                     if self.json:
-                        self.json.write(json.dumps({"t": t, "frame": seq, "guest": gframe, "input": iseq, "bytes": len(payload), "tiles": tiles}) + "\n")
+                        self.json.write(json.dumps({"t": t, "frame": seq, "guest": gframe, "input": iseq, "bytes": len(payload), "tiles": tiles,
+                                                    "encoding": ENCODINGS.get(enc, str(enc))}) + "\n")
                 elif kind == 0x05 and len(payload) >= 4:
                     with self.cond:
                         self.shots[struct.unpack_from("<I", payload)[0]] = payload[4:]

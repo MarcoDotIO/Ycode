@@ -21,7 +21,8 @@ import YcodeBuild
         let digit: (String) -> Double = { Double($0.count) * 6 }
         #expect(abs(IssueSummary.Capsule.width(warn.parts, symbolsOnly: false, countWidth: digit) - 61) <= 0.5)
         #expect(IssueSummary.Capsule.width(IssueSummary(errors: 1, warnings: 1).parts, symbolsOnly: false, countWidth: digit) == 111)
-        #expect(IssueSummary.Capsule.width(warn.parts, symbolsOnly: true, countWidth: digit) == 50.5)
+        // Round 8, row 198: collapsed to one glyph in a 39-point capsule.
+        #expect(IssueSummary.Capsule.width(warn.parts, symbolsOnly: true, countWidth: digit) == 39)
         #expect(IssueSummary.Capsule.height == 36 && IssueSummary.Capsule.gapAfterScheme == 7.5)
     }
 

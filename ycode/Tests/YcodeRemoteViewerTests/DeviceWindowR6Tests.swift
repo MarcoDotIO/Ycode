@@ -24,7 +24,7 @@ struct DeviceWindowR6Tests {
         let l = s.layout
         // The macOS hub's rule in the canvas above the capsules.
         let free = CGSize(width: 820, height: 748 - ViewerLayout.controlBar)
-        #expect(abs(l.scale - DeviceZoom.hubFit(frame: l.geometry.outerBox.size, in: free)) < 1e-9)
+        #expect(abs(l.scale - DeviceZoom.hubFit(geometry: l.geometry, foldable: true, in: free)) < 1e-9)
         #expect(abs(l.scale - 0.531) < 0.004, "\(l.scale)")
         // The screen about 248 × 360, the body centred on the canvas.
         #expect(abs(l.screen.width - 248) < 1.5 && abs(l.screen.height - 360) < 1.5, "\(l.screen)")

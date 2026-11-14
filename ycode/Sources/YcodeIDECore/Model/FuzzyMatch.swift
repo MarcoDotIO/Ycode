@@ -40,14 +40,33 @@ public enum FuzzyMatch {
         public var line: Int?
         public var kind: Kind
         public var symbolKind: SymbolScanner.Symbol.Kind?
+        /// A file's place in the project: the project's name, then its
+        /// groups (Open Quickly's second line, "GlassScroll › GlassScroll";
+        /// council round 9, row 215).
+        public var groupPath: [String] = []
+    }
+
+    /// The names a file's row shows above it: the containers' (without
+    /// their extension) and the groups' and folders', outermost first.
+    static func groupPaths(in root: NavigatorNode) -> [ObjectIdentifier: [String]] {
+        var out: [ObjectIdentifier: [String]] = [:]
+        func walk(_ n: NavigatorNode, _ trail: [String]) {
+            if n.kind == .file { out[ObjectIdentifier(n)] = trail; return }
+            let name = n.kind == .container ? (n.name as NSString).deletingPathExtension : n.name
+            for c in n.children { walk(c, trail + [name]) }
+        }
+        walk(root, [])
+        return out
     }
 
     /// Files and declarations (with members) of a workspace tree.
     public static func candidates(in root: NavigatorNode) -> [Candidate] {
         var out: [Candidate] = []
+        let trails = groupPaths(in: root)
         for f in root.allFiles {
             guard let path = f.path else { continue }
-            out.append(Candidate(title: f.name, detail: (path as NSString).deletingLastPathComponent, path: path, kind: .file))
+            out.append(Candidate(title: f.name, detail: (path as NSString).deletingLastPathComponent, path: path, kind: .file,
+                                 groupPath: trails[ObjectIdentifier(f)] ?? []))
             let lang = SourceTokenizer.Language(fileName: f.name)
             guard lang.isCode, let text = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
             func add(_ s: SymbolScanner.Symbol) {

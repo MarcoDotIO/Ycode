@@ -222,21 +222,33 @@ extension RemoteDeviceSession {
     /// The display shows the device and takes input.
     public var isLive: Bool { phase == "live" }
 
-    /// Each control with its state (Record disabled: not in this beta).
+    /// Why the capsules' controls do nothing now (nil: the display is live).
+    /// Their glyphs stay at full contrast whenever the device is shown, as on
+    /// macOS (device-hub.md §15.6, row 175); a press shows this.
+    public var controlsUnavailableReason: String? {
+        if isLive { return nil }
+        return previewing ? "This window shows the device's picture only." : "The device's display isn't connected yet."
+    }
+
+    /// Each control with its state: full contrast whenever the device is
+    /// shown (row 175); disabled only for a control that cannot act, with its
+    /// reason in the tooltip (Record: not in this beta; Rotate on a live
+    /// device that does not turn).
     public var controls: [ViewerControl] {
         DeviceControlsLayout.controlRects(controlGroups, canvasWidth: windowWidth, canvasHeight: windowHeight).map { c, r in
             let enabled: Bool = switch c {
             case .recordScreen: false
-            case .rotateLeft: isLive && canRotate
-            case .poseClosed, .posePartiallyOpen, .poseOpen: isLive && controlDevice.foldable
-            default: isLive
+            case .rotateLeft: !isLive || canRotate
+            case .poseClosed, .posePartiallyOpen, .poseOpen: controlDevice.foldable
+            default: true
             }
             let current: Bool = switch (c, posture) {
             case (.poseClosed, .closed?), (.posePartiallyOpen, .halfOpen?), (.poseOpen, .openFlat?): true
             default: false
             }
+            let reason = c == .recordScreen ? nil : c == .rotateLeft && isLive && !canRotate ? "This device does not rotate" : controlsUnavailableReason
             return ViewerControl(command: c, rect: ViewerRect(r), enabled: enabled, highlighted: current,
-                                 help: DeviceWindowChrome.help(c))
+                                 help: reason.map { DeviceControlsLayout.unavailableHelp(DeviceWindowChrome.help(c), reason: $0) } ?? DeviceWindowChrome.help(c))
         }
     }
 

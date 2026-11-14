@@ -90,11 +90,13 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         // Round 6 (H.1) supersedes round 3's 48 points: a crossing at about
         // 4300 pt/s runs about 120 past the top, peaking about 71 ms after
         // the crossing; at rest about 640 ms after it (`CouncilRound6ChromeTests`).
+        // Round 9 (rows 220, 222): the return at ω 11.3 to within half a
+        // point, so a 124-point run rests about 770 ms after the crossing.
         let v = 4300.0
         #expect(abs(TopBounce.peak(velocity: v) - 124) < 2)
         #expect(abs(TopBounce.peakTime - 0.0714) < 0.001)
         let d = TopBounce.duration(velocity: v)
-        #expect(d > 0.55 && d < 0.72, "\(d)")
+        #expect(d > 0.55 && d < 0.85, "\(d)")
         // A bounce that takes over already past the top keeps going down from there.
         #expect(TopBounce.overscroll(from: 20, velocity: v, at: 0) == 20)
         #expect(TopBounce.overscroll(from: 20, velocity: v, at: 0.03) > 20)
@@ -445,7 +447,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             recents: ["feature"], tags: [], stashes: [], remotes: [], remoteBranches: [])
         let repo = try #require(tree.first)
         #expect(repo.detail == "main" && repo.symbol == RepositoriesViewStyle.repositorySymbol)
-        #expect(repo.children.map(\.symbol) == ["square.stack.3d.up.fill", "clock", "tag.fill", "tray", "globe"])
+        #expect(repo.children.map(\.symbol) == ["square.stack.3d.up.fill", "clock.fill", "tag.fill", "tray.fill", "globe"])
         #expect(repo.children.allSatisfy { $0.alwaysExpandable && $0.tint != nil })
         #expect(repo.children[0].children.allSatisfy { $0.detail == nil })
         #expect(repo.children.map { SourceControlNavigatorModel.expandsInitially($0) } == [true, false, false, false, false])

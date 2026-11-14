@@ -39,7 +39,7 @@ struct MergeSheetTests {
         #expect(44 + c.right.start == 815 && c.right.length == 540)
         #expect(44 + c.ruler.start == 1338 && c.ruler.length == 17)
         let alert = M.alertFrame(window: (1400, 880))
-        #expect(alert.x == 490 && alert.y == 373 && alert.width == 420 && alert.height == 133)
+        #expect(alert.x == 490 && alert.y == 373 && alert.width == 420 && alert.height == 132)
     }
 
     @Test func rowsAlignBothVersionsAndMarkTheChanges() {
@@ -47,10 +47,11 @@ struct MergeSheetTests {
         s.files = ["/r/Merger/Greeting.swift"]
         s.show(file: "/r/Merger/Greeting.swift", document: greeting())
         let rows = s.sheetRows
-        #expect(rows.count == 9)
+        // Nine lines and the empty line after the final break (row 178).
+        #expect(rows.count == 10 && rows[9].isFinalEmptyLine && rows[9].left?.number == 10 && rows[9].right?.text == "")
         // Every line sits at the same row in both panes.
         #expect(rows.allSatisfy { $0.left?.number == $0.right?.number })
-        #expect(rows.map(\.kind) == [.same, .conflict, .same, .same, .same, .same, .conflict, .same, .clean])
+        #expect(rows.map(\.kind) == [.same, .conflict, .same, .same, .same, .same, .conflict, .same, .clean, .same])
         #expect(rows[1].isFirstOfHunk && rows[1].hunk == 0 && rows[8].hunk == 2)
         // The left pane is the current branch's version with the clean
         // change applied; no conflict markers.
@@ -66,7 +67,7 @@ struct MergeSheetTests {
     @Test func blocksOfDifferentLengthsArePadded() {
         let doc = MergeDocument(base: "a\nb\nc\n", ours: "a\nB\nc\n", theirs: "a\nB1\nB2\nB3\nc\n")
         let rows = MergeSheetLayout.rows(doc)
-        #expect(rows.count == 5)
+        #expect(rows.count == 6 && rows[5].left?.number == 4 && rows[5].right?.number == 6)
         #expect(rows[1...3].map { $0.left?.text } == ["B", nil, nil])
         #expect(rows[1...3].map { $0.right?.text } == ["B1", "B2", "B3"])
         #expect(rows[4].left?.number == 3 && rows[4].right?.number == 5)

@@ -38,7 +38,9 @@ import Testing
         #expect(hub.canvas.showsDisabledControls && !controls.isHidden)
         #expect(controls.groups == [[.home, .screenshot, .recordScreen], [.rotateLeft, .poseClosed, .posePartiallyOpen, .poseOpen]])
         #expect(controls.capsules.count == 2 && controls.capsules[1].frame.width == 145.5)
-        #expect(controls.groups.joined().allSatisfy { controls.button(for: $0)?.isEnabled == false })
+        // Round 7 (row 175): at full contrast, the reason in each tooltip.
+        #expect(controls.groups.joined().allSatisfy { controls.button(for: $0)?.isEnabled == true })
+        #expect(controls.configuration.unavailableReason == DeviceCanvasView.notOperatedReason)
         #expect(controls.highlightedPose == .poseClosed)
         // A picture of the window for the report (`YCODE_B5_SHOTS=<folder>`).
         if let dir = ProcessInfo.processInfo.environment["YCODE_B5_SHOTS"], let frame = w.contentView?.superview,
@@ -50,7 +52,8 @@ import Testing
         // Ycode's own images: Rotate a template, the postures in their colours.
         let rotate = try #require(controls.button(for: .rotateLeft)?.image)
         #expect(rotate.isTemplate && rotate.accessibilityDescription == "Rotate")
-        #expect(abs(rotate.size.width - 21) <= 1 && abs(rotate.size.height - 23.5) <= 1, "\(rotate.size)")
+        // Round 7's Rotate (§15.6): hooks at two opposite corners, 20 × 17.5 plus a point a side.
+        #expect(abs(rotate.size.width - 22) <= 1 && abs(rotate.size.height - 20) <= 1, "\(rotate.size)")
         let closed = try #require(controls.button(for: .poseClosed)?.image)
         #expect(!closed.isTemplate)
         // The current posture's outline is the accent, read back from its image.

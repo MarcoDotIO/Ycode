@@ -130,6 +130,86 @@ struct OffscreenGuardTests {
         #expect(parked.size == NSSize(width: 420, height: 300) && parked.minY == 40 && !touchesAScreen(parked))
     }
 
+    /// A visible window moved by a path the guard's setters do not see
+    /// (AppKit's own frame changes, the window server moving it, a display
+    /// added or rearranged) is moved off again at once. Two windows of a
+    /// full run escaped this way (the headset setup window and a council
+    /// suite's workspace window), on a run that passed the setters' checks.
+    @Test(arguments: [NSRect(x: 40, y: 40, width: 420, height: 300), NSRect(x: 0, y: 0, width: 1400, height: 880)])
+    func aWindowMovedPastTheSettersIsMovedBackAtOnce(_ onDisplay: NSRect) throws {
+        let w = try window()
+        defer { w.orderOut(nil) }
+        w.setFrame(NSRect(x: -6000, y: -6000, width: 1400, height: 880), display: false)
+        w.orderBack(nil)
+        pump()
+        YcodeOffscreenMoveUnguardedForTesting(w, onDisplay)
+        expectOff(w, "moved past the setters to \(onDisplay)")
+        #expect(w.frame.size == onDisplay.size)
+        pump()
+        expectOff(w, "after a run loop pass")
+    }
+
+    /// After a display change every visible window is moved off again, and
+    /// a moved window sits far enough left that a display attached to the
+    /// left of the others does not reach it.
+    @Test func aDisplayChangeMovesVisibleWindowsOffAndTheGapIsWide() throws {
+        let w = try window()
+        defer { w.orderOut(nil) }
+        w.orderFront(nil)
+        pump()
+        let left = NSScreen.screens.map(\.frame.minX).min() ?? 0
+        #expect(w.frame.maxX <= left - 20000, "\(w.frame)")
+        NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: NSApp)
+        expectOff(w, "after a display change")
+    }
+
+    /// Windows are fully transparent on the window server, so one that
+    /// reaches a display shows nothing; `alphaValue` reads what was set,
+    /// and such a window still counts as on a display.
+    @Test func windowsAreTransparentOnTheWindowServer() throws {
+        let w = try window()
+        defer { w.orderOut(nil) }
+        #expect(w.alphaValue == 1)
+        w.alphaValue = 0.8
+        #expect(w.alphaValue == 0.8)
+        w.orderBack(nil)
+        pump()
+        let info = (CGWindowListCopyWindowInfo([.optionIncludingWindow], CGWindowID(w.windowNumber)) as? [[String: Any]])?.first
+        #expect((info?[kCGWindowAlpha as String] as? Double) == 0, "\(String(describing: info))")
+    }
+
+    /// `screencapture -l` still sees a window's content inside
+    /// `YcodeOffscreenOpaqueDuringCapture`, and the window is transparent
+    /// again afterwards.
+    @Test func aCaptureSeesTheWindow() throws {
+        let w = try window()
+        defer { w.orderOut(nil) }
+        let v = NSView()
+        v.wantsLayer = true
+        v.layer?.backgroundColor = NSColor.red.cgColor
+        w.contentView = v
+        w.orderBack(nil)
+        pump(0.3)
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-guard-capture-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: out) }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        p.arguments = ["-x", "-o", "-l\(w.windowNumber)", out.path]
+        YcodeOffscreenOpaqueDuringCapture(w) {
+            try? p.run()
+            p.waitUntilExit()
+        }
+        // A process without screen recording permission gets no file (the
+        // shot helpers then draw the view themselves); with it, the content.
+        if let data = try? Data(contentsOf: out), let rep = NSBitmapImageRep(data: data) {
+            let c = try #require(rep.colorAt(x: rep.pixelsWide / 2, y: rep.pixelsHigh / 2)?.usingColorSpace(.sRGB))
+            #expect(c.alphaComponent > 0.9 && c.redComponent > 0.8 && c.greenComponent < 0.3, "\(c)")
+        }
+        let info = (CGWindowListCopyWindowInfo([.optionIncludingWindow], CGWindowID(w.windowNumber)) as? [[String: Any]])?.first
+        #expect((info?[kCGWindowAlpha as String] as? Double) == 0)
+        expectOff(w, "after the capture")
+    }
+
     /// A sheet on a window, and a panel, are off every display too.
     @Test func sheetsAndPanelsStayOff() async throws {
         let w = try window()

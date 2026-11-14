@@ -1150,8 +1150,14 @@ swift-testing tags, with "Untagged Tests" last.
       Path** (the path inside it).
    2. **On Demand Resource Tags:** a disabled field with the placeholder
       "Only resources are taggable". For resources it is a tag token field
-      editing the file's `ASSET_TAGS`; Ycode shows it disabled for all
-      files for now.
+      ("Tags") editing the file's `ASSET_TAGS`. A file is a resource when
+      its type joins a target's resources phase (Markdown, JSON, images;
+      not sources, headers, build configuration files or `Info.plist`);
+      the type is the project file's recorded one, else the extension's.
+      Ycode does not yet edit the tags.
+   2a. **Localization** (resources only; `fidelity-council.md` row 230):
+      a full-width "Localize…" button, after Image Properties for an image
+      and straight after the tags otherwise.
    3. **Target Membership:** one row per target that includes the file:
       the target's icon and name, with the membership kind under it
       ("Default").

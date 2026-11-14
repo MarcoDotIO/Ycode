@@ -31,7 +31,7 @@ import YcodeDisplayStream
         s.close()
     }
 
-    @Test func aDeviceYcodeDoesNotOperateShowsTheCapsulesDisabled() {
+    @Test func aDeviceYcodeDoesNotOperateShowsItsCapsules() {
         let c = r3.canvas()
         // Ycode's choice for §12.1 question 2: the capsules float in place,
         // every control disabled, so the device keeps its place.
@@ -42,12 +42,17 @@ import YcodeDisplayStream
         #expect(c.controls.capsules.map(\.frame.width) == [108, 145.5])
         let pair = c.controls.frame
         #expect(pair.maxY == 800 - 8 && pair.height == 36.5 && abs(pair.midX - c.bounds.midX) <= 0.5)
-        #expect(c.controls.groups.joined().allSatisfy { c.controls.button(for: $0)?.isEnabled == false })
+        // Round 7 (row 175): the glyphs at full contrast, the reason in each
+        // tooltip; a press shows it instead of acting.
+        #expect(c.controls.groups.joined().allSatisfy { c.controls.button(for: $0)?.isEnabled == true })
+        #expect(c.controls.button(for: .home)?.toolTip == "Home. " + DeviceCanvasView.notOperatedReason)
         // The device centred between the toolbar's bottom and the capsules' top.
         let device = c.frameView.convert(c.frameView.bounds, to: c)
         #expect(abs(device.midY - (52 + pair.minY) / 2) <= 1 && device.maxY < pair.minY)
         // No texts: the capsules carry glyphs only.
         #expect(DeviceCanvasR3Tests.visibleTexts(in: c).isEmpty)
+        c.perform(.screenshot)
+        #expect(c.bannerText == DeviceCanvasView.notOperatedReason)
         // A stopped Ycode simulator keeps Start in their place instead.
         c.showStopped(spec: .iPhoneDuo, name: "iPhone Duo (Ycode)", os: "iOS 27.1", action: "Start")
         c.layoutSubtreeIfNeeded()

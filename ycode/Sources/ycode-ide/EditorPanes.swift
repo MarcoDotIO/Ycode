@@ -164,7 +164,10 @@ struct SourcePaneText: View {
                 Minimap(controller: controller, colors: c, palette: palette, width: Minimap.width(forPane: geo.size.width))
             }
         }
-        .onAppear { controller.onPointerDown = { [weak model] in model?.focusPane(paneID) } }
+        .onAppear {
+            controller.onPointerDown = { [weak model] in model?.focusPane(paneID) }
+            PaneRestore.paneAppeared(model: model, pane: paneID, controller: controller)   // W7.1
+        }
     }
 }
 
@@ -191,6 +194,9 @@ enum PaneControllers {
         if focused, (document.viewState as? SourceEditorController) !== c { document.viewState = c }
         return c
     }
+
+    /// The controller of a pane showing `path`, when it has one (W7.1).
+    static func existing(pane: Int, path: String) -> SourceEditorController? { table["\(pane)|\(path)"] }
 
     /// Forgets the controllers of panes that are gone.
     static func keep(panes ids: Set<Int>) {
@@ -229,17 +235,16 @@ enum JumpBarPaneLayout {
         let dark = scheme == .dark
         func rgb(_ r: Int, _ g: Int, _ b: Int) -> Color { Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255) }
         let blue = dark ? rgb(0x0A, 0x84, 0xFF) : rgb(0x00, 0x7A, 0xFF)
-        switch symbol {
+        // The navigator's measured tints (`FileGlyphs.tint`, round 9), as
+        // the macOS jump bar (`JumpBar.iconTint(symbol:title:)`).
+        let t: WorkspaceChrome.IconTint? = switch symbol {
         case "folder.badge.gearshape", "shippingbox", "square.stack.3d.up", WorkspaceChrome.fileSymbol("a.png"), WorkspaceChrome.fileSymbol("a.xcassets"):
-            return blue
-        case "folder.fill", "folder":
-            // The blue blended with white (40 % light, 20 % dark).
-            return dark ? rgb(0x3B, 0x9D, 0xFF) : rgb(0x66, 0xAF, 0xFF)
-        case WorkspaceChrome.fileSymbol("a.swift"):
-            return dark ? rgb(0xFF, 0x9F, 0x0A) : rgb(0xFF, 0x95, 0x00)
-        default:
-            return blue
+            .blue
+        case "folder.fill", "folder": .lightBlue
+        case WorkspaceChrome.fileSymbol("a.swift"): .orange
+        default: nil
         }
+        return t.flatMap(FileGlyphs.tint).map { FileGlyphView.color($0, dark: dark) } ?? blue
     }
 }
 

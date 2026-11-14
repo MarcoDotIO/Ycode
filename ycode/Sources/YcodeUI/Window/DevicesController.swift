@@ -46,6 +46,9 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     private let noResults = NSStackView()
     private var tableRows: [HubSidebarRow] = []
     private var inspectorItem: NSSplitViewItem?
+    private var inspectorCollapseObservation: NSKeyValueObservation?
+    /// The inspector is shown (not collapsed).
+    public var inspectorShown: Bool { inspectorItem?.isCollapsed == false }
     private var sidebarItem: NSSplitViewItem?
     private var sidebarCollapseObservation: NSKeyValueObservation?
     private var statePoll: Timer?
@@ -77,7 +80,8 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     var allRows: [DeviceRow] { devices + simulators }
 
     private func hubDevice(_ r: DeviceRow) -> HubDevice {
-        let family = r.deviceTypeID.flatMap { DeviceFrameSpec.named(typeID: $0)?.family } ?? HubDevice.family(platform: r.platform, name: r.name)
+        let family = r.deviceTypeID.flatMap { DeviceFrameSpec.named(typeID: $0)?.family }
+            ?? HubDevice.family(platform: r.platform, name: r.name, typeID: r.deviceTypeID, model: r.model)
         let physical = devices.contains { $0.identifier == r.identifier }
         let running = physical ? r.state.contains("connected") && !r.state.contains("disconnected") : r.state == "Booted"
         // A device that is not connected is listed under Unavailable (§5.1).
@@ -630,13 +634,26 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         sidebarCollapseObservation = side.observe(\.isCollapsed) { [weak self] _, _ in
             MainActor.assumeIsolated { self?.toolbarController.updateSidebarItems() }
         }
+        // No tab drawn selected while the inspector is hidden (§15.5).
+        inspectorCollapseObservation = inspector.observe(\.isCollapsed) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.toolbarController.updateTabs() }
+        }
         reloadSidebar()
-        if selected == nil { select(row: 0) } else { showDetails() }
+        // The saved selection first, so the first selection does not replace
+        // it before `restoreState` reads it (the window opens with it
+        // selected and in view, row 233).
+        if selected == nil {
+            let saved = defaults.string(forKey: Self.selectionKey)
+            select(row: rows.firstIndex { $0.identifier == saved } ?? 0)
+        } else {
+            showDetails()
+        }
     }
 
     public override func viewDidAppear() {
         super.viewDidAppear()
         placeFirstDividers()
+        revealSelection()
         statePoll?.invalidate()
         statePoll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.pollRemoteRows() } }
     }
@@ -651,6 +668,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
             splitView.setPosition(240, ofDividerAt: 0)
             splitView.setPosition(max(520, view.bounds.width - 280), ofDividerAt: 1)
         }
+        revealSelection()
     }
 
     public override func viewWillDisappear() {
@@ -748,7 +766,12 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         canvas.onAction = { [weak self] in if let r = self?.selected { self?.start(r) } }
         canvas.onZoomChange = { [weak self] in
             guard let self else { return }
-            self.defaults.set(self.canvas.zoom.storedValue, forKey: Self.zoomKey)
+            // A zoom the hub set for a device's first showing is not the
+            // window's remembered zoom (row 232); one the person chose is.
+            if !self.settingOpeningZoom {
+                self.defaults.set(self.canvas.zoom.storedValue, forKey: Self.zoomKey)
+                self.openingZoomDevice = nil
+            }
             self.toolbarController.updateZoom()
         }
         canvas.onCaptureChange = { [weak self] on in self?.toolbarController.updateCapture(on) }
@@ -819,7 +842,17 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         if let s = selected, let i = tableRows.firstIndex(where: { $0.device?.id == s.identifier }), !table.selectedRowIndexes.contains(i) {
             table.selectRowIndexes([i], byExtendingSelection: false)
         }
+        revealSelection()
         showDetails()
+    }
+
+    /// Scrolls the sidebar so the selected device's row is in view (§5.2,
+    /// council round 9 row 233): on a selection and when the window opens
+    /// with one.
+    func revealSelection() {
+        guard isViewLoaded, let s = selected, let i = tableRows.firstIndex(where: { $0.device?.id == s.identifier }) else { return }
+        table.superview?.superview?.layoutSubtreeIfNeeded()
+        table.scrollRowToVisible(i)
     }
 
     /// Several rows selected (the canvas says so; double-click opens a
@@ -841,6 +874,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         guard let r = selected else { canvas.showMessage(emptyCanvasMessage); return }
         updatePairedCapsule(for: r)
         let d = hubDevice(r)
+        applyOpeningZoom(r, family: d.family)
         // A simctl device's type by its name, so a foldable keeps its posture
         // capsule even when Ycode does not run it (§13.1).
         let spec = r.deviceTypeID.flatMap(DeviceFrameSpec.named(typeID:)) ?? DeviceFrameSpec.named(name: r.model)
@@ -850,11 +884,49 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         } else if r.isYcodeRemote, r.state == "Booted", let l = link(for: r) {
             canvas.show(session: l.session)
         } else if r.isYcodeRemote {
+            canvas.unavailableControlsReason = Self.compactWindowUnavailable
             canvas.showStopped(spec: spec, name: r.name, os: d.osTitle, action: r.state == "Booted" ? nil : "Start")
         } else {
             // Other simulators and devices: listed only (Ycode does not operate them).
+            canvas.unavailableControlsReason = DeviceCanvasView.notOperatedReason
             canvas.showStopped(spec: spec, name: r.name, os: d.osTitle, action: nil)
         }
+    }
+
+    // MARK: Opening zoom (§4.2, §14.1; council round 9 row 232)
+
+    /// The device the canvas last chose a zoom for, and the device shown at
+    /// its first-showing zoom (nil: the window's remembered zoom is shown).
+    private var zoomDevice: String?
+    private(set) var openingZoomDevice: String?
+    private var settingOpeningZoom = false
+
+    /// The window's remembered zoom (Zoom to Fit until the person picks one).
+    var rememberedZoom: DeviceZoomMode { defaults.string(forKey: Self.zoomKey).flatMap(DeviceZoomMode.init(storedValue:)) ?? .fit }
+
+    /// When the selection changes: a watch shown for the first time opens at
+    /// Physical Size (its real size, the third zoom segment, as the
+    /// reference's newly created watch does); afterwards, and for every
+    /// other device, the window's remembered zoom. The watches already shown
+    /// are kept with the hub's state.
+    func applyOpeningZoom(_ r: DeviceRow, family: DeviceFamily) {
+        guard zoomDevice != r.identifier else { return }
+        zoomDevice = r.identifier
+        var shown = Set(defaults.stringArray(forKey: Self.shownWatchesKey) ?? [])
+        let target: DeviceZoomMode
+        if family == .watch, !shown.contains(r.identifier) {
+            shown.insert(r.identifier)
+            defaults.set(shown.sorted(), forKey: Self.shownWatchesKey)
+            openingZoomDevice = r.identifier
+            target = .actual
+        } else {
+            guard openingZoomDevice != nil else { return }
+            openingZoomDevice = nil
+            target = rememberedZoom
+        }
+        settingOpeningZoom = true
+        canvas.zoom = target
+        settingOpeningZoom = false
     }
 
     /// The canvas with nothing selected; with no devices at all it says what
@@ -1048,27 +1120,11 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     public func tableView(_ t: NSTableView, viewFor c: NSTableColumn?, row: Int) -> NSView? {
         switch tableRows[row] {
         case .header(let title, let collapsed):
-            let b = NSButton(title: title, target: self, action: #selector(headerClicked(_:)))
-            b.isBordered = false
-            b.font = .systemFont(ofSize: 11, weight: .semibold)
-            b.contentTintColor = .secondaryLabelColor
-            b.alignment = .left
-            b.image = NSImage(systemSymbolName: collapsed ? "chevron.right" : "chevron.down", accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(pointSize: 8, weight: .semibold))
-            b.imagePosition = .imageTrailing
-            b.identifier = .init(title)
-            b.setAccessibilityLabel(title)
-            let v = NSView()
-            b.translatesAutoresizingMaskIntoConstraints = false
-            v.addSubview(b)
-            NSLayoutConstraint.activate([b.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 10), b.bottomAnchor.constraint(equalTo: v.bottomAnchor, constant: -4)])
-            return v
+            return HubSectionHeaderView(title: title, collapsed: collapsed) { [weak self] in self?.toggleSection(title) }
         case .device(let d):
             return DeviceHubRowView(device: d)
         }
     }
-
-    @objc func headerClicked(_ sender: NSButton) { if let t = sender.identifier?.rawValue { toggleSection(t) } }
 
     @objc func rowDoubleClicked(_ sender: Any?) {
         // Double-click opens a compact window for each selected running device (§2.2).
@@ -1093,6 +1149,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     static let zoomKey = "Ycode.deviceHub.zoom"
     static let bezelsKey = "Ycode.deviceHub.bezels"
     static let hiddenInfoKey = "Ycode.deviceHub.hiddenInfoRows"
+    static let shownWatchesKey = "Ycode.deviceHub.shownWatches"
 
     /// Restores the hub's saved state: filter, collapsed sections, the
     /// inspector tab and sub-tab, hidden Info rows, the selected device.

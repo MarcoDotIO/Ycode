@@ -56,6 +56,15 @@ public final class KernelLock: @unchecked Sendable {
     /// The holding host thread (`threadToken`), 0 when free. Atomic: other
     /// threads read it (`isHeldByCurrentThread`) without the mutex.
     fileprivate let owner = Atomic<UInt>(0)
+    /// The port lock under `YCODE_PORT_LOCK_SPLIT=1` (`mach-ipc-locking.md`
+    /// §4.12): fine steps hold it shared (`tryAcquireShared`), every other
+    /// holder exclusively, and an exclusive holder waits for the shared
+    /// holders in flight once it has the mutex.
+    let sharesReaders: Bool
+    /// Shared holders in flight, and whether an exclusive holder has the
+    /// mutex (or is draining the shared holders).
+    let sharedReaders = Atomic<Int>(0)
+    let writerPending = Atomic<Int>(0)
     /// The lock split (`mach-ipc-locking.md` §4) is on for the system of
     /// this kernel lock L0: IPC state has fine locks of its own.
     public let splitEnabled: Bool
@@ -142,6 +151,15 @@ public final class KernelLock: @unchecked Sendable {
     /// A fine lock's contended acquisitions and their wait (split only).
     fileprivate var fineContended: UInt64 = 0
     fileprivate var fineWaitNanoseconds: UInt64 = 0
+    var fineContendedCount: UInt64 { fineContended }
+    var fineWaitedNanoseconds: UInt64 { fineWaitNanoseconds }
+    /// `LockStallStats`: who holds the lock (published at each acquisition
+    /// while the diagnostic is on).
+    fileprivate let stallWord = Atomic<UInt64>(0)
+    /// `LockStallStats` hold anatomy: the holder's CPU time and lock waits
+    /// when it took the lock (holder state).
+    fileprivate var holdCPU0: UInt64 = 0
+    fileprivate var holdWaited0: UInt64 = 0
     public var slowHoldNanoseconds: UInt64 = 0
     public var slowHoldReporter: ((_ context: ThreadContext?, _ nanoseconds: UInt64) -> Void)?
     private var holdStart: UInt64 = 0
@@ -163,16 +181,25 @@ public final class KernelLock: @unchecked Sendable {
         let traced = KernelTrace.lockWaited
         let timed = trapProfile != nil || (Self.profileProcesses && root == nil) || traced != nil
         let promoting = HostSched.promoting
-        guard timed || tracking || promoting else {
+        guard timed || tracking || promoting || LockStallStats.enabled else {
             pthread_mutex_lock(mutex)
             return
         }
         let cls = gate ? (context?.schedClass ?? SchedClass.interactive) : SchedClass.default
-        let start = timed ? KernelClock.now() : 0
+        let stalls = LockStallStats.enabled
+        let start = timed || stalls ? KernelClock.now() : 0
         if gate, cls < SchedClass.interactive { admit(cls) }
         var contended = false
         if pthread_mutex_trylock(mutex) != 0 {
             contended = true
+            let holder = stalls ? stallWord.load(ordering: .relaxed) : 0
+            defer {
+                if stalls {
+                    let waited = KernelClock.now() &- start
+                    LockStallStats.note(level: level, context: context, word: holder, ns: waited)
+                    KernelThreadLocks.current.waitedNanoseconds &+= waited
+                }
+            }
             if tracking {
                 if cls >= SchedClass.default, context != nil { lastHighContentionStore.store(KernelClock.now(), ordering: .relaxed) }
                 contending.wrappingAdd(Self.unit(cls), ordering: .sequentiallyConsistent)
@@ -432,6 +459,36 @@ public final class KernelLock: @unchecked Sendable {
         }
     }
 
+    /// `YCODE_FINE_LOCK_SPIN_US=N` (default 0: off; `boot-profile.md` §27.2):
+    /// a thread that finds a fine lock (an event lock, the port lock) taken
+    /// watches it for up to N µs and takes it as soon as it is free, before it
+    /// sleeps on the mutex. Fine-lock holds are microseconds (the port lock's
+    /// mean is 7 µs), and a sleeping waiter's wakeup costs a host scheduling
+    /// round trip that on a saturated host is far longer than the hold: on
+    /// xnu these locks are spinlocks.
+    nonisolated(unsafe) static var fineSpinNanoseconds =
+        UInt64(max(0, getenv("YCODE_FINE_LOCK_SPIN_US").flatMap { Double(String(cString: $0)) } ?? 0) * 1000)
+    static let spinAcquisitions = Atomic<UInt64>(0)
+    static let spinFailures = Atomic<UInt64>(0)
+
+    /// Watches the mutex until `deadline` (host monotonic ns): true when it
+    /// was taken. Reads the owner word between attempts so the spin does not
+    /// keep writing the lock's cache line.
+    private func spinForMutex(until deadline: UInt64) -> Bool {
+        var polls = 0
+        while true {
+            if owner.load(ordering: .relaxed) == 0, pthread_mutex_trylock(mutex) == 0 {
+                Self.spinAcquisitions.wrappingAdd(1, ordering: .relaxed)
+                return true
+            }
+            polls &+= 1
+            if polls & 15 == 0, KernelClock.now() >= deadline {
+                Self.spinFailures.wrappingAdd(1, ordering: .relaxed)
+                return false
+            }
+        }
+    }
+
     /// `YCODE_FINE_LOCK_SPIN=0`: fine locks are plain mutexes.
     nonisolated(unsafe) public static var fineLockSpin = getenv("YCODE_FINE_LOCK_SPIN").map { String(cString: $0) != "0" } ?? true
 
@@ -449,6 +506,12 @@ public final class KernelLock: @unchecked Sendable {
         holdStart = KernelClock.now()
         acquisitions &+= 1
         if HostSched.promoting { publishHolder() }
+        if LockStallStats.enabled {
+            stallWord.store(LockStallStats.word(context: currentContext, posted: false), ordering: .relaxed)
+            holdCPU0 = LockStallStats.threadCPU()
+            holdWaited0 = KernelThreadLocks.current.waitedNanoseconds
+            if level == 2, LockStallStats.portLock == nil { LockStallStats.portLock = self }
+        }
     }
 
     /// Bookkeeping as the holder lets go (lock still held). Returns a raised
@@ -486,6 +549,11 @@ public final class KernelLock: @unchecked Sendable {
             trapProfile.noteHold(TrapProfile.key(for: currentContext), held, usage: usage)
         }
         if slowHoldNanoseconds > 0, held >= slowHoldNanoseconds, let r = slowHoldReporter { r(currentContext, held) }
+        if LockStallStats.enabled, held >= LockStallStats.minimumNanoseconds {
+            LockStallStats.noteHold(level: level, context: currentContext, held: held,
+                                    cpu: LockStallStats.threadCPU() &- holdCPU0,
+                                    nested: KernelThreadLocks.current.waitedNanoseconds &- holdWaited0)
+        }
         return withdrawn
     }
 
@@ -516,6 +584,7 @@ public final class KernelLock: @unchecked Sendable {
         splitEnabled = split
         self.root = root
         self.level = level
+        sharesReaders = root != nil && level == 2 && PortLockSplit.enabled
         trapProfile = root == nil ? TrapProfile.shared : (level == 2 ? TrapProfile.portLock : TrapProfile.eventLocks)
         mutex = .allocate(capacity: 1)
         var attr = pthread_mutexattr_t()
@@ -830,12 +899,25 @@ public struct WaitQueue: @unchecked Sendable {
         let hostTID: Int32
         var wantsHandoff = false
         let handoffState = Atomic<Int>(0)
+        /// `YCODE_WAIT_OWN_MUTEX=1` (`mach-ipc-locking.md` §4.4): a waiter on
+        /// a fine lock's queue sleeps on a mutex of its own, so its wakeup
+        /// does not first take the queue's lock only to let it go again
+        /// (nil when off, and for L0 queues).
+        let ownMutex: UnsafeMutablePointer<pthread_mutex_t>?
+        nonisolated(unsafe) static var ownMutexEnabled = getenv("YCODE_WAIT_OWN_MUTEX").map { String(cString: $0) == "1" } ?? false
 
         init(lock: KernelLock, context: ThreadContext?, tag: UInt64) {
             self.lock = lock
             self.context = context
             self.tag = tag
             hostTID = SyncHandoff.enabled || SyncHandoff.pinHook != nil ? SyncHandoff.currentTID() : 0
+            if Self.ownMutexEnabled, lock.root != nil {
+                let m = UnsafeMutablePointer<pthread_mutex_t>.allocate(capacity: 1)
+                pthread_mutex_init(m, nil)
+                ownMutex = m
+            } else {
+                ownMutex = nil
+            }
             cond = .allocate(capacity: 1)
             var attr = pthread_condattr_t()
             pthread_condattr_init(&attr)
@@ -849,6 +931,23 @@ public struct WaitQueue: @unchecked Sendable {
         deinit {
             pthread_cond_destroy(cond)
             cond.deallocate()
+            if let ownMutex {
+                pthread_mutex_destroy(ownMutex)
+                ownMutex.deallocate()
+            }
+        }
+
+        /// Sets the result (the queue's lock held, or its mutex): under the
+        /// waiter's own mutex too when it has one, which is what it reads
+        /// `result` under while it sleeps.
+        @inline(__always) func setResult(_ r: WaitResult) {
+            if let ownMutex {
+                pthread_mutex_lock(ownMutex)
+                result = r
+                pthread_mutex_unlock(ownMutex)
+            } else {
+                result = r
+            }
         }
 
         /// Signals the sleeping host thread (after a hand-off's pin).
@@ -870,13 +969,13 @@ public struct WaitQueue: @unchecked Sendable {
                 // A waker without the waiter's lock (`mach-ipc-locking.md`
                 // §4.4, I2): the waiter reads `result` only under its lock.
                 pthread_mutex_lock(lock.mutex)
-                result = r
+                setResult(r)
                 storage?.remove(self)
                 sendSignal()
                 pthread_mutex_unlock(lock.mutex)
                 return
             }
-            result = r
+            setResult(r)
             storage?.remove(self)
             if KernelLock.profileProcesses { wokenAt = KernelClock.now() }
             // A holder of the lock signals once it lets go; the waiter cannot
@@ -966,6 +1065,9 @@ public struct WaitQueue: @unchecked Sendable {
 
     @discardableResult
     public func wake(count: Int) -> Int {
+        if !storage.waiters.isEmpty, PortLockSplit.enabled {
+            precondition(KernelThreadLocks.current.sharedPortHold == 0, "a fine port step woke a waiter (mach-ipc-locking.md §4.12)")
+        }
         checkBound()
         var n = 0
         while n < count, let w = storage.waiters.first {
@@ -1059,6 +1161,12 @@ public final class KernelThreadLocks {
     var quiesced = false
     /// True while the thread is running deferred work (no nested drain).
     private var draining = false
+    /// `LockStallStats`: this thread's contended lock waits so far (ns).
+    var waitedNanoseconds: UInt64 = 0
+    /// A fine port step (`mach-ipc-locking.md` §4.12): the port lock held
+    /// shared (1) and the space locks it holds, in order.
+    var sharedPortHold = 0
+    var heldSpaces: [SpaceLock] = []
 
     /// True while the thread runs a fast path (no kernel mutex).
     var isFast: Bool { fastDepth > 0 }
@@ -1098,7 +1206,7 @@ public final class KernelThreadLocks {
     }
 
     /// The highest level held (−1: none).
-    var highestLevel: Int { held.last?.level ?? -1 }
+    var highestLevel: Int { max(held.last?.level ?? -1, sharedPortHold > 0 ? 2 : -1) }
 
     /// True when `lock` may be taken now: every lock held is of a lower level.
     func canAcquire(_ lock: KernelLock) -> Bool { highestLevel < lock.level }
@@ -1150,7 +1258,9 @@ public final class KernelThreadLocks {
     /// True when `need` can be met now (in order, or already held).
     private func satisfiable(_ need: DeferredKernelWork.Need) -> Bool {
         switch need {
-        case let .kernelLock(l0): return l0.isHeldByCurrentThread ? held.last === l0 : held.isEmpty
+        case let .kernelLock(l0):
+            guard sharedPortHold == 0 else { return false }
+            return l0.isHeldByCurrentThread ? held.last === l0 : held.isEmpty
         case let .fineLock(fine): return fine.isHeldByCurrentThread ? held.last === fine : canAcquire(fine)
         }
     }
@@ -1193,6 +1303,10 @@ extension KernelLock {
     /// A lock of a split system taken by a thread that does not hold it.
     func withSplitLock<T>(context: ThreadContext?, _ body: () throws -> T) rethrows -> T {
         let threadLocks = KernelThreadLocks.current
+        // A fine step (`mach-ipc-locking.md` §4.12) holds the port lock
+        // shared and takes no other kernel lock: an exclusive acquisition
+        // here would wait for this thread's own shared hold.
+        precondition(threadLocks.sharedPortHold == 0, "kernel lock order: \(name) taken inside a fine port step (mach-ipc-locking.md §4.12)")
         threadLocks.checkAcquire(self)
         acquireRaw(depth: 1, context: context ?? threadLocks.inheritedContext)
         threadLocks.held.append(self)
@@ -1248,6 +1362,7 @@ extension KernelLock {
             depth = 1
             currentContext = nil
             noteAcquired()
+            if LockStallStats.enabled { stallWord.store(LockStallStats.word(context: nil, posted: true), ordering: .relaxed) }
             threadLocks.held.append(self)
             while true {
                 postedMutex.lock()
@@ -1269,8 +1384,15 @@ extension KernelLock {
             lockMutex(for: context)
         } else if pthread_mutex_trylock(mutex) != 0 {
             let start = KernelClock.now()
-            if HostSched.promoting { lockPromoting(context) } else { pthread_mutex_lock(mutex) }
+            let holder = LockStallStats.enabled ? stallWord.load(ordering: .relaxed) : 0
+            if !(Self.fineSpinNanoseconds > 0 && spinForMutex(until: start &+ Self.fineSpinNanoseconds)) {
+                if HostSched.promoting { lockPromoting(context) } else { pthread_mutex_lock(mutex) }
+            }
             let waited = KernelClock.now() &- start
+            if LockStallStats.enabled {
+                LockStallStats.note(level: level, context: context, word: holder, ns: waited)
+                KernelThreadLocks.current.waitedNanoseconds &+= waited
+            }
             fineContended &+= 1
             fineWaitNanoseconds &+= waited
             trapProfile?.noteWait(TrapProfile.key(for: context), waited, contended: true)
@@ -1278,6 +1400,7 @@ extension KernelLock {
         } else if let trapProfile {
             trapProfile.noteWait(TrapProfile.key(for: context), 0, contended: false)
         }
+        if sharesReaders { drainSharedHolders() }
         owner.store(Self.threadToken, ordering: .relaxed)
         depth = newDepth
         currentContext = context
@@ -1290,6 +1413,7 @@ extension KernelLock {
         currentContext = nil
         depth = 0
         owner.store(0, ordering: .relaxed)
+        if sharesReaders { writerPending.store(0, ordering: .releasing) }
         let wakes = takeDeferredWakes()
         pthread_mutex_unlock(mutex)
         finishWithdrawal(withdrawn)
@@ -1364,6 +1488,12 @@ extension KernelLock {
     func deferIfFast(_ need: DeferredKernelWork.Need, tag: StaticString = "other", _ work: @escaping () -> Void) {
         guard isSplit else { work(); return }
         let threadLocks = KernelThreadLocks.current
+        // A fine step runs nothing else under its locks (§4.12).
+        if threadLocks.sharedPortHold > 0 {
+            if case .kernelLock = need { Self.countDeferredL0(tag) }
+            threadLocks.deferred.append(DeferredKernelWork(need: need, run: work))
+            return
+        }
         switch need {
         case let .kernelLock(l0):
             if l0.isHeldByCurrentThread { work(); return }
@@ -1401,6 +1531,7 @@ extension KernelLock {
     @inline(__always) func checkHeld(_ what: @autoclosure () -> String) {
         guard KernelThreadLocks.checkOrder, isSplit, !isHeldByCurrentThread else { return }
         if KernelThreadLocks.current.quiesced { return }
+        if level == 2, KernelThreadLocks.current.sharedPortHold > 0 { return }
         FileHandle.standardError.write(Data(Thread.callStackSymbols.joined(separator: "\n").utf8))
         fatalError("\(what()) touched without \(name) (mach-ipc-locking.md §4.2)")
     }
@@ -1439,6 +1570,7 @@ extension KernelLock {
             .map { "\($0.key) \($0.value)" }.joined(separator: ", "))
         parts.append("event locks (\(events.n) live): held \(events.held / 1_000_000) ms, \(events.acq) acquisitions, "
             + "\(events.cont) contended, \(events.wait / 1_000_000) ms waited")
+        if PortLockSplit.enabled { parts.append(PortLockSplit.report) }
         return parts.joined(separator: "; ")
     }
 }
@@ -1448,6 +1580,7 @@ extension WaitQueue {
     fileprivate func splitWait(on lock: KernelLock, deadline: UInt64?, tag: UInt64,
                                beforeSleeping: (() -> Void)?) -> WaitResult {
         let threadLocks = KernelThreadLocks.current
+        precondition(threadLocks.sharedPortHold == 0, "a fine port step waited (mach-ipc-locking.md §4.12)")
         let root = lock.splitRoot!
         var took = false
         if !lock.isHeldByCurrentThread {
@@ -1491,11 +1624,15 @@ extension WaitQueue {
         } else {
             let saved = threadLocks.releaseAll()
             if !threadLocks.deferred.isEmpty { threadLocks.runDeferredWork() }
-            pthread_mutex_lock(lock.mutex)
+            // With its own mutex the waiter reads `result` under that mutex
+            // (every write holds it, `setResult`), so a wakeup costs one
+            // acquisition of the queue's lock (below), not two.
+            let m = w.ownMutex ?? lock.mutex
+            pthread_mutex_lock(m)
             while w.result == nil {
-                if KernelLock.conditionWait(w.cond, lock.mutex, deadline: deadline) == ETIMEDOUT { break }
+                if KernelLock.conditionWait(w.cond, m, deadline: deadline) == ETIMEDOUT { break }
             }
-            pthread_mutex_unlock(lock.mutex)
+            pthread_mutex_unlock(m)
             threadLocks.reacquireAll(saved)
         }
         // The queue's lock is held again: its waiters may change.
@@ -1512,5 +1649,17 @@ extension WaitQueue {
             KernelTrace.blocking?(context, false)
         }
         return w.result!
+    }
+}
+
+extension LockStallStats {
+    /// The system's port lock G, once seen (diagnostics).
+    nonisolated(unsafe) static weak var portLock: KernelLock?
+
+    /// G's totals: held, acquisitions, contended acquisitions and their wait.
+    static var portLockTotals: String {
+        guard let g = portLock else { return "" }
+        return "; port lock held \(g.totalHeldNanoseconds / 1_000_000) ms, \(g.acquisitions) acquisitions, "
+            + "\(g.fineContended) contended, \(g.fineWaitNanoseconds / 1_000_000) ms waited"
     }
 }

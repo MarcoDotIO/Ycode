@@ -1,0 +1,334 @@
+{
+ "name": "council-r10-device-watch",
+ "issue": 81,
+ "title": "Council round 10 (#81), as round 9 (same sessions, steps, ids and order). Round 9 (#81), owner's request, not part of round 8's steps: an Apple Watch, ycode-test-council-watch (Apple Watch Series 12 (46mm), watchOS 27.2, booted beforehand), in Device Hub and in Ycode's Device Hub: the sidebar with its row selected, Zoom to Fit at 1100 x 800 with the inspector, and at 1400 x 900 without it. The sidebar still lists every device on this Mac: other rows are painted out afterwards.",
+ "targets": [
+  "devicehub",
+  "ycode"
+ ],
+ "compare_order": [
+  "devicehub",
+  "ycode"
+ ],
+ "project": {
+  "generator": "make-test-project.py",
+  "path": "GlassScroll/GlassScroll.xcodeproj"
+ },
+ "project_targets": [
+  "ycode"
+ ],
+ "window": {
+  "size": [
+   1100,
+   800
+  ],
+  "display": "builtin",
+  "title": "ycode-test-council-watch",
+  "wait_title": null,
+  "first_window_wait": 6.0,
+  "timeout": 90
+ },
+ "focus": "foreground",
+ "launch_settle": 1.0,
+ "setup_settle": 2.0,
+ "record": {
+  "fps": 120,
+  "codec": "prores4444",
+  "pre": 0.4,
+  "post": 1.5
+ },
+ "per_target_setup": {
+  "devicehub": [
+   {
+    "menu": "View > Show Sidebar"
+   },
+   {
+    "wait": 1.0
+   },
+   {
+    "select": {
+     "role": "AXRow",
+     "text~": "ycode-test-council-watch",
+     "scope": "app"
+    }
+   },
+   {
+    "wait": 2.0
+   },
+   {
+    "menu": "View > Hide Sidebar"
+   },
+   {
+    "wait": 1.0
+   }
+  ],
+  "ycode": [
+   {
+    "menu": "Ycode > Open Developer Tool > Device Hub"
+   },
+   {
+    "wait": 3.0
+   },
+   {
+    "select": {
+     "role": "AXRow",
+     "text~": "ycode-test-council-watch",
+     "scope": "app"
+    }
+   },
+   {
+    "wait": 1.5
+   },
+   {
+    "press": {
+     "role": "AXButton",
+     "description": "Sidebar",
+     "scope": "app"
+    }
+   },
+   {
+    "wait": 1.0
+   }
+  ]
+ },
+ "steps": [
+  {
+   "id": "device-watch-sidebar",
+   "note": "The sidebar shown with ycode-test-council-watch selected (other device rows painted out afterwards), the watch at the zoom the window opened with.",
+   "per_target": {
+    "devicehub": {
+     "do": [
+      {
+       "menu": "View > Show Sidebar"
+      },
+      {
+       "wait": 1.5
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Sidebar",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      }
+     ]
+    }
+   },
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "device-watch-fit-1100",
+   "note": "Sidebar hidden, the watch at Zoom to Fit in 1100 x 800 with the inspector.",
+   "per_target": {
+    "devicehub": {
+     "do": [
+      {
+       "menu": "View > Hide Sidebar"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "press": {
+        "role": "AXRadioButton",
+        "help": "Zoom to Fit",
+        "scope": "app"
+       }
+      },
+      {
+       "menu": "View > Zoom to Fit",
+       "fallback": true
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "zoom",
+       "depth": 12
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Sidebar",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "press": {
+        "role": "AXRadioButton",
+        "help": "Zoom to Fit",
+        "scope": "app"
+       }
+      },
+      {
+       "menu": "View > Zoom to Fit",
+       "fallback": true
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "zoom",
+       "depth": 12
+      }
+     ]
+    }
+   },
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "device-watch-fit-1400-no-inspector",
+   "note": "The watch at Zoom to Fit in 1400 x 900, inspector hidden.",
+   "per_target": {
+    "devicehub": {
+     "do": [
+      {
+       "move": [
+        56,
+        40
+       ]
+      },
+      {
+       "resize": [
+        1400,
+        900
+       ]
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "menu": "View > Inspectors > Hide Inspector"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "press": {
+        "role": "AXRadioButton",
+        "help": "Zoom to Fit",
+        "scope": "app"
+       }
+      },
+      {
+       "menu": "View > Zoom to Fit",
+       "fallback": true
+      },
+      {
+       "wait": 1.5
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "move": [
+        56,
+        40
+       ]
+      },
+      {
+       "resize": [
+        1400,
+        900
+       ]
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "menu": "View > Inspectors > Hide Inspector"
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "label": "Hide Inspector",
+        "scope": "app"
+       },
+       "fallback": true
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "press": {
+        "role": "AXRadioButton",
+        "help": "Zoom to Fit",
+        "scope": "app"
+       }
+      },
+      {
+       "menu": "View > Zoom to Fit",
+       "fallback": true
+      },
+      {
+       "wait": 1.5
+      }
+     ]
+    }
+   },
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "device-watch-physical-size",
+   "note": "Round 10: the watch at Physical Size in 1400 x 900, inspector hidden: the body measured with and without the crown.",
+   "do": [
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "help": "Physical Size|Zoom To Actual Size",
+      "scope": "app"
+     }
+    },
+    {
+     "menu": "View > Physical Size|Actual Size",
+     "fallback": true
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "device-watch-fit-again",
+   "note": "Round 10: back to Zoom to Fit in 1400 x 900, inspector hidden: the body measured with and without the crown.",
+   "do": [
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "help": "Zoom to Fit",
+      "scope": "app"
+     }
+    },
+    {
+     "menu": "View > Zoom to Fit",
+     "fallback": true
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": false,
+   "still": "after"
+  }
+ ]
+}

@@ -16,9 +16,10 @@ struct DeviceWindowFrameTests {
         let caps = DeviceControlsLayout.capsuleRects(DeviceControlsLayout.groups(.init(foldable: true)), canvasWidth: f.canvas.width,
                                                      canvasHeight: f.canvas.height)
         #expect(abs(Double(caps[0].maxY) + f.canvas.y - 792) < 0.01)
-        // Hidden inspector: the canvas takes the whole width; no tabs.
+        // Hidden inspector: the canvas takes the whole width; the tabs stay
+        // at the toolbar's right end (round 7, §15.5: none selected).
         let g = DeviceWindowFrame(width: 1100, height: 800, inspectorShown: false)
-        #expect(g.inspector == nil && g.canvas.width == 1100 && g.rect(of: .settingsTab) == nil)
+        #expect(g.inspector == nil && g.canvas.width == 1100 && g.rect(of: .infoTab).map { $0.x + $0.width } == 1090)
         #expect(DeviceWindowFrame.windowSize(canvasWidth: 400, canvasHeight: 900) == (680, 952))
     }
 

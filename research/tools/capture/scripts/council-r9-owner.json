@@ -1,0 +1,557 @@
+{
+  "issue": 81,
+  "targets": [
+    "xcode",
+    "ycode"
+  ],
+  "compare_order": [
+    "xcode",
+    "ycode"
+  ],
+  "name": "council-r9-owner",
+  "title": "Round 9 owner's observations (#81), not scored: the icons copy of GlassScroll in each app with its own Appearance set to Dark, then Light, then back to System: the title icon, the navigator glyphs focused and unfocused, and the coding assistant button at rest and hovered (never clicked). Appearance steps as council-r9-icons.json. Also NOTES.md opened (navigator, tab, jump bar) and Open Quickly with \"NOTES\" typed, in dark and light.",
+  "project": {
+    "generator": "make-icons-project.py",
+    "path": "icons/GlassScroll/GlassScroll.xcodeproj"
+  },
+  "window": {
+    "size": [
+      1400,
+      880
+    ],
+    "display": "builtin",
+    "title": "{project}",
+    "timeout": 90
+  },
+  "focus": "foreground",
+  "launch_settle": 3.0,
+  "record": {
+    "fps": 120,
+    "codec": "prores4444",
+    "pre": 0.4,
+    "post": 1.2
+  },
+  "steps": [
+    {
+      "id": "owner-appearance-dark",
+      "note": "Each app's own Appearance set to Dark (Settings > Appearance), Settings closed.",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "description": "AppearanceDark",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "title": "Dark",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "none"
+    },
+    {
+      "id": "owner-dark-focused",
+      "note": "Owner's observations: dark, Long.swift selected in the navigator (navigator focused), pointer over the editor. Title icon, navigator glyphs, the coding assistant button at rest.",
+      "do": [
+        {
+          "click": {
+            "role": "AXRow",
+            "text": "Long|Long.swift"
+          }
+        },
+        {
+          "wait": 1.5
+        },
+        {
+          "hover": [
+            900,
+            500
+          ]
+        },
+        {
+          "wait": 1.0
+        }
+      ],
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "owner-dark-assistant-hover",
+      "note": "Owner's observations: dark, the pointer over the coding assistant button (hover only, never clicked).",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "hover": [
+                561,
+                26
+              ]
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "hover": [
+                595,
+                26
+              ]
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "owner-dark-unfocused",
+      "note": "Owner's observations: dark, a click in the editor text, so the navigator's selected row is unfocused.",
+      "do": [
+        {
+          "hover": [
+            900,
+            500
+          ]
+        },
+        {
+          "wait": 0.5
+        },
+        {
+          "click": [
+            700,
+            300
+          ]
+        },
+        {
+          "wait": 1.5
+        }
+      ],
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "owner-dark-notes-open",
+      "note": "Owner's observations: dark, NOTES.md selected in the navigator and open in the editor: its glyph in the navigator, the editor's tab and the jump bar.",
+      "do": [
+        {
+          "click": {
+            "role": "AXRow",
+            "text": "NOTES|NOTES.md"
+          }
+        },
+        {
+          "wait": 2.0
+        },
+        {
+          "hover": [
+            900,
+            500
+          ]
+        },
+        {
+          "wait": 0.5
+        }
+      ],
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "owner-dark-open-quickly",
+      "note": "Owner's observations: dark, Open Quickly (cmd+shift+O) with \"NOTES\" typed: the Markdown file's glyph in its result list (app-mode snap), then Escape.",
+      "do": [
+        {
+          "key": "cmd+shift+o"
+        },
+        {
+          "wait": 1.5
+        },
+        {
+          "text": "NOTES"
+        },
+        {
+          "wait": 2.0
+        },
+        {
+          "snap": "panel",
+          "mode": "app"
+        },
+        {
+          "key": "escape"
+        },
+        {
+          "wait": 1.0
+        }
+      ],
+      "record": false,
+      "still": "none"
+    },
+    {
+      "id": "owner-appearance-light",
+      "note": "Each app's own Appearance set to Light, Settings closed.",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "description": "AppearanceLight",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "title": "Light",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "none"
+    },
+    {
+      "id": "owner-light-focused",
+      "note": "Owner's observations: light, Long.swift selected in the navigator (navigator focused), pointer over the editor. Title icon, navigator glyphs, the coding assistant button at rest.",
+      "do": [
+        {
+          "click": {
+            "role": "AXRow",
+            "text": "Long|Long.swift"
+          }
+        },
+        {
+          "wait": 1.5
+        },
+        {
+          "hover": [
+            900,
+            500
+          ]
+        },
+        {
+          "wait": 1.0
+        }
+      ],
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "owner-light-assistant-hover",
+      "note": "Owner's observations: light, the pointer over the coding assistant button (hover only, never clicked).",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "hover": [
+                561,
+                26
+              ]
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "hover": [
+                595,
+                26
+              ]
+            },
+            {
+              "wait": 1.5
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "owner-light-unfocused",
+      "note": "Owner's observations: light, a click in the editor text, so the navigator's selected row is unfocused.",
+      "do": [
+        {
+          "hover": [
+            900,
+            500
+          ]
+        },
+        {
+          "wait": 0.5
+        },
+        {
+          "click": [
+            700,
+            300
+          ]
+        },
+        {
+          "wait": 1.5
+        }
+      ],
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "owner-light-notes-open",
+      "note": "Owner's observations: light, NOTES.md selected in the navigator and open in the editor: its glyph in the navigator, the editor's tab and the jump bar.",
+      "do": [
+        {
+          "click": {
+            "role": "AXRow",
+            "text": "NOTES|NOTES.md"
+          }
+        },
+        {
+          "wait": 2.0
+        },
+        {
+          "hover": [
+            900,
+            500
+          ]
+        },
+        {
+          "wait": 0.5
+        }
+      ],
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "owner-light-open-quickly",
+      "note": "Owner's observations: light, Open Quickly (cmd+shift+O) with \"NOTES\" typed: the Markdown file's glyph in its result list (app-mode snap), then Escape.",
+      "do": [
+        {
+          "key": "cmd+shift+o"
+        },
+        {
+          "wait": 1.5
+        },
+        {
+          "text": "NOTES"
+        },
+        {
+          "wait": 2.0
+        },
+        {
+          "snap": "panel",
+          "mode": "app"
+        },
+        {
+          "key": "escape"
+        },
+        {
+          "wait": 1.0
+        }
+      ],
+      "record": false,
+      "still": "none"
+    },
+    {
+      "id": "owner-appearance-restore",
+      "note": "Each app's own Appearance set back to System.",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "description": "AppearanceAuto",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "title": "System",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    }
+  ]
+}

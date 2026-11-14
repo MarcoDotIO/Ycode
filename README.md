@@ -33,7 +33,7 @@
 </picture>
 
 > [!NOTE]
-> **This is a public beta (1.0.0-beta.2).** The project file formats and command-line tools are the most
+> **This is a public beta (1.0.0-beta.3).** The project file formats and command-line tools are the most
 > mature part. The IDE is usable and still has rough edges, and the Linux IDE is well behind the macOS one.
 > Keep your projects under version control, and please [report what you find](https://github.com/MarcoDotIO/Ycode/issues/new/choose).
 
@@ -114,7 +114,7 @@ numbers end in `-beta.N`, and each release has a `SHA256SUMS.txt`.
 anything you also need Xcode from Apple, which provides the compilers and SDKs. Ycode is developed against
 Xcode 27.1.
 
-1. Download `Ycode-1.0.0-beta.2.dmg` and open it.
+1. Download `Ycode-1.0.0-beta.3.dmg` and open it.
 2. Drag **Ycode** to **Applications**.
 3. Open Ycode from Applications.
 
@@ -144,7 +144,7 @@ Or install the bundle from the Releases page:
 
 ```sh
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install --user ./Ycode-1.0.0-beta.2-x86_64.flatpak      # or -aarch64
+flatpak install --user ./Ycode-1.0.0-beta.3-x86_64.flatpak      # or -aarch64
 flatpak run io.github.MarcoDotIO.Ycode
 ```
 
@@ -271,7 +271,7 @@ The full gap list is in [docs/PARITY.md](docs/PARITY.md) and the longer view in 
 - **Linux IDE:** what the macOS IDE has and the Linux one still lacks: a Device Hub, recording in the device
   window, and UIKit previews at interactive speed. Language features, the navigators, the debugger, Source Control
   and the coding assistant arrived in 1.0.0-beta.2; Settings ▸ Accounts, the conflict editor, the Organizer,
-  SwiftUI previews, Interface Builder documents and debugging on a simulator arrive in 1.0.0-beta.3.
+  SwiftUI previews, Interface Builder documents and debugging on a simulator arrived in 1.0.0-beta.3.
 - **Fixes from beta reports.** Please [file them](https://github.com/MarcoDotIO/Ycode/issues/new/choose).
 - **Distribution:** listed on [FlatPark](https://flatpark.org/apps/io.github.MarcoDotIO.Ycode/) since 1.0.0-beta.1, alongside the GitHub release.
 

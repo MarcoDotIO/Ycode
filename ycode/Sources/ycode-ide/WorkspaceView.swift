@@ -24,7 +24,7 @@ struct WorkspaceView: View {
             if model.isNavigatorShown {
                 NavigatorColumn(model: model)
                     .frame(minWidth: 180, idealWidth: CGFloat(WorkspaceChrome.navigatorWidth), maxWidth: 500)
-                    .background(c.sidebar)
+                    .background(c.navigatorBackground)
             }
             CenterColumn(model: model, app: app, inspectorSliding: sliding)
                 .frame(minWidth: 300, maxWidth: .infinity)
@@ -49,6 +49,7 @@ struct WorkspaceView: View {
         .overlay { BuildBezelOverlay(notifier: model.notifier) }
         .overlay { BreakpointEditorLayer(model: model) }   // DebugEditors.swift
         .overlay { MergeOverlayLayer(scm: model.sourceControl, app: app) }   // MergeOverlay.swift: the merge alert and sheet
+        .overlay(alignment: .top) { OpenQuicklyLayer(model: model) }   // OpenQuicklyPanel.swift (row 215)
         .navigationTitle(model.windowTitle)
         .modifier(EditorPrompts(model: model))
         .modifier(LanguageSheets(model: model, app: app))
@@ -117,18 +118,22 @@ struct CenterToolbar: View {
                 .init(symbol: h.symbols[1], help: h.toolTips[1], isEnabled: model.canGoForward, target: "tb forward") { model.perform(.goForward) },
             ], segmentWidth: 26.5)   // 75 wide with its rim (parity §2)
             ActivityView(model: model)
-                .padding(.leading, 10)   // the icon 14 after Back | Forward's capsule (liquid-glass.md §7.1)
+                // The mark at x 383.5 as on macOS (row 212); this capsule ends at
+                // 368.5, 2.5 before the macOS one, so the gap is 15 here.
+                .padding(.leading, 11)
             Spacer(minLength: 8)
             NewConversationToolbarButton(assistant: model.assistant)   // AssistantPane.swift
             SchemeCapsule(model: model, app: app, glyphsOnly: fit.schemeGlyphsOnly)
                 .padding(.leading, 8)
-            IssueCapsule(summary: model.issueSummary, symbolsOnly: fit.schemeGlyphsOnly) { model.perform(.showIssueNavigator) }   // ToolbarChrome.swift
+            IssueCapsule(summary: model.issueSummary, symbolsOnly: fit.schemeGlyphsOnly, underSheet: model.sourceControl.isMergeModalShown) {
+                model.perform(.showIssueNavigator)
+            }   // ToolbarChrome.swift
                 .padding(.leading, model.issueSummary.isEmpty ? 0 : CGFloat(IssueSummary.Capsule.gapAfterScheme))
             Spacer(minLength: 8)
             AddEditorGroup(model: model)   // ToolbarChrome.swift: Add Editor's pull-down and Editor Options, 81 wide
             if fit.editorModesInOverflow {
                 ToolbarOverflowMenu(model: model)   // ToolbarChrome.swift
-                    .padding(.leading, 8)
+                    .padding(.leading, CGFloat(WorkspaceChrome.overflowCapsuleGap))   // row 218
             } else {
                 GlassSegments(segments: [
                     .init(symbol: modes.symbols[0], help: modes.toolTips[0], isOn: model.previewCanvas.isModeOn, isEnabled: model.isEnabled(.toggleCanvas),
@@ -154,10 +159,9 @@ struct ActivityView: View {
     var body: some View {
         let c = ShellColors(scheme)
         HStack(spacing: 8) {
-            Image(systemName: model.containerKind == .package ? "shippingbox" : "folder.badge.gearshape")
-                .font(.system(size: 12))
-                .foregroundStyle(c.toolbarIcon)
-                .frame(width: 19, height: 19)   // 19 wide, the text 8 after it (liquid-glass.md §7.1 item 3)
+            // Ycode's mark in a 19.5-point box, centred on the title's line,
+            // the title 8 after it; the build ring while busy (row 212; TitleMark.swift).
+            TitleMark(isBusy: model.isBusy, activity: model.activityText)
             VStack(alignment: .leading, spacing: 0) {
                 Text(verbatim: model.workspaceName).font(ShellFonts.activityName).foregroundStyle(c.label).lineLimit(1)
                 if !model.activityText.isEmpty {
@@ -191,7 +195,7 @@ struct SchemeCapsule: View {
             Menu {
                 ForEach(model.schemes, id: \.self) { s in Button(s) { model.scheme = s } }
             } label: {
-                popUpTitle(schemeName, symbol: "app.dashed", c)
+                popUpTitle(schemeName, c) { SchemeGlyph(appIcon: SchemeCapsuleIcons.appIconURL(scheme: model.scheme, model: model.session.model)) }
             }
             .menuStyle(.borderlessButton)
             .help(glyphsOnly ? schemeName : "")
@@ -205,7 +209,13 @@ struct SchemeCapsule: View {
                     Button("Ycode Simulator (\(ExperimentalNotice.label))…") { app.explainSimulator() }
                 }
             } label: {
-                popUpTitle(destinationName, symbol: model.destination?.kind == .simulator ? "iphone" : "desktopcomputer", c)
+                popUpTitle(destinationName, c) {
+                    if model.destination?.kind == .simulator {
+                        Image(systemName: "iphone").font(.system(size: 12)).foregroundStyle(c.label)
+                    } else {
+                        HostDestinationGlyph(fallbackColor: c.label)   // ToolbarChrome.swift (row 199)
+                    }
+                }
             }
             .menuStyle(.borderlessButton)
             .help(glyphsOnly ? destinationName : "")
@@ -217,9 +227,9 @@ struct SchemeCapsule: View {
         .fixedSize()
     }
 
-    func popUpTitle(_ title: String, symbol: String, _ c: ShellColors) -> some View {
+    func popUpTitle<Glyph: View>(_ title: String, _ c: ShellColors, @ViewBuilder glyph: () -> Glyph) -> some View {
         HStack(spacing: 5) {
-            Image(systemName: symbol).font(.system(size: 12)).foregroundStyle(c.label)
+            glyph()
             if !glyphsOnly {
                 Text(verbatim: title).font(ShellFonts.toolbarItem).foregroundStyle(c.label).lineLimit(1)
             }

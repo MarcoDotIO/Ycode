@@ -99,7 +99,11 @@ extension WorkspaceShellModel {
         guard languageStart == nil else { return }
         languageStart = Task { [weak self] in
             guard let self else { return }
-            await self.session.startLanguageService()
+            // The open (restored) documents, with the activity subtitle until
+            // the server has answered for them (row 201).
+            let documents = self.openDocuments.values.filter { $0.readOnlyReason == nil }
+                .map { (url: URL(fileURLWithPath: $0.path), text: $0.buffer.text) }
+            await self.session.startLanguageService(opening: documents)
             guard let language = self.session.language else { return }
             for d in self.openDocuments.values where d.readOnlyReason == nil {
                 language.open(URL(fileURLWithPath: d.path), text: d.buffer.text)

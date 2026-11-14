@@ -116,7 +116,8 @@ public final class DeviceLiveSession: NSObject, ViewerConnectionDelegate, Device
     /// The server turns the device (display-stream.md §11: foldables today).
     public var canRotate: Bool { hello?.rotation == true }
     public var title: String { displayName ?? (spec.typeID == "unknown" ? hello?.deviceName ?? "Device" : spec.name) }
-    public var subtitle: String { osTitle ?? hello?.osVersion ?? "" }
+    /// The OS line: an iPad's "iPadOS 27.2" (§15.5).
+    public var subtitle: String { spec.family.osTitle(osTitle ?? hello?.osVersion ?? "") }
     /// The panel shown (0: display 1 / the cover, 1: the inner panel).
     public var panelIndex: Int { spec.panelIndex(named: panelState?.display) }
     public var orientation: DeviceOrientation { DeviceOrientation(streamName: panelState?.orientation ?? hello?.orientation) }

@@ -1,14 +1,14 @@
 import AppKit
 import YcodeIDECore
 
-/// Switching files (`editor-area.md` H.7, council row 163): the new file's
-/// content within about 210 ms of the click. The reference draws the
-/// navigator, the jump bar and the new text in one frame and the File
-/// inspector a frame later (text) or about 80 ms later (an image). On
-/// screen Ycode does the same: the inspector is rebuilt just after the
-/// frame that shows the new content, so its work (about a third of the
-/// switch) no longer delays that frame. Off every display (tests) it is
-/// rebuilt at once.
+/// Switching files (`editor-area.md` H.7, council rows 163 and 206). Round
+/// 6 saw the reference draw the File inspector a frame after the new text,
+/// and Ycode followed it (the inspector rebuilt just after the editor's
+/// frame). Round 8 (row 206, at a light load) saw the reference change the
+/// editor and the inspector **in one frame**, and Ycode's deferred rebuild
+/// made the switch two frames 110 ms apart: the inspector is now rebuilt in
+/// the same pass as the editor. The deferral stays available for
+/// measurement (`InspectorFollow.isEnabled`).
 extension WorkspaceWindowController {
     /// Shows `url` in the File inspector after the editor's frame.
     func showInspectorAfterEditor(file url: URL?) {
@@ -56,8 +56,9 @@ final class InspectorFollow {
     static let delay: TimeInterval = 0.008
     var generation = 0
     var pending = false
-    /// Off: the inspector is rebuilt with the editor (measurements).
-    var isEnabled = true
+    /// On: the inspector is rebuilt after the editor's frame (round 6's
+    /// order); off (round 8, row 206): with the editor, in its frame.
+    var isEnabled = false
     /// Defers off every display too (tests).
     var defersOffscreen = false
 }

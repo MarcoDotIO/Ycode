@@ -113,11 +113,12 @@ public enum SettingsR5Palette {
     public static let platformSymbol: Pair = (0x007AFF, 0x007AFF)
 }
 
-/// The Appearance thumbnails (R5.1), in Ycode's own drawing: a miniature
-/// window over a wallpaper. Light: a light window with a light title area
-/// and three window-button dots over a blue wave; Dark: the same in dark
-/// over a deep blue; System: the Light picture's left half and the Dark
-/// picture's right half. Coordinates are in the 67 × 44 thumbnail, top-left.
+/// The Appearance thumbnails (R5.1, R7.4), in Ycode's own drawing: the
+/// looks' wallpapers and window colours. Light: a light window over a blue
+/// wave; Dark: a dark window over a deep blue; System: the Light picture's
+/// left half and the Dark picture's right half. The composition (a close-up
+/// of a window's corner) is `AppearanceThumbnailCloseUp`. Coordinates are
+/// in the 67 × 44 thumbnail, top-left.
 public enum AppearanceThumbnailArt {
     public struct Look: Sendable {
         /// The wallpaper's vertical gradient and its wave band.
@@ -135,14 +136,7 @@ public enum AppearanceThumbnailArt {
     public static let dark = Look(wallpaperTop: 0x1D3B8F, wallpaperBottom: 0x0A1236, wave: 0x3D63D6, waveOpacity: 0.55,
                                   window: 0x262626, titleArea: 0x333333, windowEdge: 0x4A4A4A)
 
-    /// The window: from (10, 9), 47 wide, running past the bottom edge.
-    public static let window = CGRect(x: 10, y: 9, width: 47, height: 40)
-    public static let windowRadius: CGFloat = 3
-    public static let titleAreaHeight: CGFloat = 7
-    /// The window buttons' dots (centres) and their diameter.
-    public static let dots: [(x: CGFloat, color: UInt32)] = [(14, 0xFF5F57), (18, 0xFEBC2E), (22, 0x28C840)]
-    public static let dotY: CGFloat = 12.5
-    public static let dotDiameter: CGFloat = 2.5
+    // The window, its title area and its buttons: `AppearanceThumbnailCloseUp` (R7.4).
     /// System's split, at the middle.
     public static var splitX: CGFloat { SettingsAppearanceLayout.thumbnailSize.width / 2 }
 

@@ -80,7 +80,8 @@ public enum MergeSheetMetrics {
 
     // §1.2 The alert
     public static let alertWidth = 420.0
-    public static let alertHeight = 133.0
+    /// 132 (`merge-sheet.md` §16.1, council row 195; it was 133).
+    public static let alertHeight = 132.0
     public static let alertIcon = 55.0
     public static let alertIconOrigin = (x: 28.5, y: 22.0)
     public static let alertTextX = 106.0
@@ -118,7 +119,8 @@ public enum MergeSheetMetrics {
     /// The alert's frame, centred in a window of `size`.
     public static func alertFrame(window size: (width: Double, height: Double), chooser: Bool = false) -> Rect {
         let h = alertHeight + (chooser ? alertChooserHeight : 0)
-        return Rect(x: ((size.width - alertWidth) / 2).rounded(.down), y: ((size.height - h) / 2).rounded(.down), width: alertWidth, height: h)
+        // The top stays where the 133-point alert had it (§1.2: y 373 in the 880 window).
+        return Rect(x: ((size.width - alertWidth) / 2).rounded(.down), y: ((size.height - h - 1) / 2).rounded(.down), width: alertWidth, height: h)
     }
 
     /// The columns inside a content box `width` wide (box coordinates;
@@ -208,7 +210,14 @@ public struct MergeSheetPalette: Equatable, Sendable {
     public var secondaryLabel: UInt32
     public var disabledLabel: UInt32
     public var accent: UInt32
+    /// The view control's selected segment: its pill and its label (§3:
+    /// #D1E7FF with the accent label in light; council round 9, row 219:
+    /// #335273 with a white label in dark).
+    /// The view control's selected segment: its pill and its label (§3:
+    /// #D1E7FF with the accent label in light; council round 9, row 219:
+    /// #335273 with a white label in dark).
     public var segmentPill: UInt32
+    public var segmentLabel: UInt32 = 0x007AFF
     public var selection: UInt32
     public var badge: UInt32
     public var badgeLetter: UInt32
@@ -283,7 +292,8 @@ public struct MergeSheetPalette: Equatable, Sendable {
     public static let dark = MergeSheetPalette(
         sheet: 0x1D1E1F, sheetRim: 0x2D2E2F, pane: 0x262627, veilOpacity: 0.30, boxBorder: 0x171718, columnRule: 0x383838,
         bandRule: 0x333333, footerRule: 0x333333,
-        label: 0xE6E6E6, secondaryLabel: 0x8C8C8C, disabledLabel: 0x6A6A6A, accent: 0x0A84FF, segmentPill: 0x1D3A5C,
+        label: 0xE6E6E6, secondaryLabel: 0x8C8C8C, disabledLabel: 0x6A6A6A, accent: 0x0A84FF,
+        segmentPill: 0x335273, segmentLabel: 0xFFFFFF,
         selection: 0x0059CF, badge: 0xFFFFFF, badgeLetter: 0xFF453A, filterFill: 0x2B2B2B, filterPlaceholder: 0x8C8C8C,
         lineNumber: 0x6E6A6C, currentLineNumber: 0xE2DADD, currentLine: 0x2A2A2A,
         gutter: 0x313131, gutterRule: 0x484848, gutterConflict: 0x613D3F, gutterClean: 0x394C61,
@@ -477,6 +487,9 @@ public struct MergeSheetRow: Equatable, Sendable {
     public var hunk: Int?
     public var isFirstOfHunk: Bool
     public var isLastOfHunk: Bool
+    /// The empty line after a text's final line break (`editor-area.md`
+    /// I.3, council row 178): numbered like any other, nothing on it.
+    public var isFinalEmptyLine = false
 }
 
 public enum MergeSheetLayout {
@@ -524,6 +537,14 @@ public enum MergeSheetLayout {
                                              kind: .same, hunk: nil, isFirstOfHunk: false, isLastOfHunk: false))
                 }
             }
+        }
+        // A text that ends with a line break has one more line, empty
+        // (I.3: the reference numbers 19 in both panes for 18 lines and a
+        // final break).
+        if doc.oursEndsWithNewline || doc.theirsEndsWithNewline, l > 0 || r > 0 {
+            out.append(MergeSheetRow(left: doc.oursEndsWithNewline ? .init(number: l + 1, text: "", words: []) : nil,
+                                     right: doc.theirsEndsWithNewline ? .init(number: r + 1, text: "", words: []) : nil,
+                                     kind: .same, hunk: nil, isFirstOfHunk: false, isLastOfHunk: false, isFinalEmptyLine: true))
         }
         return out
     }

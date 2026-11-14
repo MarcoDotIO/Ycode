@@ -293,12 +293,21 @@ public enum PreviewOpenViewsHost {
     }
 
     /// Compiles a payload with the toolchain's `swiftc`; errors map back
-    /// to the user's files and lines.
+    /// to the user's files and lines. The first try uses the toolchain's own
+    /// module cache (it doesn't move with the project); if the compiler
+    /// crashes, it runs once more with an empty cache of its own beside the
+    /// output (`PreviewModuleCache`).
     public static func compilePayload(_ sources: PreviewPayloadGenerator.Sources, output: URL, moduleName: String,
-                                      built: Built) throws(PreviewFailure) {
+                                      built: Built, swiftc: [String] = ["swiftc"]) throws(PreviewFailure) {
+        let args = payloadArguments(sources: sources.files, output: output, moduleName: moduleName, moduleFlags: built.moduleFlags)
         try? FileManager.default.removeItem(at: output)
-        let r = PreviewChild.run(["swiftc"] + payloadArguments(sources: sources.files, output: output, moduleName: moduleName,
-                                                               moduleFlags: built.moduleFlags), timeout: 600)
+        var r = PreviewChild.run(swiftc + args, timeout: 600)
+        if r.status != 0, PreviewModuleCache.looksLikeCompilerCrash(r.output) {
+            let cache = output.deletingLastPathComponent().appendingPathComponent("ModuleCache")
+            PreviewModuleCache.discard(cache)
+            try? FileManager.default.removeItem(at: output)
+            r = PreviewChild.run(swiftc + ["-module-cache-path", cache.standardizedFileURL.path] + args, timeout: 600)
+        }
         guard r.status == 0, FileManager.default.fileExists(atPath: output.path) else {
             throw .compile(PreviewCompiler.issues(from: r.output, lineMaps: sources.lineMaps))
         }

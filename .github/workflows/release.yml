@@ -96,9 +96,33 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # The simulator's guest tools (ylaunch and Ycode's guest agents) for the
+  # aarch64 simulator tree: iOS- and watchOS-simulator programs of our own,
+  # built with the simulator SDKs, so on the Mac runner.
+  guest-tools:
+    name: Simulator guest tools
+    needs: check
+    runs-on: xcode-27
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the guest tools
+        run: |
+          packaging/flatpak/build-guest-tools.sh "$RUNNER_TEMP/guest-tools"
+          # A tar keeps the executable bits (an artifact does not).
+          tar -cf "$GITHUB_WORKSPACE/guest-tools.tar" -C "$RUNNER_TEMP/guest-tools" .
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: guest-tools
+          path: guest-tools.tar
+          if-no-files-found: error
+          retention-days: 14
+
   flatpak:
     name: Flatpak (${{ matrix.arch }})
-    needs: check
+    needs: [check, guest-tools]
     strategy:
       fail-fast: true
       matrix:
@@ -119,8 +143,27 @@ jobs:
           sudo apt-get install -y -qq flatpak flatpak-builder
           # Ubuntu 24.04 restricts unprivileged user namespaces, which flatpak-builder needs.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: matrix.arch == 'aarch64'
+        with:
+          name: guest-tools
+          path: ${{ runner.temp }}
       - name: Build the bundle
-        run: packaging/flatpak/build-flatpak.sh "$GITHUB_WORKSPACE/dist"
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          if [ "$ARCH" = aarch64 ]; then
+            mkdir -p "$RUNNER_TEMP/guest-tools"
+            tar -xf "$RUNNER_TEMP/guest-tools.tar" -C "$RUNNER_TEMP/guest-tools"
+            export YCODE_GUEST_TOOLS="$RUNNER_TEMP/guest-tools"
+          fi
+          packaging/flatpak/build-flatpak.sh "$GITHUB_WORKSPACE/dist"
+      # The tarball's simulator tree on this plain Ubuntu 24.04 host, with
+      # nothing from the build on PATH (docs/SIMULATOR-UX.md §8). No KVM or
+      # runtime here: the device part of the check is skipped.
+      - name: Smoke check of the simulator tree
+        if: matrix.arch == 'aarch64'
+        run: packaging/flatpak/check-sim-tree.sh dist/Ycode-*-aarch64.tar.xz
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: package-flatpak-${{ matrix.arch }}

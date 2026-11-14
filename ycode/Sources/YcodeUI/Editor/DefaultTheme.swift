@@ -5,10 +5,12 @@ import YcodeSyntax
 /// "Ycode Default" takes the colours measured for the council (the
 /// owner's decision, `fidelity-council.md` row 10 for light, applied to
 /// dark in round 4, rows 85 and 86): light from `editor-area.md` §C.4, dark
-/// from F.3. Roles neither measured (doc comments, preprocessor,
-/// attributes; the selection) keep their system colours; a property
-/// referenced in an interpolation was measured in dark only, so light
-/// draws it as plain text.
+/// from F.3. Doc comments, preprocessor statements and attributes take the
+/// values the Linux IDE draws them with (`WorkspaceChrome.defaultThemeColors`,
+/// one table for both IDEs; dark doc comments in the Comments colour, as the
+/// reference); the selection keeps its system colour; a property referenced
+/// in an interpolation was measured in dark only, so light draws it as
+/// plain text.
 @MainActor
 enum DefaultTheme {
     /// Whether the selected theme is the built-in default (no colours of
@@ -32,13 +34,14 @@ enum DefaultTheme {
     }
 
     static let light = Palette(
-        roles: [.keyword: "#C4246E", .comment: "#6A7084", .string: "#CA2B1C", .number: "#0178B8", .typeName: "#9D31CF",
-                .typeDeclaration: "#007D9E", .otherDeclaration: "#006178"],
-        plain: "#322529", lineNumber: "#B8B3B4", background: nil, band: nil, unfocusedBand: nil)
+        roles: [.keyword: "#C4246E", .comment: "#6A7084", .docComment: "#67C468", .string: "#CA2B1C", .number: "#0178B8",
+                .preprocessor: "#FF9500", .attribute: "#A2845E", .typeName: "#9D31CF", .typeDeclaration: "#007D9E", .otherDeclaration: "#006178"],
+        plain: "#322529", lineNumber: "#B8B3B4", background: nil, band: "#EEEEEE", unfocusedBand: "#EEEEEE")
 
     static let dark = Palette(
-        roles: [.keyword: "#FF83B4", .comment: "#ABB3CD", .string: "#FF8E7B", .number: "#ECA900", .typeName: "#D997FF",
-                .typeDeclaration: "#00CAFB", .otherDeclaration: "#27A7C1", .propertyReference: "#20AD9D"],
+        roles: [.keyword: "#FF83B4", .comment: "#ABB3CD", .docComment: "#ABB3CD", .string: "#FF8E7B", .number: "#ECA900",
+                .preprocessor: "#FF9F0A", .attribute: "#AC8E68", .typeName: "#D997FF", .typeDeclaration: "#00CAFB",
+                .otherDeclaration: "#27A7C1", .propertyReference: "#20AD9D"],
         plain: "#FAF1F3", lineNumber: "#706D6E", background: "#262626", band: "#353535", unfocusedBand: "#2A2A2A")
 
     /// One instance per colour pair, so equal colours compare equal.
@@ -74,7 +77,10 @@ enum DefaultTheme {
 
     /// The current-line band (`editor-area.md` §C.2, F.3): #EEEEEE on white
     /// in light; #353535 on #262626 in dark, #2A2A2A in a split's pane
-    /// without focus.
+    /// without focus. Light names its colour: the neutral band (a
+    /// translucent label colour) returned from this dynamic colour's
+    /// provider drew nothing, so the band vanished in light and after a
+    /// switch to it (council round 8, row 197).
     static func band(focused: Bool, neutral: NSColor) -> NSColor {
         focused ? dynamic(light: light.band, dark: dark.band, fallback: neutral)
             : dynamic(light: light.unfocusedBand, dark: dark.unfocusedBand, fallback: neutral)

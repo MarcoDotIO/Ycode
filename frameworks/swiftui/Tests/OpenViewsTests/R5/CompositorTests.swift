@@ -155,6 +155,32 @@ struct VulkanCompositorTests {
         }
     }
 
+    @Test("Contexts share one instance; closing one leaves the others drawing") func sharedInstance() throws {
+        // Each window has a context. Destroying a closed window's instance
+        // broke the other windows' swapchains on NVIDIA's Wayland driver
+        // (the Linux IDE crashed after the runtime wizard closed), so the
+        // instance outlives every context but the last.
+        let list = DisplayList([DisplayItem(id: DisplayItemID(1), .fill(RenderPath(rect: CGRect(x: 0, y: 0, width: 16, height: 16)),
+                                                                         .color(.black), .nonZero))])
+        let frame = RenderFrame(displayList: list, scale: 1, background: .white)
+        let s1 = OffscreenSurface(pixelSize: PixelSize(width: 32, height: 32), contentScale: 1)
+        let s2 = OffscreenSurface(pixelSize: PixelSize(width: 32, height: 32), contentScale: 1)
+        guard let a = try vulkanCompositor(s1) as? VulkanCompositor, let b = try vulkanCompositor(s2) as? VulkanCompositor else { return }
+        #expect(a.instanceHandle != nil && a.instanceHandle == b.instanceHandle)
+        try a.render(frame)
+        a.invalidate()
+        #expect(a.instanceHandle == nil)
+        try b.render(frame)
+        #expect(try b.readback().pixel(x: 4, y: 4) == (0, 0, 0, 255))
+        let s3 = OffscreenSurface(pixelSize: PixelSize(width: 32, height: 32), contentScale: 1)
+        let c = try #require(try vulkanCompositor(s3) as? VulkanCompositor)
+        #expect(c.instanceHandle == b.instanceHandle)
+        try c.render(frame)
+        #expect(try c.readback().pixel(x: 20, y: 20) == (255, 255, 255, 255))
+        b.invalidate()
+        c.invalidate()
+    }
+
     @Test("Resizing the offscreen target") func resize() throws {
         let surface = OffscreenSurface(pixelSize: PixelSize(width: 64, height: 64), contentScale: 1)
         guard let comp = try vulkanCompositor(surface) else { return }

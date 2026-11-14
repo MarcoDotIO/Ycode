@@ -49,33 +49,44 @@ public enum DeviceZoom {
         return min(4, max(0.05, min(w / Double(content.width), h / Double(content.height))))
     }
 
-    // MARK: Zoom to Fit in the hub (device-hub.md §14.3, council round 6 row 154)
+    // MARK: Zoom to Fit in the hub (device-hub.md §15.2, council round 7 row 170)
 
-    /// The share of the free height (the toolbar's bottom to the control
-    /// capsules' top) the frame's outer box fills at Zoom to Fit: 379.5 of
-    /// 703.5 points, about 54 %.
-    public static let hubFitHeightShare = 379.5 / 703.5
-    /// The share of the canvas width the frame's outer box fills at most:
-    /// 274 of 820.5 points, about 33 %.
-    public static let hubFitWidthShare = 274.0 / 820.5
+    /// The capsule band the reference keeps under the free height: its
+    /// bottom capsules start 44 above the window's bottom (§15: y 756 at 800).
+    /// Ycode's capsules are half a point taller (36.5, `DeviceControlsLayout`),
+    /// so its area's bottom is 44.5 up; the rule measures F from 44.
+    public static let hubCapsuleBand: Double = 44
 
-    /// Zoom to Fit's scale in the hub window and the Linux device window:
-    /// the frame's outer box (`DeviceFrameGeometry.outerBox`, buttons and a
-    /// foldable's hinge step included) fills `hubFitHeightShare` of the free
-    /// height and at most `hubFitWidthShare` of the canvas width, whichever
-    /// is smaller (never above 4, never below 0.05). `area` is the space the
-    /// device is centred in: the canvas's width by the free height.
-    ///
-    /// An interim rule: every council round captured the reference in one
-    /// window (1100 × 800, the inspector shown), where both shares hold
-    /// exactly (the Duo's cover at 0.531). Whether the reference's scale
-    /// follows the window, and how, is open (§14.4); refit these two
-    /// numbers, here only, once a second window size is captured.
-    public static func hubFit(frame outer: CGSize, in area: CGSize) -> Double {
-        guard outer.width > 0, outer.height > 0 else { return 1 }
-        let byHeight = hubFitHeightShare * Double(area.height) / Double(outer.height)
-        let byWidth = hubFitWidthShare * Double(area.width) / Double(outer.width)
+    /// The free height F the rule uses for an area between the toolbar's
+    /// bottom and Ycode's capsules' top: the window's height less 96.
+    public static func hubFreeHeight(areaHeight h: Double) -> Double {
+        h + DeviceControlsLayout.height + DeviceControlsLayout.bottomMargin - hubCapsuleBand
+    }
+
+    /// The silhouette's size in window points for a free length `f`: a
+    /// margin of 8 + 1 % of `f` on each side (§15.2: S = 0.98 F − 16).
+    public static func hubFitLength(_ f: Double) -> Double { 0.98 * f - 16 }
+
+    /// Zoom to Fit's scale in the hub window and the Linux device window
+    /// (§15.2): the device's silhouette (`DeviceFrameGeometry
+    /// .fitSilhouetteHeight`: the body with the buttons on its top or bottom
+    /// edge, or a foldable's 1269-point box) fills the free height less a
+    /// margin of 8 + 1 % of it above and below, and its outer box (buttons
+    /// included) the canvas's width less the same margin form on each side
+    /// (a Ycode decision: no captured device was bound by the width),
+    /// whichever is smaller (never above 4, never below 0.05). `area` is the
+    /// space the device is centred in: the canvas's width by the space
+    /// between the toolbar's bottom and the capsules' top.
+    public static func hubFit(silhouetteHeight: Double, outerWidth: Double, in area: CGSize) -> Double {
+        guard silhouetteHeight > 0, outerWidth > 0 else { return 1 }
+        let byHeight = hubFitLength(hubFreeHeight(areaHeight: Double(area.height))) / silhouetteHeight
+        let byWidth = hubFitLength(Double(area.width)) / outerWidth
         return min(4, max(0.05, min(byHeight, byWidth)))
+    }
+
+    /// The same for a frame drawing (a foldable through its 1269-point box).
+    public static func hubFit(geometry g: DeviceFrameGeometry, foldable: Bool, in area: CGSize) -> Double {
+        hubFit(silhouetteHeight: g.fitSilhouetteHeight(foldable: foldable), outerWidth: Double(g.outerBox.width), in: area)
     }
 
     /// The next step above the scale (the largest step when there is none).

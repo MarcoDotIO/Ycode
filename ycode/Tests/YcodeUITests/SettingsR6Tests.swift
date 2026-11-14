@@ -61,7 +61,7 @@ import Testing
         let fg = try #require(pane.colorRows.first?.view as? ThemeColorRowView)
         // The default theme's text colour is grey: Ycode's hue for the row,
         // at 50 %; never grey.
-        #expect(fg.key == "foreground" && ThemeColorRows.isChromatic(fg.slider.base) && fg.slider.value == 0.5)
+        #expect(fg.key == "foreground" && ThemeColorRows.isChromatic(fg.slider.track.high) && fg.slider.value == 0.5)
         let fr = rect(fg, in: w), sr = rect(fg.slider, in: w), wr = rect(fg.well, in: w)
         #expect(abs(sr.minX - 421.5) <= 0.5 && abs(sr.maxX - 624) <= 0.5, "track \(sr)")
         #expect(abs(wr.width - 48) <= 0.5 && abs(wr.height - 28) <= 0.5 && abs(wr.maxX - 680) <= 0.5, "well \(wr)")
@@ -70,7 +70,7 @@ import Testing
         func hx(_ c: ThemeColorRows.RGB) -> UInt32 {
             UInt32((c.r * 255).rounded()) << 16 | UInt32((c.g * 255).rounded()) << 8 | UInt32((c.b * 255).rounded())
         }
-        let full = fg.slider.base, knob = ThemeColorRows.paleTint(full, strength: 0.5), pale = ThemeColorRows.paleTint(full, strength: 0)
+        let full = fg.slider.track.high, knob = ThemeColorRows.paleTint(full, strength: 0.5), pale = ThemeColorRows.paleTint(full, strength: 0)
         // The track: pale at the left, the full colour at the right (inside its edge).
         let y = fr.midY
         let left = r4.hex(rep, sr.minX + 4, y), right = r4.hex(rep, sr.maxX - 4, y)

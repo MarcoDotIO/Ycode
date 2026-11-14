@@ -274,6 +274,7 @@ class Session:
         targets = json.loads((HERE / "targets.json").read_text())
         self.targets = {k: Target(k, v, args) for k, v in targets.items()}
         self.ax_window, self.window_select = [], []
+        self.memory = {}
         self.fps = 60
         if args.council:
             args.allow_focus = True
@@ -299,6 +300,15 @@ class Session:
         (a folder outside any git repository: the apps would otherwise show
         the enclosing repository, this one, in their source control views)."""
         p = self.script["project"]
+        if p.get("reuse_from"):
+            # Round 7: reopen the copy an earlier session (that script's name)
+            # left behind, with the user state the app saved in it.
+            if not self.args.project_dir:
+                raise SystemExit("project.reuse_from needs --project-dir")
+            dest = pathlib.Path(self.args.project_dir).resolve() / p["reuse_from"] / target_dir.name / "project"
+            if not dest.exists():
+                raise SystemExit(f"no project copy to reuse at {dest}")
+            return dest
         source_root = REPO / "research" / "dirty" / "test-projects"
         if "generator" in p:
             subprocess.run([sys.executable, "-I", str(HERE / p["generator"]), str(source_root)], check=True,
@@ -408,6 +418,10 @@ class Session:
             return ax.run("press", *match_args(a["press"]), *window, *extra, check=False)
         if kind == "set":
             value = a["value"]
+            if isinstance(value, str) and value.startswith("$"):
+                if self.memory.get(value[1:]) is None:
+                    return {"ok": False, "error": f"nothing remembered as {value}"}
+                value = self.memory[value[1:]]
             value = ("true" if value else "false") if isinstance(value, bool) else str(value)
             return ax.run("set", *match_args(a["set"]), *window, "--attr", a["attr"], "--value", value, check=False)
         if kind == "select":
@@ -449,7 +463,12 @@ class Session:
             # [x, y] from the display's top left; "window" picks it by title.
             dx, dy = self.display["frame"][:2]
             x, y = a["move"]
-            return ax.run("window", *window, "--position", f"{dx + x},{dy + y}", "--raise", check=False)
+            r = ax.run("window", *window, "--position", f"{dx + x},{dy + y}", "--raise", check=False)
+            if "window" not in a and r.get("ok") and "window" in r:
+                # The session window moved: axdrive finds it by its origin.
+                frame = r["window"]["frame"]
+                self.ax_window = ["--window-origin", f"{frame[0]},{frame[1]}"]
+            return r
         if kind == "resize":
             w, h = a["resize"]
             return ax.run("window", "--size", f"{w},{h}", *window, check=False)
@@ -620,6 +639,18 @@ class Session:
                     r = ax.run("tree", "--scope", "app", "--depth", str(action.get("depth", 12)), check=False)
                     (target_dir / name).write_text(json.dumps(r, indent=1))
                     entry.setdefault("trees", {})[action["tree"]] = {"file": name, **alert_buttons(r)}
+                    continue
+                if "remember" in action:
+                    # Round 7: an element's value kept under a name, for a later
+                    # {"set": ..., "value": "$name"} (a slider set back to it).
+                    r = ax.run("find", *match_args(substitute(action["find"], names)), *self.ax_window, check=False)
+                    value = (r.get("element") or {}).get("value")
+                    self.memory[action["remember"]] = value
+                    entry.setdefault("remembered", {})[action["remember"]] = value
+                    entry["actions"].append({"spec": action, "result": {**r, "wall_start": t, "wall": time.time()}})
+                    if value is None:
+                        entry["ok"] = False
+                        log(f"  remember {action['remember']}: nothing found")
                     continue
                 if action.get("fallback"):
                     # Runs only when the action before it failed (a key press in

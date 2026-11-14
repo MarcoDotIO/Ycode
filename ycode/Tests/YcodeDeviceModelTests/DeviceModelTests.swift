@@ -15,7 +15,8 @@ import Testing
         #expect(g.screen == CGRect(x: m + b, y: m + b, width: 402, height: 874))
         #expect(g.body == CGRect(x: m, y: m, width: 402 + 2 * b, height: 874 + 2 * b))
         #expect(g.size == CGSize(width: 402 + 2 * b + 2 * m, height: 874 + 2 * b + 2 * m))
-        #expect(g.screenRadii == CornerRadii(all: 62) && g.bodyRadii == CornerRadii(all: 62 + b))
+        // Round 7 (§15.4): the body's corner about 83.
+        #expect(g.screenRadii == CornerRadii(all: 62) && g.bodyRadii == CornerRadii(all: 83))
         // Action and volume on the left edge, the side button on the right.
         #expect(g.buttons.map(\.kind) == [.action, .volumeUp, .volumeDown, .side])
         for btn in g.buttons where btn.kind != .side { #expect(btn.rect.minX < g.body.minX && btn.rect.maxX > g.body.minX) }

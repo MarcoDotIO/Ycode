@@ -158,7 +158,7 @@ import Testing
         let rows = sheet.canvas.rows
         // Counted as an editor counts them: the empty line after the final
         // line break too (§15.3).
-        let lines = rows.compactMap(\.right).count + 1
+        let lines = rows.filter { !$0.isFinalEmptyLine }.compactMap(\.right).count + 1
         let starts = rows.filter(\.isFirstOfHunk).compactMap { $0.right?.number }
         #expect(sheet.ruler.marks.map(\.position) == starts.map { (Double($0) - 0.5) / Double(lines) })
         let s = try base.snapshot(wc)

@@ -112,7 +112,7 @@ extension ConflictEditorState {
     /// count once; a change with no right lines takes the place of the
     /// right line that follows it.
     public func rulerMarks(rows: [MergeSheetRow]) -> [(position: Double, isConflict: Bool)] {
-        let text = rows.compactMap(\.right).count
+        let text = rows.filter { !$0.isFinalEmptyLine }.compactMap(\.right).count
         guard text > 0 else { return [] }
         let lines = text + ((document?.theirsEndsWithNewline ?? true) ? 1 : 0)
         var out: [(position: Double, isConflict: Bool)] = []

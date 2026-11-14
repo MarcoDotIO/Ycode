@@ -14,7 +14,7 @@ import Testing
         #expect(duo == [[.home, .screenshot, .recordScreen], [.rotateLeft, .poseClosed, .posePartiallyOpen, .poseOpen]])
         #expect(DeviceControlsLayout.groups(.init(spec: .iPhone18Pro)) == [[.home, .screenshot, .recordScreen], [.rotateLeft]])
         #expect(DeviceControlsLayout.groups(.init(spec: .iPadA16)) == [[.home, .screenshot, .recordScreen], [.rotateLeft]])
-        #expect(DeviceControlsLayout.groups(.init(spec: .appleWatchSeries12_46mm)) == [[.screenshot, .recordScreen]])
+        #expect(DeviceControlsLayout.groups(.init(spec: .appleWatchSeries12_46mm)) == [[.digitalCrown, .sideButton, .screenshot, .recordScreen]])
         #expect(DeviceControlsLayout.groups(.init(spec: .visionPro)) == [[.home, .screenshot, .recordScreen], [.resetCamera]])
     }
 

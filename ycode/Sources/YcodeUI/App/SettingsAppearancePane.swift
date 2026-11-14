@@ -5,8 +5,9 @@ import YcodeIDECore
 /// fixed top part (the Appearance card with the three window-on-wallpaper
 /// thumbnails, the bordered preview with line numbers, and Theme / Fonts /
 /// Editor centred between two full-width separators) over a list that
-/// scrolls on its own: Theme (a Choose… push button) and Name, then one
-/// 56-point colour row per element (a saturation slider and a colour well),
+/// scrolls on its own: Theme (a Choose… push button) and Name, then the
+/// cards of R7.1 (Foreground and Background sliders, Background Gradient,
+/// Customize All Colors, Plain Text and the syntax rows as colour buttons),
 /// the theme file's buttons. Built-in themes are read-only.
 @MainActor
 public final class ThemesSettingsPane: SettingsPane {
@@ -161,7 +162,9 @@ public final class ThemesSettingsPane: SettingsPane {
         if isViewLoaded { rebuild() }
     }
 
-    /// Theme (Choose…) and Name; the colour rows; the theme file.
+    /// Theme (Choose…) and Name; then the cards of R7.1: [Foreground,
+    /// Background, Background Gradient] [Customize All Colors] [Plain Text]
+    /// [the syntax rows]; the note and the theme file last.
     func buildTheme() {
         let t = prefs.theme
         let builtIn = EditorTheme.builtIns.contains { $0.name == t.name }
@@ -176,38 +179,30 @@ public final class ThemesSettingsPane: SettingsPane {
         name.identifier = .init("settings-theme-name")
         cardRow(SettingsPlainRow(label: "Name", control: name, height: SettingsAppearanceLayout.nameRowHeight), title: "Name")
         endCard()
-        for (title, key) in ThemeColorRows.all {
-            let v = ThemeColorRowView(title: title, key: key, theme: t, color: Self.themeColor(key), background: Self.themeColor("background"))
-            // A built-in theme's rows are read-only (drawn in full, R6.1).
-            v.slider.isEnabled = !builtIn
-            v.well.isEnabled = !builtIn
-            v.slider.onChange = { [weak self, weak v] s in
-                guard let self, let v else { return }
-                let full = v.slider.base
-                self.edit { ThemeColorRows.setStrength(key, full: full, strength: s, in: &$0) }
-                v.theme = self.prefs.theme
-                v.showKnobColor()
-                let c = v.slider.color
-                v.well.hexValue = ThemeColorRows.hex(c.r, c.g, c.b)
-                self.refreshPreview()
-            }
-            v.well.onCommit = { [weak self, weak v] hex in
-                guard let self else { return }
-                self.edit { ThemeColorRows.setTyped(key, hex, in: &$0) }
-                self.refreshPreview()
-                // The typed colour (or the system's again) is the row's full colour.
-                if let v {
-                    v.theme = self.prefs.theme
-                    if let hex, let c = ThemeColorRows.components(hex) {
-                        v.dynamicColor = NSColor(srgbRed: CGFloat(c.r), green: CGFloat(c.g), blue: CGFloat(c.b), alpha: 1)
-                    } else {
-                        v.dynamicColor = ThemesSettingsPane.themeColor(key)
+        let R = SettingsAppearanceR7.self
+        for card in R.cards(customizeAllColors: R.isOn(.customizeAllColors, in: t)) {
+            for r in card {
+                switch r {
+                case .toggle(let sw):
+                    let c = ClosureSwitch(title: sw.title)
+                    let on = R.isOn(sw, in: t)
+                    c.state = on ? .on : .off
+                    // A built-in theme's switches are read-only, drawn in full.
+                    c.readOnly = builtIn
+                    c.onChange = { [weak self] s in
+                        guard let self, !builtIn else { s.state = on ? .on : .off; return }
+                        self.edit { R.set(sw, s.state == .on, in: &$0) }
+                        // Customize All Colors changes the rows.
+                        if sw == .customizeAllColors { self.rebuild() }
                     }
-                    v.resolve()
+                    row(sw.title, c)
+                case .slider(let title, let key):
+                    colorRow(title, key: key, slider: true, theme: t, builtIn: builtIn)
+                case .color(let title, let key):
+                    colorRow(title, key: key, slider: false, theme: t, builtIn: builtIn)
                 }
             }
-            cardRow(v, title: title)
-            colorRows.append((key, v))
+            endCard()
         }
         if builtIn { footnote("Built-in themes cannot be changed; duplicate one to edit it.") }
         heading("Theme File")
@@ -219,6 +214,42 @@ public final class ThemesSettingsPane: SettingsPane {
         exp.onPress = { [weak self] _ in self?.exportClicked() }
         del.isEnabled = !builtIn
         row("", NSStackView(views: [dup, del, imp, exp]))
+    }
+
+    /// A colour row: a slider and a 48 × 28 button (56), or the button
+    /// alone (48 × 24, 47). A built-in theme's rows are read-only but drawn
+    /// in full (R6.1).
+    func colorRow(_ title: String, key: String, slider: Bool, theme t: EditorTheme, builtIn: Bool) {
+        let v = ThemeColorRowView(title: title, key: key, theme: t, color: Self.themeColor(key), background: Self.themeColor("background"),
+                                  style: slider ? .slider : .colorOnly)
+        v.slider.isEnabled = !builtIn
+        v.well.isEnabled = !builtIn
+        v.slider.onChange = { [weak self, weak v] s in
+            guard let self, let v else { return }
+            self.edit { ThemeColorRows.setFromSlider(key, track: v.slider.track, strength: s, in: &$0) }
+            v.theme = self.prefs.theme
+            v.showKnobColor()
+            let c = v.slider.color
+            v.well.hexValue = ThemeColorRows.hex(c.r, c.g, c.b)
+            self.refreshPreview()
+        }
+        v.well.onCommit = { [weak self, weak v] hex in
+            guard let self else { return }
+            self.edit { ThemeColorRows.setTyped(key, hex, in: &$0) }
+            self.refreshPreview()
+            // The typed colour (or the system's again) is the row's colour.
+            if let v {
+                v.theme = self.prefs.theme
+                if let hex, let c = ThemeColorRows.components(hex) {
+                    v.dynamicColor = NSColor(srgbRed: CGFloat(c.r), green: CGFloat(c.g), blue: CGFloat(c.b), alpha: 1)
+                } else {
+                    v.dynamicColor = ThemesSettingsPane.themeColor(key)
+                }
+                v.resolve()
+            }
+        }
+        cardRow(v, title: title)
+        colorRows.append((key, v))
     }
 
     /// The colour a row shows: the theme's, else the editor's (dynamic for

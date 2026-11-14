@@ -97,6 +97,7 @@ public final class ShellAppModel {
         do {
             workspace = try WorkspaceShellModel(url: url, engine: makeEngine())
             workspace?.debug.restoreBreakpoints()
+            workspace?.restoreWindowLayout()   // editors and inspector (W7.1)
             if startsLanguageService { workspace?.startLanguageService() }
             openError = nil
             isOpenSheetShown = false
@@ -120,6 +121,7 @@ public final class ShellAppModel {
     }
 
     private func discardWorkspace() {
+        workspace?.saveWindowLayout()   // kept for the next open (W7.1)
         workspace?.stopLanguageService()
         workspace?.previewCanvas.stop()
         workspace?.stop()
@@ -130,7 +132,10 @@ public final class ShellAppModel {
     /// The app is asked to quit: true if it may; false after raising the
     /// prompt about unsaved changes.
     public func shouldQuit() -> Bool {
-        guard workspace?.hasUnsavedChanges == true else { return true }
+        guard workspace?.hasUnsavedChanges == true else {
+            workspace?.saveWindowLayout()   // kept for the next open (W7.1)
+            return true
+        }
         pendingClose = .quit
         return false
     }
@@ -151,6 +156,7 @@ public final class ShellAppModel {
         switch pending {
         case .closeWorkspace: discardWorkspace()
         case .quit:
+            workspace?.saveWindowLayout()
             workspace?.stop()
             terminateApp()
         case .open(let path):

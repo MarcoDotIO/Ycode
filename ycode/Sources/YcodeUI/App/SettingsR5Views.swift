@@ -81,27 +81,31 @@ final class AppearanceThumbnailButton: NSButton {
         }
     }
 
-    /// The picture (`AppearanceThumbnailArt`) in `r` (a flipped context).
+    /// The picture in `r` (a flipped context): the close-up of R7.4
+    /// (`AppearanceThumbnailCloseUp`) over `AppearanceThumbnailArt`'s
+    /// wallpapers; System is the Light picture's left half and the Dark
+    /// picture's right half, its window further left.
     static func drawThumbnail(_ a: Preferences.Appearance, in r: NSRect) {
         let clip = NSBezierPath(roundedRect: r, xRadius: SettingsAppearanceLayout.thumbnailRadius, yRadius: SettingsAppearanceLayout.thumbnailRadius)
         NSGraphicsContext.saveGraphicsState()
         clip.addClip()
         switch a {
-        case .light: drawLook(AppearanceThumbnailArt.light, in: r)
-        case .dark: drawLook(AppearanceThumbnailArt.dark, in: r)
+        case .light: drawLook(AppearanceThumbnailArt.light, dark: false, system: false, in: r)
+        case .dark: drawLook(AppearanceThumbnailArt.dark, dark: true, system: false, in: r)
         case .system:
-            drawLook(AppearanceThumbnailArt.light, in: r)
+            drawLook(AppearanceThumbnailArt.light, dark: false, system: true, in: r)
             NSGraphicsContext.saveGraphicsState()
             NSRect(x: r.minX + AppearanceThumbnailArt.splitX, y: r.minY, width: r.width - AppearanceThumbnailArt.splitX, height: r.height).clip()
-            drawLook(AppearanceThumbnailArt.dark, in: r)
+            drawLook(AppearanceThumbnailArt.dark, dark: true, system: true, in: r)
             NSGraphicsContext.restoreGraphicsState()
         }
         NSGraphicsContext.restoreGraphicsState()
     }
 
-    static func drawLook(_ l: AppearanceThumbnailArt.Look, in r: NSRect) {
+    static func drawLook(_ l: AppearanceThumbnailArt.Look, dark: Bool, system: Bool, in r: NSRect) {
         func rgb(_ v: UInt32, _ a: CGFloat = 1) -> NSColor { SettingsR5Colors.rgb(v, a) }
-        // The wallpaper: lighter at the top (the view is flipped).
+        let C = AppearanceThumbnailCloseUp.self
+        // The wallpaper: lighter at the top (the view is flipped), its wave.
         NSGradient(starting: rgb(l.wallpaperTop, 1), ending: rgb(l.wallpaperBottom, 1))?.draw(in: r, angle: 90)
         let wave = NSBezierPath()
         for (i, p) in AppearanceThumbnailArt.wave.enumerated() {
@@ -111,23 +115,33 @@ final class AppearanceThumbnailButton: NSButton {
         wave.close()
         rgb(l.wave, CGFloat(l.waveOpacity)).setFill()
         wave.fill()
-        // The window, its title area and its buttons.
-        let w = AppearanceThumbnailArt.window.offsetBy(dx: r.minX, dy: r.minY)
-        let shape = NSBezierPath(roundedRect: w, xRadius: AppearanceThumbnailArt.windowRadius, yRadius: AppearanceThumbnailArt.windowRadius)
+        // The bar along the top and its mark; the translucent panel.
+        let bar = C.barFill(dark: dark)
+        rgb(bar.color, CGFloat(bar.opacity)).setFill()
+        NSRect(x: r.minX, y: r.minY, width: r.width, height: C.barHeight).fill()
+        rgb(C.markFill(dark: dark)).setFill()
+        let m = C.markDiameter
+        NSBezierPath(ovalIn: NSRect(x: r.minX + C.markCenter.x - m / 2, y: r.minY + C.markCenter.y - m / 2, width: m, height: m)).fill()
+        let panel = C.panelFill(dark: dark)
+        rgb(panel.color, CGFloat(panel.opacity)).setFill()
+        NSBezierPath(roundedRect: C.panel.offsetBy(dx: r.minX, dy: r.minY), xRadius: C.panelRadius, yRadius: C.panelRadius).fill()
+        // The window's top-left corner, its title area and its buttons.
+        let w = C.window(system: system).offsetBy(dx: r.minX, dy: r.minY)
+        let shape = NSBezierPath(roundedRect: w, xRadius: C.windowRadius, yRadius: C.windowRadius)
         rgb(l.window).setFill()
         shape.fill()
         NSGraphicsContext.saveGraphicsState()
         shape.addClip()
         rgb(l.titleArea).setFill()
-        NSRect(x: w.minX, y: w.minY, width: w.width, height: AppearanceThumbnailArt.titleAreaHeight).fill()
+        NSRect(x: w.minX, y: w.minY, width: w.width, height: C.titleAreaHeight).fill()
         NSGraphicsContext.restoreGraphicsState()
         rgb(l.windowEdge).setStroke()
         shape.lineWidth = 0.5
         shape.stroke()
-        let d = AppearanceThumbnailArt.dotDiameter
-        for dot in AppearanceThumbnailArt.dots {
-            rgb(dot.color).setFill()
-            NSBezierPath(ovalIn: NSRect(x: r.minX + dot.x - d / 2, y: r.minY + AppearanceThumbnailArt.dotY - d / 2, width: d, height: d)).fill()
+        let d = C.buttonDiameter
+        for (c, color) in zip(C.buttonCenters(system: system), C.buttonColors) {
+            rgb(color).setFill()
+            NSBezierPath(ovalIn: NSRect(x: r.minX + c.x - d / 2, y: r.minY + c.y - d / 2, width: d, height: d)).fill()
         }
     }
 }
@@ -268,265 +282,7 @@ final class SettingsPushButton: NSButton {
     }
 }
 
-// MARK: Colour rows (R5.1's Foreground)
-
-/// The colour slider (R6.1): a 14-point capsule track in one hue, from a
-/// pale tint at the left to the full colour at the right
-/// (`ThemeColorRows.paleTint`), with a 1-point darker edge, and a knob
-/// about 28 across (a white rim around the colour under it) at the row's
-/// strength. A built-in theme's row is read-only but drawn in full.
-final class ThemeColorSlider: NSControl {
-    typealias RGB = (r: Double, g: Double, b: Double)
-    /// The full colour (the track's right end).
-    var base: RGB { didSet { needsDisplay = true } }
-    var value = ThemeColorRows.defaultStrength { didSet { needsDisplay = true } }
-    var onChange: ((Double) -> Void)?
-
-    init(base: RGB) {
-        self.base = base
-        super.init(frame: .zero)
-        setAccessibilityRole(.slider)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override var isFlipped: Bool { true }
-    override var intrinsicContentSize: NSSize { NSSize(width: SettingsAppearanceLayout.sliderWidth, height: SettingsAppearanceLayout.sliderKnob) }
-    override var isEnabled: Bool { didSet { needsDisplay = true } }
-    override func accessibilityValue() -> Any? { value }
-
-    /// The colour at the knob.
-    var color: RGB { ThemeColorRows.paleTint(base, strength: value) }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let alpha: CGFloat = 1
-        let k = SettingsAppearanceLayout.sliderKnob, th = SettingsAppearanceLayout.sliderTrackHeight
-        let track = NSRect(x: 0, y: bounds.midY - th / 2, width: bounds.width, height: th)
-        func ns(_ c: RGB) -> NSColor { NSColor(srgbRed: CGFloat(c.r), green: CGFloat(c.g), blue: CGFloat(c.b), alpha: alpha) }
-        let pale = ThemeColorRows.paleTint(base, strength: 0)
-        let f = ThemeColorRows.self, e = SettingsAppearanceR6.trackEdgeFactor
-        // The darker edge, then the gradient 1 point inside it.
-        let shape = NSBezierPath(roundedRect: track, xRadius: th / 2, yRadius: th / 2)
-        NSGradient(starting: ns(f.darker(pale, e)), ending: ns(f.darker(base, e)))?.draw(in: shape, angle: 0)
-        let w = SettingsAppearanceR6.edgeWidth
-        let inner = track.insetBy(dx: w, dy: w)
-        let innerShape = NSBezierPath(roundedRect: inner, xRadius: inner.height / 2, yRadius: inner.height / 2)
-        NSGradient(starting: ns(pale), ending: ns(base))?.draw(in: innerShape, angle: 0)
-        let x = k / 2 + CGFloat(value) * (bounds.width - k)
-        let knob = NSRect(x: x - k / 2, y: bounds.midY - k / 2, width: k, height: k)
-        NSGraphicsContext.saveGraphicsState()
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.2)
-        shadow.shadowBlurRadius = 2
-        shadow.shadowOffset = NSSize(width: 0, height: -0.5)
-        shadow.set()
-        NSColor.white.withAlphaComponent(alpha).setFill()
-        NSBezierPath(ovalIn: knob).fill()
-        NSGraphicsContext.restoreGraphicsState()
-        ns(color).setFill()
-        NSBezierPath(ovalIn: knob.insetBy(dx: SettingsAppearanceR6.knobRim, dy: SettingsAppearanceR6.knobRim)).fill()
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        guard isEnabled else { return }
-        track(event)
-        while let e = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
-            track(e)
-            if e.type == .leftMouseUp { break }
-        }
-    }
-
-    func track(_ e: NSEvent) {
-        let k = SettingsAppearanceLayout.sliderKnob
-        let p = convert(e.locationInWindow, from: nil)
-        set(Double((p.x - k / 2) / max(1, bounds.width - k)))
-    }
-
-    /// Moves the knob (0–1) and reports it.
-    func set(_ v: Double) {
-        value = min(max(v, 0), 1)
-        onChange?(value)
-    }
-}
-
-/// The colour well: a 48 × 28 capsule with a 3-point #DFDFDF rim around
-/// the colour (the knob's), the colour edged 1 point darker (R6.1). A click shows the colour as #RRGGBB in a popover to edit
-/// (Ycode's own editor, the same on Linux); an empty value is the system's.
-final class ThemeColorWellButton: NSButton, NSTextFieldDelegate {
-    var color: NSColor { didSet { needsDisplay = true } }
-    var hexValue: String
-    var onCommit: ((String?) -> Void)?
-    private var popover: NSPopover?
-
-    init(color: NSColor, hex: String?) {
-        self.color = color
-        hexValue = hex ?? ""
-        super.init(frame: .zero)
-        title = ""
-        isBordered = false
-        target = self
-        action = #selector(editColor)
-        setAccessibilityRole(.colorWell)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override var isFlipped: Bool { true }
-    override var intrinsicContentSize: NSSize { SettingsAppearanceLayout.wellSize }
-    override var isEnabled: Bool { didSet { needsDisplay = true } }
-    override func accessibilityValue() -> Any? { hexValue.isEmpty ? "System" : hexValue }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let r = bounds
-        SettingsR5Colors.wellRim.setFill()
-        NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2).fill()
-        let inner = r.insetBy(dx: SettingsAppearanceLayout.wellRim, dy: SettingsAppearanceLayout.wellRim)
-        let c = color.usingColorSpace(.sRGB) ?? color
-        let e = CGFloat(SettingsAppearanceR6.wellEdgeFactor)
-        NSColor(srgbRed: c.redComponent * e, green: c.greenComponent * e, blue: c.blueComponent * e, alpha: 1).setFill()
-        NSBezierPath(roundedRect: inner, xRadius: inner.height / 2, yRadius: inner.height / 2).fill()
-        let w = SettingsAppearanceR6.edgeWidth
-        let core = inner.insetBy(dx: w, dy: w)
-        c.setFill()
-        NSBezierPath(roundedRect: core, xRadius: core.height / 2, yRadius: core.height / 2).fill()
-    }
-
-    @objc func editColor() {
-        guard isEnabled, let w = window, w.isVisible else { return }
-        let field = NSTextField(string: hexValue)
-        field.placeholderString = "System"
-        field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        field.delegate = self
-        field.frame = NSRect(x: 12, y: 12, width: 110, height: 22)
-        let content = NSViewController()
-        content.view = NSView(frame: NSRect(x: 0, y: 0, width: 134, height: 46))
-        content.view.addSubview(field)
-        let p = NSPopover()
-        p.behavior = .transient
-        p.contentViewController = content
-        popover = p
-        p.show(relativeTo: bounds, of: self, preferredEdge: .maxY)
-    }
-
-    func controlTextDidEndEditing(_ obj: Notification) {
-        guard let f = obj.object as? NSTextField else { return }
-        commit(f.stringValue)
-        popover?.close()
-    }
-
-    /// Saves a typed value: "#RRGGBB" (with or without "#"), or empty for
-    /// the system colour; anything else is ignored.
-    func commit(_ text: String) {
-        let t = text.trimmingCharacters(in: .whitespaces)
-        if t.isEmpty { hexValue = ""; onCommit?(nil); return }
-        guard let c = ThemeColorRows.components(t) else { return }
-        hexValue = ThemeColorRows.hex(c.r, c.g, c.b)
-        color = NSColor(srgbRed: CGFloat(c.r), green: CGFloat(c.g), blue: CGFloat(c.b), alpha: 1)
-        onCommit?(hexValue)
-    }
-}
-
-/// A 56-point colour row (R5.1, R6.1): the label at the top-left (cap top
-/// 13 under the row's top), the slider and the well centred in the row.
-/// The track's hue, the knob's strength and the well's colour come from
-/// `ThemeColorRows.display` (a grey takes Ycode's hue for the row).
-final class ThemeColorRowView: NSView {
-    let label: NSTextField
-    let slider: ThemeColorSlider
-    let well: ThemeColorWellButton
-    let key: String
-    /// The theme the row shows.
-    var theme: EditorTheme
-    /// The theme's colour as given (system colours are dynamic): resolved
-    /// in the row's own appearance, flattened over the background, whenever
-    /// the appearance changes.
-    var dynamicColor: NSColor
-    let dynamicBackground: NSColor
-
-    init(title: String, key: String, theme: EditorTheme, color: NSColor, background: NSColor) {
-        label = NSTextField(labelWithString: title)
-        self.key = key
-        self.theme = theme
-        dynamicColor = color
-        dynamicBackground = background
-        slider = ThemeColorSlider(base: ThemeColorRows.rgb(0xE35590))
-        well = ThemeColorWellButton(color: color, hex: ThemeColorRows.value(key, in: theme))
-        super.init(frame: .zero)
-        label.font = .systemFont(ofSize: SettingsMetrics.fontSize)
-        label.textColor = SettingsColors.label
-        label.lineBreakMode = .byTruncatingTail
-        slider.setAccessibilityLabel(title)
-        well.setAccessibilityLabel(title)
-        for v in [label, slider, well] as [NSView] {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(v)
-        }
-        let L = SettingsAppearanceLayout.self
-        // A 13-point label's cap top is about 3 inside its frame.
-        NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: L.colorRowHeight),
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: SettingsMetrics.labelInset),
-            label.topAnchor.constraint(equalTo: topAnchor, constant: L.colorLabelCapTop - 3),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: slider.leadingAnchor, constant: -8),
-            slider.leadingAnchor.constraint(equalTo: leadingAnchor, constant: L.sliderX),
-            slider.widthAnchor.constraint(equalToConstant: L.sliderWidth),
-            slider.heightAnchor.constraint(equalToConstant: L.sliderKnob),
-            slider.centerYAnchor.constraint(equalTo: centerYAnchor),
-            well.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -SettingsMetrics.controlInset),
-            well.widthAnchor.constraint(equalToConstant: L.wellSize.width),
-            well.heightAnchor.constraint(equalToConstant: L.wellSize.height),
-            well.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
-        resolve()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override var isFlipped: Bool { true }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        resolve()
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        resolve()
-    }
-
-    /// The colours as drawn in this row's appearance: the track's full
-    /// colour, the knob's strength, the well's colour (the knob's).
-    func resolve() {
-        var c = NSColor.black
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            let bg = Self.opaque(self.dynamicBackground, over: .white)
-            c = Self.opaque(self.dynamicColor, over: bg)
-        }
-        let shown = ThemeColorRows.display(key, in: theme, resolved: (Double(c.redComponent), Double(c.greenComponent), Double(c.blueComponent)))
-        slider.base = shown.full
-        slider.value = shown.strength
-        showKnobColor()
-    }
-
-    /// The well shows the colour under the knob.
-    func showKnobColor() {
-        let k = slider.color
-        well.color = NSColor(srgbRed: CGFloat(k.r), green: CGFloat(k.g), blue: CGFloat(k.b), alpha: 1)
-    }
-
-    /// `c` in sRGB with its transparency flattened over `bg`.
-    static func opaque(_ c: NSColor, over bg: NSColor) -> NSColor {
-        let s = c.usingColorSpace(.sRGB) ?? .black
-        let b = bg.usingColorSpace(.sRGB) ?? .white
-        let a = s.alphaComponent
-        func mix(_ x: CGFloat, _ y: CGFloat) -> CGFloat { x * a + y * (1 - a) }
-        return NSColor(srgbRed: mix(s.redComponent, b.redComponent), green: mix(s.greenComponent, b.greenComponent),
-                       blue: mix(s.blueComponent, b.blueComponent), alpha: 1)
-    }
-}
+// The colour rows (slider, colour button, row) are in SettingsR7Views.swift.
 
 // MARK: The preview (R5.1)
 

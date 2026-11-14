@@ -158,6 +158,8 @@ public final class LSPClient: @unchecked Sendable {
                     // codeActionsInline: sourcekit-lsp attaches fix-its to diagnostics.
                     "publishDiagnostics": ["relatedInformation": true, "codeActionsInline": true],
                 ].merging(Self.refactoringCapabilities) { a, _ in a }.merging(Self.findTextDocumentCapabilities) { a, _ in a }),
+                // $/progress (work done) for the indexing subtitle (row 189).
+                "window": ["workDoneProgress": true],
                 "workspace": .object(["configuration": true, "applyEdit": true, "workspaceEdit": ["documentChanges": true]]
                     .merging(Self.findWorkspaceCapabilities) { a, _ in a }),
             ],

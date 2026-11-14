@@ -1,0 +1,262 @@
+{
+  "issue": 81,
+  "targets": [
+    "xcode",
+    "ycode"
+  ],
+  "compare_order": [
+    "xcode",
+    "ycode"
+  ],
+  "project": {
+    "generator": "make-conflict-project.py",
+    "path": "Merger/Merger.xcodeproj"
+  },
+  "focus": "foreground",
+  "launch_settle": 3.0,
+  "record": {
+    "fps": 120,
+    "codec": "prores4444",
+    "pre": 0.4,
+    "post": 1.2,
+    "margin": 60
+  },
+  "name": "council-r8-conflict-narrow",
+  "title": "Council round 8 (#81): round 7's steps and ids. The issue capsule in a narrow light window: the Merger test project at 1100 x 880 with each app's own Appearance set to Light, one compile error and one warning added and built (round 7 had no issue to show), the Source Control navigator as in conflict step 01; then Appearance set back to System.",
+  "window": {
+    "size": [
+      1100,
+      880
+    ],
+    "display": "builtin",
+    "title": "{project}",
+    "timeout": 90
+  },
+  "steps": [
+    {
+      "id": "appearance-light",
+      "note": "Each app's own Appearance set to Light (Settings > Appearance), Settings closed.",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "description": "AppearanceLight",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "title": "Light",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "scm-repositories-narrow",
+      "note": "Round 8: conflict step 01 at 1100 x 880 in light, now with live issues: one compile error and one warning appended to Greeting.swift (a run action in the project copy), then a build (cmd+B) in each app, then the Source Control navigator as before. The toolbar's issue capsule in a narrow window; crop sheet.",
+      "do": [
+        {
+          "run": [
+            "sh",
+            "-c",
+            "cat >> Merger/Greeting.swift <<'SWIFT'\n\n// Round 8: one compile error and one warning for the issue capsule.\nlet roundEightError: Int = \"eight\"\n\nfunc roundEightWarning() {\n    var unused = 8\n}\nSWIFT\n"
+          ]
+        },
+        {
+          "wait": 1.5
+        },
+        {
+          "key": "cmd+b"
+        },
+        {
+          "wait": 25.0
+        },
+        {
+          "key": "cmd+2"
+        },
+        {
+          "wait": 1.0
+        },
+        {
+          "press": {
+            "role": "AXRadioButton",
+            "label": "Repositories"
+          }
+        },
+        {
+          "wait": 1.0
+        },
+        {
+          "set": {
+            "role": "AXRow",
+            "text": "project|Merger"
+          },
+          "attr": "AXDisclosing",
+          "value": true
+        },
+        {
+          "wait": 0.6
+        },
+        {
+          "set": {
+            "role": "AXRow",
+            "text": "Branches"
+          },
+          "attr": "AXDisclosing",
+          "value": true
+        },
+        {
+          "wait": 0.6
+        }
+      ],
+      "record": false,
+      "still": "after",
+      "crop": [
+        560,
+        0,
+        540,
+        52
+      ]
+    },
+    {
+      "id": "appearance-restore",
+      "note": "Each app's own Appearance set back to System.",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "description": "AppearanceAuto",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "title": "System",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    }
+  ]
+}

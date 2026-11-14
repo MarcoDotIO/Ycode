@@ -69,10 +69,14 @@ public final class WorkspaceShellModel {
     @ObservationIgnored var languageUpdates: [String: Task<Void, Never>] = [:]
     /// The editor panes; the focused one shows `document` (+Panes.swift).
     public let panes = ShellEditorPanes()
+    /// The panes' scrolling for restore on reopen (+Restore.swift, W7.1).
+    @ObservationIgnored public let restore = ShellWindowRestore()
     /// Find and Replace in the open file.
     public let findBar = EditorFindBar()
     /// Navigate ▸ Jump to Line…: the sheet is up.
     public var isJumpToLineShown = false
+    /// File ▸ Open Quickly…'s panel (ShellOpenQuicklyModel.swift).
+    public let openQuickly = ShellOpenQuicklyModel()
     /// Bumped when the editor should take the keyboard.
     public internal(set) var editorFocusCount = 0
     /// The issues of the open file, by 1-based line.
@@ -121,6 +125,8 @@ public final class WorkspaceShellModel {
     public private(set) var activityFinishedAt: Date?
     /// The language service is starting (the activity subtitle, row 141).
     public private(set) var isPreparingEditorServices = false
+    /// The language server is indexing (the activity subtitle, row 189).
+    public private(set) var isIndexing = false
     public private(set) var buildLog: [String] = []
     public private(set) var console = ""
     public private(set) var buildCount = 0
@@ -223,6 +229,7 @@ public final class WorkspaceShellModel {
             activity = session.activity
             if case .finished = activity { activityFinishedAt = Date() }
             isPreparingEditorServices = session.isPreparingEditorServices
+            isIndexing = session.isIndexing
             noteActivityForNotifications()
             buildLog = session.buildLog
         case .issues:
@@ -252,7 +259,7 @@ public final class WorkspaceShellModel {
     /// (`WorkspaceChrome.activityFinishedText`, as the AppKit IDE shows it).
     public var activityText: String {
         switch activity {
-        case .idle: return WorkspaceChrome.idleActivityText(preparingEditorServices: isPreparingEditorServices)
+        case .idle: return WorkspaceChrome.idleActivityText(preparingEditorServices: isPreparingEditorServices, indexing: isIndexing)
         case .building(let s), .running(let s), .paused(let s): return s
         case .finished(let s):
             guard let at = activityFinishedAt else { return s }
@@ -592,6 +599,7 @@ public final class WorkspaceShellModel {
              .showFileInspector, .showQuickHelpInspector:
             performLanguage(c)
         case .splitEditor, .splitEditorBelow: splitEditor(sideBySide: c == .splitEditor)   // +Panes.swift
+        case .openQuickly: showOpenQuickly()   // ShellOpenQuicklyModel.swift
         case .toggleNavigator: isNavigatorShown.toggle()
         case .toggleInspector: isInspectorShown.toggle()
         case .toggleDebugArea: isDebugAreaShown.toggle()

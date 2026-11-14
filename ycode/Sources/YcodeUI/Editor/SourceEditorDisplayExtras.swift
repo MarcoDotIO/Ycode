@@ -54,11 +54,25 @@ extension SourceTextView {
     func heightWithOverscroll(_ proposed: CGFloat) -> CGFloat {
         let d = displayState
         let base = proposed == d.lastHeight ? proposed - d.lastExtra : proposed
-        let visible = enclosingScrollView?.contentSize.height ?? 0
-        let extra = visible > 0 && base > visible ? (visible * d.overscroll).rounded() : 0
+        let extra = overscrollExtra(base: base)
         d.lastExtra = extra
         d.lastHeight = base + extra
         return base + extra
+    }
+
+    /// The blank space added after the text: the overscroll's share of the
+    /// text area (the view between the jump bar and the bottom bar, not the
+    /// whole scroll view the text runs under), less the text container's
+    /// own inset below the last row. At Medium the last row's bottom then
+    /// rises to the text area's middle at the maximum offset
+    /// (`editor-area.md` I.3, row 178: the reference's 2.75 above it; the
+    /// whole view's half put it 68 above).
+    func overscrollExtra(base: CGFloat) -> CGFloat {
+        guard let scroll = enclosingScrollView else { return 0 }
+        let visible = scroll.contentSize.height
+        let area = visible - scroll.contentInsets.top - scroll.contentInsets.bottom
+        guard visible > 0, area > 0, base > visible, displayState.overscroll > 0 else { return 0 }
+        return max(0, (area * displayState.overscroll).rounded() - textContainerInset.height)
     }
 }
 

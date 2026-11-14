@@ -2,8 +2,9 @@ import Foundation
 
 /// Per-workspace interface state kept in the workspace's user data
 /// (`reference-ui-5.md` §3.5, §4.3, §5.1): the Start Page's Recent Files
-/// (L9), the project navigator's expanded rows (N4) and the run
-/// destination remembered per scheme (T1).
+/// (L9), the project navigator's expanded rows (N4), the run
+/// destination remembered per scheme (T1), and the editors and inspector
+/// restored on reopen (`workspace-window.md` W7.1).
 ///
 /// Stored as JSON at
 /// `<container>/xcuserdata/<user>.xcuserdatad/ycode-ui-state.json`
@@ -20,6 +21,11 @@ public struct WorkspaceUserState: Codable, Equatable, Sendable {
     /// The debug area's height when last shown (reference-ui-5.md §8.2);
     /// nil until it has been shown and resized or hidden.
     public var debugAreaHeight: Double?
+    /// The editors when the window closed (`WorkspaceEditorLayout`,
+    /// `workspace-window.md` W7.1); nil before the first close.
+    public var editorLayout: WorkspaceEditorLayout?
+    /// The inspector's visibility and tab when the window closed (W7.1).
+    public var inspector: WorkspaceInspectorState?
 
     public init() {}
 

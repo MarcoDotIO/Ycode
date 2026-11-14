@@ -13,8 +13,12 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
 /// (`--device-type vision-pro` on the visionOS runtime root) and Delete…
 /// erases it on the host. ssh is a local stand-in and the launcher a
 /// script that logs its arguments: no network.
+///
+/// The first test awaits about ten hops to the main actor in a row (its
+/// controller's tasks, the launcher's start, exit and erase); it starts
+/// once those hops are quick (`MainActorQuietTrait`).
 @MainActor
-@Suite(.serialized, .timeLimit(.minutes(5))) struct VisionHubTests {
+@Suite(.serialized, .mainActorQuiet, .timeLimit(.minutes(5))) struct VisionHubTests {
     static let iosRoot = "/rr/iOS-27.0-24A434/RuntimeRoot"
     static let visionRoot = "/rr/xrOS-27.0-24O353/RuntimeRoot"
 
@@ -99,6 +103,9 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         wc.configureYcodeRemoteDevice(c, defaults: p.defaults, ssh: r.settings.ssh)
         c.view.frame = NSRect(x: 0, y: 0, width: 1100, height: 800)
         c.pairing.confirm = { _, _, _ in true }
+        // The window goes with the test: a workspace window left open answers
+        // every later preferences change for the rest of the run.
+        defer { wc.window?.close() }
         try await body(c, p.defaults)
     }
 

@@ -44,7 +44,7 @@ target_compile_options(ycode-airc PRIVATE -Wall -Wno-unused-parameter -fno-rtti)
 if(TARGET LLVM)
   set(AIRC_LLVM_LIBS LLVM)
 else()
-  llvm_map_components_to_libnames(AIRC_LLVM_LIBS core bitreader analysis transformutils scalaropts ipo passes linker support)
+  llvm_map_components_to_libnames(AIRC_LLVM_LIBS core asmparser bitreader bitwriter analysis transformutils scalaropts ipo passes linker support)
 endif()
 # HINTS: pkg-config's directory, for a prefix CMake does not search on its
 # own (the Flatpak build installs SPIRV-Tools into /app).

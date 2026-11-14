@@ -779,6 +779,45 @@ button, both before the texts); expose the icon as an image with a
 description (Ycode's own words); the status image is optional (nothing
 is drawn for it). The buttons' frames already match.
 
+## 16. Council round 7: the alert's children again, the window behind the sheet (2026-11-08)
+
+Round 7's conflict session (dark, Ycode `0afb3bd7`) recorded the alert's
+accessibility tree again (`02-merge-start-alert-tree`); the judges did
+not get it this round, so row 168 was checked here instead. Checklist
+row 195 in `fidelity-council.md`. The final empty line in both panes is
+`editor-area.md` I.3; the toolbar behind the sheet (the issue capsule,
+the activity subtitle, the traffic lights) is `workspace-window.md`
+W7.2.
+
+### 16.1 The alert's children (refines §15.4)
+
+| # | Reference | Ycode now |
+|---|---|---|
+| Sheet | 420 × 132, **no description** | 420 × 133, its description the message text |
+| 1 | an **image with no description, 18 × 18** (an empty status image) | — |
+| 2 | button **Merge**, 82 × 22, title only | button Merge, 81 × 22, title and the same text as description |
+| 3 | button **Cancel**, 60 × 22 | button Cancel, 60 × 22, title and description |
+| 4 | the message, static text **296 × 34** | 296 × 36 |
+| 5 | the application icon, an image **66 × 66** described as the application's icon | 57 × 57, described as Ycode's icon |
+| 6 | the informative text, **296 × 30** | 296 × 32 |
+
+Round 6's order (Merge, Cancel, message, icon, text) is **met**. What is
+left: the leading 18 × 18 image without a description, the icon at 66 ×
+66, the texts 2 points shorter each (34 and 30, so the sheet is 132),
+and no description on the sheet or the buttons (the title carries the
+name).
+
+### 16.2 Ycode implementation (B7-D, 2026-11-08)
+
+The alert is 132 tall (its top where the 133-point alert had it); an
+empty, undescribed 18 × 18 image comes first among its children; the
+icon's element is 66 × 66 round the drawn icon; the message's element
+is 296 × 34 and the informative text's 296 × 30; the sheet and the
+buttons (here and in the merge sheet) have no description, their titles
+name them (macOS). The Linux card adds the same image and icon element;
+its buttons and card keep their accessibility names (AT-SPI has no
+separate title).
+
 ## Open questions
 
 Each has a Ycode answer in §12, marked "Ycode's choice, open question".
@@ -835,3 +874,4 @@ Each has a Ycode answer in §12, marked "Ycode's choice, open question".
 | §13.2: default and cancel button attributes, static texts in alerts | 1 | AppKit accessibility documentation (`NSAccessibility` protocol) |
 | §14: the sheet below the window, the buttons, Choose Right's row, badge, highlight and fade timing, the ruler in dark | 3 | Council round 5 stills `02-merge-start-alert`, `03-conflict-at-rest`, `04-conflict-choose-right-after` (app mode with a 60-point margin) and recording `04-conflict-choose-right` (120 fps) of both apps, dark; vertical and horizontal colour runs, per-frame samples of the file row, its badge and the menu item, timed against the driver's posted clicks |
 | §15: changed-word runs, the current change's rules and Choose Right's timing, the ruler in light, the alert's children | 3 | Council round 6 stills `02-merge-start-alert`, `03-conflict-at-rest`, `04-conflict-choose-right-after` and the alert's accessibility tree (`02-merge-start-alert-tree`), recording `04-conflict-choose-right` (120 fps), both apps, light: highlight runs on a pixel row inside the fill, colour runs through the ruler, per-frame changed regions and one-point colour samples timed against the posted clicks |
+| §16: the alert's children in round 7 | 3 | Council round 7 alert accessibility trees (`02-merge-start-alert-tree`, both apps, dark), recorded by the capture tool: roles, descriptions, titles, sizes and order |

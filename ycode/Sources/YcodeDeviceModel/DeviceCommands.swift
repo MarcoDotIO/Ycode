@@ -21,6 +21,8 @@ public enum DeviceCommand: String, Sendable, CaseIterable {
     case captureKeyboard, start, restart, shutDown, forceShutDown
     // Fold (the iPhone Duo's poses)
     case poseClosed, posePartiallyOpen, poseOpen
+    // A watch's hardware controls in its capsule (council round 9 row 234)
+    case sideButton, digitalCrown
 
     /// The menu title (exact where the reference's is known, §7).
     public var title: String {
@@ -50,6 +52,8 @@ public enum DeviceCommand: String, Sendable, CaseIterable {
         case .poseClosed: DevicePosture.closed.title
         case .posePartiallyOpen: DevicePosture.halfOpen.title
         case .poseOpen: DevicePosture.openFlat.title
+        case .sideButton: "Side Button"
+        case .digitalCrown: "Digital Crown"
         }
     }
 

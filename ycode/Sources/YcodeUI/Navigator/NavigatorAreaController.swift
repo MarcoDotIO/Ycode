@@ -40,6 +40,10 @@ public final class OutlineItem: NSObject {
     /// A project-tree row's location on disk, folders and groups included
     /// (`path` is only set on rows that open something).
     public var nodePath: String?
+    /// A project row's logo or Ycode mark (nil: `symbol`; NavigatorRowIcons.swift).
+    public var rowIcon: NavigatorRowIcon?
+    /// The icon's tint on a selected row without focus (round 9, row 208).
+    public var unfocusedTint: NSColor?
     public var expansionKey: String?
     /// A project-tree row's pbxproj object (`NavigatorNode.objectID`):
     /// what the file operations act on.
@@ -78,20 +82,23 @@ public final class OutlineItem: NSObject {
     /// The file-type glyph of a file name or path.
     static func fileSymbol(_ name: String) -> String { WorkspaceChrome.fileSymbol(name) }
 
-    /// A row icon's colour (nil: the accent colour).
+    /// A plain group's folder (`navigators.md` round 2 §2; council round 9,
+    /// row 213): #7B7B80 in light, #B6B7BC in dark. Like every file glyph
+    /// it is drawn without vibrancy (`NavigatorFlatIconView`), so the
+    /// sidebar's material does not shift it.
+    static let groupGrey = NavigatorRowImages.color(FileGlyphs.tint(.grey)!)
+
+    /// A row icon's colour (nil: the accent colour): the reference's
+    /// measured tint per type (`FileGlyphs.tint`, round 9's tint table).
     static func color(_ t: WorkspaceChrome.IconTint) -> NSColor? {
-        switch t {
-        case .orange: .systemOrange
-        case .blue: .systemBlue
-        case .grey: NSColor(name: nil) { a in
-            a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.6, alpha: 1)
-                : NSColor(srgbRed: 0x7B / 255.0, green: 0x7B / 255.0, blue: 0x80 / 255.0, alpha: 1)
-        }
-        case .lightBlue: NSColor(name: nil) { a in
-            NSColor.systemBlue.blended(withFraction: a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? 0.2 : 0.4, of: .white) ?? .systemBlue
-        }
-        case .accent: nil
-        }
+        if t == .grey { return groupGrey }
+        return FileGlyphs.tint(t).map(NavigatorRowImages.color)
+    }
+
+    /// A row icon's colour on a selected row without focus.
+    static func unfocusedColor(_ t: WorkspaceChrome.IconTint) -> NSColor? {
+        if t == .grey { return groupGrey }
+        return FileGlyphs.unfocusedSelectedTint(t).map(NavigatorRowImages.color)
     }
 
     public convenience init(_ node: NavigatorNode) { self.init(node, hideExtensions: false) }
@@ -107,6 +114,8 @@ public final class OutlineItem: NSObject {
                   children: node.children.map { OutlineItem($0, hideExtensions: hideExtensions) }, path: opens ? node.path : nil)
         nodeKind = node.kind
         nodePath = node.path
+        rowIcon = NavigatorRowIcon.of(node)   // the file glyphs and the Ycode mark (rows 192, 208–213)
+        unfocusedTint = Self.unfocusedColor(WorkspaceChrome.iconTint(kind: node.kind, name: node.name))
         objectID = node.objectID
         expansionKey = node.kind == .file ? nil : node.expansionKey
     }
@@ -358,7 +367,9 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         selector.distribution = .fillEqually
         selector.spacing = 0
         for (i, name) in CommandTable.navigators.enumerated() {
-            let img = NSImage(systemSymbolName: Self.symbols[i], accessibilityDescription: "\(name) navigator")
+            // Four of them in Ycode's own drawings (row 192, NavigatorRowIcons.swift).
+            let img = SelectorGlyphImages.image(forSymbol: Self.symbols[i], description: "\(name) navigator")
+                ?? NSImage(systemSymbolName: Self.symbols[i], accessibilityDescription: "\(name) navigator")
                 ?? NSImage(systemSymbolName: "circle", accessibilityDescription: name)!
             let b = NSButton(image: img, target: self, action: #selector(selectorClicked(_:)))
             b.isBordered = false
@@ -619,21 +630,72 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             assistantContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             assistantContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
         ])
+        // Row 245: the navigator's dark background, under everything.
+        let fill = NavigatorDarkFillView()
+        fill.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(fill, positioned: .below, relativeTo: root.subviews.first)
+        NSLayoutConstraint.activate([
+            fill.topAnchor.constraint(equalTo: root.topAnchor),
+            fill.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            fill.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            fill.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+        ])
+        darkFill = fill
         view = root
         select(0)
     }
+
+    /// The dark background view (tests).
+    private(set) weak var darkFill: NavigatorDarkFillView?
 
     // MARK: Content
 
     /// The project tree, then the Package Dependencies section (if any).
     public func setProjectTree(_ node: NavigatorNode, packages: NavigatorNode? = nil) {
         workspaceRoot = node
+        // A rebuild (a settings change: the appearance, the file-extension
+        // setting) keeps the selected rows and the scroll position (council
+        // round 8, row 197: the open file's row stayed selected in the
+        // reference after an appearance change).
+        let kept = selectedProjectRowKeys()
+        let scroll = isViewLoaded && selectedIndex == 0 ? outline.enclosingScrollView?.contentView.bounds.origin : nil
         let hide = Preferences.shared.fileExtensions == .hide
         unfilteredProject = [OutlineItem(node, hideExtensions: hide)] + (packages.map { [OutlineItem($0, hideExtensions: hide)] } ?? [])
         // The rebuilt rows keep the last status letters (the source-control
         // status is read in the background and arrives once per change).
         applyBadges()
         applyProjectFilter()
+        reselectProjectRows(kept, scrollOrigin: scroll)
+    }
+
+    /// A project row's identity across rebuilds: its project object, else
+    /// its file, else its place in the tree.
+    static func rowKey(_ i: OutlineItem) -> String? {
+        i.objectID.map { "o:" + $0 } ?? i.nodePath.map { "n:" + $0 } ?? i.path.map { "p:" + $0 } ?? i.expansionKey.map { "e:" + $0 }
+    }
+
+    /// The selected project rows' keys (the project navigator shown).
+    func selectedProjectRowKeys() -> [String] {
+        guard isViewLoaded, selectedIndex == 0 else { return [] }
+        return outline.selectedRowIndexes.compactMap { (outline.item(atRow: $0) as? OutlineItem).flatMap(Self.rowKey) }
+    }
+
+    /// Selects the rows with `keys` again after a rebuild, opening nothing,
+    /// and puts the list back at `scrollOrigin`.
+    func reselectProjectRows(_ keys: [String], scrollOrigin: NSPoint?) {
+        guard isViewLoaded, selectedIndex == 0, !keys.isEmpty else { return }
+        let wanted = Set(keys)
+        let rows = IndexSet((0..<outline.numberOfRows).filter { r in
+            (outline.item(atRow: r) as? OutlineItem).flatMap(Self.rowKey).map(wanted.contains) ?? false
+        })
+        guard !rows.isEmpty else { return }
+        selectionFromOpen.value = true
+        defer { selectionFromOpen.value = false }
+        outline.selectRowIndexes(rows, byExtendingSelection: false)
+        if let scrollOrigin, let clip = outline.enclosingScrollView?.contentView {
+            clip.scroll(to: scrollOrigin)
+            outline.enclosingScrollView?.reflectScrolledClipView(clip)
+        }
     }
 
     /// The project tree with the bottom bar's filters applied: file rows
@@ -1579,10 +1641,17 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         guard let item = item as? OutlineItem else { return nil }
         let cell = NavigatorCellView()
         cell.recolorsLabel = item.detail == nil && selectedIndex != 3
-        let image = NSImageView(image: NSImage(systemSymbolName: item.symbol, accessibilityDescription: nil)
-            ?? NSImage(systemSymbolName: "doc", accessibilityDescription: nil)!)
+        let picture = item.rowIcon.flatMap(NavigatorRowImages.image) ?? NSImage(systemSymbolName: item.symbol, accessibilityDescription: nil)
+            ?? NSImage(systemSymbolName: "doc", accessibilityDescription: nil)!
+        // Ycode's glyphs (rows 208–213) and the plain group's grey are drawn
+        // as measured, without vibrancy (row 203), at their own size.
+        let glyph = item.rowIcon.map { $0.isGlyph || $0 == .ycodeMark } ?? false
+        let image = glyph || item.tint === OutlineItem.groupGrey ? NavigatorFlatIconView(image: picture) : NSImageView(image: picture)
+        if glyph { image.imageScaling = .scaleNone }
+        if let flat = image as? NavigatorFlatIconView, let icon = item.rowIcon, icon.isGlyph { flat.glyph = icon }
         image.contentTintColor = item.tint ?? .controlAccentColor
         cell.iconTint = image.contentTintColor
+        cell.unfocusedSelectedTint = item.unfocusedTint
         let label = NavigatorRowLabel(labelWithString: item.title)
         if cell.recolorsLabel { label.textColor = NavigatorCellView.rowLabelColor }
         label.lineBreakMode = .byTruncatingTail
@@ -1603,10 +1672,14 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         }
         for v in [image, label] { v.translatesAutoresizingMaskIntoConstraints = false; cell.addSubview(v) }
         NSLayoutConstraint.activate([
-            image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: Self.iconInset),
+            // A glyph's frame is 18 wide (JSON's 16.5 is not clipped),
+            // centred where the reference centres its glyph box (a file at
+            // depth 2: x 55.5–70, round 9 row 208); the label stays where
+            // it was.
+            image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: Self.iconInset - (glyph ? Self.glyphLeadOut : 0)),
             image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            image.widthAnchor.constraint(equalToConstant: 16),
-            label.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: Self.iconToLabel),
+            image.widthAnchor.constraint(equalToConstant: glyph ? 18 : 16),
+            label.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: Self.iconToLabel - (glyph ? 2 - Self.glyphLeadOut : 0)),
             label.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor),
             item.maxLines > 0 ? label.topAnchor.constraint(equalTo: cell.topAnchor, constant: 2) : label.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
         ])
@@ -1785,6 +1858,9 @@ extension NavigatorAreaController {
     static let indentation = CGFloat(WorkspaceChrome.indentationPerLevel)
     static let iconInset: CGFloat = 1
     static let iconToLabel: CGFloat = 5
+    /// A glyph's 18-point frame starts this far before a symbol's 16-point
+    /// one: its centre 0.75 to the right of the symbol's, x 62.75 at depth 2 (row 208).
+    static let glyphLeadOut: CGFloat = 0.25
 
     /// Row pitch: the custom height and no spacing between rows.
     func applyRowMetrics() {

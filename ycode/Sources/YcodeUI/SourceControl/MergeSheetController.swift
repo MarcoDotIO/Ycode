@@ -491,9 +491,41 @@ enum MergeDraw {
                     from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
     }
 
-    /// Swift sources orange, other files the accent (the navigator's tints).
+    /// A file's icon centred in `rect`: the project navigator's glyph (a
+    /// language's line-art logo or Ycode's JSON glyph, council round 9,
+    /// row 211) in `box` points where it has one, else its symbol; both
+    /// in `color`.
+    static func fileIcon(_ name: String, in rect: NSRect, color: NSColor, pointSize: CGFloat, box: FileGlyphs.Size) {
+        let icon = NavigatorRowIcon.ofFile(name)
+        if icon.isGlyph, let d = FileGlyphs.drawing(icon, in: box) {
+            NavigatorRowImages.fill(d, color: color, offset: NSPoint(x: rect.midX - CGFloat(box.width) / 2, y: rect.midY - CGFloat(box.height) / 2))
+            return
+        }
+        symbol(WorkspaceChrome.fileSymbol(name), in: rect, color: color, pointSize: pointSize)
+    }
+
+    /// A file's tint: the navigator's for its type (`FileGlyphs.tint`),
+    /// other files the accent.
     static func fileTint(_ name: String) -> NSColor {
-        URL(fileURLWithPath: name).pathExtension == "swift" ? NSColor(srgbRed: 0.95, green: 0.42, blue: 0.2, alpha: 1) : .controlAccentColor
+        OutlineItem.color(WorkspaceChrome.iconTint(kind: .file, name: name)) ?? .controlAccentColor
+    }
+
+    /// The main jump bar's path chevron (rows 217, 247): 3 wide, 10 tall,
+    /// a 1.25-point stroke, #808080 / #DEDEDE; `p` its ink's left end on
+    /// its middle line (y down).
+    static func pathChevron(at p: NSPoint, dark: Bool) {
+        typealias L = JumpBarPathLayout
+        let w = CGFloat(L.chevronInk(active: true)), h = CGFloat(L.chevronHeight), s = CGFloat(L.chevronStroke)
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: p.x + s / 2, y: p.y - h / 2))
+        path.line(to: NSPoint(x: p.x + w - s / 2, y: p.y))
+        path.line(to: NSPoint(x: p.x + s / 2, y: p.y + h / 2))
+        path.lineWidth = s
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        let v = L.chevronColor(dark: dark, active: true) ?? 0x808080
+        NSColor(mergeHex: v).setStroke()
+        path.stroke()
     }
 
     static func chevron(at p: NSPoint, color: NSColor) {
@@ -588,7 +620,7 @@ public final class MergeFileListView: NSView, NSTextFieldDelegate {
         NSBezierPath(roundedRect: selected, xRadius: selected.height / 2, yRadius: selected.height / 2).fill()
         for (title, rect, on) in [(MergeSheetText.hierarchical, seg.hierarchical, !c.isFlat), (MergeSheetText.flat, seg.flat, c.isFlat)] {
             let w = MergeDraw.width(title, size: 11)
-            MergeDraw.text(title, at: NSPoint(x: rect.midX - w / 2, y: rect.minY), size: 11, color: NSColor(mergeHex: on ? p.accent : p.label),
+            MergeDraw.text(title, at: NSPoint(x: rect.midX - w / 2, y: rect.minY), size: 11, color: NSColor(mergeHex: on ? p.segmentLabel : p.label),
                            centredIn: rect.height)
         }
         NSColor(mergeHex: p.bandRule).setFill()
@@ -623,8 +655,9 @@ public final class MergeFileListView: NSView, NSTextFieldDelegate {
                 MergeDraw.text(r.title, at: NSPoint(x: 37, y: f.minY), size: 13, color: ink, maxWidth: f.width - 45, centredIn: f.height)
             } else {
                 let x = CGFloat(r.depth) * 15
-                MergeDraw.symbol(WorkspaceChrome.fileSymbol(r.title), in: NSRect(x: x + CGFloat(M.fileIconX) - 15, y: f.minY, width: 14.5, height: f.height),
-                                 color: lit ? .white : MergeDraw.fileTint(r.title), pointSize: 10)
+                MergeDraw.fileIcon(r.title, in: NSRect(x: x + CGFloat(M.fileIconX) - 15, y: f.minY, width: 14.5, height: f.height),
+                                   color: lit ? .white : MergeDraw.fileTint(r.title), pointSize: 10,
+                                   box: FileGlyphs.navigatorBox(NavigatorRowIcon.ofFile(r.title)))
                 MergeDraw.text(r.title, at: NSPoint(x: x + CGFloat(M.fileNameX) - 15, y: f.minY), size: 13, color: ink,
                                maxWidth: f.width - x - CGFloat(M.fileNameX) - 10, centredIn: f.height)
                 if r.isConflicted {
@@ -723,19 +756,38 @@ public final class MergeJumpBarView: NSView {
         NSRect(x: 35, y: 10, width: 1, height: 16).fill()
         MergeDraw.symbol("chevron.left", in: NSRect(x: 44.5, y: 0, width: 6.5, height: h), color: ink, pointSize: 10)
         MergeDraw.symbol("chevron.right", in: NSRect(x: 64, y: 0, width: 6.5, height: h), color: ink, pointSize: 10)
+        // Round 10, row 240: the main jump bar's components (rows 211, 247):
+        // the project's Ycode mark 13 × 13, a group's folder, the file's
+        // glyph, names in its 11-point text, its 3 × 10 chevrons and spacing.
+        typealias L = JumpBarPathLayout
         var x: CGFloat = 82
         let path = c.state.jumpPath(root: c.repository.root.path, project: c.project)
+        let dark = effectiveAppearance.isDarkMerge
         for (i, part) in path.enumerated() {
             let fileName = c.state.currentFile.map { URL(fileURLWithPath: $0).lastPathComponent } ?? part
+            let role = L.iconRole(index: i, count: path.count)
+            let slot = CGFloat(L.iconSlot(role))
             let symbol = i == 0 ? "shippingbox" : i == path.count - 1 ? WorkspaceChrome.fileSymbol(fileName) : "folder.fill"
-            let color = i == 0 ? NSColor(mergeHex: p.accent) : i == path.count - 1 ? MergeDraw.fileTint(fileName) : NSColor(mergeHex: p.folder)
-            MergeDraw.symbol(symbol, in: NSRect(x: x, y: 0, width: 14, height: h), color: color, pointSize: 11)
-            x += 18
-            x += MergeDraw.text(part, at: NSPoint(x: x, y: 0), size: 12, color: label, centredIn: h) + 7
-            MergeDraw.chevron(at: NSPoint(x: x + 1.5, y: h / 2), color: ink)
-            x += 10
+            let glyph = FileGlyphs.jumpBarGlyph(symbol: symbol, role: role, fileName: fileName)
+            if glyph == .ycodeMark {
+                let side = CGFloat(FileGlyphs.jumpBarBox(.ycodeMark).width)
+                NavigatorRowImages.ycodeMark(side: side).draw(in: NSRect(x: x + (slot - side) / 2, y: ((h - side) / 2).rounded(), width: side, height: side),
+                                                             from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            } else if let g = glyph, let d = FileGlyphs.jumpBarDrawing(g) {
+                let tint = FileGlyphs.jumpBarGlyphTint(g, fileName: fileName).map(NavigatorRowImages.color) ?? .controlAccentColor
+                GlyphPixelGrid.draw(d, in: NSRect(x: x + (slot - CGFloat(d.width)) / 2, y: (h - CGFloat(d.height)) / 2,
+                                                  width: CGFloat(d.width), height: CGFloat(d.height)), color: tint, flipped: true)
+            } else {
+                let color = i == path.count - 1 ? MergeDraw.fileTint(fileName) : NSColor(mergeHex: p.folder)
+                MergeDraw.symbol(symbol, in: NSRect(x: x, y: 0, width: slot, height: h), color: color, pointSize: 11)
+            }
+            x += slot + CGFloat(L.iconToTitle)
+            x += MergeDraw.text(part, at: NSPoint(x: x, y: 0), size: 11, color: label, centredIn: h) + CGFloat(L.titleToChevron)
+            MergeDraw.pathChevron(at: NSPoint(x: x, y: h / 2), dark: dark)
+            x += CGFloat(L.chevronInk(active: true))
+            x += CGFloat(i == path.count - 1 ? L.chevronToTitle : L.chevronToIcon) - CGFloat(L.chevronInk(active: true) - L.chevronWidth)
         }
-        if !path.isEmpty { MergeDraw.text(MergeSheetText.noSelection, at: NSPoint(x: x, y: 0), size: 12, color: label, centredIn: h) }
+        if !path.isEmpty { MergeDraw.text(MergeSheetText.noSelection, at: NSPoint(x: x, y: 0), size: 11, color: label, centredIn: h) }
         // The conflict navigator.
         let nav = navigatorFrames
         MergeDraw.symbol("chevron.left", in: nav.previous, color: ink, pointSize: 10)

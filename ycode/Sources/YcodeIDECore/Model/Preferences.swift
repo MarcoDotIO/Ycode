@@ -366,6 +366,13 @@ public struct EditorTheme: Codable, Equatable, Sendable {
     /// was set to, 0–1 (Settings ▸ Appearance, R6.1). Absent: the colour
     /// is the row's full colour (a system colour shows at 50 %).
     public var strengths: [String: Double]?
+    /// Settings ▸ Appearance's Background Gradient switch (R7.1). Absent:
+    /// on, as in the default theme.
+    public var backgroundGradient: Bool?
+    /// Settings ▸ Appearance's Customize All Colors switch (R7.1): on, every
+    /// colour row has its own slider; off (absent), the syntax rows are
+    /// colour buttons only.
+    public var customizeAllColors: Bool?
 
     /// A font by name (empty: the monospaced system font) and size: a
     /// portable font descriptor; each shell resolves it to its own font

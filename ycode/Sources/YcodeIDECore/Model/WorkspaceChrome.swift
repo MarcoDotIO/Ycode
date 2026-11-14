@@ -119,10 +119,7 @@ public enum WorkspaceChrome {
     public static let history = ToolbarItem(id: "history", symbols: ["chevron.left", "chevron.right"],
                                             toolTips: ["Show Previous Location in History", "Show Next Location in History"])
     public static let newConversation = ToolbarItem(id: "newConversation", symbols: ["plus.bubble"], toolTips: ["New Conversation"])
-    /// New Conversation's glyph is filled with a pink-to-purple gradient,
-    /// top leading to bottom trailing (H.9, row 166; the reference's fill
-    /// style, in Ycode's own colours): 0xRRGGBB at each end.
-    public static let newConversationGradient: (start: UInt32, end: UInt32) = (0xF2559E, 0x8E5BF5)
+    // New Conversation's glyph and its angular gradient: `AssistantButtonGlyph` (row 214).
     public static let addEditor = ToolbarItem(id: "addEditor", symbols: ["plus.rectangle.on.rectangle"],
                                               toolTips: ["Add Editor Tabs or Editor Panes"])
     public static let editorOptions = ToolbarItem(id: "editorOptions", symbols: ["line.3.horizontal"], toolTips: ["Adjust Editor Options"])
@@ -172,7 +169,10 @@ public enum WorkspaceChrome {
     /// Round 2 (`metrics.md` §13.1): a `PBXGroup` gets a neutral grey
     /// filled folder, even with a folder on disk; synchronized folders and
     /// the folders in them stay blue.
-    public enum IconTint: Equatable, Sendable { case orange, lightBlue, blue, grey, accent }
+    /// Round 9 (rows 208–213): every type with a glyph of its own has its
+    /// own measured tint (`FileGlyphs.tint`): Swift `orange`, JSON `json`,
+    /// Markdown `markdown`, the other languages `logo(name)`.
+    public enum IconTint: Equatable, Hashable, Sendable { case orange, lightBlue, blue, grey, json, markdown, logo(String), accent }
 
     public static func iconTint(kind: NavigatorNode.Kind, name: String) -> IconTint {
         switch kind {
@@ -180,10 +180,12 @@ public enum WorkspaceChrome {
         case .group: return .grey
         case .folder: return .lightBlue
         case .file:
-            switch URL(fileURLWithPath: name).pathExtension {
+            switch URL(fileURLWithPath: name).pathExtension.lowercased() {
             case "swift": return .orange
+            case "json": return .json
+            case "md": return .markdown
             case "png", "jpg", "jpeg", "gif", "tif", "tiff", "heic", "bmp", "webp", "xcassets": return .blue
-            default: return .accent
+            default: return LanguageLogos.logo(forFileName: name).map { .logo($0) } ?? .accent
             }
         }
     }
@@ -217,20 +219,16 @@ public enum WorkspaceChrome {
 
     // MARK: File inspector (reference-ui.md §6)
 
-    /// The File inspector's Type pop-up: "Default - <type name>".
-    public static func fileTypeName(for url: URL) -> String {
-        switch url.pathExtension {
-        case "swift": "Swift Source"
-        case "m": "Objective-C Source"
-        case "h": "C Header"
-        case "c": "C Source"
-        case "plist": "Property List"
-        case "xcconfig": "Configuration Settings File"
-        case "png": "PNG Image"   // editor-area.md §C.6
-        case "jpg", "jpeg": "JPEG Image"
-        case "gif": "GIF Image"
+    /// The File inspector's Type pop-up: "Default - <type name>", from the
+    /// file's type (the project file's recorded type, else its extension;
+    /// `FileTypeRoles`, council row 229).
+    public static func fileTypeName(for url: URL, recordedType: String? = nil) -> String {
+        if let name = FileTypeRoles.typeName(ofType: FileTypeRoles.type(of: url, recorded: recordedType)) { return name }
+        // Extensions `BuildFileTypes` does not list.
+        return switch url.pathExtension.lowercased() {
         case "tif", "tiff": "TIFF Image"
         case "heic": "HEIC Image"
+        case "markdown": "Markdown"
         default: "Default"
         }
     }
@@ -274,7 +272,9 @@ extension WorkspaceChrome {
             return DefaultThemeColors(
                 background: c("#262626"), foreground: c("#FAF1F3"), currentLine: c("#353535"), lineNumber: c("#706D6E"),
                 selection: c("#3F638B"),
-                tokens: ["keyword": c("#FF83B4"), "comment": c("#ABB3CD"), "docComment": c("#68CE67"), "string": c("#FF8E7B"),
+                // Documentation comments in the Comments colour, as the
+                // reference draws them (#ACB4CE, the regular comments').
+                tokens: ["keyword": c("#FF83B4"), "comment": c("#ABB3CD"), "docComment": c("#ABB3CD"), "string": c("#FF8E7B"),
                          "number": c("#ECA900"), "preprocessor": c("#FF9F0A"), "attribute": c("#AC8E68"), "typeName": c("#D997FF"),
                          "typeDeclaration": c("#00CAFB"), "otherDeclaration": c("#27A7C1"), "propertyReference": c("#20AD9D")])
         }

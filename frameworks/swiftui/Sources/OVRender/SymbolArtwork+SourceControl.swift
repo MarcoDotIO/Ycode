@@ -40,6 +40,17 @@ extension SymbolArtwork {
             make("externaldrive", [s(drive), f(S.circle(17.5, 12, 1.2)), s(S.poly([(6, 12), (12, 12)]), 1.5)]),
             make("externaldrive.fill", [f(drive)]),
             make("tray", [s(tray)]),
+            // The filled pair of the Repositories view's groups (B6-OPENVIEWS,
+            // `editor-area.md` H.9: filled grey group glyphs), on the
+            // outlines' boxes. The tray: a box with rounded corners whose
+            // upper part is cut away to leave its walls, over a solid base
+            // that dips in the middle where things go in (the outline's lip).
+            // The clock: its face as a solid disc over the outline's ink
+            // (stroke edge included) with the hands cut out.
+            make("tray.fill", [f(S.roundedRect(3, 4.5, 18, 15.5, 2.5)),
+                               .knockout(S.poly([(5, 6.5), (19, 6.5), (19, 12.5), (15.5, 12.5), (14.5, 15), (9.5, 15), (8.5, 12.5), (5, 12.5)],
+                                                closed: true), width: nil)]),
+            make("clock.fill", [f(S.circle(12, 12, 9 + w / 2)), .knockout(S.poly([(12, 7), (12, 12), (15.5, 14)]), width: w)]),
             make("arrow.uturn.backward", [s(back), s(S.poly([(11.5, 5.5), (8, 9), (11.5, 12.5)]))]),
             make("clock.arrow.circlepath", [s(rim), s(S.poly([(2.5, 9.5), (4.5, 12.5), (7, 10)])), s(S.poly([(12, 8), (12, 12.5), (15, 14)]))]),
             make("square.and.pencil", [s(S.poly([(11, 4), (4, 4), (4, 20), (20, 20), (20, 13)])),

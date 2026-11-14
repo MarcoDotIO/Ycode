@@ -1,16 +1,18 @@
 import AppKit
 import YcodeIDECore
 
-/// The merge confirmation (`specs/ide/merge-sheet.md` §1.2): a 420 × 133
+/// The merge confirmation (`specs/ide/merge-sheet.md` §1.2): a 420 × 132
 /// window-modal alert centred on the workspace window, Ycode's icon, the
 /// bold title and the message, then Cancel and **Merge** (the default:
 /// Return; Cancel answers Escape). Integrate ▸ Merge… adds a pop-up of
 /// the branches to merge from (Ycode's choice).
 @MainActor
 public final class MergeAlertView: NSView {
-    public let iconView = NSImageView()
-    public let titleField = NSTextField(wrappingLabelWithString: "")
-    public let messageField = NSTextField(wrappingLabelWithString: "")
+    public let iconView = AlertIconView()
+    public let titleField = AlertTextField(wrappingLabelWithString: "")
+    public let messageField = AlertTextField(wrappingLabelWithString: "")
+    /// The empty status image first among the children (§16.1, row 195).
+    public let statusImage = AlertStatusImage()
     public let cancelButton = MergeButton(title: MergeSheetText.cancel)
     public let mergeButton = MergeButton(title: MergeSheetText.merge)
     /// Integrate ▸ Merge…: the branch to merge from.
@@ -71,7 +73,10 @@ public final class MergeAlertView: NSView {
             chooser = p
             addSubview(p)
         }
-        for v in [iconView, titleField, messageField, cancelButton, mergeButton] as [NSView] { addSubview(v) }
+        for v in [statusImage, iconView, titleField, messageField, cancelButton, mergeButton] as [NSView] { addSubview(v) }
+        // §16.1 (row 195): the elements' heights and the icon's square.
+        titleField.elementHeight = CGFloat(MergeSheetText.alertMessageElementHeight)
+        messageField.elementHeight = CGFloat(MergeSheetText.alertInformativeElementHeight)
         updateTexts()
         // An accessibility sheet (§13.2): the title and message are static
         // texts, Cancel and Merge buttons, Merge its default button and
@@ -92,16 +97,17 @@ public final class MergeAlertView: NSView {
         messageField.stringValue = MergeSheetText.alertMessage(branch: branch, current: current)
     }
 
-    public override func accessibilityLabel() -> String? { titleField.stringValue }
+    /// No description (§16.1): the sheet's title text names it.
+    public override func accessibilityLabel() -> String? { nil }
     public override func accessibilityDefaultButton() -> Any? { mergeButton }
     public override func accessibilityCancelButton() -> Any? { cancelButton }
     /// The reference's order (`merge-sheet.md` §15.4, council row 168): the
     /// default button, the cancel button, the message, the application's
     /// icon (an image with a description), the informative text; then the
-    /// branch pop-up when there is one. No status image (nothing is drawn
-    /// for it).
+    /// branch pop-up when there is one. Round 7 (§16.1): an empty status
+    /// image with no description before them all.
     public override func accessibilityChildren() -> [Any]? {
-        var out: [Any] = [mergeButton, cancelButton, titleField, iconView, messageField]
+        var out: [Any] = [statusImage, mergeButton, cancelButton, titleField, iconView, messageField]
         if let chooser { out.append(chooser) }
         return out
     }
@@ -118,6 +124,8 @@ public final class MergeAlertView: NSView {
         super.layout()
         typealias M = MergeSheetMetrics
         iconView.frame = NSRect(x: M.alertIconOrigin.x, y: M.alertIconOrigin.y, width: M.alertIcon, height: M.alertIcon)
+        let side = CGFloat(MergeSheetText.alertStatusImageSide)
+        statusImage.frame = NSRect(x: MergeSheetText.alertStatusImageOrigin.x, y: bounds.height - 20 - side, width: side, height: side)
         let textWidth = bounds.width - M.alertTextX - 20
         // The title's first cap top 20 below the alert's top.
         let titleFont = titleField.font ?? .boldSystemFont(ofSize: 13)
@@ -153,4 +161,37 @@ public final class MergeAlertView: NSView {
     }
 
     public override func cancelOperation(_ sender: Any?) { cancel(sender) }
+}
+
+/// The alert's icon: drawn at its size, exposed as the reference's 66 × 66
+/// element round it (§16.1, row 195).
+public final class AlertIconView: NSImageView {
+    public override func accessibilityFrame() -> NSRect {
+        let f = super.accessibilityFrame()
+        let side = CGFloat(MergeSheetText.alertIconElementSide)
+        return NSRect(x: f.midX - side / 2, y: f.midY - side / 2, width: side, height: side)
+    }
+}
+
+/// The alert's texts: exposed 296 wide and at the reference's height from
+/// their top (§16.1: the message 34, the informative text 30).
+public final class AlertTextField: NSTextField {
+    var elementHeight: CGFloat?
+    public override func accessibilityFrame() -> NSRect {
+        var f = super.accessibilityFrame()
+        guard let h = elementHeight else { return f }
+        f.origin.x += (f.width - CGFloat(MergeSheetText.alertTextElementWidth)) / 2
+        f.size.width = CGFloat(MergeSheetText.alertTextElementWidth)
+        f.origin.y = f.maxY - h   // screen space: keep the top
+        f.size.height = h
+        return f
+    }
+}
+
+/// The reference's empty status image: 18 × 18, no description, nothing drawn.
+public final class AlertStatusImage: NSView {
+    public override func isAccessibilityElement() -> Bool { true }
+    public override func accessibilityRole() -> NSAccessibility.Role? { .image }
+    public override func accessibilityLabel() -> String? { nil }
+    public override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

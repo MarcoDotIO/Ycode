@@ -662,6 +662,23 @@ Neither lifts a darwin-bg thread by itself (§2.2): the first ends darwin-bg
 by boosting the process, the second only raises QoS within the classes the
 process may use, as in xnu.
 
+- **Waited requests only** (`YCODE_REPLY_IMPORTANCE=sync`, added 2026-11-07,
+  `boot-profile.md` §27.3). As request importance, but only for a request
+  whose sender waits for the reply: the message has a sync-wait or reply
+  push record (§4.10, §4.12). Any other request keeps §4.3's rule. The case
+  it is for: an XPC daemon's listener thread hands a waited request to
+  another queue (a workloop thread request) and returns to the workqueue;
+  §4.3 then ends the boost, the process is darwin-bg again, and the thread
+  that runs the request's work, at the QoS the hand-off asked for, is class
+  bg at the band's gate while the client waits. On xnu the work item's
+  voucher keeps the importance until the request is handled; the full form
+  (`=1`) keeps it for every request, also those nobody waits for, which
+  brings their daemons' other work forward (`boot-profile.md` §22, §24.4).
+  Measured (`boot-profile.md` §27.3, §27.5): SpringBoard's main thread's
+  waits on donotdisturbd 786 → 3 ms in a trace boot, but home +0.9 s by the
+  mean in series D and 12 CPU s more: it keeps runningboardd, mobileassetd
+  and cfprefsd boosted while their clients wait. Off by default.
+
 Diagnostics: `YCODE_IMPORTANCE_TRACE=<program>,…` prints each user message
 to a listed program (sender, donor or not, importance, the port accepting
 it or not, the reply), each request boost tied to a reply right and its end
@@ -883,7 +900,21 @@ Ycode (all behind switches, off or unchanged by default until measured):
   image's push above the thread's class and its applied class is applied
   then (lowering stays with the locked path). A loader that a waiting
   client's request pushes (§4.12, §4.13) then runs at the pushed class
-  from its next fast trap instead of its next locked one.
+  from its next fast trap instead of its next locked one. Measured on
+  chronod's loader (`boot-profile.md` §28.4, the class applied to the host
+  thread now recorded in the frame profile's trap events): without it the
+  host thread stays at df for the 2.9–3.1 s from SpringBoard's request to
+  the end of the loader (1 047–1 134 traps entered below the pushed class;
+  0.9–1.1 s of run queue on the critical path), with it the class is
+  applied at the next trap and that run queue is 0.12 s. In series F and F2
+  (§28.5 there, on the 2026-11-07 main line with the start class and
+  8 creators): −0.52 s by the mean (23.91 ± 0.45 against 24.43 ± 0.33 s,
+  n = 6 against 7), the same kernel lock, less CPU. Together with §4.16's
+  spin (`boot-profile.md` §29, series S, n = 8 per arm): alone −0.06 s,
+  inside the spread; with the spin −0.42 s by the mean (23.34 ± 0.26
+  against 23.75 ± 0.33 s, 53 of 64 pairs), more than either alone, with
+  unchanged service fidelity. Recommended on for device runs together with
+  the spin (the orchestrator decides).
 - **`YCODE_HOST_SCHED_UI_WEIGHT=N`** (1–10 000, default 400): class ui's
   cgroup weight (§4.7), for measurement.
 
@@ -893,6 +924,61 @@ threads N` (any backend), and with the switch `start class: N at starts, N
 at parks, N creator threads` (moves). The boot profile's `# latency` line
 (`thread-latency.md` §2.1) has the creation queue. Measurements:
 `boot-profile.md` §26.
+
+### 4.16 Fine-lock waits (`YCODE_FINE_LOCK_SPIN_US`, `YCODE_WAIT_OWN_MUTEX`)
+
+The reference (xnu, level 1; behaviour read from the open-source
+`osfmk/ipc/ipc_mqueue.c`, `osfmk/kern/locks.h` and `bsd/kern/kern_event.c`;
+nothing copied): a port's message queue and a kqueue have locks of their own,
+and they are spinlocks held with preemption disabled, so a thread that finds
+one taken spins for the few microseconds of the hold and never sleeps for it.
+
+Ycode before (`boot-profile.md` §27.2): the event locks (one per image) and
+the port lock G (one per system) are host mutexes (`mach-ipc-locking.md`
+§4.1, glibc's adaptive mutex, which spins only briefly). G is held 7 µs on
+average but is taken 876 000 times by home; 161 600 acquisitions found it
+taken and waited 30.9 s in all, 190 µs each: a waiter that sleeps on the
+futex is woken only through a host scheduling round trip, on a saturated
+host far longer than the hold. Every machport delivery takes G under the
+receiving image's event lock, so the event lock is held while its holder
+waits for G, and the image's other threads wait behind that: diagnosticd's
+threads, whose relay drains every log message (`boot-profile.md` §27.2),
+waited 7.6–8.2 s by home for event-lock holds that were 5 % CPU and 75–90 %
+waiting for G.
+
+- **`YCODE_FINE_LOCK_SPIN_US=N`** (default 0: off). A thread that finds a fine
+  lock (an event lock, G) taken watches the lock's owner word for up to N µs
+  and takes the lock as soon as it is free (a try-lock when the word reads
+  0); only then does it sleep on the mutex, with §4.7's holder promotion as
+  before. The spin reads the word, so it does not keep writing the lock's
+  cache line; the clock is read every 16 polls. It applies to every
+  contended acquisition, also a woken waiter's re-acquisition. Kernel lock
+  L0 is unchanged. Measured (`boot-profile.md` §27.2, §27.5): the port
+  lock's waits 30.9 → 19.1 s by home, diagnosticd's event-lock stalls
+  8.2 → 1.6 s, the same CPU; home unchanged in series D (23.81 against
+  23.70 s by the median, 23.68 against 23.96 s by the mean). At n = 10
+  (`boot-profile.md` §28.3, series E): −0.37 s by the mean (23.58 ± 0.32
+  against 23.95 ± 0.31 s), −0.36 s by the median, 79 of 100 boot pairs in
+  its favour, the same CPU, G's waits by home 20.6 → 11.5 s and L0's hold
+  4.1 → 3.7 s. In series S (`boot-profile.md` §29, n = 8 per arm) the spin
+  alone was −0.14 s, inside the spread. With §4.15's fast-trap raise it
+  was −0.42 s (23.34 ± 0.26 against 23.75 ± 0.33 s), more than either
+  alone. Off by default; recommended on together with the raise (the
+  orchestrator decides).
+- **`YCODE_WAIT_OWN_MUTEX=1`** (default off). A waiter on a fine lock's wait
+  queue sleeps on a mutex of its own instead of the queue's lock; the waker
+  writes the result under both (`setResult`), so no wakeup is lost
+  (`mach-ipc-locking.md` §4.4, I2), and a woken waiter takes the queue's lock
+  once (to return) instead of twice. L0 queues are unchanged. Measured: no
+  change to the wakeup's length (`boot-profile.md` §27.2).
+
+Diagnostics: with the spin, the `sched:` report adds `fine-lock spins: N took
+the lock, N slept`. `YCODE_LOCK_STALL_STATS=1` (`LockStallStats.swift`) adds
+the contended acquisitions of 200 µs or more (`YCODE_LOCK_STALL_MIN_US`) by
+waiting image, lock and the holder's kind (own image, other image, posted
+work, host thread) and applied class; the holds of 200 µs or more by lock,
+holder and trap with the holder's CPU time and its own lock waits during the
+hold; and G's totals (held, acquisitions, contended, waited).
 
 ## 5. Diagnostics
 
@@ -950,7 +1036,7 @@ at parks, N creator threads` (moves). The boot profile's `# latency` line
 | `YCODE_LOCK_HOLDER_PROMOTION` | `group` | §4.7 lock holders: `group`, `thread`, `0` (off) |
 | `YCODE_LOCK_PROMOTION_DELAY_US` | 200 | §4.7: a waiter raises the holder after waiting this long |
 | `YCODE_LOCK_WITHDRAW_AFTER_UNLOCK` | 1 | §4.7: a raised holder waits for the waiters still raising it, and lowers its class weight, after it releases the mutex (`boot-profile.md` §12.3); `0` as before (waits while it still holds the lock) |
-| `YCODE_FAST_TRAP_HOST_CLASS` | 0 | §4.7 host class at the end of fast traps (IPC, BSD descriptor, task-local): `1` the whole class, `push` only a raise to the image's send push; off by default (`boot-profile.md` §12.3) |
+| `YCODE_FAST_TRAP_HOST_CLASS` | `push` for `--device` runs (since 2026-11-08), else 0 | §4.7 host class at the end of fast traps (IPC, BSD descriptor, task-local): `1` the whole class, `push` only a raise to the image's send push (`boot-profile.md` §12.3, §28–§29) |
 | `YCODE_HOST_SCHED_UI_CPUS` | unset | host threads of the UI-path programs run on every online CPU, every other guest thread's host thread on all but the last N (`boot-profile.md` §12.3) |
 | `YCODE_HOST_SCHED_UI_PROGRAMS` | `SpringBoard,backboardd` | the UI-path programs (executable names) for `YCODE_HOST_SCHED_UI_CPUS` |
 | `YCODE_BG_BAND` | 1 for `--device` runs (since 2026-11-07), else 0 | §4.9 the background band (with `YCODE_SCHED_QOS`) |
@@ -964,7 +1050,7 @@ at parks, N creator threads` (moves). The boot profile's `# latency` line
 | `YCODE_DEMAND_START_PUSH` | unset | §4.10 on-demand starts pushed at this class (`bg`, `ut`, `df`, `ui`) until their first request is served |
 | `YCODE_DEMAND_START_MS` | unset | §4.10 the timed form of the on-demand start push: N ms from the spawn |
 | `YCODE_SYNC_PUSH_TRACE` | unset | §4.10 trace lines for the listed programs |
-| `YCODE_REPLY_IMPORTANCE` | 0 | §4.11 a request's importance lasts until its reply right leaves the receiving space; `1` on |
+| `YCODE_REPLY_IMPORTANCE` | 0 | §4.11 a request's importance lasts until its reply right leaves the receiving space; `1` on, `sync` only for requests whose sender waits for the reply |
 | `YCODE_ASYNC_QOS` | 0 | §4.11 a queued message's QoS overrides the workloop that drains its port, and its event's `ext[2]` carries it (with `YCODE_SCHED_QOS`); `1` on |
 | `YCODE_IMPORTANCE_TRACE` | unset | §4.11 trace lines for the listed programs |
 | `YCODE_REPLY_PUSH` | 1 for `--device` runs (since 2026-11-07), else 0 | §4.12 a waiting sender's request pushes whoever holds it until the reply (queued: the receiving image; received: the workloop it came through, else the thread that took it), in both the one-call and libdispatch's two-call form (with `YCODE_SCHED_QOS`); `1` on, `image` on with the whole receiving image pushed |
@@ -973,6 +1059,12 @@ at parks, N creator threads` (moves). The boot profile's `# latency` line
 | `YCODE_HANDOFF_PUSH` | 0 | §4.14 a pushed thread's workloop thread request carries its push to the workloop's next servicer for its drain (with `YCODE_SCHED_QOS`); `1` on, `held` only held reply pushes, `request` the held requests' push until they are answered |
 | `YCODE_START_CLASS` | 1 for `--device` runs (since 2026-11-07), else 0 | §4.15 a host thread takes its new guest thread's host class before the first instruction, parks below df at df; the vCPU creator threads run at ui; `1` on |
 | `YCODE_HOST_SCHED_UI_WEIGHT` | 400 | §4.15 class ui's cgroup `cpu.weight` (1–10 000) |
+| `YCODE_FINE_LOCK_SPIN_US` | 50 for `--device` runs (since 2026-11-08), else 0 | §4.16 a contended event lock or port lock is watched this long before the thread sleeps on it (`boot-profile.md` §29) |
+| `YCODE_PORT_LOCK_SPLIT` | 0 | `1`: the port lock G as a reader-writer lock with a lock per space; fine steps take G shared (`mach-ipc-locking.md` §4.12); no gain: +0.39 s in series E, +0.19 s in F and F2 (`boot-profile.md` §28.3, §28.5) |
+| `YCODE_PORT_LOCK_SPLIT_MIN_CLASS` | 2 | with the split: threads whose host class is below this take G exclusively |
+| `YCODE_PORT_LOCK_SHARED_SPIN_US` | 20 | with the split: how long a fine step waits for an exclusive holder before it declines |
+| `YCODE_WAIT_OWN_MUTEX` | 0 | §4.16 a fine lock's waiter sleeps on a mutex of its own; `1` on |
+| `YCODE_LOCK_STALL_STATS`, `YCODE_LOCK_STALL_MIN_US` | unset, 200 | §4.16 diagnostics: fine-lock stalls by holder, long holds, G's totals |
 | `YCODE_HOST_SCHED_UI_PUSHED` | unset | with `YCODE_HOST_SCHED_UI_CPUS`: an image whose send push (§4.6) is at least this class also runs on the UI path's CPUs while it lasts |
 | `YCODE_BOOT_PRIORITY` | 1 for device runs (since 2026-10-27; was 0) | device runs (`--device`) only: with `YCODE_SCHED_QOS` unset, set it to 1 and `YCODE_HOST_SCHED` (if unset) to `cgroup` before the VMM starts (§7.4, §7.5); `0` turns it off. The cgroup backend re-executes the VMM in a delegated user scope only when the user's service manager is reachable (`$XDG_RUNTIME_DIR/systemd/private`); otherwise it reports itself unavailable and the run goes on without host scheduling |
 
@@ -1269,5 +1361,7 @@ fileindexerd and intelligencetasksd crashes (`service-fidelity.md` §11,
 | Request importance, message QoS and the ease window in boots (§4.9, §4.11) | 3 (Thor, `boot-profile.md` §22: series X1, X2, trace boots `tr1-*`, profiles) |
 | libdispatch's synchronous send in two calls (special reply port, then `MACH_RCV_SYNC_WAIT`); the special reply port's turnstile linked to the destination while queued and to the receiving thread or workloop until the reply; a turnstile push promoting a throttled thread (§4.12) | 1 (xnu `osfmk/ipc/ipc_port.c` special reply port linkage, `osfmk/kern/turnstile.c`, `osfmk/kern/thread_policy.c`; libdispatch `src/mach.c`, as open source) and 3 (the options of SpringBoard's sends and receives in Ycode's own frame profiles, `boot-profile.md` §24.1) |
 | The reply push in boots: the edge list, series Z1, Z3, Z4 (§4.12) | 3 (Thor, `boot-profile.md` §24) |
+| A port's message queue and a kqueue have spinlocks of their own, held with preemption disabled (§4.16) | 1 (xnu `osfmk/ipc/ipc_mqueue.c`, `osfmk/kern/locks.h`, `bsd/kern/kern_event.c`, as open source) |
+| The fine-lock spin, the own wait mutex and the sync-only request importance in boots (§4.11, §4.16) | 3 (Thor, `boot-profile.md` §27: stall boots `s2-*`, trace boots `tr-def`, `tr-imp`, series D) |
 
 No disassembly or decompilation was used (level 5 not used).

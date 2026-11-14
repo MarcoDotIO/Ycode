@@ -235,7 +235,7 @@ func nonBlankPixels(_ png: URL) throws -> Int {
 /// unbounded (specs/ide/previews.md §The macOS host).
 @MainActor
 @Suite(.serialized, .heavyIntegration, .previewHostCheck, .timeLimit(.minutes(10))) struct MacPreviewHostLifetimeTests {
-    func script(_ body: String) throws -> URL {
+    nonisolated func script(_ body: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-fake-host-\(UUID().uuidString)")
         try "#!/bin/sh\n\(body)\n".write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
@@ -253,7 +253,10 @@ func nonBlankPixels(_ png: URL) throws -> Int {
 
     nonisolated static let request = PreviewMacHost.Request(generation: 1, payload: "/nonexistent", output: "/tmp", schemes: ["light"], items: [])
 
-    @Test(.timeLimit(.minutes(2))) func aHungHostIsKilledAfterTheRequestTimeout() async throws {
+    /// Nonisolated: nothing here needs the main actor, and in a full run
+    /// each hop to it can wait behind other suites' synchronous main-actor
+    /// work (one such hop waited past this test's time limit).
+    @Test(.timeLimit(.minutes(2))) nonisolated func aHungHostIsKilledAfterTheRequestTimeout() async throws {
         // A host that reads nothing, never answers, and ignores SIGTERM.
         let exe = try script("trap '' TERM\nwhile :; do sleep 1; done")
         defer { try? FileManager.default.removeItem(at: exe) }
@@ -287,7 +290,7 @@ func nonBlankPixels(_ png: URL) throws -> Int {
         #expect(took < 10, "\(took)")
     }
 
-    @Test(.timeLimit(.minutes(2))) func stoppingEndsAHostThatIgnoresSIGTERM() async throws {
+    @Test(.timeLimit(.minutes(2))) nonisolated func stoppingEndsAHostThatIgnoresSIGTERM() async throws {
         let exe = try script("trap '' TERM\nwhile :; do sleep 1; done")
         defer { try? FileManager.default.removeItem(at: exe) }
         let h = try MacPreviewHostProcess(executable: exe)

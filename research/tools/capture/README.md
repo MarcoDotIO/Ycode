@@ -239,3 +239,48 @@ $A activate --pid N && $A scroll --route tap --pid N --at 700,450 --dy 320 --ste
 
 Every result is one JSON object with `wall_start` (the moment the first
 event or AX call was sent) and `wall`, used to align actions with frames.
+
+Round 8 additions:
+- `council-r8*.json`: round 7's scripts with the same steps, ids and order.
+  `council-r8-conflict-narrow.json` step 02 (N02) now appends one compile
+  error and one warning to the Merger copy's `Greeting.swift` (a `run`
+  action) and builds with cmd+B before the Source Control view, so both
+  apps have issues to show in the toolbar capsule.
+- `council-r8-icons.json` (new): the project navigator with Swift, Python,
+  JSON and Markdown rows, one still with each app's own Appearance set to
+  Dark and one set to Light, then back to System. Its project comes from
+  `make-icons-project.py`, which writes GlassScroll plus `convert.py`,
+  `palette.json` and `NOTES.md` into `OUT_DIR/icons/GlassScroll`, a folder
+  of its own, so the extra files never reach the plain GlassScroll copy.
+
+Round 9 additions:
+- `council-r9*.json`: round 8's scripts with the same sessions, steps, ids
+  and order. The device session runs with its three simulators booted
+  beforehand (`simctl boot`) and the host load back under 20.
+- `council-r9-conflict-narrow-rerun.json`: the same script with step 02's
+  build wait raised from 25 s to 60 s, for a reference whose build had not
+  finished at 25 s.
+- `council-r9-owner.json` (not scored): the icons copy of GlassScroll in
+  dark and then light, with the navigator focused and unfocused, the
+  pointer over the coding assistant button (`hover`, never clicked),
+  NOTES.md open, and Open Quickly with "NOTES" typed (an app-mode `snap`).
+- `council-r9-owner-json.json` (not scored): palette.json opened in dark
+  and light (the JSON glyph in the navigator and the jump bar).
+- `council-r9-device-watch.json` (not scored): an Apple Watch simulator
+  (`ycode-test-council-watch`, booted beforehand) in both device windows:
+  the sidebar with its row selected, then Zoom to Fit at both window sizes.
+  The sidebar lists every simulator on the Mac: paint the other rows out of
+  step 01's stills before they leave the dirty room.
+
+Round 10 additions:
+- `council-r10*.json`: round 9's sessions, steps, ids and order. Extra step
+  15 scrolls the left pane 5000 pt (phase-less wheel events, exact deltas)
+  before the workspace closes; reopen 01 takes snaps at its start, +2.5 s
+  and +5 s; conflict-narrow 02 waits 60 s for the build with two snaps
+  during it; the watch session adds Physical Size (04) and Zoom to Fit (05).
+- `axdrive scroll` returns every event it posted as `events` (`t_s` from
+  the first event, scroll phase, momentum phase, `dy`, `dx`) with
+  `events_first_wall`, so a capture can quote its exact input.
+- Do not record a step whose window does not change while taking snaps:
+  the recorder delivers no first frame for a still window, and a still
+  taken while a recording of the same window runs does not return.

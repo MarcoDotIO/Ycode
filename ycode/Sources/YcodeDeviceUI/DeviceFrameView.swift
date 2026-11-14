@@ -1,13 +1,14 @@
-// The device as Ycode draws it (device-hub.md §4.3, §14.2): the live screen
-// with its rounded corners inside a band of even width whose outer corners
-// are concentric with the screen's — black next to the screen, mid grey
-// outside (a watch: one near-black tone with a lighter rim) — a foldable's
+// The device as Ycode draws it (device-hub.md §4.3, §14.2, §15.3–§15.4): the
+// live screen with its rounded corners inside a band of even width in the
+// tones `DeviceFrameGeometry.bandRings` gives — a classic iPhone's and an
+// iPad's light line, #2C2C2C band and black; a foldable's mid grey and black
+// (a watch: its case as `WatchCaseDrawing` gives it, `WatchCaseView`) — a foldable's
 // cover with the folded half's edge as a darker grey step on its hinge side,
 // and the side buttons as short bars on the edges, drawn flat. Clicking a button presses it
 // on the device (down while the mouse is down, so a click is a press and a
 // hold is a long press). For the iPhone Duo, Option-dragging on the frame
 // sets the hinge (the pose slider, §4.4). A watch's Digital Crown is drawn
-// as a rounded cylinder with ridges across it (Ycode's own drawing). Without
+// rim-outlined with ridges on its outer third (Ycode's own drawing). Without
 // bezels, or for visionOS, only the screen with its rounded corners is
 // drawn.
 
@@ -34,7 +35,12 @@ public final class DeviceFrameView: NSView {
     public var allowsHingeDrag = false
 
     private let bodyLayer = CAShapeLayer()
-    private let innerBandLayer = CAShapeLayer()
+    /// The band's tones inside the body's (`DeviceFrameGeometry.bandRings`
+    /// after the first): a classic iPhone's and an iPad's grey band and black,
+    /// a foldable's black.
+    private let ringLayers = [CAShapeLayer(), CAShapeLayer()]
+    /// Buttons drawn flush with the body's edge, over the band (an iPad's volume).
+    private let flushLayer = CAShapeLayer()
     private let stepLayer = CAShapeLayer()
     private let buttonsLayer = CAShapeLayer()
     private let ridgesLayer = CAShapeLayer()
@@ -42,6 +48,8 @@ public final class DeviceFrameView: NSView {
     private let shadeLayer = CAShapeLayer()
     private let hingeLayer = CAShapeLayer()
     private let screenMask = CAShapeLayer()
+    /// A watch's case, crown and buttons (council round 10 rows 250–251).
+    private let watchCase = WatchCaseView(frame: .zero)
     private var pressed: DeviceFrameGeometry.ButtonKind?
     private var hingeStart: CGPoint?
 
@@ -50,7 +58,8 @@ public final class DeviceFrameView: NSView {
         super.init(frame: NSRect(origin: .zero, size: geometry.size))
         wantsLayer = true
         layer?.masksToBounds = false
-        for l in [stepLayer, buttonsLayer, pressedLayer, ridgesLayer, bodyLayer, innerBandLayer] { layer?.addSublayer(l) }
+        for l in [stepLayer, buttonsLayer, pressedLayer, ridgesLayer, bodyLayer] + ringLayers + [flushLayer] { layer?.addSublayer(l) }
+        addSubview(watchCase)
         addSubview(screen)
         screen.layer?.mask = screenMask
         for l in [shadeLayer, hingeLayer] { l.zPosition = 10; layer?.addSublayer(l) }
@@ -88,10 +97,13 @@ public final class DeviceFrameView: NSView {
     /// the step and the buttons grey), or for a watch a near-black band with
     /// a slightly lighter rim and buttons a step lighter.
     public override func updateLayer() {
-        let twoTone = geometry.innerBand != nil
-        bodyLayer.fillColor = twoTone ? Self.color(DeviceFrameGeometry.Palette.outer) : NSColor(white: 0.07, alpha: 1).cgColor
+        let rings = geometry.bandRings, twoTone = !rings.isEmpty
+        bodyLayer.fillColor = rings.first.map { Self.color($0.color) } ?? NSColor(white: 0.07, alpha: 1).cgColor
         bodyLayer.strokeColor = twoTone ? nil : NSColor(white: 0.32, alpha: 1).cgColor
-        innerBandLayer.fillColor = Self.color(DeviceFrameGeometry.Palette.inner)
+        for (i, l) in ringLayers.enumerated() {
+            l.fillColor = rings.count > i + 1 ? Self.color(rings[i + 1].color) : nil
+        }
+        flushLayer.fillColor = Self.color(DeviceFrameGeometry.Palette.flushButton)
         stepLayer.fillColor = Self.color(DeviceFrameGeometry.Palette.step)
         buttonsLayer.fillColor = twoTone ? Self.color(DeviceFrameGeometry.Palette.button) : NSColor(white: 0.22, alpha: 1).cgColor
         buttonsLayer.strokeColor = twoTone ? nil : NSColor(white: 0.36, alpha: 1).cgColor
@@ -115,14 +127,27 @@ public final class DeviceFrameView: NSView {
         let s = scale, g = geometry
         func r(_ rect: CGRect) -> CGRect { CGRect(x: rect.minX * s, y: rect.minY * s, width: rect.width * s, height: rect.height * s) }
         let hasBand = g.body != g.screen
-        bodyLayer.path = hasBand ? Self.path(r(g.body), radii: g.bodyRadii.scaled(by: s)) : nil
-        innerBandLayer.path = g.innerBandRect.map { Self.path(r($0.rect), radii: $0.radii.scaled(by: s)) }
+        // A watch's case is its own view's drawing (row 250).
+        let watch = g.drawsWatchCase
+        watchCase.isHidden = !watch
+        watchCase.frame = bounds
+        watchCase.scale = s
+        watchCase.geometry = watch ? g : nil
+        watchCase.pressed = pressed
+        bodyLayer.path = hasBand && !watch ? Self.path(r(g.body), radii: g.bodyRadii.scaled(by: s)) : nil
+        let ringRects = g.bandRingRects
+        for (i, l) in ringLayers.enumerated() {
+            l.path = ringRects.count > i + 1 ? Self.path(r(ringRects[i + 1].rect), radii: ringRects[i + 1].radii.scaled(by: s)) : nil
+        }
         stepLayer.path = g.hingeStep.map { Self.path(r($0), radii: g.hingeStepRadii.scaled(by: s)) }
-        let buttons = CGMutablePath()
-        for b in g.buttons { buttons.addPath(Self.path(r(b.rect), radii: Self.buttonRadii(b, scale: s))) }
+        let buttons = CGMutablePath(), flush = CGMutablePath()
+        for b in g.buttons where !watch {
+            (b.flush ? flush : buttons).addPath(Self.path(r(b.rect), radii: b.flush ? CornerRadii(all: 0) : Self.buttonRadii(b, scale: s)))
+        }
         buttonsLayer.path = buttons
-        pressedLayer.path = g.buttons.first { $0.kind == pressed }.map { Self.path(r($0.rect), radii: Self.buttonRadii($0, scale: s)) }
-        ridgesLayer.path = g.buttons.first { $0.kind == .crown }.map { Self.ridges(r($0.rect), scale: s) }
+        flushLayer.path = flush
+        pressedLayer.path = watch ? nil : g.buttons.first { $0.kind == pressed }.map { Self.path(r($0.rect), radii: Self.buttonRadii($0, scale: s)) }
+        ridgesLayer.path = watch ? nil : g.buttons.first { $0.kind == .crown }.map { Self.ridges(r($0.rect), scale: s) }
         ridgesLayer.lineWidth = max(0.5, 0.6 * s)
         let screenRect = Self.pixelAligned(r(g.screen), backing: window?.backingScaleFactor ?? 2)
         screen.frame = screenRect

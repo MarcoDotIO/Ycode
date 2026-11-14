@@ -1,4 +1,5 @@
 import AppKit
+import CYcodeTestOffscreen
 import Foundation
 import Testing
 import YcodeDeviceModel
@@ -161,8 +162,10 @@ import YcodeDisplayStream
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         p.arguments = ["-x", "-o", "-l", String(window.windowNumber), path]
-        try? p.run()
-        p.waitUntilExit()
+        YcodeOffscreenOpaqueDuringCapture(window) {
+            try? p.run()
+            p.waitUntilExit()
+        }
         if p.terminationStatus != 0 || !FileManager.default.fileExists(atPath: path), let v = window.contentView,
            let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) {
             v.cacheDisplay(in: v.bounds, to: rep)

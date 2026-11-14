@@ -36,6 +36,8 @@ public final class EditorAreaController: NSViewController {
     private var contentUnderToolbar: NSLayoutConstraint!
     private var contentBelowTabs: NSLayoutConstraint!
     private let content = NSView()
+    /// Shares to restore on reopen (WorkspaceWindowController+Restore.swift).
+    let restoreBox = EditorAreaRestoreBox()
 
     public init(first: SourceEditorController) {
         super.init(nibName: nil, bundle: nil)
@@ -161,6 +163,7 @@ public final class EditorAreaController: NSViewController {
     public override func viewDidLayout() {
         super.viewDidLayout()
         if needsEqualize, tab.split.bounds.width > 0 { needsEqualize = false; equalize(tab) }
+        applyPendingFractions()   // a restored split's shares (W7.1)
         if let p = canvasPlacement, tab.editors.count == 1, (p == .beside) != tab.split.isVertical {
             tab.split.isVertical = p == .beside
             needsEqualize = true

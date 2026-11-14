@@ -1,4 +1,5 @@
 import AppKit
+import CYcodeTestOffscreen
 import Foundation
 import Testing
 @testable import YcodeIDECore
@@ -179,8 +180,10 @@ import Testing
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         p.arguments = ["-x", "-o", "-l", String(win.windowNumber), path.path]
-        try? p.run()
-        p.waitUntilExit()
+        YcodeOffscreenOpaqueDuringCapture(win) {
+            try? p.run()
+            p.waitUntilExit()
+        }
         if p.terminationStatus == 0, FileManager.default.fileExists(atPath: path.path) { return }
         let frame = try #require(win.contentView?.superview)
         frame.layoutSubtreeIfNeeded()

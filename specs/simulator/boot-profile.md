@@ -5457,6 +5457,717 @@ otherwise unchanged.
   are on by default for `--device` runs (`ycode-simd/main.swift`), with the
   band and the reply, transit and watch-port pushes.
 
+## 27. The log path's back-pressure, donotdisturbd's inversion, SpringBoard's run queue (agent B3-BOOT11, 2026-11-07)
+
+§26.8's next steps: the log path (SpringBoard's main thread waits 0.6–1.8 s
+on diagnosticd), the inversion inside donotdisturbd (§26.5) and SpringBoard
+waiting for a host CPU. Target: home_s ≤ 21.4 s, full boot, every service on
+(networking and the Duo's inner panel included).
+
+### 27.1 Conditions
+
+Thor; a fresh copy of the golden device (the source of §20–§26), aged nine
+times at its path before any timed series (five boots held 5 s after home,
+four held 120 s; home 68.5, 23.5, 25.1, 25.1, 25.2, 25.1, 23.7, 24.1,
+23.8 s; the first boot ran the data migration). Builds: *base* = `79d63488`
+(the main line: band, reply, transit and watch pushes, start class and
+8 creator threads on for device runs); *diag* = `b4ec4370` (§27.2's stall
+counters), *t1* = `6a1d50de`, *t2* = `22a8c2a1` (every switch of this
+section), each with every new switch off by default, so with no variable
+set each is the main line's program. Frame profiles as §24
+(`YCODE_FRAME_PROFILE_BOOT=120`): `p-def` (*t1*, defaults, home 24.8 s) and
+`p-all` (*t1*, `YCODE_REPLY_IMPORTANCE=sync`, `YCODE_WAIT_OWN_MUTEX=1`,
+`YCODE_HOST_SCHED_UI_WEIGHT=4000`, 25.5 s); BOOT10's `p-all` re-read.
+Stall boots (`YCODE_LOCK_STALL_STATS=1`, §27.2): `d-stall`, `s-def`, `s-own`,
+`s2-def`, `s2-sp20`, `s2-sp50`. Trace boots: `d-dnd` (`--trace-name
+donotdisturbd` with the importance, sync-push and band traces), `tr-def` and
+`tr-imp` (the same traces without the trap trace), a trap-profile boot
+`tp-def` (`YCODE_TRAP_PROFILE`). Timed series as §24.4 (the shared
+boot-timing lock, no other `ycode-simd`, a 1-minute load under 4 before
+each boot, arms rotated each round, n = 5 per arm): D (21:57–22:43).
+After it a frame profile `p-spin` (*t2*, `YCODE_FINE_LOCK_SPIN_US=50`, home
+23.7 s) and the fidelity boots `fid-def`, `fid-spin`.
+
+### 27.2 Step 1: the log path's back-pressure
+
+**What SpringBoard waits for.** SpringBoard's main thread blocks in log
+sends (send-only `mach_msg2`, id 0x10000000) when its connection's queue on
+diagnosticd is full (`qlimit` 6, the reference's value, §12.2, §13.4): 443
+sends of 0.5 ms or more, 1.82 s, in BOOT10's `p-all`; 468 sends, 2.36 s in
+`p-def`. In the worst stretch (16.0–17.3 s) every send waited 20–50 ms for
+the same diagnosticd thread.
+
+**How diagnosticd drains.** The guest's own design (the reference's code):
+each message's handler runs a block synchronously on one serial queue that
+every connection shares (`dispatch_sync`), so diagnosticd's threads take
+that queue's workloop in turn, a relay: the owner runs the block (15 µs of
+guest code), hands the workloop to the next waiter (a workloop sync wake,
+`kevent_id`), re-arms its own connection, returns to the workqueue, takes the
+next message (the dequeue wakes the blocked sender) and waits for the queue
+again. 12 500–13 000 hand-offs in 14 s (`p-all`, `p-def`):
+
+| Part of one turn (wake to the next wake) | mean | p50 | p90 | p99 |
+|---|---|---|---|---|
+| the woken thread's wakeup (wake to the end of its wait) | 140–152 µs | 45 µs | 309–344 µs | 1.5–1.8 ms |
+| its trap's end, its guest code | 6, 15 µs | 5, 14 µs | 7, 20 µs | 16–20, 27 µs |
+| its next `kevent_id` to the next wake | 62–150 µs | 10 µs | 105–109 µs | 0.8–0.9 ms |
+| the turn | 237–311 µs | 104–106 µs | 445–499 µs | 2.0–2.2 ms |
+
+With about twenty threads queued for the relay in busy stretches a thread
+waits 4–20 ms for its turn, and SpringBoard's connection is drained at that
+rate. The reference's hand-off is microseconds and its senders block 1–4 %
+of their time (§13.4).
+
+Not the cause: the queue limit (6 per connection, the guest's, §12.2); the
+synchronous relay itself (the guest's code, the same on the reference);
+diagnosticd's class (the blocked senders' send push puts all its threads at
+ui: host class ui in every relay trap of the profiles; the reference runs it
+at the default priority, §13.5); a host-side sink (Ycode's host end of the
+log stream is off, `launchd-sim.md` §8.1, so no message leaves the guest).
+
+**Who holds the locks** (the stall counters, `YCODE_LOCK_STALL_STATS=1`, new,
+`LockStallStats.swift`: every contended kernel-lock acquisition of 200 µs or
+more by the waiting image, lock, holder kind and holder class; and every
+hold of 200 µs or more with the holder's CPU time and its own lock waits
+during the hold). By home (`s-def`, `s2-def`): 36 000–39 000 such waits,
+60–63 thread-seconds; diagnosticd's event lock 7.6–8.2 s of them, **held by
+diagnosticd's own threads** (not by senders running its hooks); and the
+long holds of that event lock are waits for another lock while holding it:
+
+| Long holds of diagnosticd's event lock (`s-def`) | holds | wall | holder's CPU | the holder waiting for the port lock |
+|---|---|---|---|---|
+| in `workq_kernreturn` | 1 998 | 1 835 ms | 99 ms | 1 413 ms |
+| in `kevent_id` | 1 744 | 1 572 ms | 64 ms | 1 347 ms |
+| posted work (another image's hook, no guest context) | 912 | 1 267 ms | 66 ms | 1 153 ms |
+
+The event lock comes before the port lock G in the order
+(`mach-ipc-locking.md` §4.1), and every machport delivery takes G under it.
+G is one lock for every port of the system: 876 000 acquisitions by home,
+held 5.9 s (mean 7 µs; 22 % busy in `tp-def`'s 30 s), 161 600 contended,
+**30.9 s waited** (190 µs per contended acquisition). Holds are not the
+problem (G's holds of 200 µs or more are 0–33 per boot, and those of the event lock
+are 5 % CPU): a contended waiter sleeps on the mutex's futex, and on a
+saturated host its wakeup takes a host scheduling round trip, tens to
+hundreds of microseconds, for a lock that is free again after 7 µs; the
+event lock waits behind it, and the relay behind that. On xnu a port's and a
+kqueue's locks are spinlocks (per port and per kqueue), so a waiter never
+sleeps for a hold of microseconds.
+
+**The fix: a bounded spin** (`YCODE_FINE_LOCK_SPIN_US=N`, new,
+`scheduling-policy.md` §4.16): a thread that finds an event lock or the port
+lock taken watches its owner word for up to N µs and takes the lock as soon
+as it is free, before it sleeps. In one boot each (`s2-*`):
+
+| | defaults | spin 20 µs | spin 50 µs |
+|---|---|---|---|
+| home_s (one boot) | 24.84 | 23.79 | 23.71 |
+| fine-lock waits ≥ 200 µs, thread-s | 62.0 | 38.0 | 38.4 |
+| port lock: contended, waited | 161 600, 30.9 s | 184 400, 17.3 s | 182 000, 19.1 s |
+| diagnosticd's event lock: waits ≥ 200 µs held by its own threads | 9 029, 8.2 s | 2 072, 2.2 s | 1 304, 1.6 s |
+| long holds of any event lock: wall, nested waits | 14.3 s, 10.5 s | 9.6 s, 5.8 s | 9.6 s, 5.7 s |
+| contended acquisitions taken while spinning, slept | — | 226 000, 30 700 | 238 000, 13 900 |
+| CPU s at home | 325 | 322 | 321 |
+
+In the frame profiles (`p-def` against `p-spin`, spin 50 µs): SpringBoard
+main's blocked log sends 468 sends, 2.36 s → 296, 1.21 s; diagnosticd on
+the critical path 2.34 → 1.11 s; the relay's entry to the next wake mean
+62 → 39 µs (p90 109 → 26 µs), its lock waits per turn 631 → 220 ms in all;
+the woken thread's wakeup unchanged (p50 45 → 61 µs, the host's scheduling).
+
+Also tried: a waiter on a fine lock's queue sleeping on a mutex of its own
+(`YCODE_WAIT_OWN_MUTEX=1`, new): a woken waiter took the queue's lock twice,
+once inside the condition wait and once to return; with its own mutex once.
+The relay's wakeup did not change (`p-all`: p50 43 µs, mean 171 µs, against
+45 and 152 µs): the round trip is the host's scheduling, not the second
+acquisition. It stays off and out of the series.
+
+Removing the back-pressure itself is not the aim (§12.4: with diagnosticd
+favoured the other programs took the CPUs); the spin removes Ycode's own
+cost of a contended acquisition, for every program, not only diagnosticd.
+
+### 27.3 Step 2: donotdisturbd's inversion
+
+**How the request's work reaches the gated thread** (`d-dnd`, the trap trace
+of donotdisturbd with the importance, sync-push and band traces; the same
+sequence as BOOT10's `p-all` and `p-ereq2`):
+
+1. SpringBoard's main thread sends an XPC request with importance and a
+   send-once reply (two-call form, §4.12); donotdisturbd (Adaptive, darwin-bg
+   while unboosted) is boosted while it is queued.
+2. A workqueue thread receives it through workloop A (`THREAD_WORKLOOP_RETURN`,
+   bound at QoS user-interactive); the reply push is held on A until the
+   reply.
+3. The handler hands the work to another queue: a thread request on
+   workloop B (`kevent_id`, `NOTE_WL_THREAD_REQUEST`, QoS user-initiated),
+   then returns to the workqueue. Its servicing episode ends, and with it the
+   boost (§4.3): donotdisturbd is darwin-bg again.
+4. Another thread is bound to B at QoS user-initiated, but in a darwin-bg
+   process its class is bg; at its first trap's end (a log send) it waits at
+   the band's gate (`bg band: donotdisturbd thread 7 waited 194 ms`), then
+   sends the reply.
+
+So the thread that runs the request's work is linked to neither the reply
+push (held on A) nor the hand-off (B's thread request carries a QoS that
+darwin-bg overrides), as §26.5 found. **On xnu** the work item made in step 3
+carries the request's voucher, and the voucher keeps the message's importance
+(`ipc_importance_receive`, §4.11): donotdisturbd stays boosted until the
+request is handled, and B's thread runs at user-initiated, not throttled.
+`YCODE_REPLY_IMPORTANCE=1` is that model for every request (§22, §24.4: no
+gain, more CPU: it keeps daemons boosted for requests nobody waits for).
+
+**The fix by kind: `YCODE_REPLY_IMPORTANCE=sync`** (new,
+`scheduling-policy.md` §4.11): only a request whose sender waits for the
+reply (it has a sync-wait or reply push record, §4.10, §4.12) keeps its
+importance boost until the reply right leaves the receiving space; other
+requests keep §4.3's rule. In the trace boots (`tr-def`, `tr-imp`, one each):
+
+| | `tr-def` | `tr-imp` (`=sync`) |
+|---|---|---|
+| SpringBoard main's requests to donotdisturbd | 7, 786 ms | 7, 3 ms |
+| all SpringBoard requests to donotdisturbd | 37, 3 277 ms (longest 1 198) | 37, 995 ms (longest 928) |
+| request boosts by home (mean life) | — | 2 326 (17 ms) |
+
+The 928 ms request left in `tr-imp` carried no importance (a non-main
+thread's first request on its connection), so neither model boosts for it.
+In the profiles donotdisturbd leaves the critical path (`p-def` 0.96 s,
+`p-all` none).
+
+### 27.4 Step 3: SpringBoard's wait for a host CPU
+
+The frame profile's scheduler samples (every 200 ms, every vCPU host thread's
+CPU and run-queue counters) give, for each interval in which SpringBoard's
+main thread waited for a CPU, what the guest's threads ran meanwhile, by
+their host class (`cpuwho.py`, weighted by SpringBoard's run-queue share in
+the interval):
+
+| Profile | SpringBoard main: CPU, run queue (0.6–26 s) | the host ran meanwhile (weighted CPU-s): ui | df | bg | ut |
+|---|---|---|---|---|---|
+| BOOT10 `p-def` | 15.0 s, 1.72 s | 8.6 | 8.2 | 0.7 | 0.4 |
+| BOOT10 `p-uiw` (class ui's weight 4 000) | 14.9 s, 1.21 s | 4.7 | 6.9 | 0.5 | 0.2 |
+| `p-def` | 14.9 s, 1.73 s | 9.2 | 8.0 | 0.7 | 0.3 |
+| `p-all` (weight 4 000 among others) | 14.9 s, 1.61 s | 5.9 | 10.3 | 0.4 | 0.2 |
+
+During SpringBoard's loader (0.6–10.7 s, BOOT10 `p-all`) the share of df work
+was larger still (5.0 of 6.5). Neither Ycode's host service threads (they are
+not vCPU threads; the critical path puts 0.02–0.03 s on them) nor the band's
+gate (no class-bg thread runs while it is full) hold the CPUs: other guest
+programs do, half of them at df, in the boot's burst of daemon starts
+(remindd, usernotificationsd, icloudmailagent, mobileassetd, appstored,
+…), the other half ui threads, SpringBoard's own among them.
+
+**Would the reference run SpringBoard there?** Mostly yes. xnu's clutch
+scheduler keeps one run queue per cluster and picks root buckets
+earliest-deadline-first (§2.5 of `scheduling-policy.md`): an FG thread
+(SpringBoard's main thread) is picked before a DF bucket unless that bucket
+has waited past its 75 ms worst-case latency, and then DF gets one quantum.
+Ycode's host threads sit on Linux's per-CPU run queues, and the cgroup
+weights act per CPU: a woken ui thread queues behind another ui thread on its
+own CPU while another CPU runs df work, until load balancing moves one. That
+is why a ten-times larger ui weight barely changes SpringBoard's wait (1.73 →
+1.61 s; BOOT10's one boot 1.72 → 1.21 s) and df work still ran beside it.
+What would match the reference is placement (a ui thread displacing df work
+on any CPU), which a cgroup weight cannot express; §12.3's reserved CPUs for
+the UI path (`YCODE_HOST_SCHED_UI_CPUS`) were slower in §12.4. Series D
+measures the weight (§27.5: no change).
+
+### 27.5 Timed series
+
+Series D (21:57–22:43, *t2*; every boot started with no other `ycode-simd`
+and a 1-minute load of 3.38–3.97):
+
+| Series | Arm | n | median home_s | mean ± sd | range | kernel lock held at home, median | CPU s at home, median | guest fatal |
+|---|---|---|---|---|---|---|---|---|
+| D | default | 5 | **23.70** | 23.96 ± 0.64 | 23.58–25.09 | 3.8 s | 316 | 0 |
+| D | + request importance for waited requests (`YCODE_REPLY_IMPORTANCE=sync`) | 5 | 24.79 | 24.86 ± 0.53 | 24.18–25.58 | 4.4 s | 328 | 0 |
+| D | + fine-lock spin 50 µs (`YCODE_FINE_LOCK_SPIN_US=50`) | 5 | **23.81** | 23.68 ± 0.67 | 22.65–24.46 | 3.8 s | 319 | 0 |
+| D | + class ui's weight 4 000 (`YCODE_HOST_SCHED_UI_WEIGHT=4000`) | 5 | 24.02 | 24.05 ± 0.26 | 23.78–24.33 | 4.1 s | 316 | 0 |
+| D | + waited-request importance + spin | 5 | 24.62 | 24.52 ± 0.45 | 23.82–25.06 | 4.0 s | 333 | 0 |
+
+- **The default is 23.70 s** on this copy (four of five boots 23.58–23.73 s),
+  §26.6's arm with the start class and 8 creators (23.92 s) within the
+  spread.
+- **The spin: no change by the median (+0.1 s), −0.3 s by the mean**, the
+  fastest boot of the section (22.65 s), the same CPU (319 against 316 s)
+  and the same kernel-lock time; the ranges overlap. It removes 40 % of the
+  fine-lock stall time and three quarters of diagnosticd's (§27.2), but the
+  time does not come off home: the path moves to other programs' guest code
+  and run queues (§12.4, §16.6: the boot is throughput-bound).
+- **Waited-request importance is slower: +0.9 s** by the mean, each of its
+  boots behind four of the five default boots, 12 CPU s more at home, 0.6 s more
+  kernel lock. It removes donotdisturbd's wait (§27.3) but keeps other
+  daemons boosted while their clients wait (runningboardd 16.6 s, mobileassetd
+  9.6 s, cfprefsd 3.0 s of request boosts by home in `tr-imp`), which brings
+  their other work forward, as `=1` did (§22, §24.4). In `p-all` the path
+  then went through chronod's loader (4.95 s on the path: guest code 3.0 s,
+  run queue 1.3 s; SpringBoard's main thread waited 1.15 s for a workqueue
+  thread of its own that waited 1.5 s on chronod, §26.3) and
+  localizationswitcherd (1.1 s).
+- **Class ui's weight at 4 000: no change** (+0.1 s by the mean, a smaller
+  spread, the same CPU), as §27.4 expects of a per-CPU weight.
+- Together (importance + spin): +0.6 s, between the two.
+
+### 27.6 Service fidelity
+
+`scripts/ycode-launchd-spawns` over 700 s, one boot each (*t2*), one after
+another on the same device copy:
+
+| | default | spin 50 µs |
+|---|---|---|
+| home_s of the boot | 24.14 | 24.31 |
+| all starts | 522 (246 labels) | 508 (234 labels) |
+| restart loops (facetimemessagestored, managedappdistributiond, mlhostd, proactiveeventtrackerd, intelligencetasksd, fileindexerd) | 67, 64, 62, 68, 15, 1 | 67, 64, 62, 68, 13, 1 |
+| other daemons and agents | 183 | 172 |
+| per-process domains | 59 | 58 |
+| apps | 3 | 3 |
+| starts by reason (xpc event, Mach IPC, demand, speculative) | 333, 103, 38, 32 | 320, 102, 38, 32 |
+| guest fatal conditions in 700 s | 15 | 14 |
+
+The labels that differ are intelligencetasksd's restart loop (15 → 13, its
+throttle's phase, §26.7) and twelve one-off jobs that started once in the
+default boot and not in the other (AssetCacheLocatorService, agentstored,
+geocorrectiond, mapssyncd, appleaccounttransparencyd, businessservicesd,
+cksharingmanagementd, idcredd, imageplaygroundd, parsec-fbf, an
+embedded-speech instance, stickersd), the labels of §20.9, §24.5, §25.7 and
+§26.7. Fidelity is otherwise unchanged.
+
+### 27.7 How far from 21.4 s, and the recommendation
+
+- **The default: 23.70 s** (23.96 ± 0.64), **1.11 ×** the reference, 2.3 s
+  short of 21.4 s. No arm of this section is faster by more than the spread;
+  the best is the spin, 23.68 ± 0.67 s by the mean (1.11 ×).
+- **What the three Ycode causes were, and what changed.** (1) The log path's
+  back-pressure is Ycode's lock wakeups: every contended event-lock and
+  port-lock acquisition slept on a futex and paid a host scheduling round
+  trip, and diagnosticd's event lock was held across waits for the global
+  port lock; the spin removes most of that (§27.2), SpringBoard's blocked log
+  sends fell 2.36 → 1.21 s in the profiles, but home did not move. (2)
+  donotdisturbd's inversion is the end of the request's importance with the
+  listener thread's episode while its hand-off still runs; the sync-only
+  request importance removes it (SpringBoard main's waits on donotdisturbd
+  786 → 3 ms) and costs more elsewhere than it saves. (3) SpringBoard's run
+  queue is Linux's per-CPU queues against xnu's per-cluster earliest-deadline
+  pick: df work runs on other CPUs while SpringBoard waits behind ui threads
+  on its own; a weight does not change it.
+- **Where the rest is** (`p-def`, home 24.8 s): SpringBoard's own guest code
+  12.7–14.0 s of the path (its loader 7.5 s, §26.3), WidgetRenderer or chronod
+  3–5 s (whichever of the parallel chains ends last), SpringBoard's run
+  queue 1.0–1.2 s, diagnosticd 1.1–2.3 s, donotdisturbd's gate 0.9 s (none
+  with the sync importance). 23.7 s / 1.25 ≈ 19.0 s at the Thor's speed
+  (§10.4).
+- **Recommendation (the owner decides).** Keep the defaults. Keep
+  `YCODE_REPLY_IMPORTANCE` off in both forms (`=sync` +0.9 s), class ui's
+  weight at 400, `YCODE_WAIT_OWN_MUTEX` off (no effect on the wakeup). The
+  spin (`YCODE_FINE_LOCK_SPIN_US=50`) is the one candidate: neutral by the
+  median, slightly ahead by the mean, the same CPU, fidelity as §27.6; it
+  could be turned on for its lower lock cost but a series of n = 5 does not
+  show a gain on home. Leave it off until a longer series (n ≥ 10) decides.
+- **Next.** (1) The port lock G is one lock for every port of the system
+  (876 000 acquisitions by home); xnu's are per port. Splitting it (per port
+  or per space) would cut the nested waits under every event lock, not only
+  diagnosticd's. (2) The placement of ui threads (§27.4): a ui thread that
+  becomes runnable displacing df work on any CPU, the reference's
+  per-cluster pick; cgroup weights cannot express it. (3) chronod's and the
+  widget renderer's loaders on the path once donotdisturbd is off it
+  (`YCODE_FAST_TRAP_HOST_CLASS=push`, §26.3).
+
+## 28. The port lock split, the spin at n = 10, chronod's loader (agent B3-BOOT12, 2026-11-08)
+
+§27.7's next steps: split the global port lock G the way xnu's IPC locks
+work, decide the bounded spin with a longer series, and find what part of
+chronod's loader (on the critical path once donotdisturbd is off it) is the
+reference's work and what part is Ycode's. Target: home_s ≤ 21.4 s, full
+boot, every service on (networking and the Duo's inner panel included).
+
+### 28.1 Conditions
+
+Thor; a fresh copy of the golden device (the source of §20–§27), aged nine
+times at its path before any timed series (five boots held 5 s after home,
+four held 120 s; home 56.4, 22.7, 24.1, 23.2, 23.4, 23.2, 23.3, 23.3,
+25.0 s; the first boot ran the data migration). Builds, each with every new
+switch off by default, so with no variable set each is the main line's
+program plus counters: *base* = `0d70a9ae` (the main line: band, reply,
+transit and watch pushes, start class and 8 creator threads on for device
+runs), *t1* = `c65ec5f2` (§28.2's split, first version), *t2* =
+`558e036d` (the split with `thread_get_state`, the class guard and the
+order check; trap events carry the applied host class). Coverage boots
+`c-split`, `c-def`, `c2-split`, `c2-splitall` (the split's counters in the
+home-screen line), a trap-profile boot `tp-split` (`YCODE_TRAP_PROFILE`),
+frame profiles as §24 (`YCODE_FRAME_PROFILE_BOOT=120`): `p-def`, `p-imp`
+(`YCODE_REPLY_IMPORTANCE=sync`), `p-imppush` (with
+`YCODE_FAST_TRAP_HOST_CLASS=push`); a boot profile `bp-chr` (guest PC
+timeline of chronod at 1 000 Hz, `=sync`). B3-BOOT11's `p-def` and `p-all`
+re-read. Timed series as §24.4 (the shared boot-timing lock, no other
+`ycode-simd`, a 1-minute load under 4 before each boot, arms rotated each
+round): E (n = 10 per arm, *t1*), F (n = 5 per arm, *t2*).
+
+### 28.2 Step 1: the port lock split (`mach-ipc-locking.md` §4.12)
+
+**What was built** (`YCODE_PORT_LOCK_SPLIT=1`, off). G becomes a
+reader-writer lock: every existing holder takes it exclusively (an
+exclusive holder that has the mutex waits for the shared holders in
+flight), and a new kind of holder, a *fine step*, takes it shared plus a
+mutex per space (`MachIPC.spaceLock`, taken in increasing space id) for
+each space whose state it touches. A fine step runs the locked path's own
+code for one operation after checking, reading only, that the operation
+stays inside those spaces and never blocks, wakes a waiter, takes another
+kernel lock or carries a push; otherwise it declines with nothing changed
+and the trap runs under G exclusive as before. Fine steps: simple
+send-only and receive-only fast `mach_msg`/`mach_msg2`, the kevent
+EVFILT_MACHPORT receive, `mach_port_deallocate`, kevent's readiness
+queries, the end of a servicing episode and `thread_get_state`. Per-port
+locks inside a space and per-kqueue event locks were not built: §28.2's
+counters show where the remaining exclusive acquisitions are, and moving
+them needs wait queues guarded by a space's or a port's lock (below).
+
+**Safety.** New `PortLockSplitTests` (switch suites, lock-order check on):
+exclusive holders exclude shared ones (a writer's counter is never seen
+odd); simple traffic from three images in order; reply send rights merged
+and dropped with `mach_port_deallocate`, send-once replies; the receive
+right dying while clients send (every sent message comes back as exactly
+one send-once notification, from the server's deallocation or from the
+queued message's destruction); a receive right moving between two images
+while both poll it and a third sends (every message once); a port moving
+in and out of a set while messages go to both members; a send to a blocked
+receiver declines; the kevent receive and a servicing end as fine steps;
+space locks taken in increasing order on both paths (on top, and let go
+and taken again); `MachIPCLockSplitTests`' storms and `ThreadStateRaceTests`
+with the split on.
+
+### 28.3 Step 2: the spin at n = 10 (series E)
+
+Series E (00:13–01:21, *t1*, n = 10 per arm, the four arms rotated each
+round; every boot started with no other `ycode-simd` and a 1-minute load
+of 1.28–3.95):
+
+| Series | Arm | n | median home_s | mean ± sd | range | kernel lock held at home, median | port lock at home: acquisitions, waited (median) | CPU s at home, median | guest fatal |
+|---|---|---|---|---|---|---|---|---|---|
+| E | default | 10 | **23.96** | 23.95 ± 0.31 | 23.34–24.45 | 4.1 s | 867 000, 20.6 s | 320 | 0 |
+| E | + spin 50 µs (`YCODE_FINE_LOCK_SPIN_US=50`) | 10 | **23.60** | 23.58 ± 0.32 | 22.95–23.99 | 3.7 s | 878 000, 11.5 s | 316 | 0–1 |
+| E | + port lock split (`YCODE_PORT_LOCK_SPLIT=1`, *t1*) | 10 | 24.20 | 24.33 ± 0.50 | 23.90–25.60 | 5.8 s | 253 000 exclusive, 48.4 s | 316 | 0–1 |
+| E | + split + spin | 10 | 24.34 | 24.52 ± 0.50 | 24.07–25.34 | 5.6 s | 254 000 exclusive, 43.2 s | 322 | 0 |
+
+- **The spin: −0.37 s by the mean, −0.36 s by the median** (Welch's t
+  2.6; in 79 of the 100 pairs of a default and a spin boot the spin boot was
+  faster), the same CPU (316 against 320 s), the port lock's waits by home
+  20.6 → 11.5 s, the kernel lock's hold 4.1 → 3.7 s (the locked Mach traps
+  hold L0 while they wait for G). Series D (§27.5, n = 5) showed −0.3 s by
+  the mean inside the spread; at n = 10 the gain is small but consistent.
+- **The split is slower: +0.39 s by the mean** (t −2.1; 24 of 100 pairs
+  favour it), and the spin does not rescue it (+0.58 s, the spin's waits
+  on an exclusive G now include the drains of §28.2).
+
+**What it does to the locks** (home-screen counters, one boot each;
+`c-def` on *t1* defaults, `c-split` on *t1*, `c2-split` and `c2-splitall`
+(`YCODE_PORT_LOCK_SPLIT_MIN_CLASS=0`) on *t2*):
+
+| | `c-def` | `c-split` | `c2-split` | `c2-splitall` |
+|---|---|---|---|---|
+| home_s (one boot) | 23.40 | 24.34 | 24.42 | 24.49 |
+| G exclusive: acquisitions, contended, waited | 879 000, 137 600, 22.0 s | 276 000, 56 700, 49.1 s | 245 000, 51 100, 47.3 s | 212 000, 48 300, 52.1 s |
+| per contended exclusive acquisition | 160 µs | 870 µs | 925 µs | 1 080 µs |
+| fine steps (send, receive, kevent receive, deallocate, queries, servicing ends, `thread_get_state`) | — | 65 k, 7 k, 69 k, 119 k, 320 k, 1 k, — | 59 k, 6 k, 68 k, 112 k, 303 k, 15 k, 33 k | 67 k, 7 k, 71 k, 152 k, 311 k, 17 k, 40 k |
+| space locks: acquisitions, contended, waited | — | 827 000, 13 000, 1.2 s | 802 000, 12 000, 1.1 s | 879 000, 13 600, 1.4 s |
+| exclusive holders that waited for shared ones, waited | — | 37 200, 4.6 s | 34 000, 4.5 s | 34 000, 4.6 s |
+| kernel lock L0 held at home | 4.1 s | 5.6 s (series E median 5.8 s) | 6.0 s | 6.1 s |
+
+- **Most of G's traffic moves to fine steps** (two thirds to three quarters
+  of the acquisitions; the space locks are contended 1.5 % of the time
+  and wait 1.1–1.4 s in all, against G's 22 s).
+- **What stays exclusive is slower, and more than the moved part saves.**
+  An exclusive holder now waits, with G's mutex held, for the shared
+  holders in flight: 34 000–37 000 times by home, 4.5 s in all, 130 µs
+  each. The mutex is busy for longer (hold plus drain), its waiters sleep on
+  the futex, and the waits per contended exclusive acquisition grow from
+  160 µs to 0.9–1.1 ms: G's exclusive waits by home 22 → 47–52 s.
+- **L0 pays too.** The locked path of a Mach trap (a kernel-object
+  destination, the routines that read the process table) takes L0 and then
+  G: L0's hold by home grows 4.1 → 5.6–6.1 s, so every BSD trap waits
+  longer for L0.
+- **Keeping background threads off the shared path changes nothing**
+  (`c2-split` against `c2-splitall`: the same drains, 34 000 and 4.5 s): the
+  drains are not preempted background holders but fine steps of every
+  class in flight on an oversubscribed host.
+- **What stays exclusive** (declines in `c2-split`): the synchronous IPC
+  protocol, a send and a receive in one trap (16 600), messages with a
+  sync-wait or reply push (15 100), replies with a held reply push
+  (14 100), the special-reply waits (3 000); the log path's back-pressure,
+  sends to a full queue (11 700) and receives that must wake a blocked
+  sender (13 400); complex messages (8 200); shared acquisitions that found
+  an exclusive holder (24 000); threads below class df (32 200); every
+  blocking receive and its re-acquisition after the wakeup; the port
+  routines that create ports or name sets, `task_threads`, the host
+  services. Each of these needs to block, wake a waiter or carry a push,
+  and the waiters sleep on G's mutex: moving them needs wait queues
+  guarded by a space's or a port's own lock (xnu's per-port wait queues)
+  and push records owned by one space, not more fine steps of this kind.
+
+### 28.4 Step 3: chronod's loader
+
+launchd starts chronod on demand (a client's message) at 5.6–6.1 s; its
+main thread is the loader until libSystem's initializer (its first
+`bsdthread_register`) at 13.3–14.2 s. At 11.1–11.3 s SpringBoard's
+workqueue thread sends it a synchronous request and SpringBoard's main
+thread later waits for that thread (§26.3): from then on the rest of the
+loader is on the critical path whenever donotdisturbd is not (`p-imp`,
+`YCODE_REPLY_IMPORTANCE=sync`: chronod 3.23 s on the path, guest code
+2.05 s, host run queue 1.12 s, then localizationswitcherd 0.79 s; in
+`p-def` donotdisturbd's band-gate wait, 0.94 s, is on the path instead and
+chronod is not). chronod's main thread (frame profiles; the class applied
+to its host thread from the new bits 13–15 of the trap events):
+
+| Profile | spawn → libSystem init | before the request: guest, run queue, traps | after the request (on the path): guest, run queue, traps | class applied after the request | traps entered with the applied class below the pushed one |
+|---|---|---|---|---|---|
+| `p-def` | 5.60 → 13.98 s (8.4 s) | 1.88, 3.22, 0.33 s | 1.87, 0.93, 0.05 s | df until 13.98 s, ui after | 1 047 |
+| `p-imp` | 6.13 → 14.24 s (8.1 s) | 1.84, 2.88, 0.19 s | 1.97, 1.10, 0.05 s | df until 14.24 s | 1 134 |
+| `p-imppush` (`+ YCODE_FAST_TRAP_HOST_CLASS=push`) | 6.02 → 13.35 s (7.3 s) | 1.75, 3.23, 0.18 s | 1.91, 0.12, 0.04 s | ui from 11.28 s | 1 |
+| B3-BOOT11 `p-all` (re-read) | 5.89 → 13.98 s (8.1 s) | 1.88, 2.92, 0.23 s | 1.93, 1.00, 0.05 s | — (not recorded) | — |
+
+- **The reference's work: the guest code, 3.6–3.8 s of it, at the Thor's
+  speed.** The boot profile `bp-chr` (guest PC timeline of chronod) puts
+  98.5 % of the loader's samples in `dyld_sim` (2 471 of 2 508) and its
+  guest code at 3.09 s (3.32 s CPU) to the milestone: the loader's own
+  algorithm over chronod's images at native speed (§5.2, §6.2; the
+  reference's loader CPU is 1.13–1.43 × less for SpringBoard, §10.4's
+  1.25 × for the Thor). Ycode loads no extra images and adds no polling.
+- **Ycode's: the host run queue, 3.8–4.3 s of the 7.3–8.4 s.** Before the
+  request (2.9–3.2 s) chronod is a df loader among the boot's other
+  loaders and daemon starts; nobody waits for it yet, and the reference
+  runs it at its default priority too, but on more and faster cores (§27.4:
+  the host is oversubscribed). **After the request (0.9–1.1 s, on the
+  path) the pushed class is not applied**: SpringBoard's request raises
+  chronod's main thread to ui at once, but its host thread stays at df for
+  the rest of the loader (1 047–1 134 traps entered below the pushed class),
+  because the loader's traps (`stat64`, `mmap`, `vm_allocate`) are fast
+  traps and §4.7 applies a class only at the end of a locked trap. With
+  `YCODE_FAST_TRAP_HOST_CLASS=push` the class is applied at the next fast
+  trap (1 trap below it), the run queue after the request is 0.12 s, and
+  the loader ends 0.6–0.9 s earlier.
+- **Traps that wait: none that matter.** The loader's traps take
+  0.2–0.4 s in all (`mmap`, `stat64`, `vm_allocate`/`vm_deallocate`: host
+  work, no lock waits worth counting, 0–0.05 s); no timed waits, no
+  polling.
+
+### 28.5 Timed series
+
+Series E is §28.3's. Series F (01:37–02:25, *t2*, n = 5 per arm, the
+four arms rotated): from 02:03 another agent's flatpak build of Ycode ran
+on the Thor (`others.log`: a process watcher started at 01:58), and the
+boots that overlapped it (F-split-4 onward, 28–35 s) are discarded; the
+clean rounds are 1–3 (and round 4's default and imppush). Series F2
+(*t2*, after the fidelity boots; `ab2.sh`, which also waits until no other
+agent's build or simulator runs) repeats F.
+
+| Series | Arm | n | median home_s | mean ± sd | range | kernel lock held at home, median | CPU s at home, median | guest fatal |
+|---|---|---|---|---|---|---|---|---|
+| F (clean) | default | 4 | 24.45 | 24.30 ± 0.38 | 23.73–24.57 | 4.1 s | 328 | 0 |
+| F (clean) | + port lock split (*t2*) | 3 | 24.02 | 24.26 ± 0.47 | 23.96–24.81 | 5.5 s | 315 | 0 |
+| F (clean) | + raises at fast traps (`YCODE_FAST_TRAP_HOST_CLASS=push`) | 3 | 23.79 | 24.05 ± 0.56 | 23.67–24.70 | 4.1 s | 315 | 0 |
+| F (clean) | + waited-request importance + raises at fast traps (`YCODE_REPLY_IMPORTANCE=sync`) | 4 | 24.82 | 24.71 ± 0.55 | 24.02–25.17 | 4.5 s | 332 | 0 |
+| F2 | default | 3 | 24.53 | 24.60 ± 0.16 | 24.49–24.79 | 4.2 s | 322 | 0 |
+| F2 | + port lock split | 3 | 25.06 | 24.97 ± 0.27 | 24.67–25.18 | 5.9 s | 327 | 0 |
+| F2 | + raises at fast traps | 3 | 23.76 | 23.76 ± 0.34 | 23.42–24.09 | 4.1 s | 312 | 0 |
+| F2 | + waited-request importance + raises at fast traps | 3 | 24.78 | 24.74 ± 0.24 | 24.48–24.95 | 4.5 s | 329 | 0 |
+| F + F2 | default | 7 | 24.49 | 24.43 ± 0.33 | 23.73–24.79 | | | |
+| F + F2 | + port lock split | 6 | 24.74 | 24.62 ± 0.52 | 23.96–25.18 | | | |
+| F + F2 | + raises at fast traps | 6 | **23.77** | **23.91 ± 0.45** | 23.42–24.70 | | | |
+| F + F2 | + waited-request importance + raises at fast traps | 7 | 24.78 | 24.72 ± 0.41 | 24.02–25.17 | | | |
+
+F2's boots each started with no other agent's build or simulator running
+and a 1-minute load of 3.45–3.97 (the watcher's one line per boot at the
+home screen is the harness's own `pgrep`; F2-def-1's other lines begin
+after its home screen, when another agent's test build started).
+
+- **The split: no gain in any series.** Series E (n = 10, before the
+  other agents' builds): +0.39 s by the mean. F and F2 together (n = 6
+  against 7): +0.19 s by the mean, +0.25 s by the median (24.62 ± 0.52
+  against 24.43 ± 0.33 s; 13 of 42 pairs favour it), and L0's hold
+  5.5–5.9 against 4.1–4.2 s in every series. No clear, repeatable gain,
+  and a repeatable cost in the kernel lock.
+- **Raises at fast traps** (`YCODE_FAST_TRAP_HOST_CLASS=push`, chronod's
+  fix of §28.4): **−0.52 s by the mean, −0.72 s by the median** in F and
+  F2 together (23.91 ± 0.45 against 24.43 ± 0.33 s, n = 6 against 7;
+  Welch's t 2.4; 33 of 42 pairs favour it), the same kernel lock, 10 CPU s
+  less at home. More than chronod's 0.9–1.1 s of run queue explains in the
+  default boot, where chronod is not on the critical path: every loader and
+  service that a waiting client's request pushes runs at the pushed class
+  from its next fast trap instead of its next locked one. §26.6's series A
+  measured it with the start class and 8 creators as the base and saw no
+  change (23.78 against 23.79 s, n = 5); these series are on the newer main
+  line (reply, transit and watch pushes, start class, 8 creators all on).
+- **With waited-request importance** (where chronod is on the path):
+  24.72 ± 0.41 s, +0.3 s against the defaults (§27.5: `=sync` alone +0.9 s);
+  the fast-trap raise recovers about half of `=sync`'s cost (its single
+  profile `p-imppush` 24.88 against `p-imp` 27.09 s) but not more than it
+  costs elsewhere.
+
+### 28.6 Service fidelity
+
+`scripts/ycode-launchd-spawns` over 700 s, one boot each (*t2*), one after
+another on the same device copy; another agent's flatpak build loaded the
+host during `fid-def` and `fid-split` (their home_s are not timings);
+`fid-split2` ran after F2 with no other agent's build running:
+
+| | default (`fid-def`) | split (`fid-split`) | split again (`fid-split2`) |
+|---|---|---|---|
+| home_s of the boot | 25.70 | 26.71 | 24.66 |
+| all starts | 514 (245 labels) | 529 (236 labels) | 512 (238 labels) |
+| restart loops (facetimemessagestored, managedappdistributiond, mlhostd, proactiveeventtrackerd, intelligencetasksd, fileindexerd) | 66, 64, 61, 68, 10, 1 | 67, 64, 61, 68, 11, 1 | 67, 64, 62, 68, 13, 1 |
+| other daemons and agents | 182 | 196 | 176 |
+| per-process domains | 59 | 58 | 58 |
+| apps | 3 | 3 | 3 |
+| starts by reason (xpc event, Mach IPC, demand, speculative) | 323, 105, 38, 32 | 319, 124, 38, 32 | 325, 101, 38, 32 |
+| guest fatal conditions in 700 s | 10 | 11 | 13 |
+
+In `fid-split` pairedsyncd started 23 times: from 7.5 min after the boot
+every 10.4 s (launchd's throttle), each time "on demand: 1 messages queued
+at spawn", running 0.4 s and exiting with status 0, until the 700 s ended.
+The repeat (`fid-split2`) started it once, as the default boot and every
+fidelity boot of §24–§27 did, so the loop is not reproducible with the
+split; it is noted as an open observation (a client's message that
+pairedsyncd leaves queued). The other labels that differ are
+intelligencetasksd's restart loop (10–13, its throttle's phase) and the
+one-off jobs of §20.9–§27.6 (AssetCacheLocatorService, agentstored,
+geocorrectiond, mapssyncd). Fidelity is otherwise unchanged.
+
+### 28.7 How far from 21.4 s, and the recommendation
+
+- **The default: 23.96 s** (series E, 23.95 ± 0.31, n = 10), **1.12 ×**
+  the reference, 2.6 s short of 21.4 s; 24.49 s in F and F2 (the spread
+  between series, as §26.6 and §27.5 saw). The best arms: the spin 23.60 s
+  (E), the fast-trap raise 23.77 s (F + F2), 1.10–1.11 ×. 24.0 s / 1.25 ≈
+  19.2 s at the Thor's per-core speed (§10.4), under 21.4 s.
+- **The port lock split (step 1)**: built, safe by the tests and the
+  sanitizer, and slower: it moves two thirds to three quarters of G's
+  acquisitions to per-space locks, but the exclusive holders that remain
+  wait for the shared ones and wait 5–7 × longer each, and L0, held by the
+  locked Mach traps while they wait for G, is held 1.4–2 s longer by home.
+  Keep `YCODE_PORT_LOCK_SPLIT` off. What would make a split pay is
+  `mach-ipc-locking.md` §7: wait queues guarded by a space's or port's own
+  lock, so that the synchronous round trip and the log path's full queues,
+  which are what stays on G, can leave it.
+- **The spin (step 2)**: −0.37 s at n = 10 (23.58 ± 0.32 against
+  23.95 ± 0.31 s, 79 of 100 pairs), the same CPU, G's waits by home halved,
+  L0's hold −0.4 s, fidelity as §27.6. **Turn `YCODE_FINE_LOCK_SPIN_US=50`
+  on for device runs** (the orchestrator decides).
+- **chronod's loader (step 3)**: 3.6–3.8 s of guest code is the
+  reference's work at the Thor's speed (98.5 % in `dyld_sim`); 3.8–4.3 s
+  of host run queue is Ycode's environment, of which 0.9–1.1 s on the
+  critical path is a pushed class not applied at fast traps.
+  `YCODE_FAST_TRAP_HOST_CLASS=push` removes that (0.12 s left) and in F
+  and F2 is worth −0.52 s by the mean (n = 6 against 7), the same kernel
+  lock, less CPU. **Turn it on for device runs too** (the orchestrator
+  decides). The spin and the raise were not measured together; a short
+  series of the two against each alone should precede turning both on.
+  Keep `YCODE_REPLY_IMPORTANCE` off (+0.3 s even with the raise).
+- **Where the rest is** (`p-def`, home 24.3 s, `--boot --join`):
+  SpringBoard's own guest code 15.2 s (63 %), SpringBoard's run queue 1.4 s,
+  donotdisturbd's band gate 1.1 s, backboardd's timed wait 0.4 s,
+  diagnosticd's run queue, wakeups and event-lock waits 0.9 s, the port
+  lock 0.3 s.
+
+## 29. The spin and the fast-trap raise together (agent B3-BOOT13, 2026-11-08)
+
+§28.7 left two switches recommended but never measured together: the
+bounded fine-lock spin (`YCODE_FINE_LOCK_SPIN_US=50`, `scheduling-policy.md`
+§4.16) and the raise at fast traps (`YCODE_FAST_TRAP_HOST_CLASS=push`,
+§4.15). This section is the short series that decides the device-run
+defaults for 1.0.0-beta.3.
+
+### 29.1 Conditions
+
+Thor. One build, `48aa0032` (the main line after §28: band, reply, transit
+and watch pushes, start class and 8 creator threads on for device runs;
+both switches off by default), release `ycode-simd`. The host libraries
+were generated from this tree with the previous build's `ycode` tool (a
+generator only). A fresh copy of the golden device (the source of
+§20–§28) was aged nine times at its path (holds of 5 s and 120 s, alternating;
+home 55.9, 23.6, 23.8, 24.0, 24.0, 23.9, 24.2, 23.9, 24.8 s; the first boot
+ran the data migration). Series S (04:18–05:15) used §28.5's F2 harness
+(`ab2.sh`): the shared boot-timing lock was held for the whole series, and
+the four arms were rotated each round. Every boot was full, with every
+service on. Each boot started only when no other `ycode-simd` and no other
+agent's build was running, and when the 1-minute load was under 4
+(3.41–3.99 at the starts). No boot was discarded.
+
+### 29.2 Series S
+
+| Arm | n | median home_s | mean ± sd | range | CPU s at home, median | kernel lock held at home, median | port lock at home: acquisitions, waited (median) | guest fatal |
+|---|---|---|---|---|---|---|---|---|
+| default | 8 | 23.71 | 23.75 ± 0.33 | 23.20–24.12 | 318 | 4.0 s | 855 000, 20.7 s | 0 |
+| + spin (`YCODE_FINE_LOCK_SPIN_US=50`) | 8 | 23.74 | 23.61 ± 0.34 | 23.07–23.99 | 322 | 3.7 s | 903 000, 11.0 s | 0 |
+| + fast-trap raise (`YCODE_FAST_TRAP_HOST_CLASS=push`) | 8 | 23.79 | 23.70 ± 0.34 | 23.27–24.11 | 314 | 4.1 s | 880 000, 20.5 s | 0 |
+| + both | 8 | **23.31** | **23.34 ± 0.26** | 22.94–23.74 | 318 | 3.7 s | 871 000, 10.5 s | 0 |
+
+| Comparison | mean | median | Welch's t | pairs of boots in favour | rounds in favour |
+|---|---|---|---|---|---|
+| spin − default | −0.14 s | +0.03 s | −0.8 | 39 of 64 | 5 of 8 |
+| raise − default | −0.06 s | +0.08 s | −0.3 | 34 of 64 | 5 of 8 |
+| **both − default** | **−0.42 s** | **−0.40 s** | **−2.8** | **53 of 64** | **7 of 8** (−0.42 ± 0.32 s) |
+| both − spin | −0.28 s | −0.43 s | −1.8 | 48 of 64 | 5 of 8 |
+| both − raise | −0.36 s | −0.48 s | −2.4 | 51 of 64 | 6 of 8 |
+
+- **Both together beat each alone.** The combined arm is the fastest
+  arm by the median, the mean and the range, and it had the lowest spread.
+  It is the only arm that clearly differs from the default. In this series
+  neither switch alone separates from the default: −0.14 s and −0.06 s by
+  the mean, inside the spread. This is less than §28.3's −0.37 s for the
+  spin and §28.5's −0.52 s for the raise. The default itself was faster
+  here (23.75 s by the mean, against 23.95 s in E and 24.43 s in F + F2),
+  which is the spread between series that §26.6, §27.5 and §28.5 also saw.
+  Each switch alone gave a small gain over three series, and the two
+  together gave a gain that is clearly outside the spread in one series.
+- **The locks behave as each switch predicts, and the effects add.** The
+  spin halves the port lock's waits by home (20.7 → 10.5–11.0 s) and
+  lowers the kernel lock's hold (4.0 → 3.7 s), with or without the raise.
+  The raise does not change either lock. The CPU at home is the same in
+  every arm (314–322 s). Why the two together gain more than the sum of
+  each alone was not measured. One reading, not tested: the raise
+  starts pushed threads at ui sooner, so more of the waits on the port
+  lock and the event locks fall on the critical path, and those are the
+  waits that the spin shortens.
+- No arm had a guest fatal condition before home.
+
+### 29.3 Service fidelity with both switches
+
+`fid-both`: one boot, held 700 s after home, with both switches on, after
+the series. `scripts/ycode-launchd-spawns` compares it with §28.6's
+`fid-def`:
+
+| | default (§28.6 `fid-def`) | both (`fid-both`) |
+|---|---|---|
+| home_s of the boot | 25.70 (loaded host) | 23.10 |
+| all starts | 514 (245 labels) | 520 (244 labels) |
+| restart loops (facetimemessagestored, managedappdistributiond, mlhostd, proactiveeventtrackerd, intelligencetasksd, fileindexerd) | 66, 64, 61, 68, 10, 1 | 67, 64, 62, 68, 15, 1 |
+| other daemons and agents | 182 | 181 |
+| per-process domains | 59 | 59 |
+| apps | 3 | 3 |
+| starts by reason (xpc event, Mach IPC, demand, speculative) | 323, 105, 38, 32 | 327, 107, 38, 32 |
+| pairedsyncd starts | 1 (speculative) | 1 (speculative) |
+| guest fatal conditions in 700 s | 10 (all intelligencetasksd) | 15 (all intelligencetasksd) |
+
+Four labels differ. intelligencetasksd's restart loop ran 15 times against
+10, and every guest fatal condition is one of its exits, so the fatal count
+follows the loop (§28.6: 10–13 at its throttle's phase).
+facetimemessagestored and mlhostd started once more each. imageplaygroundd
+did not run its one-off job (one of the jobs that come and go, §20.9–§28.6).
+**pairedsyncd started once, at its speculative start, and did not restart.**
+§28.6's loop, seen once with the split, did not occur. Fidelity does not
+change.
+
+### 29.4 Recommendation
+
+- **Turn on both `YCODE_FINE_LOCK_SPIN_US=50` and
+  `YCODE_FAST_TRAP_HOST_CLASS=push` for device runs.** Together they give
+  −0.42 s by the mean and −0.40 s by the median (23.34 ± 0.26 against
+  23.75 ± 0.33 s, n = 8 each, Welch's t 2.8, 53 of 64 pairs, 7 of 8 rounds).
+  CPU is the same, the port lock waits half as long, the kernel lock is held
+  0.3 s less, and service fidelity does not change. Turn on neither alone:
+  in this series each alone is inside the spread.
+  The orchestrator decides; the defaults in code are unchanged.
+- With both switches on, Ycode reaches home in **23.31 s** by the median,
+  **1.09 ×** the reference's 21.4 s. Adjusted for the Thor's per-core
+  speed (§10.4's 1.25 ×), this is about 18.6 s, under the target.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -5563,6 +6274,15 @@ otherwise unchanged.
 | SpringBoard's guest code by image (§26.3) | 2, 3 | the boot profile's PC timeline (`bp/*.pcraw`) attributed with the runtime's `dyld_sim_shared_cache_arm64.map` (install names and `__TEXT` ranges, read as data); per-image loader columns of `bp/*` |
 | Thread-start and creation latency, starts by the host thread's class (§26.4) | 3 | boot profiles `bp/def`, `sc`, `cr`, `sccr` (`# latency`, `start_wait_ms`); the `sched:` report at home |
 | Series A, B and C, CPU at home, fidelity counts (§26.6–§26.7) | 3 | `ab-A.txt`, `ab-B.txt`, `ab-C.txt`, `runs/fid-*` (`scripts/ycode-launchd-spawns`) |
+| SpringBoard's blocked log sends, diagnosticd's relay and its turn, the lock waits of its threads (§27.2) | 3 | B3-BOOT11's Thor runs of Ycode's own simulator: profiles `fp/p-def`, `fp/p-all`, BOOT10's `fp/p-all`; per-thread trap dumps and the relay's hand-offs from the trace (`tdump.py`, `relay.py`, `lockw.py`, analysis scripts reading the frame-profile trace) |
+| Fine-lock stalls by holder, long holds, the port lock's totals, the spin's effect (§27.2) | 3 | stall boots `d-stall`, `s-def`, `s-own`, `s2-def`, `s2-sp20`, `s2-sp50` (`YCODE_LOCK_STALL_STATS`, the `sched:` report at home); trap profile `tp-def` |
+| A port's and a kqueue's locks are per object spinlocks held with preemption disabled (§27.2) | 1 | xnu `osfmk/ipc/ipc_mqueue.c`, `osfmk/kern/locks.h`, `bsd/kern/kern_event.c` (as open source, behaviour only) |
+| donotdisturbd's hand-off of a waited request, its boost's end, the gated thread; the sync-only request importance in trace boots (§27.3) | 3 | trace boots `d-dnd` (`--trace-name donotdisturbd`, importance, sync-push and band traces), `tr-def`, `tr-imp` |
+| What the host ran while SpringBoard's main thread waited for a CPU (§27.4) | 3 | the frame profiles' scheduler samples (every 200 ms per vCPU host thread), `cpuwho.py` over `fp/p-def`, `fp/p-all` and BOOT10's `fp/p-def`, `p-uiw`, `p-all` |
+| Clutch's per-cluster run queue and root buckets picked earliest-deadline-first (§27.4) | 1 | xnu `doc/scheduler/sched_clutch_edge.md` (as cited in `scheduling-policy.md` §2.5) |
+| Series D, CPU at home, fidelity counts (§27.5–§27.6) | 3 | `ab-D.txt`, `runs/fid-def`, `runs/fid-rec` (`scripts/ycode-launchd-spawns`) |
+| §28: the reader-writer port lock with space locks, its counters, the spin at n = 10, chronod's loader (guest code, run queue, applied class), the timed series and fidelity | 3 | B3-BOOT12's Thor runs of Ycode's own simulator: coverage boots `c-def`, `c-split`, `c2-split`, `c2-splitall`; trap profile `tp-split`; frame profiles `fp/p-def`, `p-imp`, `p-imppush` (`ycode-frame-profile --boot --join`, `--thread`, `cls.py` on the trap events' scheduling bits); boot profile `bp-chr` (`pcimg.py` over the runtime's cache `.map` listing); series E, F, F2 (`ab.sh`, `ab2.sh`); fidelity boots `fid-def`, `fid-split` (`ycode-launchd-spawns`); B3-BOOT11's `p-def`, `p-all` re-read |
+| xnu's IPC locks: a lock per port and per space, taken space then port; wait queues on the port; spinlocks for kqueues (§28.2) | 1 | xnu open source (`osfmk/ipc/ipc_space.h`, `ipc_port.h`, `ipc_mqueue.c`, `bsd/kern/kern_event.c`), read for behaviour, nothing copied |
 
 Level 5 was not used. `.claude/Xcode.app`, `research/dirty/` and Ghidra
 were not opened.
@@ -5639,3 +6359,21 @@ guest's `launchd.log` of Ycode's own boots read as data), and only
 `specs/`, Ycode's code, and xnu's and libdispatch's open-source
 thread-start, workqueue and voucher behaviour (as cited in
 `scheduling-policy.md` §4.14–§4.15, nothing copied) were used.
+§27 (agent B3-BOOT11) is clean-room work: only Ycode's own simulator ran
+(on the Thor, with the runtime copy as a black box, and the guest's
+`launchd.log` of Ycode's own boots read as data), and only `specs/`, Ycode's
+code, and xnu's and libdispatch's open-source lock, IPC queue, kqueue,
+importance and scheduler behaviour (as cited in `scheduling-policy.md`
+§2.5, §4.11 and §4.16, nothing copied) were used.
+§28 (agent B3-BOOT12) is clean-room work: only Ycode's own simulator ran
+(on the Thor, with the runtime copy as a black box; its shared cache's
+`.map` listing, image install names and `__TEXT` ranges only, and the
+guest's `launchd.log` of Ycode's own boots read as data), and only
+`specs/`, Ycode's code, and xnu's open-source IPC lock, wait-queue and
+kqueue behaviour (as cited in `mach-ipc-locking.md` §4.12, nothing
+copied) were used.
+§29 (agent B3-BOOT13) is clean-room work. Only Ycode's own simulator ran,
+on the Thor, with the runtime copy used as a black box. The guest's
+`launchd.log` of Ycode's own boots was read as data. Only `specs/` and
+Ycode's code were used. Every number in §29 is level 3, black-box timing
+of Ycode itself.

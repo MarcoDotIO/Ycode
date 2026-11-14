@@ -60,19 +60,21 @@ import Testing
 
     @Test func theWatchFrameIsConcentricWithTheCrownAndSideButtonOnTheRight() throws {
         let g = DeviceFrameGeometry(spec: .appleWatchSeries12_46mm)
-        let b = DeviceFrameGeometry.band(.watch), m = DeviceFrameGeometry.margin(.watch)
-        #expect(m == DeviceFrameGeometry.crownProtrusion && b == 16)
+        // Council round 10, row 249: 21 at the sides, 23.5 at the top and bottom.
+        let b = DeviceFrameGeometry.band(.watch), e = DeviceFrameGeometry.watchEndBorder, m = DeviceFrameGeometry.margin(.watch)
+        #expect(m == DeviceFrameGeometry.crownProtrusion && b == 21 && e == 23.5)
         // 416 × 496 @2 = 208 × 248 points.
-        #expect(g.screen == CGRect(x: m + b, y: m + b, width: 208, height: 248))
-        #expect(g.body == CGRect(x: m, y: m, width: 208 + 2 * b, height: 248 + 2 * b))
-        #expect(g.size == CGSize(width: 208 + 2 * b + 2 * m, height: 248 + 2 * b + 2 * m))
+        // The crown's room at the sides only.
+        #expect(g.screen == CGRect(x: m + b, y: e, width: 208, height: 248))
+        #expect(g.body == CGRect(x: m, y: 0, width: 208 + 2 * b, height: 248 + 2 * e))
+        #expect(g.size == CGSize(width: 208 + 2 * b + 2 * m, height: 248 + 2 * e))
         #expect(g.screenRadii == CornerRadii(all: 50) && g.bodyRadii == CornerRadii(all: 50 + b))
         #expect(g.buttons.map(\.kind) == [.crown, .sideButton])
         let crown = try #require(g.buttons.first { $0.kind == .crown }).rect
         let side = try #require(g.buttons.first { $0.kind == .sideButton }).rect
         // Both stand out of the right edge; the crown further, above the side button.
         #expect(crown.minX < g.body.maxX && crown.maxX == g.body.maxX + DeviceFrameGeometry.crownProtrusion)
-        #expect(side.minX < g.body.maxX && side.maxX == g.body.maxX + DeviceFrameGeometry.protrusion)
+        #expect(side.minX < g.body.maxX && side.maxX == g.body.maxX + DeviceFrameGeometry.watchButtonProtrusion)
         #expect(crown.maxY < side.minY && crown.width > side.width && side.height > crown.height)
         // Everything fits the drawing; the screen is at its centre.
         for btn in g.buttons { #expect(CGRect(origin: .zero, size: g.size).contains(btn.rect), "\(btn.kind)") }
@@ -106,23 +108,23 @@ import Testing
 
     @Test func compactWindowAndZoomForAWatch() {
         let g = DeviceFrameGeometry(spec: .appleWatchSeries12_46mm)
-        // 256 × 296 points with the frame.
-        #expect(g.size == CGSize(width: 256, height: 296))
+        // 276 × 295 points with the frame (round 10: the 250 × 295 case and the crown's 13 at each side).
+        #expect(g.size == CGSize(width: 276, height: 295))
         // The default window is the minimum width; the watch fills it with the side margins.
         let s = CompactWindowLayout.defaultScale(device: g.size)
-        #expect(abs(s - (CompactWindowLayout.minimumWidth - 2 * CompactWindowLayout.sideMargin) / 256) < 1e-9)
+        #expect(abs(s - (CompactWindowLayout.minimumWidth - 2 * CompactWindowLayout.sideMargin) / 276) < 1e-9)
         let c = CompactWindowLayout.contentSize(device: g.size, scale: s)
         #expect(Double(c.width) == CompactWindowLayout.minimumWidth)
-        #expect(Double(c.height) == (296 * s + CompactWindowLayout.chromeHeight()).rounded(), "\(c) \(s)")
+        #expect(Double(c.height) == (295 * s + CompactWindowLayout.chromeHeight()).rounded(), "\(c) \(s)")
         // Resizing keeps the aspect.
-        let wide = CompactWindowLayout.constrainedContentSize(device: g.size, proposed: CGSize(width: 512 + 34, height: 10))
-        #expect(wide.width == 546 && wide.height == (296 * 2 + CompactWindowLayout.chromeHeight()).rounded())
+        let wide = CompactWindowLayout.constrainedContentSize(device: g.size, proposed: CGSize(width: 552 + 34, height: 10))
+        #expect(wide.width == 586 && wide.height == (295 * 2 + CompactWindowLayout.chromeHeight()).rounded())
         // Physical size: 2 pixels a point at 326 per inch.
         let p = DeviceZoom.physical(panel: DeviceFrameSpec.appleWatchSeries12_46mm.panels[0], displayPointsPerInch: 110)
         #expect(abs(p - 2.0 / 326 * 110) < 1e-9)
         // Zoom to Fit in a hub canvas 580 × 800 less the control row.
         let fit = DeviceZoom.fit(g.size, in: CGSize(width: 580, height: 800 - 57))
-        #expect(abs(fit - min((580 - 48) / 256.0, (743 - 48) / 296.0)) < 1e-9)
+        #expect(abs(fit - min((580 - 48) / 276.0, (743 - 48) / 295.0)) < 1e-9)
     }
 
     @Test func watchRowsHaveTheWatchFamily() {
@@ -130,5 +132,18 @@ import Testing
         #expect(HubDevice.family(platform: "iOS", name: "Apple Watch Series 12 (46mm) (Ycode)") == .watch)
         #expect(HubDevice.family(platform: "iOS", name: "iPhone 18 Pro") == .phone)
         #expect(HubDevice.family(platform: "visionOS", name: "Apple Vision Pro") == .vision)
+    }
+
+    /// Council round 8: an iPad of a type Ycode has no frame for, named by
+    /// its user in lower case, was drawn as a phone with "iOS" under it.
+    @Test func anUnknownIPadTypeIsAnIPadWhateverItsName() {
+        let type = "com.apple.CoreSimulator.SimDeviceType.iPad-Air-11-inch-M4"
+        let d = HubDevice.family(platform: "iOS", name: "ycode-test-council-ipad", typeID: type, model: "iPad Air 11-inch (M4)")
+        #expect(d == .pad)
+        #expect(HubDevice.family(platform: "iOS", name: "Test", typeID: type) == .pad)
+        #expect(HubDevice.family(platform: "iOS", name: "my-ipad") == .pad)
+        #expect(HubDevice.family(platform: "iOS", name: "iPad named phone", typeID: "com.apple.CoreSimulator.SimDeviceType.iPhone-17") == .phone)
+        #expect(DeviceFamily.pad.osTitle("iOS 27.2") == "iPadOS 27.2")
+        #expect(DeviceFrameSpec.placeholder(for: .pad).family == .pad)
     }
 }

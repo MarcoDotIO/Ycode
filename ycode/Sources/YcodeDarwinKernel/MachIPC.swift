@@ -71,6 +71,10 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     public internal(set) weak var kernel: DarwinKernel?
     /// This space's identity for per-space keys.
     let spaceID: UInt64
+    /// This space's lock under the port lock split (`mach-ipc-locking.md`
+    /// §4.12): fine steps hold it to change the space's names and the
+    /// ports it receives.
+    let spaceLock: SpaceLock
     /// The ports of a spawn's IMP_WATCHPORTS actions, until the process
     /// layer binds them to the new process (`scheduling-policy.md` §4.2).
     var pendingWatchPorts: [IPCPort] = []
@@ -140,6 +144,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
         self.uid = uid
         self.gid = gid
         spaceID = system.nextSpaceID()
+        spaceLock = SpaceLock(order: spaceID)
         let start = KernelClock.now()
         systemClock = {
             let ns = KernelClock.now() &- start
@@ -795,12 +800,14 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     }
 
     public func messageQueued(on port: UInt32) -> Bool {
-        lock.withLock {
+        func body() -> Bool {
             guard let i = lookup(port) else { return false }
             if let s = entries[i].set { return s.members.contains { !$0.messages.isEmpty } }
             guard entries[i].bits & MachPortType.receive != 0, let p = entries[i].port else { return false }
             return !p.messages.isEmpty
         }
+        if PortLockSplit.enabled, let fine = fineQuery(port, body) { return fine }
+        return lock.withLock(body)
     }
 
     public func semaphore(named name: UInt32) -> KernelSemaphore? {
@@ -812,12 +819,14 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
 
     /// What `name` can be received on.
     public func receiveTarget(of name: UInt32) -> MachReceiveTarget {
-        lock.withLock {
+        func body() -> MachReceiveTarget {
             guard let i = lookup(name) else { return .none }
             if entries[i].set != nil { return .portSet }
             guard entries[i].bits & MachPortType.receive != 0, let p = entries[i].port else { return .notReceivable }
             return p.isSpecialReply ? .specialReplyPort : .port
         }
+        if PortLockSplit.enabled, let fine = fineQuery(name, body) { return fine }
+        return lock.withLock(body)
     }
 
     // MARK: Inspection (tests and tracing)

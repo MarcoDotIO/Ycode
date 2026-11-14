@@ -9,6 +9,9 @@
 #   YCODE_SOURCE_REF   the commit to package (default HEAD)
 #   YCODE_SOURCE_TAR   a tar of the same paths, instead of git archive
 #   YCODE_FLATPAK_WORK the work folder (default packaging/flatpak/.work)
+#   YCODE_FLATPAK_JOBS at most this many build jobs (default: every core)
+#   YCODE_GUEST_TOOLS  the simulator's guest tools for the aarch64 tree, built on
+#                      a Mac by build-guest-tools.sh (a release must have them)
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -40,6 +43,17 @@ else
         ycode frameworks packaging LICENSE THIRD_PARTY_NOTICES.md specs/simulator/data
 fi
 cp "$here/swift-dependencies.json" "$work/manifest/"
+rm -rf "$work/manifest/guest-tools"
+mkdir -p "$work/manifest/guest-tools"
+if [ -n "${YCODE_GUEST_TOOLS:-}" ]; then
+    [ -f "$YCODE_GUEST_TOOLS/ylaunch" ] || { echo "build-flatpak: $YCODE_GUEST_TOOLS has no ylaunch" >&2; exit 1; }
+    cp -R "$YCODE_GUEST_TOOLS/." "$work/manifest/guest-tools/"
+else
+    echo "Guest tools: none (YCODE_GUEST_TOOLS); the simulator tree has none." > "$work/manifest/guest-tools/README"
+    if [ "$arch" = aarch64 ]; then
+        echo "build-flatpak: warning: no YCODE_GUEST_TOOLS; the aarch64 simulator tree will boot devices but not run apps" >&2
+    fi
+fi
 if [ "$arch" = aarch64 ]; then
     sed 's/^  #aarch64-only: /  /' "$here/$id.yml" > "$work/manifest/$id.yml"
 else
@@ -53,6 +67,7 @@ sed -i "s|^        path: source/ycode-source.tar\$|&\n        sha256: $source_sh
 grep -q "sha256: $source_sha" "$work/manifest/$id.yml" || { echo "build-flatpak: could not pin the source" >&2; exit 1; }
 
 flatpak-builder --user --install-deps-from=flathub --force-clean --disable-rofiles-fuse --arch="$arch" \
+    ${YCODE_FLATPAK_JOBS:+--jobs="$YCODE_FLATPAK_JOBS"} \
     --state-dir="$work/state" --repo="$work/repo" "$work/build" "$work/manifest/$id.yml"
 
 bundle="$out/Ycode-$version-$arch.flatpak"

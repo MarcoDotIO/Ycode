@@ -41,9 +41,10 @@ public struct ViewerLayout: Equatable, Sendable {
 
     /// The layout of `geometry` in a window of `windowWidth` × `windowHeight`
     /// units. `pixelDensity`: output pixels per window unit; `deviceScale`:
-    /// the panel's pixels per point.
+    /// the panel's pixels per point; `foldable`: Zoom to Fit takes the
+    /// foldable's 1269-point box (§15.2).
     public init(geometry: DeviceFrameGeometry, mode: ViewerScaleMode, windowWidth: Double, windowHeight: Double,
-                pixelDensity: Double = 1, deviceScale: Double = 3, controls: Bool = true, hubFit: Bool = false) {
+                pixelDensity: Double = 1, deviceScale: Double = 3, controls: Bool = true, hubFit: Bool = false, foldable: Bool = false) {
         self.geometry = geometry
         let gw = Double(geometry.size.width), gh = Double(geometry.size.height)
         let availW = max(1, windowWidth - 2 * Self.margin)
@@ -51,10 +52,10 @@ public struct ViewerLayout: Equatable, Sendable {
         switch mode {
         case .fit where hubFit:
             // The device window with its toolbar and inspector: the macOS
-            // hub's Zoom to Fit (device-hub.md §14.3, row 154), in the canvas
+            // hub's Zoom to Fit (device-hub.md §15.2, row 170), in the canvas
             // above the capsules.
             let free = CGSize(width: windowWidth, height: max(1, windowHeight - (controls ? Self.controlBar : 0)))
-            scale = DeviceZoom.hubFit(frame: geometry.outerBox.size, in: free)
+            scale = DeviceZoom.hubFit(geometry: geometry, foldable: foldable, in: free)
         case .fit: scale = max(0.05, min(availW / gw, availH / gh))
         case .point: scale = 1
         case .pixel: scale = deviceScale / max(pixelDensity, 0.1)

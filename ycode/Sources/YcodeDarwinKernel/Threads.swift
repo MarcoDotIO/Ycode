@@ -504,7 +504,9 @@ extension DarwinKernel {
         }
         ctx.isAlive = false
         withEvents { threadsByPort[ctx.portName] = nil }
-        if ctx.carriedImportance != nil || ctx.demandServing != nil { withPorts { endServicing(ctx) } }
+        if ctx.carriedImportance != nil || ctx.demandServing != nil {
+            if !(PortLockSplit.enabled && (machIPC as? MachIPC)?.fineEndServicing(ctx) == true) { withPorts { endServicing(ctx) } }
+        }
         if semaphoreName != 0 { semaphore(named: semaphoreName)?.signal() }
         // The reference on the thread's own name is dropped with the thread
         // (below); any other name passed is dropped here.

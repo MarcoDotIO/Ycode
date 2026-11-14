@@ -984,7 +984,11 @@ the face.
   height, drawn with ridges across it; the **side button** a 3-point bar
   on the right edge at 47–71 %; on an Ultra the Action button on the left
   edge at 30–43 %. Series 12 46 mm: 256 × 296 points with the frame, the
-  screen 208 × 248 at its centre.
+  screen 208 × 248 at its centre. *Superseded by council round 10 rows 249–252
+  (`specs/ide/fidelity-council.md`): the case at its real size, 21 at the
+  sides and 23.5 at the top and bottom, the crown 13 out, the side button a
+  pill 4 out at 52.5–73.5 %, the rim, band and fade to black of
+  `WatchCaseDrawing`.*
 - **Buttons**: crown → the stream's `home`, side button → `lock`, Ultra
   Action → `side` (**Ycode decision until W3**, §9 Q2–Q3). Under Ycode a
   crown click opens the app grid and a second click returns to the face

@@ -643,7 +643,9 @@ extension DarwinKernel {
         // The run is over: its carried importance and sync push end (scheduling-policy.md §4.3, §4.6).
         if ctx.hasServicingState {
             // Importance counts are port-lock state on a fast path (`mach-ipc-locking.md` §4.1).
-            if let ports = system.mach.portLock {
+            if PortLockSplit.enabled, let ipc = machIPC as? MachIPC, ipc.fineEndServicing(ctx) {
+                // A fine step (`mach-ipc-locking.md` §4.12).
+            } else if let ports = system.mach.portLock {
                 ports.withLock { endServicing(ctx) }
             } else {
                 endServicing(ctx)

@@ -66,29 +66,29 @@ import YcodeDisplayStream
         w.present()
         let win = w.window!
         #expect(win.title == "Apple Watch Series 12 (46mm)" && win.subtitle == "watchOS 27.0")
-        // The device in Ycode's frame (256 × 296 points) fills the width less the margins.
+        // The device in Ycode's frame (276 × 295 points, council round 10 row 249) fills the width less the margins.
         let device = w.canvas.deviceSize
-        #expect(device == CGSize(width: 256, height: 296))
+        #expect(device == CGSize(width: 276, height: 295))
         let content = win.contentLayoutRect.size
-        let scale = (Double(content.width) - 2 * CompactWindowLayout.sideMargin) / 256
+        let scale = (Double(content.width) - 2 * CompactWindowLayout.sideMargin) / 276
         #expect(abs(Double(w.canvas.frameView.scale) - scale) < 0.02, "\(w.canvas.frameView.scale) \(scale)")
         #expect(Double(content.width) >= CompactWindowLayout.minimumWidth)
         // The drawing is the frame's points at that scale; its screen the watch's.
-        #expect(abs(Double(w.canvas.frameView.intrinsicContentSize.width) - 256 * scale) <= 1)
+        #expect(abs(Double(w.canvas.frameView.intrinsicContentSize.width) - 276 * scale) <= 1)
         w.canvas.frameView.layout()
         #expect(abs(Double(w.canvas.frameView.screen.frame.width) - 208 * Double(w.canvas.frameView.scale)) <= 2, "\(w.canvas.frameView.screen.frame) \(w.canvas.frameView.scale)")
         // A drag keeps the aspect.
         let proposed = win.frameRect(forContentRect: NSRect(x: 0, y: 0, width: 520, height: 200)).size
         let c = win.contentRect(forFrameRect: NSRect(origin: .zero, size: w.windowWillResize(win, to: proposed))).size
         #expect(c.width == 520 && c.height > c.width)
-        // The row: Screenshot · Record, no Home, no Rotate.
-        #expect(w.canvas.controls.groups == [[.screenshot, .recordScreen]])
+        // The row: Side Button · Digital Crown · Screenshot · Record (round 9 row 234), no Home, no Rotate.
+        #expect(w.canvas.controls.groups == [DeviceControlsLayout.watchGroup])
         // Hide Bezels: the screen alone with its 50-point corners.
         w.toggleBezels(nil)
         #expect(w.canvas.frameView.geometry.buttons.isEmpty && w.canvas.deviceSize == CGSize(width: 208, height: 248))
         #expect(w.canvas.frameView.geometry.screenRadii == CornerRadii(all: 50))
         w.toggleBezels(nil)
-        #expect(w.canvas.deviceSize == CGSize(width: 256, height: 296))
+        #expect(w.canvas.deviceSize == CGSize(width: 276, height: 295))
         // The screen alone at the same scale is narrower than the minimum, so
         // the window stays at the minimum; showing the bezels returns to it.
         #expect(abs(Double(win.contentLayoutRect.width) - CompactWindowLayout.minimumWidth) <= 1, "\(win.contentLayoutRect)")
@@ -121,9 +121,9 @@ import YcodeDisplayStream
                                    encodings: ["jpeg"], touch: true, keyboard: true, buttons: ["home"], rotation: false, foldable: nil, displays: nil)
         h.deviceType = spec.typeID
         s.connection(s.connection, hello: h)
-        #expect(w.canvas.deviceSize == CGSize(width: 256, height: 296))
+        #expect(w.canvas.deviceSize == CGSize(width: 276, height: 295))
         #expect(abs(Double(win.contentLayoutRect.width) - CompactWindowLayout.minimumWidth) <= 1, "\(win.contentLayoutRect)")
-        #expect(abs(Double(w.canvas.frameView.scale) - CompactWindowLayout.defaultScale(device: CGSize(width: 256, height: 296))) < 0.02)
+        #expect(abs(Double(w.canvas.frameView.scale) - CompactWindowLayout.defaultScale(device: CGSize(width: 276, height: 295))) < 0.02)
         w.close()
         s.close()
     }
@@ -135,16 +135,17 @@ import YcodeDisplayStream
         canvas.show(session: s)
         canvas.layoutSubtreeIfNeeded()
         #expect(canvas.stateDescription == "live")
-        #expect(canvas.controls.groups == [[.screenshot, .recordScreen]])
+        #expect(canvas.controls.groups == [DeviceControlsLayout.watchGroup])
+        #expect(canvas.canPerform(.sideButton) && canvas.canPerform(.digitalCrown))
         #expect(canvas.canPerform(.screenshot) && canvas.canPerform(.recordScreen) && canvas.canPerform(.home) && canvas.canPerform(.lock))
         #expect(!canvas.canPerform(.rotateLeft) && !canvas.canPerform(.volumeUp) && !canvas.canPerform(.volumeDown))
         #expect(!canvas.canPerform(.appSwitcher) && !canvas.canPerform(.actionButton) && !canvas.canPerform(.poseOpen))
         #expect(canvas.canPerform(.physicalSize) && canvas.canPerform(.toggleBezels))
-        // Zoom to Fit: the hub's rule (device-hub.md §14.3, row 154), here
-        // bound by the canvas's width: the outer box a third of 580.
-        let fit = DeviceZoom.hubFit(frame: canvas.frameView.geometry.outerBox.size, in: canvas.deviceArea.size)
+        // Zoom to Fit: the hub's rule (device-hub.md §15.2, row 170), here
+        // bound by the canvas's width: the outer box 0.98 × 580 − 16.
+        let fit = DeviceZoom.hubFit(geometry: canvas.frameView.geometry, foldable: false, in: canvas.deviceArea.size)
         #expect(abs(Double(canvas.frameView.scale) - fit) < 1e-9)
-        #expect(abs(Double(canvas.frameView.geometry.outerBox.width) * fit - DeviceZoom.hubFitWidthShare * 580) < 1e-6)
+        #expect(abs(Double(canvas.frameView.geometry.outerBox.width) * fit - (0.98 * 580 - 16)) < 1e-6)
         #expect(canvas.frameView.frame.maxY <= canvas.controls.frame.minY)
         canvas.perform(.zoomOut)
         #expect(canvas.zoom != .fit)

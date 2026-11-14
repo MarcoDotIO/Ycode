@@ -86,10 +86,15 @@ public struct PreviewCompiler: Sendable {
 
     /// Compiles a payload. Errors map back to the user's files and lines.
     public func compilePayload(_ sources: PreviewPayloadGenerator.Sources, output: URL) throws(PreviewFailure) {
-        try? FileManager.default.createDirectory(at: moduleCache, withIntermediateDirectories: true)
+        PreviewModuleCache.prepare(moduleCache)
         try? FileManager.default.removeItem(at: output)
         let out: Subprocess.Output
-        do { out = try Subprocess.run(xcrun, payloadArguments(sources: sources.files, output: output)) } catch {
+        do {
+            out = try PreviewModuleCache.retryingAfterCrash(moduleCache) {
+                try? FileManager.default.removeItem(at: output)
+                return try Subprocess.run(xcrun, payloadArguments(sources: sources.files, output: output))
+            } crashed: { $0.status != 0 && PreviewModuleCache.looksLikeCompilerCrash($0.stdoutText + "\n" + $0.stderrText) }
+        } catch {
             throw .host("could not run xcrun: \(error)")
         }
         guard out.status == 0, FileManager.default.fileExists(atPath: output.path) else {

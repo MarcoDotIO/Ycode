@@ -1,0 +1,386 @@
+{
+ "name": "council-r10-dark",
+ "issue": 81,
+ "title": "Council round 10 (#81), as round 9 (same sessions, steps, ids and order). Council round 9 (#81), as round 8 (same steps, ids and order): Round 8 (#81): round 7's steps, ids and order unchanged. Round 7 (#81): round 6's steps, ids and order unchanged. Council round 6 (#81), supplement: the system appearance was Light during round 6 (it is on Auto), so the dark Settings stills of round 5 (General, Text Editing, Components) are taken with each app's own Appearance set to Dark, then set back to System. The workspace window is not captured.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "project": {
+  "generator": "make-test-project.py",
+  "path": "GlassScroll/GlassScroll.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ },
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "prores4444",
+  "pre": 0.4,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "settings-open",
+   "note": "Open Settings (cmd+comma) and choose General in its sidebar at once. Not recorded or still-captured: the reference reopens on the last pane used. The General window is then moved onto the session's display, so both apps' Settings are captured at the same scale.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "General",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "move": [
+      326,
+      160
+     ],
+     "window": "General"
+    }
+   ],
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        326,
+        160
+       ],
+       "window": "General"
+      }
+     ]
+    }
+   },
+   "record": false,
+   "still": "none",
+   "settle": 0.8
+  },
+  {
+   "id": "settings-appearance-dark",
+   "note": "The Appearance pane, then the app's own appearance set to Dark with its Dark thumbnail (the system stays as it is). The still is the Appearance pane in dark.",
+   "do": [
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "move": [
+      326,
+      160
+     ],
+     "window": "Appearance"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "capture_title": "Appearance",
+   "record": false,
+   "still": "after",
+   "settle": 0.5,
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "AppearanceDark",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        326,
+        160
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.5
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "press": {
+        "title": "Dark",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        326,
+        160
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.5
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "settings-general-dark",
+   "note": "Settings ▸ General with the app's Appearance set to Dark (round 5's step 20 in the system's dark appearance).",
+   "do": [
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "General",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "move": [
+      326,
+      160
+     ],
+     "window": "General"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "capture_title": "General",
+   "record": false,
+   "still": "after",
+   "settle": 0.5
+  },
+  {
+   "id": "settings-text-editing-dark",
+   "note": "Settings ▸ Text Editing with the app's Appearance set to Dark (round 5's step 21).",
+   "do": [
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Text Editing|Editing",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "move": [
+      326,
+      160
+     ],
+     "window": "Editing"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "capture_title": "Editing",
+   "record": false,
+   "still": "after",
+   "settle": 0.5
+  },
+  {
+   "id": "settings-components-dark",
+   "note": "Settings ▸ Components with the app's Appearance set to Dark (round 5's step 22).",
+   "do": [
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Components",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "move": [
+      326,
+      160
+     ],
+     "window": "Components"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "capture_title": "Components",
+   "record": false,
+   "still": "after",
+   "settle": 0.5
+  },
+  {
+   "id": "settings-appearance-restore",
+   "note": "Round 5: the app's own appearance set back to System (its setting before the session). The still only checks the restore.",
+   "do": [
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "move": [
+      326,
+      160
+     ],
+     "window": "Appearance"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "capture_title": "Appearance",
+   "record": false,
+   "still": "after",
+   "settle": 0.5,
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "AppearanceAuto",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        326,
+        160
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.5
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "press": {
+        "title": "System",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        326,
+        160
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.5
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "settings-close",
+   "note": "Close Settings.",
+   "do": [
+    {
+     "key": "cmd+w"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ]
+}

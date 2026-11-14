@@ -149,9 +149,11 @@ public enum PreviewMacHost {
         } catch { throw .host("could not write the preview host: \(error)") }
         let tmp = dir.appendingPathComponent(executableName + ".tmp")
         let out: Subprocess.Output
+        let cache = PreviewModuleCache.prepare(workDirectory.appendingPathComponent("ModuleCache"))
         do {
-            out = try Subprocess.run(xcrun, hostArguments(deploymentTarget: deploymentTarget, source: src, output: tmp,
-                                                          moduleCache: workDirectory.appendingPathComponent("ModuleCache")))
+            out = try PreviewModuleCache.retryingAfterCrash(cache) {
+                try Subprocess.run(xcrun, hostArguments(deploymentTarget: deploymentTarget, source: src, output: tmp, moduleCache: cache))
+            } crashed: { $0.status != 0 && PreviewModuleCache.looksLikeCompilerCrash($0.stdoutText + "\n" + $0.stderrText) }
         } catch { throw .host("could not run xcrun: \(error)") }
         guard out.status == 0 else { throw .compile(PreviewCompiler.issues(from: out.stdoutText + out.stderrText, lineMaps: [:])) }
         do { try FileManager.default.moveItem(at: tmp, to: exe) } catch { throw .host("\(error)") }

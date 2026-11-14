@@ -130,10 +130,15 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
                 let r = NSRect(x: 0, y: frame.minY + origin.y, width: 0, height: first)
                 let inGutter = self.convert(r, from: tv)
                 out.append((self.lineIndex.line(at: offset), inGutter))
+                // The empty line after a final line break: TextKit lays it
+                // out at the end of the last paragraph's fragment (row 178).
+                if let extra = SourceTextView.extraLine(of: fragment) {
+                    let e = NSRect(x: 0, y: frame.minY + extra.typographicBounds.minY + origin.y, width: 0, height: extra.typographicBounds.height)
+                    out.append((self.lineIndex.lineCount, self.convert(e, from: tv)))
+                }
             }
             return true
         }
-        // An empty last line has no fragment of its own; draw its number too.
         return out
     }
 

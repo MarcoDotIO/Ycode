@@ -195,7 +195,12 @@ and `ycode` linked into `<data>/bin` and `YCODE_SIM_TREE` set to its
 `lib/ycode-sim`. The tarball's tools are built for the Flatpak runtime
 (freedesktop, glibc 2.44 and its OpenSSL). On a plain distribution only
 `ycode-simhost` and the simulator tree are used, and they run (checked on
-Ubuntu 24.04). The tarball's `ycode` command line may not start there: its
+Ubuntu 24.04 with `packaging/flatpak/check-sim-tree.sh`, which the release runs
+too): the shader translator brings its own loader and C library, the tree
+carries its libjpeg and its guest tools (`ylaunch` and the agents), and a
+display server whose JPEG library cannot encode says so and streams zlib
+instead of empty frames (`ycode-simd --check-encoders` shows which encoders
+work). The tarball's `ycode` command line may not start there: its
 bundled libcurl needs OpenSSL 3.2, and Ubuntu 24.04 has 3.0. So the setup
 script and the wizard read the installed version from the release's folder
 (`manifest.json`, else `Ycode-<version>-<arch>`) and never run that `ycode`.

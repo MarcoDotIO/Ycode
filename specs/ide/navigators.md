@@ -648,6 +648,78 @@ Recents in the reference lists recently checked-out branches (here
 `feature`, hidden while collapsed); its content rule is
 `source-control.md`'s.
 
+## Council round 7 measurements (2026-11-08)
+
+Round 7 (Retina, foreground, key window, the system in **Dark**, Ycode
+`0afb3bd7`) reopened a workspace in a new instance and showed the
+navigator's glyphs side by side. Checklist rows 187 and 192 in
+`fidelity-council.md`. The editors and inspector on reopen are
+`workspace-window.md` W7.1.
+
+### 4. The project navigator's expansion on reopen (X15 → R01)
+
+Before the close (X15, the same in both apps): GlassScroll and its
+synchronized folder expanded, **Models collapsed**, **Plain expanded**,
+**Sub expanded** (Sub inside Plain; each set through the row's
+accessibility disclosure, then 1 s of rest, then File ▸ Close Window).
+
+| Row | Reference on reopen | Ycode on reopen |
+|---|---|---|
+| GlassScroll (project), GlassScroll (folder) | expanded | expanded |
+| Models (a folder two levels down) | collapsed | collapsed |
+| Plain (a direct child of the main group) | **expanded** | expanded |
+| Sub (inside Plain) | **collapsed** | **expanded** (as saved) |
+| Selected row | none | none |
+
+Ycode restores exactly what was saved; the reference does not restore
+Sub. Two readings fit the reference: (a) it restores the main group's
+direct children as saved and opens everything deeper collapsed; (b) it
+did not record an expansion made through accessibility (Plain's state
+equals the first-open default, H.6, so it tells nothing). **Target:**
+reading (a), which matches every captured state: restore the saved
+expansion of the project row and of the main group's direct children;
+open rows deeper than that collapsed. To be confirmed with a deeper
+row expanded by a real click before the close.
+
+### 5. Glyph sets (reopen still; the same in every main step)
+
+Ycode never copies a trademark or the reference's artwork (the Icons
+section above); the targets are size, colour, fill and the kind of
+picture, in Ycode's own drawings.
+
+| Item | Reference | Ycode now |
+|---|---|---|
+| Swift file rows | a **filled** orange glyph, ink **14.5 × 12.5**, core #FFA54D, about 315 inked half-point pixels | an **outline** code glyph, 14 × 9, #ECA52A, about 129: lighter and flatter |
+| Image file rows | a filled blue picture glyph, 15 × 12, #2DA7FF | 13 × 10.5, #2BA5FF |
+| Project row | a filled blue rounded square with a white tool mark | a blue outline folder with a gear |
+| Selector bar, 2nd (Source Control) | a rounded square holding a small cross-shaped mark | a Y-shaped branch |
+| Selector bar, 7th (Debug) | a spray can with a cloud of dots at its upper right | a gauge dial |
+| Selector bar, 8th (Breakpoints) | a horizontal outline tag with a pointed right end, no hole | a tag tilted 45° with a hole |
+| Selector bar, 9th (Reports) | a tall page with lines and a zigzag bottom edge | a landscape rectangle with list lines |
+| Selector bar, the other five | folder, bookmark, magnifier, warning triangle, diamond with a check | the same kinds |
+
+**Target:** a Swift file glyph of the same size, colour and **solid
+fill** as the reference's (Ycode's own shape, filled, about 14.5 × 12.5,
+#FFA54D in dark); the project row a filled blue rounded-square tile with
+Ycode's own mark; the four selector glyphs as the kinds of picture
+above (Ycode's drawings), the other five unchanged.
+
+
+### 6. Ycode implementation (B7-D, 2026-11-08)
+
+- §4: on reopen the saved expansion is kept for the top row and its direct
+  children; deeper rows open collapsed (`NavigatorTree.reopenedExpansion`).
+- §5, by the owner's decision of 2026-11-08 (it replaces the glyph target
+  for file rows): a file in a language with an official logo shows that
+  logo, unaltered, from devicon v2.18.0 (MIT; the SVGs in
+  `ycode/Resources/language-logos`, rasterized at 16 and 32 pixels by
+  `ycode/scripts/generate-language-logos.swift`, the same PNGs on both
+  IDEs; owners and licences in `THIRD_PARTY_NOTICES.md`); files without
+  one keep Ycode's glyphs; a project, workspace or package row shows the
+  app icon's small master (`ProductIconSmallGeometry`). The selector's
+  Source Control, Debug, Breakpoints and Reports glyphs are Ycode's own
+  drawings of the kinds of picture in the table (`SelectorGlyphs`).
+
 ## Evidence
 
 - Find, Symbol and Report navigator roles: Apple's public Xcode Help
@@ -732,3 +804,7 @@ Recents in the reference lists recently checked-out branches (here
 - Council round 3 section, level 3: the round 3 Retina stills of both apps
   (main step 16 before and after; conflict step 01 with the reference's
   re-run still), colour runs and ink boxes measured in the dirty room.
+- Council round 7 section, level 3: the round 7 extra (X15) and reopen
+  (R01) stills of both apps and their session manifests (the disclosure
+  actions and the close); glyph ink boxes, core colours and inked areas
+  from the reopen stills; glyphs described in words only.

@@ -153,6 +153,8 @@ public final class SourceControlShellModel {
     @ObservationIgnored public var saveEditors: (() -> Void)?
     /// Opens a file in the editor (a conflicted change, a commit's file).
     @ObservationIgnored public var openFile: ((String) -> Void)?
+    /// Each snapshot read (the workspace's conflict issues, row 188).
+    @ObservationIgnored public var onSnapshot: ((SourceControlSnapshot) -> Void)?
 
     public init(folder: URL) {
         self.folder = folder
@@ -267,6 +269,7 @@ public final class SourceControlShellModel {
         known = .some(read.repository)
         snapshot = read
         hasRead = true
+        onSnapshot?(read)
         if let repo = read.repository, watcher == nil, !IDEProcess.isTestProcess { watch(repo) }
         // Rows that went away lose the selection.
         if let s = selection, !rows.contains(where: { $0.id == s }), !s.hasPrefix("folder:") {

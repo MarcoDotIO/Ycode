@@ -182,17 +182,26 @@ inspect() {
         check setup.kvm missing "No /dev/kvm: turn on virtualization in the firmware and load the kvm module. Ycode does not change the kernel."
     fi
 
-    # Packages: the tools the simulator's build and runs use.
+    # Packages: the tools the simulator's build and runs use. A release's tree
+    # (the aarch64 tarball, or --sim-tree naming one) brings its translator,
+    # with its own LLVM, and libjpeg: building them needs LLVM 18 and
+    # SPIRV-Tools, running them nothing more.
+    release_tree=0
+    if [ -n "$ycodever" ] && [ -z "$simtree" ]; then release_tree=1
+    elif [ -n "$simtree" ] && [ -x "$simtree/airc/ycode-airc" ]; then release_tree=1; fi
     missing_tools=(); pkgs=()
     for pair in python3:python3 rsync:rsync flock:util-linux llvm-config-18:llvm-18-dev spirv-val:spirv-tools vulkaninfo:vulkan-tools; do
         t=${pair%%:*}; p=${pair#*:}
         have "$t" && continue
         [ "$t" = llvm-config-18 ] && [ -x /usr/lib/llvm-18/bin/llvm-config ] && continue
+        [ "$release_tree" = 1 ] && { [ "$t" = llvm-config-18 ] || [ "$t" = spirv-val ]; } && continue
         missing_tools+=("$t"); pkgs+=("$p")
     done
     # The display server's JPEG frames (the viewers' default) need libjpeg at
-    # run time; without it every frame is empty and the device window stays black.
-    if ! { ldconfig -p 2>/dev/null | grep -q 'libjpeg\.so\.\(8\|62\) '; }; then
+    # run time; a source build loads the system's (a release carries its own).
+    # ldconfig is in /sbin, which a non-login PATH may lack.
+    ldc=ldconfig; have ldconfig || ldc=/sbin/ldconfig
+    if [ "$release_tree" = 0 ] && ! { "$ldc" -p 2>/dev/null | grep -q 'libjpeg\.so\.\(8\|62\) '; }; then
         missing_tools+=("libjpeg"); pkgs+=("libjpeg-turbo8")
     fi
     if [ ${#missing_tools[@]} = 0 ]; then

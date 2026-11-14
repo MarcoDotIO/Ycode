@@ -5,7 +5,7 @@
 //
 //   iPhone, iPad      [Home · Screenshot · Record] [Rotate]
 //   iPhone Duo        [Home · Screenshot · Record] [Rotate │ Closed · Partially Open · Open]
-//   Apple Watch       [Screenshot · Record]                     (Q2, watchos.md §11.3)
+//   Apple Watch       [Digital Crown · Side Button · Screenshot · Record]  (council rows 234, 252)
 //   visionOS          [Home · Screenshot · Record] [Reset Camera]  (§4.4: "interaction modes and Reset Camera")
 //
 // Measured (§11.1): capsules 36.5 tall, the first glyph's centre 20 from a
@@ -44,23 +44,33 @@ public enum DeviceControlsLayout {
         public var rotates: Bool
         public var foldable: Bool
         public var spatial: Bool
-        public init(showsHome: Bool = true, rotates: Bool = true, foldable: Bool = false, spatial: Bool = false) {
+        /// A watch: its Digital Crown and side button lead its one capsule.
+        public var watch: Bool
+        public init(showsHome: Bool = true, rotates: Bool = true, foldable: Bool = false, spatial: Bool = false, watch: Bool = false) {
             self.showsHome = showsHome
             self.rotates = rotates
             self.foldable = foldable
             self.spatial = spatial
+            self.watch = watch
         }
 
         /// From the device's frame specification (and the stream's hello for a Vision Pro).
         public init(spec: DeviceFrameSpec, foldable: Bool? = nil, spatial: Bool? = nil) {
             let vision = spatial ?? (spec.family == .vision)
             self.init(showsHome: spec.family != .watch, rotates: spec.rotates && !vision,
-                      foldable: foldable ?? spec.isFoldable, spatial: vision)
+                      foldable: foldable ?? spec.isFoldable, spatial: vision, watch: spec.family == .watch)
         }
     }
 
+    /// A watch's capsule (council round 9 row 234, measured: 4 buttons in one
+    /// capsule about 143 × 36, about 34 apart): its two hardware controls,
+    /// the Digital Crown first and then the side button (round 10 row 252),
+    /// each in Ycode's own drawing, then Screenshot and Record.
+    public static let watchGroup: [DeviceCommand] = [.digitalCrown, .sideButton, .screenshot, .recordScreen]
+
     /// The controls by capsule, left to right.
     public static func groups(_ d: Device) -> [[DeviceCommand]] {
+        if d.watch { return [watchGroup] }
         var out: [[DeviceCommand]] = [(d.showsHome ? [.home] : []) + [.screenshot, .recordScreen]]
         var second: [DeviceCommand] = []
         if d.spatial { second = [.resetCamera] } else if d.rotates { second = [.rotateLeft] }
@@ -127,6 +137,11 @@ public enum DeviceControlsLayout {
         }
         return out
     }
+
+    /// A control's tooltip when the shown device cannot act on it (row 175):
+    /// its name, then why ("Home. Ycode doesn’t run this device."), the same
+    /// on both IDEs (plain punctuation the Linux window's font draws).
+    public static func unavailableHelp(_ help: String, reason: String) -> String { "\(help). \(reason)" }
 
     /// The space the device is centred in: from `top` (the toolbar's bottom
     /// or the canvas's top) to the capsules' top (§11.2).

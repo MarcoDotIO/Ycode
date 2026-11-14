@@ -102,7 +102,7 @@ let package = Package(
         .testTarget(name: "YcodeMetalHostTests", dependencies: ["YcodeMetalHost", "YcodeXPC", "YcodeDarwinKernel"]),
         .testTarget(name: "YcodeVulkanTests", dependencies: ["YcodeVulkan"]),
         .testTarget(name: "YcodeHostServicesTests", dependencies: ["YcodeHostServices", "YcodeDarwinKernel", "YcodeXPC", "CYcodeCamera", "CYcodeCodec", "YcodeDisplayStream"]),
-        .testTarget(name: "YcodeSimdTests", dependencies: ["ycode-simd"]),
+        .testTarget(name: "YcodeSimdTests", dependencies: ["ycode-simd", "CYcodeCodec"]),
         .testTarget(name: "YcodeDisplayStreamTests", dependencies: ["YcodeDisplayStream", "CYcodeCodec"]),
         // The portable viewer: stream client, canvas, touches, layout, scripts (display-stream.md §13)
         .target(name: "YcodeRemoteViewer", dependencies: ["YcodeDisplayStream", "CYcodeCodec", "CYcodeVideo", "YcodeDeviceModel"]),

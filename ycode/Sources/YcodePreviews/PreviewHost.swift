@@ -301,9 +301,12 @@ public enum PreviewHost {
         } catch { throw .host("could not write the preview host: \(error)") }
         let tmp = dir.appendingPathComponent("\(executableName).tmp")
         let args = hostArguments(platform: platform, deploymentTarget: deploymentTarget, source: dir.appendingPathComponent("main.swift"),
-                                 output: tmp, moduleCache: workDirectory.appendingPathComponent("ModuleCache"))
+                                 output: tmp, moduleCache: PreviewModuleCache.prepare(workDirectory.appendingPathComponent("ModuleCache")))
         let out: Subprocess.Output
-        do { out = try Subprocess.run(xcrun, args) } catch { throw .host("could not run xcrun: \(error)") }
+        do {
+            out = try PreviewModuleCache.retryingAfterCrash(workDirectory.appendingPathComponent("ModuleCache")) { try Subprocess.run(xcrun, args) }
+                crashed: { $0.status != 0 && PreviewModuleCache.looksLikeCompilerCrash($0.stdoutText + "\n" + $0.stderrText) }
+        } catch { throw .host("could not run xcrun: \(error)") }
         guard out.status == 0 else { throw .compile(PreviewCompiler.issues(from: out.stdoutText + out.stderrText, lineMaps: [:])) }
         do { try FileManager.default.moveItem(at: tmp, to: exe) } catch { throw .host("\(error)") }
         // Ad hoc signature for the bundle (the linker signed the executable).

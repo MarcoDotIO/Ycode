@@ -58,11 +58,11 @@ import Testing
         let err = cap.buttons[IssueSummary.Kind.error.rawValue]
         #expect(cap.parts.map(\.0) == ["xmark.circle.fill", "exclamationmark.triangle.fill"])
         #expect(err.frame.minX < warn.frame.minX && abs(cap.capsuleWidth - 111) <= 1, "\(cap.capsuleWidth)")
-        // Symbols only in a narrow window.
+        // A narrow window: the most severe kind's glyph alone in a round
+        // capsule 39 wide (council round 8, row 198).
         cap.symbolsOnly = true
         cap.layoutSubtreeIfNeeded()
-        // 16.5 + 17.5 + 18 + 17.5 + 16.5.
-        #expect(warn.countFrame == .zero && abs(cap.capsuleWidth - 86) < 0.01, "\(cap.capsuleWidth)")
+        #expect(warn.isHidden && err.countFrame == .zero && abs(cap.capsuleWidth - 39) < 0.01, "\(cap.capsuleWidth)")
         cap.errors = 0
         cap.warnings = 0
         #expect(cap.isHidden)

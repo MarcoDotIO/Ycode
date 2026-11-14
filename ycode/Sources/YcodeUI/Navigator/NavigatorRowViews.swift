@@ -38,14 +38,32 @@ final class NavigatorRowView: NSTableRowView {
     override var interiorBackgroundStyle: NSView.BackgroundStyle {
         isSelected && isEmphasized ? .emphasized : .normal
     }
+
+    /// The cells restyle on every selection change: an icon's tint on a
+    /// selected row without focus differs from its tint on no band
+    /// (council round 9, row 208).
+    override var isSelected: Bool {
+        didSet { if oldValue != isSelected { restyleCells() } }
+    }
+
+    override var isEmphasized: Bool {
+        didSet { if oldValue != isEmphasized { restyleCells() } }
+    }
+
+    private func restyleCells() {
+        for case let cell as NavigatorCellView in subviews { cell.applyStyle() }
+    }
 }
 
 /// A row's cell: the label and icon turn white on the accent band.
 final class NavigatorCellView: NSTableCellView {
     /// The label's colour on no band or the grey band.
     var labelColor: NSColor = NavigatorCellView.rowLabelColor
-    /// The icon's tint on no band or the grey band.
+    /// The icon's tint on no band.
     var iconTint: NSColor?
+    /// The icon's tint on the grey band (a selected row without focus;
+    /// nil: `iconTint`).
+    var unfocusedSelectedTint: NSColor?
     /// Plain labels follow the band; attributed ones (details, Find
     /// matches) keep their own colours.
     var recolorsLabel = true
@@ -67,7 +85,8 @@ final class NavigatorCellView: NSTableCellView {
             let color = on ? NSColor.alternateSelectedControlTextColor : labelColor
             if label.textColor != color { label.textColor = color }
         }
-        imageView?.contentTintColor = on ? .alternateSelectedControlTextColor : iconTint
+        let selected = (superview as? NSTableRowView)?.isSelected == true
+        imageView?.contentTintColor = on ? .alternateSelectedControlTextColor : selected ? (unfocusedSelectedTint ?? iconTint) : iconTint
     }
 }
 
@@ -94,5 +113,27 @@ final class NavigatorRowLabel: NSTextField {
             get { super.objectValue }
             set { super.objectValue = styledTitle ?? newValue }
         }
+    }
+}
+
+/// A row icon drawn in its tint as given: the sidebar's vibrancy darkened
+/// the plain group's grey folder in dark (about #6A6A6C for #999999;
+/// council round 8, row 203). Every file glyph is drawn this way since
+/// round 9 (rows 208–213), its tint the reference's measured flat ink.
+final class NavigatorFlatIconView: NSImageView {
+    override var allowsVibrancy: Bool { false }
+
+    /// One of Ycode's glyphs (round 10, rows 243–244): drawn here from its
+    /// vector drawing on the pixel grid (`GlyphPixelGrid`) in the tint,
+    /// centred where the template image would be; nil: the image as given.
+    var glyph: NavigatorRowIcon? { didSet { needsDisplay = true } }
+
+    override var contentTintColor: NSColor? { didSet { needsDisplay = true } }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let g = glyph, let d = FileGlyphs.navigatorDrawing(g) else { return super.draw(dirtyRect) }
+        let r = NSRect(x: (bounds.width - CGFloat(d.width)) / 2, y: (bounds.height - CGFloat(d.height)) / 2,
+                       width: CGFloat(d.width), height: CGFloat(d.height))
+        GlyphPixelGrid.draw(d, in: r, color: contentTintColor ?? .labelColor, flipped: isFlipped)
     }
 }

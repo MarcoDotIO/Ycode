@@ -242,6 +242,13 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
     /// device that cannot be driven (§12.1).
     public var showsDisabledControls: Bool { session == nil && stoppedSpec != nil && statusAction == nil && !statusBusy }
 
+    /// Why the controls of a device that cannot be driven do nothing: their
+    /// tooltips and the banner a press shows (§15.6, row 175: the glyphs stay
+    /// at full contrast, a disabled look only for a control that cannot act,
+    /// with its reason). The hub sets it per device.
+    public var unavailableControlsReason = DeviceCanvasView.notOperatedReason
+    public static let notOperatedReason = "Ycode doesn\u{2019}t run this device."
+
     private func refreshState() {
         let hasDevice = session != nil || stoppedSpec != nil
         messageLabel.stringValue = message ?? ""
@@ -261,12 +268,14 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         if let s = session {
             controls.configure(.init(foldable: s.isFoldable, canRotate: s.canRotate, recording: s.isRecording, posture: s.posture,
                                      enabled: s.isLive, showsRotate: s.spec.rotates, showsHome: s.spec.family != .watch,
-                                     spatial: s.isSpatial || s.spec.family == .vision))
+                                     spatial: s.isSpatial || s.spec.family == .vision, watch: s.spec.family == .watch))
         } else if showsDisabledControls, let spec = stoppedSpec {
             // A foldable keeps Rotate │ the three postures, closed current
-            // (§13.1), every control disabled.
-            controls.configure(.init(foldable: spec.isFoldable, posture: spec.isFoldable ? .closed : nil, enabled: false,
-                                     showsRotate: spec.rotates, showsHome: spec.family != .watch, spatial: spec.family == .vision))
+            // (§13.1); the glyphs at full contrast with the reason in their
+            // tooltips, a press showing it (§15.6, row 175).
+            controls.configure(.init(foldable: spec.isFoldable, posture: spec.isFoldable ? .closed : nil, enabled: true,
+                                     showsRotate: spec.rotates, showsHome: spec.family != .watch, spatial: spec.family == .vision,
+                                     watch: spec.family == .watch, unavailableReason: unavailableControlsReason))
         }
         statsLabel.isHidden = !showsStatistics || session == nil
         updateStatistics()
@@ -400,9 +409,12 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
             return CompactWindowLayout.scale(device: size, windowWidth: Double(bounds.width))
         case .hub:
             switch zoom {
-            // The frame's outer box at the hub's shares of the free height and
-            // the canvas width (§14.3, row 154: an interim rule, kept in DeviceZoom).
-            case .fit: return DeviceZoom.hubFit(frame: frameView.geometry.outerBox.size, in: deviceArea.size)
+            // The silhouette to the free height less 8 + 1 % above and below
+            // (§15.2, row 170; the rule is DeviceZoom's), a foldable through
+            // its 1269-point box.
+            case .fit:
+                let foldable = session?.isFoldable ?? stoppedSpec?.isFoldable ?? false
+                return DeviceZoom.hubFit(geometry: frameView.geometry, foldable: foldable, in: deviceArea.size)
             case .scale(let s): return s
             case .actual:
                 let spec = session?.spec ?? stoppedSpec ?? .iPhoneDuo
@@ -424,9 +436,16 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         let size = CGSize(width: (deviceSize.width * scale).rounded(), height: (deviceSize.height * scale).rounded())
         scroll.frame = area
         // Larger than the area only when the device does not fit (zoomed in):
-        // a fitted device never scrolls.
-        let need = CGSize(width: size.width + 2 * DeviceZoom.fitMargin, height: size.height + 2 * DeviceZoom.fitMargin)
-        let doc = CGSize(width: need.width > area.width + 1 ? need.width : area.width, height: need.height > area.height + 1 ? need.height : area.height)
+        // a fitted device never scrolls (Zoom to Fit keeps its own margin,
+        // §15.2, so it needs none here).
+        let roomAround = mode == .hub && zoom == .fit ? 0 : DeviceZoom.fitMargin
+        let need = CGSize(width: size.width + 2 * roomAround, height: size.height + 2 * roomAround)
+        // At Zoom to Fit the document is the area: the drawing's clear margin
+        // round a watch (the room its crown takes on every side) may pass the
+        // area's edge, but the fitted silhouette never does (row 231).
+        let fitted = mode == .hub && zoom == .fit
+        let doc = fitted ? area.size
+            : CGSize(width: need.width > area.width + 1 ? need.width : area.width, height: need.height > area.height + 1 ? need.height : area.height)
         document.frame = CGRect(origin: .zero, size: doc)
         var origin = CGPoint(x: ((doc.width - size.width) / 2).rounded(), y: ((doc.height - size.height) / 2).rounded())
         if mode == .compact {
@@ -518,6 +537,7 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         case .rotateLeft, .rotateRight: return s.isLive && s.canRotate
         case .poseClosed, .posePartiallyOpen, .poseOpen: return s.isLive && s.isFoldable
         case .actionButton: return s.isLive && s.spec.hasActionButton
+        case .sideButton, .digitalCrown: return s.isLive && s.spec.family == .watch
         case .volumeUp, .volumeDown: return s.isLive && s.spec.hasVolumeButtons
         case .appSwitcher: return s.isLive && s.spec.family != .watch
         case .resetCamera: return s.isLive && s.isSpatial
@@ -542,7 +562,9 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         default: break
         }
         guard let s = session, s.isLive else {
-            if commandFallback?(c) != true { NSSound.beep() }
+            if commandFallback?(c) == true { return }
+            // A control of a device that cannot be driven says why (row 175).
+            if showsDisabledControls, controls.groups.joined().contains(c) { showBanner(unavailableControlsReason, seconds: 3) } else { NSSound.beep() }
             return
         }
         switch c {
@@ -551,6 +573,9 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         case .volumeUp: s.press(.volumeUp)
         case .volumeDown: s.press(.volumeDown)
         case .actionButton: s.press(s.displayButton(for: .action))
+        // A watch's capsule (row 234): the frame's buttons, pressed.
+        case .sideButton: s.press(s.displayButton(for: .sideButton))
+        case .digitalCrown: s.press(s.displayButton(for: .crown))
         case .appSwitcher: s.appSwitcher()
         case .resetCamera: frameView.screen.resetSpatialCamera()
         case .rotateLeft: s.rotate(left: true)

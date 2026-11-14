@@ -66,6 +66,14 @@ struct DeviceToolbarView: View {
                     .frame(width: CGFloat(pair.element.rect.width), height: CGFloat(pair.element.rect.height))
                     .offset(x: CGFloat(pair.element.rect.x), y: CGFloat(pair.element.rect.y))
             }
+            // Separators inside the segmented capsules (§15.5), as AppKit's
+            // segmented toolbar groups draw them.
+            ForEach(Array(f.separators(selected: request.selectedItems).enumerated()), id: \.offset) { pair in
+                Rectangle().fill(Color(chromeHex: DeviceWindowFrame.separatorColor(dark: d)))
+                    .frame(width: 1, height: CGFloat(DeviceWindowFrame.separatorHeight))
+                    .offset(x: CGFloat(pair.element) - 0.5,
+                            y: CGFloat((DeviceWindowFrame.toolbarHeight - DeviceWindowFrame.separatorHeight) / 2))
+            }
         }
         .frame(width: CGFloat(f.width), height: CGFloat(DeviceWindowFrame.toolbarHeight), alignment: .topLeading)
     }
@@ -218,6 +226,9 @@ struct ChromeGlyph: View {
         func rect(_ r: CGRect, _ radius: CGFloat) -> Path { Path(roundedRect: r, cornerRadius: radius) }
         let r = s * 0.4
         switch name {
+        case DeviceWindowFrame.layoutSymbol:
+            // The macOS toolbar's resize toggle (DeviceControlGlyphs.layout, row 174).
+            drawShared(DeviceControlGlyphs.layout, in: &ctx, centre: c, scale: s / 16, color: color)
         case DeviceWindowFrame.zoomToFitSymbol:
             // The macOS window's drawing (DeviceControlGlyphs.zoomToFit, row 156), at the size it takes there.
             drawShared(DeviceControlGlyphs.zoomToFit, in: &ctx, centre: c, scale: s / 16, color: color)
@@ -244,9 +255,6 @@ struct ChromeGlyph: View {
             stroke(rect(CGRect(x: c.x - s * 0.45, y: c.y - s * 0.28, width: s * 0.9, height: s * 0.56), s * 0.1))
             for row in 0..<2 { for col in 0..<4 { fill(circle(c.x - s * 0.27 + CGFloat(col) * s * 0.18, c.y - s * 0.1 + CGFloat(row) * s * 0.15, s * 0.04)) } }
             stroke(line(CGPoint(x: c.x - s * 0.2, y: c.y + s * 0.17), CGPoint(x: c.x + s * 0.2, y: c.y + s * 0.17)), lw * 0.8)
-        case "rectangle.inset.filled":
-            stroke(rect(CGRect(x: c.x - s * 0.42, y: c.y - s * 0.32, width: s * 0.84, height: s * 0.64), s * 0.1))
-            fill(rect(CGRect(x: c.x - s * 0.26, y: c.y - s * 0.16, width: s * 0.52, height: s * 0.32), s * 0.04))
         case "circle.lefthalf.filled", "circle.righthalf.filled":
             stroke(circle(c.x, c.y, r))
             var p = Path()

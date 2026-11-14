@@ -769,6 +769,8 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         return "kernel lock held \(held / 1_000_000) ms (\(count) acquisitions)"
             + (SchedPolicy.holdEnabled || SchedPolicy.qosEnabled ? "; sched: " + system.schedReport + "; " + HostSched.report : "")
             + (FullQueueReport.summary.map { "; " + $0 } ?? "")
+            + (system.mach.portLock.map { "; " + $0.fineLockTotals } ?? "")
+            + (PortLockSplit.enabled ? "; " + PortLockSplit.report : "")
     }
     HomeWatch.startIfRequested(statePath: config.device?.framebufferStatePath, surfaces: ioSurfaceService)
     // visionOS: Siri's assistant daemon starts after the shell's home view

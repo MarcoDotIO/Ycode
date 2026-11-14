@@ -1,0 +1,246 @@
+{
+  "issue": 81,
+  "targets": [
+    "xcode",
+    "ycode"
+  ],
+  "compare_order": [
+    "xcode",
+    "ycode"
+  ],
+  "project": {
+    "generator": "make-conflict-project.py",
+    "path": "Merger/Merger.xcodeproj"
+  },
+  "focus": "foreground",
+  "launch_settle": 3.0,
+  "record": {
+    "fps": 120,
+    "codec": "prores4444",
+    "pre": 0.4,
+    "post": 1.2,
+    "margin": 60
+  },
+  "name": "council-r7-conflict-narrow",
+  "title": "Council round 7 (#81): the issue capsule in a narrow light window. The Merger test project at 1100 x 880 with each app's own Appearance set to Light (the system was Dark), the Source Control navigator as in conflict step 01; then Appearance set back to System.",
+  "window": {
+    "size": [
+      1100,
+      880
+    ],
+    "display": "builtin",
+    "title": "{project}",
+    "timeout": 90
+  },
+  "steps": [
+    {
+      "id": "appearance-light",
+      "note": "Each app's own Appearance set to Light (Settings > Appearance), Settings closed.",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "description": "AppearanceLight",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "title": "Light",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "scm-repositories-narrow",
+      "note": "Round 7: conflict step 01 at 1100 x 880 in light: the toolbar's issue capsule in a narrow window.",
+      "do": [
+        {
+          "key": "cmd+2"
+        },
+        {
+          "wait": 1.0
+        },
+        {
+          "press": {
+            "role": "AXRadioButton",
+            "label": "Repositories"
+          }
+        },
+        {
+          "wait": 1.0
+        },
+        {
+          "set": {
+            "role": "AXRow",
+            "text": "project|Merger"
+          },
+          "attr": "AXDisclosing",
+          "value": true
+        },
+        {
+          "wait": 0.6
+        },
+        {
+          "set": {
+            "role": "AXRow",
+            "text": "Branches"
+          },
+          "attr": "AXDisclosing",
+          "value": true
+        },
+        {
+          "wait": 0.6
+        }
+      ],
+      "record": false,
+      "still": "after",
+      "crop": [
+        560,
+        0,
+        540,
+        52
+      ]
+    },
+    {
+      "id": "appearance-restore",
+      "note": "Each app's own Appearance set back to System.",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "description": "AppearanceAuto",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "key": "cmd+,"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "select": {
+                "role": "AXRow",
+                "text": "Appearance",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "title": "System",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "key": "cmd+w"
+            },
+            {
+              "wait": 1.0
+            }
+          ]
+        }
+      },
+      "record": false,
+      "still": "after"
+    }
+  ]
+}

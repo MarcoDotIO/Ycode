@@ -85,7 +85,7 @@ import Testing
         #expect(scm.confirmation == nil && !alert.hasChooser)
         #expect(alert.title == "Are you sure you want to merge from \(Self.q("feature"))?")
         #expect(alert.message == "Changes from \(Self.q("feature")) will be merged into your current branch (\(Self.q("main"))).")
-        #expect(alert.frame(window: (1400, 880)) == MergeSheetMetrics.Rect(x: 490, y: 373, width: 420, height: 133))
+        #expect(alert.frame(window: (1400, 880)) == MergeSheetMetrics.Rect(x: 490, y: 373, width: 420, height: 132))
         scm.confirmMergeAlert()
         #expect(scm.mergeAlert == nil && scm.isMerging)
         await scm.idle()

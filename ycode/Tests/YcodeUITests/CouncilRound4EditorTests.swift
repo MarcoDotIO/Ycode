@@ -135,8 +135,9 @@ import YcodeSyntax
             #expect(fc.hex(Theme.color(for: .otherDeclaration)) == "#006178")
             #expect(fc.hex(Theme.color(for: .propertyReference)) == "#322529")
             #expect(fc.hex(Theme.backgroundColor) == fc.hex(.textBackgroundColor))
-            // Roles neither appearance measured keep the system colours.
-            #expect(dark(Theme.color(for: .preprocessor)) == dark(.systemOrange))
+            // Roles neither appearance measured: one table with the Linux IDE
+            // since round 7 (B7-B, `WorkspaceChrome.defaultThemeColors`).
+            #expect(dark(Theme.color(for: .preprocessor)) == "#FF9F0A")
             // A theme of its own: declarations as type names and plain text.
             let dusk = try #require(EditorTheme.builtIns.first { $0.name == "Ycode Dusk" })
             Preferences.shared.themeName = dusk.name

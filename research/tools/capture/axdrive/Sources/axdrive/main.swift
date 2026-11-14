@@ -516,7 +516,16 @@ func onSchedule(_ count: Int, interval: Double, _ body: (Int) -> Void) -> (start
 func scroll(at p: CGPoint, _ o: Options) -> [String: Any] {
     let window = windowNumber(at: p, pid: o.pid)
     post(CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left), o.pid, window: window)
+    // Round 10: every posted event is logged (seconds from the first event,
+    // scroll phase, momentum phase, point deltas dy and dx), so a capture
+    // can quote the exact input it gave both apps.
+    var log: [[Double]] = []
+    var t0: Double? = nil
     func wheel(_ dy: Double, _ dx: Double, phase: Int64, momentum: Int64) {
+        let now = Date().timeIntervalSince1970
+        if t0 == nil { t0 = now }
+        log.append([((now - t0!) * 1e6).rounded() / 1e6, Double(phase), Double(momentum),
+                    (dy * 1e4).rounded() / 1e4, (dx * 1e4).rounded() / 1e4])
         let e = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 2,
                         wheel1: Int32(dy.rounded()), wheel2: Int32(dx.rounded()), wheel3: 0)
         e?.location = p
@@ -560,6 +569,9 @@ func scroll(at p: CGPoint, _ o: Options) -> [String: Any] {
         result["momentum_dy"] = deltas.map(\.0).reduce(0, +)
         result["momentum_dx"] = deltas.map(\.1).reduce(0, +)
     }
+    result["events_format"] = ["t_s", "phase", "momentum_phase", "dy", "dx"]
+    result["events"] = log
+    result["events_first_wall"] = t0 ?? 0
     return result
 }
 

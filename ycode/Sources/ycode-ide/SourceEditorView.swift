@@ -48,6 +48,8 @@ struct SourceEditorView: View {
         let diamonds = mine ? model.testDiamonds : [:]
         // The rename's occurrences (they change rarely, as the matches).
         let highlights = mine ? model.languageFeatures.highlights : []
+        // The instances of the symbol at the insertion point (row 227).
+        let instances = mine ? model.languageFeatures.symbolInstances : []
         let colors = ShellColors(scheme)
         let palette = palette
         let preferences = preferences
@@ -56,10 +58,13 @@ struct SourceEditorView: View {
             c.applyPreferences(revision: preferences)
             c.setDisplayScale(scale)
             c.viewportChanged(size)
+            c.frameProbe?(c.now, c.top)
             var painter = SourceEditorPainter(controller: c, palette: palette, colors: colors, isFocusedPane: mine,
                                               matches: matches, currentMatch: currentMatch, issues: issues, debug: debugMarks,
                                               changes: changes, diamonds: diamonds, highlights: highlights)
+            painter.instances = instances
             painter.draw(&ctx, size: size)
+            PaneRestore.frameDrawn(c)   // a restored pane's first line (W7.1)
         }
         content(canvas)
             .contentShape(Rectangle())
@@ -79,10 +84,10 @@ struct SourceEditorView: View {
                 case .up, .cancelled: c.pointerEnded()
                 }
             }
-            .textSurfaceScroll { d, _ in
+            .textSurfaceScroll(events: { e in
                 model.dismissQuickHelp()
-                return c.wheel(d)
-            }
+                return c.scrollEvent(e)
+            })
             .textSurface(c)
             .focused($focused)
             #else
@@ -220,6 +225,9 @@ struct SourceEditorPainter {
     /// (`specs/ide/testing.md` §Gutter): outlined, green, red.
     var diamonds: [Int: TestOutcome.Status?] = [:]
     var highlights: [NSRange] = []
+    /// The instances of the symbol at the insertion point: yellow at 0.3, as
+    /// the macOS editor draws them (`SymbolInstances`, row 227).
+    var instances: [NSRange] = []
 
     func font(_ c: SourceEditorController) -> Font { ShellFonts.editor(c.fontSize) }
 
@@ -274,6 +282,11 @@ struct SourceEditorPainter {
                           color: Color.yellow.opacity(isCurrent ? 0.75 : 0.32), textX: textX)
                 i += 1
             }
+        }
+
+        // The instances of the symbol at the insertion point.
+        for h in instances where h.length > 0 {
+            fillRange(&ctx, h.location..<(h.location + h.length), lines: lines, color: Color.yellow.opacity(0.3), textX: textX)
         }
 
         // The occurrences of a symbol being renamed.
@@ -345,7 +358,7 @@ struct SourceEditorPainter {
         if c.now - c.lastScroll < 1, c.contentHeight > size.height {
             let track = size.height - 6
             let len = max(36, track * size.height / c.contentHeight)
-            let frac = c.top / max(1, c.contentHeight - size.height)
+            let frac = min(1, max(0, c.top / max(1, c.contentHeight - size.height)))
             ctx.fill(Path(roundedRect: CGRect(x: size.width - 6, y: 3 + (track - len) * frac, width: 3, height: len), cornerRadius: 1.5),
                      with: .color(palette.foreground.color.opacity(0.35)))
         }

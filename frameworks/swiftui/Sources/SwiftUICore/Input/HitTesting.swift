@@ -33,6 +33,17 @@ package protocol HoverHandling: AnyObject {
 package protocol ScrollWheelHandling: AnyObject {
     /// Returns true if the delta was used.
     func scrollWheel(delta: CGSize, location: CGPoint, frame: CGRect) -> Bool
+    /// The whole event, with its gesture and momentum phases (B6-OPENVIEWS).
+    /// By default the delta goes to `scrollWheel(delta:location:frame:)`;
+    /// events without motion (a phase's end) are not used.
+    func scrollWheel(_ input: ScrollWheelInput, location: CGPoint, frame: CGRect) -> Bool
+}
+
+extension ScrollWheelHandling {
+    package func scrollWheel(_ input: ScrollWheelInput, location: CGPoint, frame: CGRect) -> Bool {
+        guard input.delta != .zero else { return false }
+        return scrollWheel(delta: input.delta, location: location, frame: frame)
+    }
 }
 
 /// Views whose subtree is hit only inside their own frame (scroll views
@@ -116,6 +127,9 @@ package final class GestureEngine {
     package unowned let graph: ViewGraph
     package private(set) var session: GestureSession?
     private var hovered: [(node: WeakNode, handler: any HoverHandling)] = []
+    /// The view a touchpad gesture began over: its later events and its
+    /// momentum go there (B6-OPENVIEWS), wherever the pointer is.
+    private var scrollLatch: WeakNode?
     /// Presses that started sessions (tests).
     package private(set) var sessionCount = 0
 
@@ -176,13 +190,35 @@ package final class GestureEngine {
     /// Delivers a scroll-wheel step to the innermost handler under the point.
     @discardableResult
     package func scroll(delta: CGSize, at point: CGPoint) -> Bool {
+        scroll(ScrollWheelInput(delta: delta), at: point)
+    }
+
+    /// Delivers a scroll event: a gesture's first event (or a wheel notch) to
+    /// the innermost handler under the point that uses it; the gesture's
+    /// later events and its momentum to that same handler only.
+    @discardableResult
+    package func scroll(_ input: ScrollWheelInput, at point: CGPoint) -> Bool {
+        if input.continuesGesture {
+            guard let node = scrollLatch?.node, let h = node.primitiveState as? any ScrollWheelHandling,
+                  let f = HitTesting.frame(of: node, mirrorWidth: mirrorWidth) else { return false }
+            let used = h.scrollWheel(input, location: CGPoint(x: point.x - f.minX, y: point.y - f.minY), frame: f)
+            if input.momentumPhase == .ended || input.momentumPhase == .cancelled { scrollLatch = nil }
+            return used
+        }
+        if input.phase == .began || input.phase == .none { scrollLatch = nil }
+        var innermost: ViewNode?
         for node in hitPath(at: point).reversed() {
             guard let h = node.primitiveState as? any ScrollWheelHandling,
                   let f = HitTesting.frame(of: node, mirrorWidth: mirrorWidth) else { continue }
-            if h.scrollWheel(delta: delta, location: CGPoint(x: point.x - f.minX, y: point.y - f.minY), frame: f) {
+            if innermost == nil { innermost = node }
+            if h.scrollWheel(input, location: CGPoint(x: point.x - f.minX, y: point.y - f.minY), frame: f) {
+                if input.phase == .began { scrollLatch = WeakNode(node) }
                 return true
             }
         }
+        // A gesture nobody could use at its start (a list already at its
+        // end) stays with the innermost handler: turning back scrolls it.
+        if input.phase == .began, let innermost { scrollLatch = WeakNode(innermost) }
         return false
     }
 

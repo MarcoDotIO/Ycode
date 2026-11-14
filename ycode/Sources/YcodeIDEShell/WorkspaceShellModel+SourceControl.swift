@@ -9,6 +9,7 @@ extension WorkspaceShellModel {
         scm.currentText = { [weak self] path in self?.openDocuments[path]?.buffer.text }
         scm.saveEditors = { [weak self] in _ = self?.saveAll() }
         scm.openFile = { [weak self] path in self?.open(path) }
+        scm.onSnapshot = { [weak self] read in self?.session.noteConflicts(read) }   // row 188
         scm.refresh()
     }
 

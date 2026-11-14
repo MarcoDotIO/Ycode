@@ -6,14 +6,16 @@
 //   iPhone, iPad      [Home · Screenshot · Record] [Rotate]
 //   iPhone Duo        [Home · Screenshot · Record] [Rotate │ Closed · Partially Open · Open]
 //                     (Closed and Open are Ycode's own glyphs, DeviceGlyphs.swift)
-//   Apple Watch       [Screenshot · Record]
+//   Apple Watch       [Side Button · Digital Crown · Screenshot · Record]
 //   visionOS          [Home · Screenshot · Record] [Reset Camera]
 //
 // Rotate: click = Rotate Left, Option-click = Rotate Right. The current
 // pose's glyph is drawn in the accent colour; Option-dragging on a pose
-// button shows the hinge slider (the canvas draws it). Symbols are public
-// SF Symbols chosen to match the reference's descriptions (Ycode decision,
-// §8).
+// button shows the hinge slider (the canvas draws it). Home, Rotate, the
+// postures and a watch's two hardware controls are Ycode's drawings (DeviceControlGlyphs, shared with Linux);
+// Screenshot and Record are public SF Symbols chosen to match the
+// reference's descriptions (Ycode decision, §8). The glyphs are at full
+// contrast whenever a device is shown (§15.6, row 175).
 
 #if os(macOS)
 import AppKit
@@ -100,13 +102,21 @@ public final class DeviceControlsRow: NSView {
         public var posture: DevicePosture?
         public var enabled = false
         public var showsRotate = true
-        /// Home in the first group (a watch has none: its crown on the
-        /// frame is its Home, and its row is [Screenshot · Record]).
+        /// Home in the first group (a watch has none: its crown is its Home).
         public var showsHome = true
         /// A Vision Pro: Reset Camera in place of Rotate (§4.4).
         public var spatial = false
+        /// A watch: one capsule, [Side Button · Digital Crown · Screenshot ·
+        /// Record] (council round 9 row 234).
+        public var watch = false
+        /// Why the shown device's controls cannot act (a device Ycode does
+        /// not run): the glyphs stay at full contrast, as for a running device
+        /// (§15.6, row 175), each tooltip gives the reason and a press shows
+        /// it on the canvas. Nil: the controls act (or are disabled).
+        public var unavailableReason: String?
         public init(foldable: Bool = false, canRotate: Bool = false, recording: Bool = false, posture: DevicePosture? = nil,
-                    enabled: Bool = false, showsRotate: Bool = true, showsHome: Bool = true, spatial: Bool = false) {
+                    enabled: Bool = false, showsRotate: Bool = true, showsHome: Bool = true, spatial: Bool = false,
+                    watch: Bool = false, unavailableReason: String? = nil) {
             self.foldable = foldable
             self.canRotate = canRotate
             self.recording = recording
@@ -115,10 +125,12 @@ public final class DeviceControlsRow: NSView {
             self.showsRotate = showsRotate
             self.showsHome = showsHome
             self.spatial = spatial
+            self.watch = watch
+            self.unavailableReason = unavailableReason
         }
 
         var device: DeviceControlsLayout.Device {
-            .init(showsHome: showsHome, rotates: showsRotate, foldable: foldable, spatial: spatial)
+            .init(showsHome: showsHome, rotates: showsRotate, foldable: foldable, spatial: spatial, watch: watch)
         }
     }
 
@@ -138,7 +150,7 @@ public final class DeviceControlsRow: NSView {
     /// The symbol and help text of each control.
     static func look(_ c: DeviceCommand, recording: Bool) -> (symbol: String, help: String) {
         switch c {
-        case .home: ("circle.grid.3x3.fill", "Home")
+        case .home: ("", "Home")
         case .screenshot: ("camera.viewfinder", "Screenshot")
         case .recordScreen: recording ? ("stop.circle.fill", "Stop Recording") : ("record.circle", "Record Screen")
         case .rotateLeft: ("rotate.left", "Rotate (Option-click to rotate right)")
@@ -146,6 +158,8 @@ public final class DeviceControlsRow: NSView {
         case .poseClosed: ("", "Closed")
         case .posePartiallyOpen: ("book", "Partially Open (Option-drag to set any angle)")
         case .poseOpen: ("", "Open")
+        case .sideButton: ("", "Side Button")
+        case .digitalCrown: ("", "Digital Crown")
         default: ("questionmark", c.title)
         }
     }
@@ -217,21 +231,25 @@ public final class DeviceControlsRow: NSView {
             // product symbols, AGENTS.md rule 5), the same shapes as on Linux.
             let current = Self.isCurrentPose(c, configuration.posture)
             switch c {
+            case .home: b.image = DeviceControlGlyphImage.home()
             case .rotateLeft: b.image = DeviceControlGlyphImage.rotate()
             case .poseClosed: b.image = DeviceControlGlyphImage.posture(.closed, current: current)
             case .posePartiallyOpen: b.image = DeviceControlGlyphImage.posture(.halfOpen, current: current)
             case .poseOpen: b.image = DeviceControlGlyphImage.posture(.flat, current: current)
+            case .sideButton: b.image = DeviceControlGlyphImage.sideButton()
+            case .digitalCrown: b.image = DeviceControlGlyphImage.digitalCrown()
             default:
                 b.image = NSImage(systemSymbolName: look.symbol, accessibilityDescription: look.help)?
                     .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
             }
-            b.toolTip = look.help
+            b.toolTip = configuration.unavailableReason.map { DeviceControlsLayout.unavailableHelp(look.help, reason: $0) } ?? look.help
             b.setAccessibilityLabel(look.help)
+            b.setAccessibilityHelp(configuration.unavailableReason)
             // Glyphs black (white in dark, §12.1), the current pose in the accent colour (§11.1).
             b.contentTintColor = c == .recordScreen && configuration.recording ? .systemRed
                 : Self.isCurrentPose(c, configuration.posture) ? .controlAccentColor : Self.glyphColor
             switch c {
-            case .rotateLeft: b.isEnabled = configuration.enabled && configuration.canRotate
+            case .rotateLeft: b.isEnabled = configuration.enabled && (configuration.canRotate || configuration.unavailableReason != nil)
             default: b.isEnabled = configuration.enabled
             }
         }

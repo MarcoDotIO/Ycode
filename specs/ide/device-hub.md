@@ -803,6 +803,179 @@ iPad were not captured, so the 54 % / 33 % rule is extrapolated for them.
 - What the reference shows for a device it cannot drive (both rounds
   showed a running device in the reference).
 
+## 15. Council round 7 (2026-11-08): every device at Zoom to Fit, the iPad's outline, the subtitle, the glyphs
+
+Round 7 answered §14.4: the same window at **two sizes** (1100 × 800 and
+1400 × 900), with the inspector shown and hidden, and **three devices**:
+the iPhone Duo (iOS 27.1, closed posture; cover display 466 × 678
+points), an **iPhone 17** (iOS 27.2; screen 402 × 874 points) and an
+**iPad Air 11-inch (M4)** (iOS 27.2; screen 820 × 1180 points, portrait).
+Zoom to Fit was pressed in every step from 02. Retina stills, sidebar
+hidden, the system in **Dark**, both windows key. Ycode `0afb3bd7` showed
+the same devices with a black screen (it does not run them on this Mac).
+Values in window points (half-point precision); "dp" is a device point.
+Checklist rows 170–175 in `fidelity-council.md`. The judges scored the
+classic iPhone 5.6–5.9 and the iPad 4.2–4.3 (the lowest steps of the
+round); the Duo steps now average 8.6.
+
+Device Hub's View ▸ Inspectors menu offers no Show item once the
+inspector is hidden, so its inspector stayed hidden in steps 06 and 08
+while Ycode's came back. That is the capture, not a difference: compare
+steps 07 and 09 (hidden in both) for the classic iPhone and the iPad.
+Device Hub's canvas is the whole window behind a glass toolbar (no line
+under the toolbar); the toolbar's capsules span y 8–44 and the bottom
+capsules start **44 above the window's bottom** (y 756 at 800, 856 at
+900).
+
+### 15.1 The device's box at Zoom to Fit, measured
+
+The body is the device's outline (outer edge of the frame); the
+silhouette adds the buttons that stand out of it on the top or bottom
+edge. Screen boxes are the wallpaper's edges.
+
+| Step | Device, window | Reference: body | Reference: screen (scale) | Ycode now: body |
+|---|---|---|---|---|
+| 02 | Duo, 1100 × 800, inspector shown | x 274.5–548.5, y 213–592.5: **274 × 379.5** | 248.5 × 360 (**0.531**) | 273.5 × 379.5 (match) |
+| 05 | Duo, 1100 × 800, inspector hidden | x 414.5–688.5: 274 × 379.5 | the same | 273.5 × 379.5 (match) |
+| 03 | Duo, 1400 × 900, inspector shown | 314 × **435**, y 235–670 | 285 × 412.5 (**0.608**) | 312 × 433.5 (match within 2) |
+| 04 | Duo, 1400 × 900, inspector hidden | 314 × 435, x 544.5–858.5 | the same | 312 × 433.5 (match within 2) |
+| 06 | iPhone 17, 1100 × 800 | x 387.5–712, y 67–741.5: **324.5 × 674.5** | x 401–699, y 81–727.5: 298 × 646.5 (**0.740**) | x 319–501, y 214–594: **182 × 380** (0.56 of the reference) |
+| 07 | iPhone 17, 1400 × 900, inspector hidden | x 514–885.5, y 68–840.5: **371.5 × 772.5** | x 529.5–870.5, y 83.5–824.5: 341 × 741 (**0.848**) | x 594–804, y 237–671: **210 × 434** (0.56) |
+| 08 | iPad Air, 1100 × 800 | x 307.5–793, y 68.5–739.5: **485.5 × 671**; top button to y 66.5 | x 338.5–762, y 99.5–708.5: 423.5 × 609 (**0.516**) | the **iPhone 17's outline**: 182 × 380 |
+| 09 | iPad Air, 1400 × 900, inspector hidden | x 422–978, y 69.5–838.5: **556 × 769**; top button to y 67.5 | x 458–942.5, y 105.5–802.5: 484.5 × 697 (**0.591**) | the iPhone 17's outline: 210 × 434 |
+
+Width over height of the body: iPhone 17 **0.481**, iPad Air **0.724**,
+the Duo's closed body 0.722. Ycode's iPhone outline has the right
+proportion (0.484) and its buttons in about the right places; it is only
+too small. Ycode draws **every device at the Duo's height** (380 at
+1100, 434 at 1400), and the iPad with the iPhone's outline.
+
+### 15.2 The rule: fit the silhouette to the free height
+
+Let **H** be the window's height and **F = H − 96** the free height: the
+toolbar band (0–52: 8 + 36 + 8) and the capsule band (the last 44) taken
+off. F is 704 at 800 and 804 at 900. In every captured case the device's
+silhouette height in Mac points is
+
+> **S = 0.98 F − 16**, that is, a margin of **8 + 1 % of F** above and
+> below (15 at 704, 16 at 804),
+
+so the scale is **s = S ÷ (the silhouette's height in device points)**.
+
+| Device | Silhouette height (dp) | s at F = 704 (S 673.9) | measured | s at F = 804 (S 771.9) | measured |
+|---|---|---|---|---|---|
+| iPhone 17 | body **911.5** (no button on the top or bottom edge) | 0.7393 | 0.7397 | 0.8469 | 0.8478 |
+| iPad Air 11 (portrait) | body 1300 + the top button **4** = **1304** | 0.5168 | 0.5161 | 0.5920 | 0.5907 |
+| iPhone Duo (closed) | **1269** (the box Device Hub reserves for the Duo; its closed body is 714.7) | 0.531 | 0.531 | 0.6083 | 0.6084 |
+
+Every case is within 0.2 % (half a Mac point). The Duo's 1269 is 1.78
+times its closed body; by its size it is the box of a larger posture
+(probably the open one, which was not captured), kept so that the scale
+does not change when the posture changes. Ycode keeps the Duo as it is
+now (it already matches) and fits every other device to its own
+silhouette.
+
+**Placement.** The silhouette is centred vertically between y 52 and
+H − 44 (centre 404 at 800, 454 at 900; measured 404.25 and 454.25) and
+horizontally in the canvas, the window's width less the inspector when
+it is shown (the sidebar hidden): the iPhone 17 at x 549.75 and the iPad
+at 550.25 in the 1100 window with the inspector hidden.
+
+**Width.** No captured device was limited by the width (the widest, the
+iPad at 1400, used 556 of 1400). Until a landscape iPad or a narrow
+window is captured, Ycode also caps the silhouette's width at the
+canvas's width less the same margin form (8 + 1 % of that width) on
+each side, and takes the smaller scale (a Ycode decision).
+
+**Replaces** §14.3's interim 54 %/33 % rule: that rule described only the
+Duo, whose 1269-point box makes it look small.
+
+Zoom In and Zoom Out step from this scale; Actual Size stays §4.2's.
+
+### 15.3 The iPad's outline (step 08, 09)
+
+Device Hub draws the iPad as a **tablet**, not a phone: a wide
+rounded-rectangle body with an even, wide black border round a screen
+with small corner radii.
+
+| Part | Reference (1100 / 1400) | In device points |
+|---|---|---|
+| Body | 485.5 × 671 / 556 × 769, width 0.724 of the height | 940 × 1300 |
+| Body corner | radius **42.6** / **49.9** (a circular fit, rms 0.1–0.5) | about **83** |
+| Border, outside in | an anti-aliased edge (#222223, #373738); a **light line** about 1 point wide (#626263–#7B7C7B); a **#2C2C2C** band 2 / 2.5 wide; then **black** (#010101–#020202) 26.5 / 32 wide to the screen | light line about 2, grey band about 4, black about 51.5: **60** from the body's edge to the screen on every side |
+| Screen | 423.5 × 609 / 484.5 × 697, inset **31 / 36** on all four sides | 820 × 1180 |
+| Screen corner | radius **9.8–10.7** / **10.0–10.7** | about **18–20** |
+| Top button | a bar on the **top edge** near the right corner, x 702.5–749.5 / 875–928, standing **2** above the body (y 66.5–68.5 at 1100) | about 91 long, ending 84 from the right edge, 4 high |
+| Volume buttons | two bars on the **right edge** near the top, y 131–158 and 163–190 at 1100 (139.5–173.5 and 176.5–210.5 at 1400), drawn flush with the edge as a slightly lighter strip (they do not stand out) | about 52 long, 10 apart, starting 121 below the body's top |
+| Home indicator, notch | none drawn on the frame (the screen's own content shows the system's indicator) | — |
+
+**Target.** Draw the iPad Air with this anatomy (Ycode's own drawing,
+the observed proportions), and give every device type its own outline
+from its own metrics: the body size and corner, the border (light line,
+grey band, black band) in device points, the screen's inset and corner,
+and the buttons on their edges. The iPhone outline stays for iPhones;
+the Duo stays as it is.
+
+### 15.4 The iPhone 17's outline (steps 06, 07)
+
+| Part | Reference (1100 / 1400) | In device points |
+|---|---|---|
+| Body | 324.5 × 674.5 / 371.5 × 772.5 | 438.5 × 911.5 |
+| Body corner | radius **61.7** / **70.4** (circular fit, rms 0.8–0.9: the corner is a continuous curve, slightly squarer than a circle) | about **83** |
+| Border, outside in | edge #222223, #2B2B2C, #3D3D3E; a **light line** about 1.5 wide (#565657, #7A7A7A, #818182, #404040); a **#2C2C2C** band 3 / 3.5 wide; #1B1A1B, #040404; **black** 7.5 / 8 to the screen | light line about 2, grey band about 4, black about 10–11: **18.25** to the screen |
+| Screen | inset **13.5 / 15.5** on all sides | 402 × 874 |
+| Screen corner | radius **47.0** / **53.6** | about **63.5** |
+| Buttons, left edge | three bars standing **3.5** out: y 185–212, 230.5–279, 289–337.5 at 1100 | from 159.5, 36.5 long; from 220 and 299, 65.5 long each; 4.7 out |
+| Buttons, right edge | one bar y 260.5–337 at 1100 | from 261.5, 103.5 long |
+
+Ycode's iPhone outline is close to this (its buttons at 150, 223 and
+322.5 dp on the left and 246 dp on the right, its band a single
+#5E5E5E grey 3 wide then black); the targets are the scale (§15.2) and
+the two-tone border with its light line.
+
+### 15.5 Title, subtitle and toolbar glyphs (step 09; the same in 02–08)
+
+| Item | Reference | Ycode now |
+|---|---|---|
+| Subtitle for the iPad | **"iPadOS 27.2"** | "iOS 27.2" |
+| Subtitle for the iPhones | "iOS 27.2", "iOS 27.1" | the same |
+| First toolbar capsule (keyboard, layout) | the keyboard glyph, then the **layout glyph: an outline rounded rectangle with a bar across its top and a narrow panel along its right side**, drawn **dimmed** (disabled for this device); **no separator** between the two | the keyboard glyph, a **separator**, then a **filled** grey rounded rectangle with a lighter rim |
+| Fit-to-content glyph (third capsule, first item) | **two arrows on the rising diagonal** (bottom left to top right), each pointing **inward** to the centre | two arrows on the falling diagonal (top left to bottom right), pointing inward |
+| Inspector capsule (settings, file, info) with the inspector **hidden** | no item drawn selected; a separator between each pair (two separators) | the settings item still drawn **selected** (a grey circle behind it) and no separator between it and the file item |
+| The same with the inspector shown (02) | the settings item selected (a grey circle), one separator, between file and info | the same |
+
+**Targets:** the OS name per device family in the subtitle (iPadOS for
+an iPad; iOS for an iPhone; watchOS, tvOS, visionOS likewise); the
+layout glyph's outline form and dimmed state; no separator inside the
+first capsule; the fit glyph's arrows on the rising diagonal; with the
+inspector hidden, no item selected and both separators shown. Ycode's
+own drawings.
+
+### 15.6 The bottom capsules: glyph contrast and shapes (steps 02, 09)
+
+| Item | Reference | Ycode now |
+|---|---|---|
+| Glyph colour (Home, Screenshot, Record, Rotate, postures) | **#FFFFFF** on the capsule fill (luminance about 59–60) | **#9E9E9E** (drawn disabled: Ycode does not run the device on this Mac) |
+| Home glyph | a 3 × 3 grid of small **rounded squares** | a 3 × 3 grid of circles |
+| Rotate glyph | a square with **two small hooked arrows at two opposite corners** (top right, bottom left) | a square circled by two curved arrows |
+| Duo, open-posture glyph (02) | a flat sheet whose top and bottom edges curve slightly (an unfolded panel), outlined | an open book |
+| iPad (09) | Home, Screenshot, Record in one capsule; Rotate alone in a circle; no posture capsule | the same layout |
+
+**Target:** draw the bottom glyphs at full contrast (#FFFFFF in dark)
+whenever the device is shown, as Device Hub does for a running device;
+show a disabled state only for a control that cannot act, and say why
+in its tooltip (owner's rule 2 for a Ycode-only state). Ycode's own
+drawings with the reference's shapes as above.
+
+### 15.7 Not settled by round 7
+
+- The Duo's 1269-dp box: which posture it is (press the posture buttons
+  and capture the open posture at Zoom to Fit).
+- Whether the width ever limits the fit (a landscape iPad; a 1100 × 800
+  window with the inspector shown and an iPad).
+- Device Hub's own drawing for a device it cannot drive (every round's
+  devices were running in the reference).
+
 ## I. Ycode implementation (HUB-UI, 2026-10-28)
 
 Clean-room work from this spec, `simulator-features.md` §7 and its
@@ -1709,6 +1882,70 @@ scale, the bare window, `device-type`, the glyph's name), `DeviceHubR6Tests`
 and with the inspector hidden, the band's colours read back, the segment's
 image); `WatchWindowTests` follows the rule.
 
+### I.17 Council round 7: every device at Zoom to Fit, outlines, subtitle, glyphs (B7-A, 2026-11-08)
+
+Clean-room work from §15 (checklist rows 170–175 of `fidelity-council.md`,
+"Round 7"), with Apple's public AppKit documentation. No Apple binary,
+Xcode, Device Hub or Simulator was opened, run or observed.
+
+- **Row 170, Zoom to Fit.** `DeviceZoom.hubFit(geometry:foldable:in:)`
+  (YcodeDeviceModel), one rule for both IDEs: the silhouette
+  (`DeviceFrameGeometry.fitSilhouetteHeight`: the outer box's height, the
+  body with any button on its top or bottom edge; a foldable's 1269-point
+  box in every posture) to **0.98 F − 16**, F the free height measured
+  from the reference's 44-point capsule band (`hubFreeHeight`: Ycode's
+  capsules are 36.5, so its area plus 0.5); the outer box's width to
+  0.98 W − 16 of the canvas (Ycode's width cap); the smaller scale. Round
+  6's 54 %/33 % shares are gone. The drawing (symmetric margins) is centred
+  in the area, so the body is centred, as the reference's iPad shows. A
+  fitted device leaves no room for scrolling (`DeviceCanvasView.layout`).
+  Measured in Ycode (macOS, sidebar and inspector hidden, dark): iPhone 17
+  body 324.5 × 673.9 at x 387.7, y 66.7 (1100 × 800) and 371.8 × 771.9
+  at y 68.2 (1400 × 900); iPad Air 485.8 × 671.9 at x 307.1, y 68.1 and
+  556.4 × 769.6 at y 69.4; screens 297.5 × 647 and 424 × 610 at 1100; the
+  Duo 0.531 and 0.608. Linux (`ViewerLayout`) gives the same numbers
+  (`DeviceWindowR7Tests`).
+- **Rows 171–172, outlines.** `DeviceFrameGeometry.bandRings`: tones from
+  the body's edge in, corners concentric with the body's. A classic iPhone
+  and an iPad: a light line 2 (#707071), #2C2C2C 4, black to the screen;
+  body corner 83; the band 18.25 (iPhone) or 60 (iPad); an iPad's screen
+  corner 19. A foldable keeps its 16-point two tones. Buttons: an iPhone's
+  at 159.5, 220, 299 (left) and 261.5 (right) of a 911.5 body, 4.7 out; an
+  iPad's top button 91 long ending 84 from the right edge, 4 out, and its
+  volume buttons `flush` strips (#8A8A8B, 2.5 wide, drawn over the band)
+  52 long, 10 apart, from 121. `DeviceFrameView` (macOS) and
+  `RemoteDeviceWindow` (Linux) draw the rings and the flush strips.
+  Simctl devices Ycode does not know by name use their family's type (402
+  × 874 for a phone, 820 × 1180 for an iPad: the iPhone 17's and the iPad
+  Air's screens).
+- **Row 173.** `DeviceFamily.osTitle`: an iPad's "iOS 27.2" is shown
+  "iPadOS 27.2" (and "xrOS" "visionOS") in the hub's subtitle
+  (`HubDevice.osTitle`), the live session's and the Linux window's.
+- **Row 174.** macOS: Capture Keyboard and the resize toggle are two plain
+  toolbar items (one glass capsule, no separator); the toggle draws
+  `DeviceControlGlyphs.layout` (an outline window with a top bar and a
+  right panel), disabled; Capture Keyboard on is drawn prominent (macOS
+  26+). The compact-window button draws `compactWindow` (two arrows on the
+  rising diagonal, pointing in). With the inspector collapsed the tab group
+  selects none (it switches to select-any; a click on a tab shows the
+  inspector). Linux: the same layout glyph, separators inside the zoom and
+  tab capsules between two unselected neighbours (`DeviceWindowFrame
+  .separators`), and the tabs stay at the toolbar's right end with none
+  selected while the inspector is hidden.
+- **Row 175.** Glyphs at full contrast whenever a device is shown: a device
+  Ycode does not run (macOS) or a display not yet live (Linux) keeps its
+  controls enabled-looking, each tooltip ending in the reason
+  ("Ycode doesn't run this device."), a press showing it as a banner or
+  notice; only Record on Linux (not in this beta) and Rotate on a live
+  device that does not turn stay disabled. Home is `DeviceControlGlyphs
+  .home` (3 × 3 rounded squares), Rotate a square with hooks at its
+  top-right and bottom-left corners (20 × 17.5), the half-open posture a
+  flat sheet with gently sagging edges, on both IDEs.
+
+Tests: `DeviceFrameR7Tests` (YcodeDeviceModel), `DeviceWindowR7Tests`
+(YcodeRemoteViewer), `DeviceHubR7Tests` (YcodeUI; `YCODE_B7_SHOTS`,
+`YCODE_B7_VALUES`); rounds 3–6 tests updated where round 7 superseded them.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -1752,6 +1989,8 @@ image); `WatchWindowTests` follows the rule.
 | Council round 5 (§13): the second capsule's items for a foldable, sizes, centres and colours | 3 | Council round 5 device still (Device Hub and Ycode, dark, 2x): horizontal and vertical colour runs through the capsules, glyph ink boxes and colours |
 | Council round 6 (§14): the selected zoom segment, the frame's and the screen's boxes, the scale, the band, the button bars, the gaps to the toolbar and the capsules | 3 | Council round 6 device still (Device Hub and Ycode, light, 2x, 1100 × 800): colour runs along rows and columns through the frame and the screen, classified as wallpaper, black band, grey band and canvas; rounds 3–5's stills for the same box; the cover display's point size from `foldable.md` and `uikit-feel.md` (level 3) |
 | §14.3's interim scale rule | — | Ycode decision fitted to the one captured window size |
+| Council round 7 (§15): every device's body, screen, corners, border tones and buttons at Zoom to Fit in two window sizes; the fit rule; the subtitle; the toolbar and bottom glyphs and their colours | 3 | Council round 7 device stills (Device Hub and Ycode, dark, 2x; 1100 × 800 and 1400 × 900, inspector shown and hidden; iPhone Duo, iPhone 17, iPad Air 11-inch (M4)): colour runs walked outward from the device's centre along rows and columns, classified as canvas, grey, black and screen; screen and body boxes at three scan lines each; circular corner fits on the outer and screen edges; button bars from columns just outside the body; glyph colours from the brightest pixel per glyph; the screens' point sizes from Apple's published device specifications (level 1) |
+| §15.2's width cap | — | Ycode decision (no captured case was width-limited) |
 | Ycode implementation, round 3 (§I.13): the capsules' layout, the Linux glyphs and More Actions, the cards, the canvas placement | — | §11's measurements; Ycode decisions; public AppKit API (`NSToolbarItemGroup.controlRepresentation`, `NSToolbarItem.isHidden`), SDL 3's public `SDL_GetSystemTheme` (level 1) |
 | Ycode implementation (§I): frame proportions, symbols, steps, banners, lifecycle, persistence, the answers to Q1–Q13 | — | Ycode decisions; public AppKit API (`NSSplitViewController`, `NSToolbarItemGroup`, `NSMenuToolbarItem`, `NSGlassEffectView`, `NSTrackingSeparatorToolbarItem`), public SF Symbols names, AVFoundation (`AVAssetWriter`) and Core Graphics (`CGDisplayScreenSize`) documentation (level 1) |
 | Device panel data (§I.1): pixels, scale, pixels per inch, corner radii | — | Ycode's own device types (`Sources/ycode-simd/DeviceTypes.swift`, `device-capabilities.md`, `foldable.md` §10) |

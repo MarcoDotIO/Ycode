@@ -100,7 +100,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     var navigatorItem: NSSplitViewItem!
     var inspectorItem: NSSplitViewItem!
     var debugItem: NSSplitViewItem!
-    let schemePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
+    let schemePopUp: NSPopUpButton = SchemePopUpButton(frame: .zero, pullsDown: false)
     let destinationPopUp: NSPopUpButton = DestinationPopUpButton(frame: .zero, pullsDown: false)
     private var issueCursor = -1
     /// Per-workspace user data (`WorkspaceUserState`): Recent Files, the
@@ -345,7 +345,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         // Saved user data first: the tree expands from it (N4), the Start
         // Page lists the recent files (L9).
         navigator.recentFiles = userState.existingRecentFiles
-        navigator.savedProjectExpansion = userState.expandedRows
+        // Rows below the main group's children open collapsed (navigators.md round 7 §4).
+        navigator.savedProjectExpansion = userState.expandedRows.map { NavigatorTree.reopenedExpansion($0, root: session.model.root) }
         navigator.onProjectExpansionChange = { [weak self] keys in self?.updateUserState { $0.expandedRows = keys } }
         navigator.setProjectTree(session.model.root, packages: packageSection())
         navigator.addMenuItems = { [weak self] in self?.navigatorAddMenu($0) ?? [] }
@@ -416,7 +417,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         reloadSchemes()
         // Opens with nothing selected: an empty editor whose jump bar reads
         // "No Selection" (reference-ui.md §2).
-        if opensFirstFile { openFirstSourceFile() }
+        if opensFirstFile { openFirstSourceFile() } else { restoreWindowLayout() }   // +Restore.swift (W7.1)
+        observeCloseForRestore()
         updateWindowTitle()
         updateToolbarState()
     }
@@ -512,10 +514,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     private func reloadSchemes() {
         schemePopUp.removeAllItems()
         schemePopUp.addItems(withTitles: session.model.schemeNames)
-        // Each scheme with the target glyph before its name (§7.1 item 2).
+        // Each scheme with its target's app icon (or Ycode's plain app tile)
+        // before its name (§7.1 item 2; council round 8, row 199).
         for item in schemePopUp.itemArray {
-            item.image = NSImage(systemSymbolName: "app.dashed", accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(pointSize: 12, weight: .regular))
+            item.image = SchemeCapsuleImages.schemeImage(appIcon: SchemeCapsuleIcons.appIconURL(scheme: item.title, model: session.model))
         }
         schemePopUp.selectItem(withTitle: session.scheme ?? "")
         chooseDefaultDestination()
@@ -1719,7 +1721,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         case .activity:
             applyBehaviors(for: session.activity)
             switch session.activity {
-            case .idle: activityView.status = WorkspaceChrome.idleActivityText(preparingEditorServices: session.isPreparingEditorServices)
+            case .idle: activityView.status = WorkspaceChrome.idleActivityText(preparingEditorServices: session.isPreparingEditorServices,
+                                                                                    indexing: session.isIndexing)
             case .building(let s), .running(let s), .paused(let s):
                 // A build starts (reference-ui-5.md §5.3.2): earlier issues stay, stale, until it ends.
                 // A test run's build texts (reference-ui-6.md §3.4) are not a
@@ -1805,12 +1808,12 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     /// toolbar (a flexible space before it, the sidebar tracking separator
     /// after it), Back | Forward starts the editor's; a fixed space keeps
     /// New Conversation's circle out of the scheme's capsule (adjacent
-    /// bordered items otherwise share one glass shape), and another keeps
-    /// the issue capsule its own, 7.5 after the scheme's (`editor-area.md`
+    /// bordered items otherwise share one glass shape), another keeps the
+    /// issue capsule its own, 7.5 after the scheme's (`editor-area.md`
     /// G.8), and a third keeps both apart from Add Editor's group when the
     /// flexible space between them closes in a narrowing (G.4: never two
-    /// capsules merged); Show Inspector sits
-    /// in the inspector's section.
+    /// capsules merged; the fixed spaces keep a high visibility priority,
+    /// `toolbarWillAddItem`). Show Inspector sits in the inspector's section.
     public func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [Self.leftPanesID, .flexibleSpace, Self.runID, FlushSidebar.separatorIdentifier, Self.historyID, Self.activityID, .flexibleSpace,
          Self.newConversationID, .space, Self.schemeID, .space, Self.issuesID, .space,
@@ -1915,6 +1918,16 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         observeToolbarRoom()
     }
 
+    /// The fixed spaces between the capsules stay as long as the capsules
+    /// do: short of room the toolbar drops a fixed space (standard priority)
+    /// before a view item, and the capsules on either side then share one
+    /// glass shape (council round 8, row 198: one 218-point capsule held the
+    /// scheme, the issues, Add Editor and Editor Options at 1100 points).
+    public func toolbarWillAddItem(_ n: Notification) {
+        guard let item = n.userInfo?["item"] as? NSToolbarItem, item.itemIdentifier == .space else { return }
+        item.visibilityPriority = .high
+    }
+
     public func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         toolbarDefaultItemIdentifiers(toolbar) + [.space]
     }
@@ -1953,13 +1966,19 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         case Self.newConversationID:
             // §4.3.3: a new conversation in the Coding Assistant pane
             // (coding-assistant.md §4).
+            // Row 214: Ycode's own gradient glyph and the light hover, in a
+            // view the toolbar wraps in its glass circle.
             let item = NSToolbarItem(itemIdentifier: id)
-            item.image = ToolbarGradientGlyph.newConversation()   // H.9, row 166
+            let button = AssistantToolbarButton()
+            button.target = self
+            button.action = #selector(toggleNewConversationPrompt(_:))   // reference-ui-6.md §9.4
+            item.view = button
             item.label = "New Conversation"
             item.toolTip = "New Conversation"
             item.isBordered = true
-            item.target = self
-            item.action = #selector(toggleNewConversationPrompt(_:))   // reference-ui-6.md §9.4
+            let menuForm = NSMenuItem(title: "New Conversation", action: #selector(toggleNewConversationPrompt(_:)), keyEquivalent: "")
+            menuForm.target = self
+            item.menuFormRepresentation = menuForm
             return item
         case Self.leftPanesID:
             let c = toolbarControls.leftPanes
@@ -2099,7 +2118,9 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
 
     static func symbol(for d: Destination) -> String {
         switch (d.kind, d.platform) {
-        case (.mac, _), (.generic, "macOS"): "desktopcomputer"
+        // This computer: a laptop on a laptop (row 199).
+        case (.mac, _): SchemeCapsuleIcons.currentHostForm.symbol
+        case (.generic, "macOS"): "desktopcomputer"
         case _ where d.isYcodeRemoteSimulator: "candybarphone"
         // Neutral glyphs only: no product-shaped symbols (CLAUDE.md rule 5).
         case (_, "watchOS"): "clock"
@@ -2442,8 +2463,9 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         reloadSchemes()
     }
 
-    /// The Open Quickly panel's corner radius (liquid-glass-ycode.md §7).
-    static let openQuicklyCornerRadius: CGFloat = 20
+    /// The Open Quickly panel's corner radius: concentric with its rows
+    /// (council round 9, row 215; liquid-glass-ycode.md §7).
+    static let openQuicklyCornerRadius = CGFloat(OpenQuicklyLayout.cornerRadius)
 
     /// File ▸ Open Quickly… (Shift-Command-O): fuzzy search over the
     /// workspace's files and symbols.
@@ -2458,7 +2480,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             // A floating glass panel over the window (liquid-glass-ycode.md §7).
             let panel = GlassPanel(content: c, cornerRadius: Self.openQuicklyCornerRadius)
             c.onClose = { [weak panel] in panel?.close() }
-            panel.show(over: window)
+            c.onResize = { [weak panel] h in panel?.setHeightKeepingTop(h) }   // row 215: the top stays at 200
+            panel.show(over: window, top: CGFloat(OpenQuicklyLayout.top))
         } else {
             contentViewController?.presentAsSheet(c)
         }
@@ -2570,11 +2593,18 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         return sheet
     }
 
-    /// Starts the language server and opens the current file in it.
+    /// Starts the language server and opens the window's files in it (every
+    /// pane's: a reopened workspace restores its editors, W7.1); the
+    /// activity subtitle stays until the server has answered for them
+    /// (row 201, `EditorServicesPreparation.swift`).
     public func connectLanguageService(transport: DAPTransport?) async {
-        await session.startLanguageService(transport: transport)
+        var seen = Set<URL>()
+        let documents = ([editor] + editorArea.allEditors).compactMap { e -> (url: URL, text: String)? in
+            guard let url = e.fileURL, e.auxiliary == nil, seen.insert(url).inserted else { return nil }
+            return (url, e.text)
+        }
+        await session.startLanguageService(opening: documents, transport: transport)
         session.language?.onApplyEdit = { [weak self] edit in self?.applyWorkspaceEdit(edit) }
-        if let url = editor.fileURL { session.language?.open(url, text: editor.text) }
     }
 
     /// Control-Command-J: asks the language server where the symbol at the

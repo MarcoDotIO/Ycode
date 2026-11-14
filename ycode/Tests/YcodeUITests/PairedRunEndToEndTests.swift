@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import CYcodeTestOffscreen
 import Foundation
 import Testing
 @testable import YcodeIDECore
@@ -37,8 +38,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         p.arguments = ["-x", "-o", "-l\(w.windowNumber)", path]
-        try? p.run()
-        p.waitUntilExit()
+        YcodeOffscreenOpaqueDuringCapture(w) {
+            try? p.run()
+            p.waitUntilExit()
+        }
         log("screenshot \(path) (\(p.terminationStatus))")
     }
 

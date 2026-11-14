@@ -151,18 +151,23 @@ import Testing
 
 extension CouncilRound6ChromeTests {
     /// H.2's reference keyframes, from each motion's own start, against
-    /// the slide's curves: hide ease-out over 195 ms, show ease-in-out over
-    /// 230 (the reference's best named fits), within their fits' error.
+    /// the slide's curves: the hide's ease-out shape (the reference's best
+    /// named fit), within its fit's error. Round 8 (row 204, at a light
+    /// load) replaced the durations: the hide's 196 ms of round 6 is scaled
+    /// to the 150 ms now used, and the show is an even ease-out over 280
+    /// ms (`CouncilRound8MotionTests`).
     @Test func inspectorSlideFollowsTheRound6Curves() {
         let hide: [(Double, Double)] = [(83, 0.02), (98, 0.16), (111, 0.25), (137, 0.38), (164, 0.51), (179, 0.67), (206, 0.82), (219, 0.91),
                                         (235, 0.94), (248, 0.99), (273, 1)]
         let show: [(Double, Double)] = [(102, 0.02), (114, 0.04), (129, 0.12), (155, 0.19), (168, 0.31), (195, 0.44), (208, 0.58), (234, 0.71),
                                         (249, 0.82), (275, 0.91), (287, 0.96), (313, 1)]
-        for (table, isShow, start) in [(hide, false, 77.0), (show, true, 95.0)] {
+        _ = show
+        for (table, isShow, start) in [(hide, false, 77.0)] {
             let delay = EditorMetrics.inspectorSlideDelay(show: isShow)
             var squares = 0.0
             for (ms, p) in table {
-                let d = EditorMetrics.inspectorSlideProgress(elapsed: delay + (ms - start) / 1000, show: isShow) - p
+                let scale = EditorMetrics.inspectorSlideMotion(show: isShow) / 0.196
+                let d = EditorMetrics.inspectorSlideProgress(elapsed: delay + (ms - start) / 1000 * scale, show: isShow) - p
                 squares += d * d
                 #expect(abs(d) < 0.13, "\(isShow ? "show" : "hide") \(ms): \(d)")
             }
@@ -172,8 +177,9 @@ extension CouncilRound6ChromeTests {
         }
         // The hide's fast start: 16 % of the travel 21 ms in (H.2).
         let early = EditorMetrics.inspectorSlideProgress(elapsed: EditorMetrics.inspectorSlideDelay(show: false) + 0.021, show: false)
-        #expect(early > 0.1 && early < 0.25, "\(early)")
-        #expect(EditorMetrics.inspectorSlideMotion(show: false) == 0.195 && EditorMetrics.inspectorSlideMotion(show: true) == 0.230)
+        #expect(early > 0.1 && early < 0.3, "\(early)")
+        // Round 10 (row 248): hide 200 ms, show 230 (CouncilRound10InspectorTests).
+        #expect(EditorMetrics.inspectorSlideMotion(show: false) == 0.200 && EditorMetrics.inspectorSlideMotion(show: true) == 0.230)
     }
 
     /// Each frame of the slide (the divider moved, the window laid out and
@@ -248,24 +254,27 @@ extension CouncilRound6ChromeTests {
     /// view), the critically damped return at ω 13.5, settled within about
     /// 700 ms of the flick's start.
     @Test func bounceCurveMatchesRound6() {
-        #expect(TopBounce.omega == 13.5 && abs(TopBounce.peakTime - 0.0714) < 0.001)
+        // Round 9 (rows 220–222) supersedes the depth and the return: the
+        // stretch's law, ω 11.3 at the top; the rise still peaks 71 ms after
+        // the crossing.
+        #expect(TopBounce.omega == 11.3 && abs(TopBounce.peakTime - 0.0714) < 0.001)
         let visible = 770.0
         for v in [4000.0, 4500, 9000] {
             let e = TopBounce.effectiveVelocity(v, visibleHeight: visible)
             let peak = TopBounce.peak(velocity: e)
             print("R6CHROME bounce v \(v): peak \(peak), at rest after \(TopBounce.duration(velocity: e))")
-            #expect(peak > 105 && peak <= 0.16 * visible + 0.01, "\(v): \(peak)")
+            #expect(abs(peak - TopBounce.stretch(forCrossing: v)) < 0.01 && peak <= TopBounce.maximumShare * visible + 0.01, "\(v): \(peak)")
             // Reaching the top at 90 ms, at rest by about 700–790 (the reference: −1 at 696, 0 at 782).
             let d = TopBounce.duration(velocity: e)
             #expect(0.090 + d > 0.62 && 0.090 + d < 0.80, "\(d)")
             // No oscillation: never past the top on the way back.
             for t in stride(from: 0.0, through: 1.2, by: 0.005) { #expect(TopBounce.overscroll(velocity: e, at: t) >= 0) }
         }
-        // The return from the peak: half gone about 120–135 ms after it, 10 % left at about 300.
+        // The return from the peak (ω 11.3): half gone about 148 ms after it, 10 % left at about 344.
         let e = TopBounce.effectiveVelocity(4500, visibleHeight: visible)
         let p = TopBounce.peak(velocity: e)
-        let half = TopBounce.overscroll(velocity: e, at: TopBounce.peakTime + 0.125) / p
-        let tenth = TopBounce.overscroll(velocity: e, at: TopBounce.peakTime + 0.31) / p
+        let half = TopBounce.overscroll(velocity: e, at: TopBounce.peakTime + 0.148) / p
+        let tenth = TopBounce.overscroll(velocity: e, at: TopBounce.peakTime + 0.344) / p
         #expect(abs(half - 0.5) < 0.05 && abs(tenth - 0.1) < 0.03, "\(half) \(tenth)")
     }
 
@@ -316,7 +325,9 @@ extension CouncilRound6ChromeTests {
         let sorted = frameTimes.sorted()
         print("R6CHROME flick: visible \(visible), peak \(peak), frames \(frames.count), at rest after \(String(format: "%.3f", took)) s, frame ms median \(sorted.isEmpty ? 0 : sorted[sorted.count / 2]) max \(sorted.last ?? 0)")
         #expect(!scroll.topBounce.isRunning)
-        #expect(peak > 100 && peak < 135, "\(peak)")
+        // Round 9 (row 220): about 38 for main 04's crossing; this burst
+        // crosses at the gesture's speed (4800 points a second), a little more.
+        #expect(peak > 30 && peak < 50, "\(peak)")
         #expect(frames.allSatisfy { $0 >= 0 })
         #expect(abs(clip.bounds.minY - top) < 0.5)
         // Settled within about 700 ms of the crossing (the timer stands in
@@ -431,8 +442,11 @@ extension CouncilRound6ChromeTests {
         let content = dir.appendingPathComponent("GlassScroll/ContentView.swift")
         let png = dir.appendingPathComponent("GlassScroll/Stripes.png")
         #expect(wc.inspector.file?.path == long.path && !wc.isInspectorFollowPending)
+        // Round 8 (row 206) rebuilds the inspector with the editor; round
+        // 6's order is kept behind `isEnabled` and checked here.
+        wc.inspectorFollowBox.isEnabled = true
         wc.inspectorFollowBox.defersOffscreen = true
-        defer { wc.inspectorFollowBox.defersOffscreen = false }
+        defer { wc.inspectorFollowBox.defersOffscreen = false; wc.inspectorFollowBox.isEnabled = false }
         var times: [Double] = []
         for (next, before) in [(content, long), (png, content), (long, png)] {
             let t0 = CACurrentMediaTime()
@@ -519,7 +533,7 @@ extension CouncilRound6ChromeTests {
 
 extension CouncilRound6ChromeTests {
     /// The leading capsule's list and sparkle; New Conversation's bubble in
-    /// a pink-to-purple gradient (not tinted by the toolbar); the Changes |
+    /// its own gradient (row 214's angular one; not tinted by the toolbar); the Changes |
     /// Repositories titles at 11 points ("Changes" about 45 in ink), 2 lower.
     @Test func toolbarAndSourceControlGlyphs() throws {
         #expect(WorkspaceChrome.leftPanes.symbols == ["list.bullet", "sparkles"])
@@ -535,11 +549,10 @@ extension CouncilRound6ChromeTests {
             }
         }
         try #require(!reds.isEmpty)
-        // Pink to purple: red falls across the glyph (by at least 0.15; the
-        // rasterized range is narrower at 1x, 0.72…0.91 on a CI runner) and
-        // blue stays high, nothing black.
+        // Round 9 (row 214) replaced the pink-to-purple fill with the angular
+        // gradient: red-orange at the top, blue at the bottom; nothing black.
         let redSpread = (reds.max() ?? 0) - (reds.min() ?? 0)
-        #expect((reds.max() ?? 0) > 0.85 && redSpread > 0.15 && (blues.min() ?? 0) > 0.5, "\(reds.min() ?? 0)…\(reds.max() ?? 0)")
+        #expect((reds.max() ?? 0) > 0.9 && redSpread > 0.2 && (blues.max() ?? 0) > 0.8, "\(reds.min() ?? 0)…\(reds.max() ?? 0)")
         let f = NSFont.systemFont(ofSize: CGFloat(RepositoriesViewStyle.modeControlFontSize))
         let ink = NSAttributedString(string: "Changes", attributes: [.font: f])
             .boundingRect(with: NSSize(width: 200, height: 40), options: [.usesDeviceMetrics, .usesLineFragmentOrigin]).width

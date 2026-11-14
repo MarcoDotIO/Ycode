@@ -95,14 +95,16 @@ extension FrameEvent {
     /// scheduling state then (`scheduling-policy.md` §4.4, §4.7): bits 0–3 its
     /// host class + 1, bits 4–7 its own class + 1, bits 8–11 its image's push
     /// class (send and sync-wait pushes) + 1, bit 12 set while its process is
-    /// darwin-bg. 0: unknown.
+    /// darwin-bg, bits 13–15 the class last applied to the calling host
+    /// thread + 1 (0: none; `HostSched.appliedClass`). 0: unknown.
     static func schedBits(_ c: ThreadContext) -> UInt16 {
         let own = c.schedClass
-        guard let k = c.kernel else { return UInt16(own + 1) & 0xF | UInt16(own + 1) & 0xF << 4 }
+        let applied = UInt16(max(0, min(6, HostSched.appliedClass() + 1))) << 13
+        guard let k = c.kernel else { return UInt16(own + 1) & 0xF | UInt16(own + 1) & 0xF << 4 | applied }
         let push = k.imagePushClass
         let host = max(own, push)
         return UInt16(host + 1) & 0xF | (UInt16(own + 1) & 0xF) << 4 | (UInt16(push + 1) & 0xF) << 8
-            | (k.processIsDarwinBG ? 1 << 12 : 0)
+            | (k.processIsDarwinBG ? 1 << 12 : 0) | applied
     }
 }
 

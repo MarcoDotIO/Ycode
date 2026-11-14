@@ -55,6 +55,8 @@ public enum ShellCommand: String, CaseIterable, Sendable {
     case toggleCanvas, canvasLayoutAutomatic, canvasLayoutRight, canvasLayoutBottom
     // File ▸ New ▸ Editor Pane On Right, Below (WorkspaceShellModel+Panes.swift)
     case splitEditor, splitEditorBelow
+    // File ▸ Open Quickly… (ShellOpenQuicklyModel.swift)
+    case openQuickly
 
     /// The `CommandTable` action (and tag) of the command.
     public var action: (selector: String, tag: Int) {
@@ -144,6 +146,7 @@ public enum ShellCommand: String, CaseIterable, Sendable {
         case .canvasLayoutBottom: ("setCanvasLayout:", 2)
         case .splitEditor: ("splitEditor:", 0)
         case .splitEditorBelow: ("splitEditorBelow:", 0)
+        case .openQuickly: ("openQuickly:", 0)
         default: (Self.integrateSelectors[self] ?? Self.assistantActions[self]?.selector ?? "", 0)
         }
     }
@@ -176,7 +179,7 @@ public enum ShellCommand: String, CaseIterable, Sendable {
         case .findSelectedSymbol, .showCallHierarchy: "Find"
         case .showSymbolNavigator, .showFileInspector, .showQuickHelpInspector: "View"
         case .toggleCanvas, .canvasLayoutAutomatic, .canvasLayoutRight, .canvasLayoutBottom: "Editor"
-        case .splitEditor, .splitEditorBelow: "File"
+        case .splitEditor, .splitEditorBelow, .openQuickly: "File"
         default: Self.assistantActions[self]?.menu ?? "Integrate"
         }
     }

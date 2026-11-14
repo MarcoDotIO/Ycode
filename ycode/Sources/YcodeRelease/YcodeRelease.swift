@@ -5,7 +5,7 @@ import Foundation
 /// constant, the file and the Flatpak metainfo disagree. Foundation only,
 /// because `Tools/ycode-swb` compiles the same source through a symbolic link.
 public enum YcodeRelease {
-    public static let version = "1.0.0-beta.2"
+    public static let version = "1.0.0-beta.3"
     /// The name people read in release notes and on the download page.
     public static let marketingVersion = "1.0.0 Beta"
 

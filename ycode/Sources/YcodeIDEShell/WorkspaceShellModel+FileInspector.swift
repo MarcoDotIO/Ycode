@@ -5,8 +5,10 @@ import YcodeIDECore
 /// sections and rows the macOS IDE's inspector shows
 /// (`InspectorAreaController.fileInspector`; `cross-platform-parity.md` §5):
 /// Identity and Type with Working Copy and Relative Path, On Demand Resource
-/// Tags, Image Properties and Localization for an image, Target Membership,
-/// and Text Settings for text. A package's files show only Identity and
+/// Tags (a "Tags" field for a resource), Image Properties for an image,
+/// Localization for a resource, Target Membership, and Text Settings for
+/// text. Resource or source, and the Type's name, come from the file's type
+/// (`FileTypeRoles`, council round 9, rows 229 and 230). A package's files show only Identity and
 /// Type and Text Settings (reference-ui-6.md §6, I1).
 extension WorkspaceShellModel {
     public var fileInspector: [InspectorSection] {
@@ -16,9 +18,10 @@ extension WorkspaceShellModel {
         let info = FileInspectorInfo.make(for: url, in: session.model, repositoryRoot: Preferences.shared.sourceControlEnabled ? root : nil)
         let isProject = url.pathExtension == "xcodeproj"
         let isImage = ImageHeaderInfo.isImage(url)
+        let isResource = isImage || FileTypeRoles.isResource(url, recorded: info.recordedType)
         var identity = [
             InspectorRow(key: "Name", value: .field(url.lastPathComponent)),
-            InspectorRow(key: "Type", value: .popUp("Default - " + WorkspaceChrome.fileTypeName(for: url)), ruleAfter: true),
+            InspectorRow(key: "Type", value: .popUp("Default - " + WorkspaceChrome.fileTypeName(for: url, recordedType: info.recordedType)), ruleAfter: true),
             // metrics.md §12.4: "Relative to Group", also in a synchronized
             // folder (where the pop-up is disabled and the button hidden).
             InspectorRow(key: "Location", value: .popUp(isProject ? "Absolute" : "Relative to Group",
@@ -33,15 +36,18 @@ extension WorkspaceShellModel {
         }
         var sections = [InspectorSection(title: "Identity and Type", rows: identity)]
         if !isProject && !info.isPackageFile {
-            // An image is a resource: a "Tags" field (editor-area.md §D.8).
+            // A resource (an image, Markdown, JSON) has a "Tags" field
+            // (editor-area.md §D.8, row 230).
             sections.append(InspectorSection(title: "On Demand Resource Tags",
-                                             rows: [InspectorRow(key: "", value: .tags(placeholder: isImage ? "Tags" : "Only resources are taggable",
-                                                                                       enabled: isImage))]))
+                                             rows: [InspectorRow(key: "", value: .tags(placeholder: isResource ? "Tags" : "Only resources are taggable",
+                                                                                       enabled: isResource))]))
             if isImage {
                 // "--" in all four, as the reference shows for an image
                 // selected in the navigator (`editor-area.md` H.7, row 162).
                 let rows = ImageHeaderInfo.placeholderRows.map { InspectorRow(key: $0.0, value: .text($0.1)) }
                 sections.append(InspectorSection(title: "Image Properties", rows: rows))
+            }
+            if isResource {
                 sections.append(InspectorSection(title: "Localization", rows: [InspectorRow(key: "", value: .button("Localize…"))]))
             }
             if !info.memberships.isEmpty {

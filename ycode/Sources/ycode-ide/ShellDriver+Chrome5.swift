@@ -41,6 +41,9 @@ extension ShellDriver {
         w.session.isPreparingEditorServices = true
         await shot("activity")
         w.session.isPreparingEditorServices = false
+        w.session.isIndexing = true   // row 189: the indexing subtitle
+        await shot("indexing")
+        w.session.isIndexing = false
     }
     #endif
 }

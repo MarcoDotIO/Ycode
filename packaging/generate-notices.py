@@ -44,9 +44,46 @@ COMPONENTS = [
     ("swift-argument-parser", "1.8.2", "https://github.com/apple/swift-argument-parser", "Apache-2.0 WITH Swift Runtime Library Exception", "DMG, Flatpak (ycode-swb)", ["checkout:swift-argument-parser/LICENSE.txt"]),
     ("swift-system", "1.8.1", "https://github.com/apple/swift-system", "Apache-2.0", "DMG, Flatpak (ycode-swb)", ["checkout:swift-system/LICENSE.txt"]),
     ("swift-toolchain-sqlite (SQLite)", "1.0.13", "https://github.com/swiftlang/swift-toolchain-sqlite", "Public domain (SQLite); Apache-2.0 packaging", "DMG, Flatpak (ycode-swb)", ["checkout:swift-toolchain-sqlite/LICENSE"]),
-    ("LLVM", "20.1", "https://github.com/llvm/llvm-project", "Apache-2.0 WITH LLVM-exception", "aarch64 Flatpak only (ycode-airc)", [L + "llvm-LICENSE.txt"]),
+    ("LLVM (libLLVM)", "22.1", "https://github.com/llvm/llvm-project", "Apache-2.0 WITH LLVM-exception", "aarch64 Flatpak only (ycode-airc)", [L + "llvm-LICENSE.txt"]),
+    ("libjpeg-turbo (libjpeg.so.62, from the freedesktop 26.08 runtime)", "the runtime's", "https://github.com/libjpeg-turbo/libjpeg-turbo",
+     "IJG AND BSD-3-Clause AND Zlib", "Flatpak (lib/; the display stream loads it at run time)", [L + "libjpeg-turbo-LICENSE.txt"]),
+    # ycode-airc's private runtime (aarch64, lib/ycode-sim/airc/lib; build-ycode.sh):
+    # copied unmodified from the freedesktop 26.08 SDK, except libxml2 (built here).
+    ("GNU C Library (dynamic loader, libc, libm)", "2.44, from the freedesktop 26.08 runtime", "https://sourceware.org/glibc/",
+     "LGPL-2.1-or-later; parts under the notices in its LICENSES file", "aarch64 Flatpak only (ycode-airc's private libraries; source: the runtime's)",
+     [L + "7zip-LGPL-2.1.txt", L + "glibc-LICENSES.txt"]),
+    ("GCC runtime libraries (libstdc++, libgcc_s)", "from the freedesktop 26.08 runtime", "https://gcc.gnu.org",
+     "GPL-3.0-or-later WITH GCC-exception-3.1", "aarch64 Flatpak only (ycode-airc's private libraries)",
+     [L + "gcc-COPYING.RUNTIME.txt", L + "gcc-COPYING3.txt"]),
+    ("libffi", "from the freedesktop 26.08 runtime", "https://github.com/libffi/libffi", "MIT", "aarch64 Flatpak only (ycode-airc's private libraries)",
+     [L + "libffi-LICENSE.txt"]),
+    ("zlib-ng (libz.so.1)", "from the freedesktop 26.08 runtime", "https://github.com/zlib-ng/zlib-ng", "Zlib", "aarch64 Flatpak only (ycode-airc's private libraries)",
+     [L + "zlib-ng-LICENSE.txt"]),
+    ("Zstandard (libzstd)", "1.5.7, from the freedesktop 26.08 runtime", "https://github.com/facebook/zstd", "BSD-3-Clause", "aarch64 Flatpak only (ycode-airc's private libraries)",
+     [L + "zstd-LICENSE.txt"]),
+    ("libxml2 (for libLLVM, built without ICU)", "2.15.4", "https://gitlab.gnome.org/GNOME/libxml2", "MIT", "aarch64 Flatpak only (ycode-airc's private libraries)",
+     [L + "libxml2-2.15-LICENSE.txt"]),
     ("SPIRV-Tools", "vulkan-sdk-1.4.363.0", "https://github.com/KhronosGroup/SPIRV-Tools", "Apache-2.0", "aarch64 Flatpak only (compiled into ycode-airc)", [L + "spirv-tools-LICENSE.txt"]),
     ("SPIRV-Headers", "vulkan-sdk-1.4.363.0", "https://github.com/KhronosGroup/SPIRV-Headers", "MIT-style (Khronos)", "aarch64 Flatpak only (compiled into ycode-airc)", [L + "spirv-headers-LICENSE.txt"]),
+    ("devicon (language logos in the project navigator)", "v2.18.0", "https://github.com/devicons/devicon", "MIT",
+     "DMG, Flatpak (compiled in as vector outlines converted from its single-colour \"-plain\" and \"-line\" SVGs, in ycode/Resources/language-logos)",
+     ["ycode/Resources/language-logos/LICENSE"]),
+]
+
+# The language logos' owners (devicon's MIT licence covers the collection;
+# the logos stay their owners' marks).
+TRADEMARKS = [
+    "Swift and the Swift logo are trademarks of Apple Inc.",
+    "Python and the Python logos are trademarks or registered trademarks of the Python Software Foundation.",
+    "The C++ logo is a trademark of the Standard C++ Foundation.",
+    "JavaScript is a trademark or registered trademark of Oracle Corporation; Java and the Java logo are trademarks or registered trademarks of Oracle Corporation and its affiliates.",
+    "TypeScript and the TypeScript logo are trademarks of Microsoft Corporation.",
+    "Rust and the Rust logo are trademarks of the Rust Foundation.",
+    "Go and the Go gopher are trademarks of Google LLC; the gopher was designed by Renee French.",
+    "The Ruby logo is copyright 2006 Yukihiro Matsumoto, licensed under the Creative Commons Attribution-ShareAlike 2.5 licence (CC BY-SA 2.5); Ycode draws devicon's single-colour rendering of it (ruby-plain), which stays under that licence.",
+    "Kotlin and the Kotlin logo are trademarks of the Kotlin Foundation.",
+    "The HTML5 logo is by the W3C; the CSS3 logo is drawn from devicon's single-colour variant.",
+    "The Bash logo and the C logo are drawn from devicon's single-colour variants.",
 ]
 
 # Programs Ycode runs when the user asks for a runtime download (#55) but
@@ -106,6 +143,11 @@ def main():
     out += ["", "## Licence texts", ""]
     for key, text in texts.items():
         out += ["### " + ", ".join(users[key]), "", "```text", text.rstrip(), "```", ""]
+    out += ["## Trademarks", "",
+            "The project navigator, the jump bar, the merge sheet and Open Quickly show each language's logo next to files in that language, from devicon (above): its single-colour "-plain" variant, or its "-line" variant where devicon has no plain one (C, Rust). Ycode converts their outlines to its own vector data and draws each in one colour, tinted per file type (white on a selected row); the outlines of the "-line" variants are drawn with a thicker stroke. The Swift logo is devicon's plain variant inverted: the bird alone, without the rounded square it is knocked out of. The Python logo is drawn as the outline of devicon's plain variant's shapes, not filled. Markdown and JSON files show Ycode's own glyphs (an open book; braces round a quote), not logos; no devicon file is used for them.",
+            "The logos belong to their owners:", ""]
+    out += ["- " + t for t in TRADEMARKS]
+    out += ["", "Ycode is not affiliated with, sponsored by or endorsed by any of these owners.", ""]
     out += ["## Programs Ycode runs but does not ship", "",
             "Getting a simulator runtime (`specs/simulator/runtime-downloads.md` §6) uses these programs, only when the user",
             "asks for a download. Ycode runs each as a separate program, or loads the system's library at run time; it links",

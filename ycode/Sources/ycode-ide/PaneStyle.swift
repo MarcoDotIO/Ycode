@@ -60,17 +60,13 @@ extension ShellColors {
     var inspectorTableBorder: Color { rgb((166, 166, 167), (113, 113, 114)) }
 
     /// The project navigator's icon colours (`WorkspaceChrome.IconTint`):
-    /// the system orange and blue, a lighter blue for folders, neutral grey
-    /// for plain groups.
+    /// the reference's measured tint per type, shared with the macOS IDE
+    /// (`FileGlyphs.tint`, council round 9, rows 208–213); other files the
+    /// accent.
     func icon(_ t: WorkspaceChrome.IconTint) -> Color {
         if onAccent { return .white }
-        return switch t {
-        case .orange: rgb((255, 141, 40), (255, 146, 48))
-        case .blue: rgb((0, 136, 255), (0, 145, 255))
-        case .lightBlue: rgb((127, 186, 255), (76, 168, 255))
-        case .grey: rgb((123, 123, 128), (153, 153, 153))
-        case .accent: accent
-        }
+        guard let g = FileGlyphs.tint(t) else { return accent }
+        return FileGlyphView.color(g, dark: dark)
     }
 }
 

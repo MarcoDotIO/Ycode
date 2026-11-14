@@ -51,8 +51,9 @@ that the person opens, so it can stay on for a whole interactive session.
     1 raised, 2 image end or suspension, 3 bound), u8 thread kind (1 main,
     2 pthread, 3 workqueue), u16 the thread's scheduling state on trap enter
     and exit (bits 0–3 its host class + 1, 4–7 its own class + 1, 8–11 its
-    image's push class + 1, bit 12 its process darwin-bg; `scheduling-policy.md`
-    §4.4–§4.12), else 0;
+    image's push class + 1, bit 12 its process darwin-bg, bits 13–15 the
+    class last applied to its host thread + 1, 0 none (since B3-BOOT12);
+    `scheduling-policy.md` §4.4–§4.12), else 0;
   - `<path>.<n>.names`: pid → program; `host <tid> <name>` for each host
     thread that woke a guest thread (a thread that fired timers is named
     `kernel-timers`; others by their Linux thread name, e.g.

@@ -372,6 +372,24 @@ package final class WindowServices {
 
     package var nextTimerDeadline: TimeInterval? { timers.values.map(\.deadline).min() }
 
+    private var frameCallbacks: [ObjectIdentifier: (TimeInterval) -> Void] = [:]
+
+    /// Runs `fire` once, at the start of the next display frame, with the
+    /// frame's time (or with nil cancels it), replacing `owner`'s earlier
+    /// request (B6-OPENVIEWS: a spring that moves every frame).
+    package func requestFrame(_ owner: AnyObject, fire: ((TimeInterval) -> Void)?) {
+        frameCallbacks[ObjectIdentifier(owner)] = fire
+    }
+
+    package var hasFrameCallbacks: Bool { !frameCallbacks.isEmpty }
+
+    package func runFrameCallbacks(at time: TimeInterval) {
+        guard !frameCallbacks.isEmpty else { return }
+        let due = frameCallbacks
+        frameCallbacks.removeAll()
+        for (_, fire) in due { fire(time) }
+    }
+
     /// The deadline of `owner`'s timer, if one is set.
     package func timerDeadline(_ owner: AnyObject) -> TimeInterval? { timers[ObjectIdentifier(owner)]?.deadline }
 

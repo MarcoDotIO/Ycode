@@ -222,10 +222,11 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             pane.chooseAppearance(.dark)
             #expect(p.appearance == .dark && pane.appearanceButtons.map(\.state) == [.off, .off, .on])
             #expect(pane.preview.string.contains("struct Greeter"))
-            // R5.1: Theme and Name, then a colour row per element.
+            // R5.1: Theme and Name, then the colour rows.
             #expect(Array(pane.rowTitles.prefix(2)) == ["Theme", "Name"])
-            #expect(Array(pane.rowTitles.dropFirst(2).prefix(9)) == ["Foreground", "Comments", "Documentation Comments", "Strings", "Numbers",
-                                                                     "Keywords", "Preprocessor Statements", "Attributes", "Type Names"])
+            // R7.1: the reference's cards and order.
+            #expect(Array(pane.rowTitles.dropFirst(2).prefix(9)) == ["Foreground", "Background", "Background Gradient", "Customize All Colors",
+                                                                     "Plain Text", "Comments", "Documentation Comments", "Keywords", "Strings"])
             pane.chooseTheme("Ycode Dusk")
             #expect(p.themeName == "Ycode Dusk")
             pane.duplicateClicked()
@@ -377,7 +378,13 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             let box = cancelled
             let wait = waitsForCancel
             Task {
-                if wait { try? await Task.sleep(for: .seconds(30)) }
+                // Waits for the cancel the first error asks for. The session
+                // sees that error on the main actor, which in a full run can
+                // take more than a minute; a fixed 30 s sent the second error
+                // first. A session that never cancels still gets it, later.
+                if wait {
+                    for _ in 0..<3000 where !box.value { try? await Task.sleep(for: .milliseconds(100)) }
+                }
                 guard !box.value else { return }
                 c.yield(.issue(second))
                 c.yield(.finished(BuildResult(status: .failed, exitCode: 65, issues: [first, second])))
@@ -522,7 +529,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             let large = height()
             let visible = e.scrollView.contentSize.height
             #expect(visible > 0 && medium > none && large > medium)
-            #expect(abs((medium - none) - (visible * 0.5).rounded()) <= 1)
+            // Half of the text area (the view less its top and bottom insets),
+            // less the text container's own inset (editor-area.md I.3, row 178).
+            let area = visible - e.scrollView.contentInsets.top - e.scrollView.contentInsets.bottom
+            #expect(abs((medium - none) - ((area * 0.5).rounded() - tv.textContainerInset.height)) <= 1)
 
             // Code structure headers: scrolled into values(), the struct and
             // the function stay on top.

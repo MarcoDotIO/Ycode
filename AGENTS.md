@@ -56,6 +56,19 @@ Rules:
    5. Disassembly or decompilation. This is the last resort. Use it only for
       interop-relevant formats or protocols, and record why it was necessary.
 5. Do not use Apple trademarks or artwork in Ycode's UI or assets.
+   One exception, by the owner's decision on 2026-11-08: the project
+   navigator's file icons may show each language's official logo,
+   including the Swift logo. The logos come from the MIT-licensed devicon
+   set (pinned release): since 2026-11-13, by the owner's choice, its
+   single-colour "plain"/"line" variants, drawn as vectors and tinted per
+   file type, with no other change to their shapes except that the Swift
+   logo is drawn as its bird alone, without the tile, and the Python logo
+   as its outline only (the owner's requests on 2026-11-13). A notice in
+   THIRD_PARTY_NOTICES.md names each logo's trademark owner and says Ycode
+   is not affiliated with them. The exception covers only those file
+   icons (in the navigator and wherever the same file icon is listed, such
+   as the jump bar and Open Quickly). JSON, Markdown (an open book) and
+   the title area use Ycode's own glyphs.
 
 Legal context: the Xcode license agreement prohibits reverse engineering
 except where the law permits it. Interoperability exceptions are an

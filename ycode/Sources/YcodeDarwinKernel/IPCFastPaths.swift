@@ -309,9 +309,15 @@ extension MachIPC {
             threadLocks.deferReceiveWrite = false
             threadLocks.prefetchedSend = nil
         }
-        let outcome = lock.withLock(context: context) { () -> TrapOutcome? in
-            guard fastSendAllowed(n, frame, memory) else { return nil }
-            return handleTrapLocked(x16: Int64(n), frame: &frame, context: context, memory: memory)
+        let outcome: TrapOutcome?
+        if PortLockSplit.enabled, let fine = fineMachMsg(n, &frame, context: context, memory: memory) {
+            // A fine step (`mach-ipc-locking.md` §4.12): G shared and space locks.
+            outcome = fine
+        } else {
+            outcome = lock.withLock(context: context) { () -> TrapOutcome? in
+                guard fastSendAllowed(n, frame, memory) else { return nil }
+                return handleTrapLocked(x16: Int64(n), frame: &frame, context: context, memory: memory)
+            }
         }
         if let w = threadLocks.pendingReceiveWrite {
             threadLocks.pendingReceiveWrite = nil
@@ -326,7 +332,14 @@ extension MachIPC {
     /// the locked path's handler under the port lock alone. Never blocks.
     func handleFastPortRoutine(_ n: Int, _ frame: inout TrapFrame, context: ThreadContext,
                                memory: any GuestVirtualMemory) -> TrapOutcome? {
-        lock.withLock(context: context) {
+        if PortLockSplit.enabled, n == Trap.portDeallocate, let fine = fineDeallocate(&frame, context: context, memory: memory) {
+            return fine
+        }
+        if PortLockSplit.enabled, UInt32(bitPattern: Int32(truncatingIfNeeded: n)) == Routine.threadGetState,
+           let fine = fineThreadGetState(&frame, context: context, memory: memory) {
+            return fine
+        }
+        return lock.withLock(context: context) {
             handleTrapLocked(x16: Int64(n), frame: &frame, context: context, memory: memory)
         }
     }

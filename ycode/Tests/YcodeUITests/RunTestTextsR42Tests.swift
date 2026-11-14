@@ -12,8 +12,11 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
 /// §2.4.2), the default simulator (T11, §2.4.3) and the run and test
 /// activity texts (T5, §3.2–§3.4). Simulators, `simctl`, ssh and the
 /// launcher are stand-ins.
+///
+/// The run sequences await many hops to the main actor in a row; the suite
+/// starts once those hops are quick (`MainActorQuietTrait`).
 @MainActor
-@Suite(.serialized, .timeLimit(.minutes(5))) struct RunTestTextsR42Tests {
+@Suite(.serialized, .mainActorQuiet, .timeLimit(.minutes(5))) struct RunTestTextsR42Tests {
     func sim(_ name: String, _ version: String, type: String? = nil) -> Destination {
         Destination(name: name, specifier: "platform=iOS Simulator,id=\(name)-\(version)", platform: "iOS", kind: .simulator,
                     osVersion: version, identifier: "\(name)-\(version)",

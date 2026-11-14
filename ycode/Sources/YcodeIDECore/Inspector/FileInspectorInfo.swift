@@ -14,6 +14,10 @@ public struct FileInspectorInfo: Equatable {
     public var inSynchronizedFolder: Bool
     /// A file of a Swift package: only Identity and Type and Text Settings.
     public var isPackageFile: Bool
+    /// The type the project file records for the file's reference
+    /// (`explicitFileType`, else `lastKnownFileType`); nil in a
+    /// synchronized folder or outside a project (council row 229).
+    public var recordedType: String?
     public init(workingCopy: String? = nil, relativePath: String? = nil, memberships: [TargetMembership] = [],
                 inSynchronizedFolder: Bool = false, isPackageFile: Bool = false) {
         self.workingCopy = workingCopy

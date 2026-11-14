@@ -13,8 +13,22 @@
 extern "C" {
 #endif
 
-/* 1 when JPEG encoding works here (header at build time, library at run time). */
+/* 1 when JPEG encoding works here: the header at build time, and at run
+ * time a libjpeg of the same ABI that took a test picture both ways
+ * (YCODE_JPEG_LIBRARY names one to try first). */
 int ycodec_jpeg_available(void);
+
+/* Why JPEG is not available (which libraries were tried and what each
+ * did), or NULL when it is. */
+const char *ycodec_jpeg_problem(void);
+
+/* Loads `name` on its own and puts a test picture through it as a caller of
+ * libjpeg ABI `callerVersion` (normally this build's JPEG_LIB_VERSION,
+ * ycodec_jpeg_abi_version). 0 when it works, else -1 and the reason in why. */
+int ycodec_jpeg_probe_library(const char *name, int callerVersion, char *why, size_t whySize);
+
+/* The libjpeg ABI this build was compiled against (0 without JPEG). */
+int ycodec_jpeg_abi_version(void);
 
 /* Encodes `width` x `height` BGRA pixels (rows `bytesPerRow` apart) as a
  * baseline JPEG of `quality` (1...100). On success returns 0 and sets *out

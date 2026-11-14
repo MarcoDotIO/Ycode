@@ -1,4 +1,5 @@
 import AppKit
+import CYcodeTestOffscreen
 import Foundation
 import Testing
 @testable import YcodeIDECore
@@ -121,8 +122,10 @@ import YcodeProject
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         p.arguments = ["-x", "-o", "-l\(win.windowNumber)", url.path]
-        try? p.run()
-        p.waitUntilExit()
+        YcodeOffscreenOpaqueDuringCapture(win) {
+            try? p.run()
+            p.waitUntilExit()
+        }
         if !wasVisible { win.orderOut(nil) }
         // A window kept off every display cannot be captured by the window
         // server: the window's own drawing instead (materials drawn flat).

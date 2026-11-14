@@ -11,6 +11,7 @@
 #include "ov_shaders.h"
 
 #include <dlfcn.h>
+#include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -139,6 +140,7 @@ struct ovk_context {
     char name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
     int is_cpu;
     int has_swapchain_ext;
+    int shared_instance;
 
     VkCommandPool pool;
     VkCommandBuffer cmd;
@@ -206,6 +208,100 @@ static int contains_ci(const char *hay, const char *needle) {
     return 0;
 }
 
+/* ------------------------------------------------------------------ */
+/* Shared instances                                                    */
+/* ------------------------------------------------------------------ */
+
+/* Contexts with the same instance extensions share one VkInstance, and the
+ * shared instances are destroyed only when no context is left. Each window
+ * has a context of its own; with NVIDIA's driver on Wayland, destroying a
+ * closed window's instance while another instance's swapchain was in use
+ * made that swapchain's next vkAcquireNextImageKHR jump to address 0 (the
+ * Linux IDE crashed on the frame after a second window closed). Destroying
+ * the closed window's device and surface alone is safe. */
+#define OVK_MAX_SHARED_INSTANCES 8
+
+typedef struct {
+    VkInstance instance;
+    PFN_vkDestroyInstance destroy;
+    char *key; /* the extension names, each followed by a newline */
+    uint32_t refs;
+} ovk_shared_instance;
+
+static ovk_shared_instance g_instances[OVK_MAX_SHARED_INSTANCES];
+static uint32_t g_instance_count;
+static uint32_t g_instance_refs; /* contexts using any shared instance */
+static pthread_mutex_t g_instance_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static char *extension_key(const char *const *extensions, uint32_t count) {
+    size_t n = 1;
+    for (uint32_t i = 0; i < count; i++) n += strlen(extensions[i]) + 1;
+    char *key = malloc(n), *p = key;
+    if (!key) return NULL;
+    for (uint32_t i = 0; i < count; i++) {
+        size_t len = strlen(extensions[i]);
+        memcpy(p, extensions[i], len);
+        p[len] = '\n';
+        p += len + 1;
+    }
+    *p = 0;
+    return key;
+}
+
+/* The shared instance for `ici`'s extensions, made when there is none. A
+ * full table gives the context an instance of its own (shared_instance 0). */
+static VkResult acquire_instance(ovk_context *c, const VkInstanceCreateInfo *ici) {
+    char *key = extension_key(ici->ppEnabledExtensionNames, ici->enabledExtensionCount);
+    pthread_mutex_lock(&g_instance_lock);
+    for (uint32_t i = 0; key && i < g_instance_count; i++) {
+        if (strcmp(g_instances[i].key, key) != 0) continue;
+        g_instances[i].refs++;
+        g_instance_refs++;
+        c->instance = g_instances[i].instance;
+        c->shared_instance = 1;
+        pthread_mutex_unlock(&g_instance_lock);
+        free(key);
+        return VK_SUCCESS;
+    }
+    VkResult r = c->f.vkCreateInstance(ici, NULL, &c->instance);
+    if (r == VK_SUCCESS && key && g_instance_count < OVK_MAX_SHARED_INSTANCES) {
+        ovk_shared_instance *e = &g_instances[g_instance_count++];
+        e->instance = c->instance;
+        e->destroy = (PFN_vkDestroyInstance)g_gipa(c->instance, "vkDestroyInstance");
+        e->key = key;
+        e->refs = 1;
+        key = NULL;
+        g_instance_refs++;
+        c->shared_instance = 1;
+    }
+    pthread_mutex_unlock(&g_instance_lock);
+    free(key);
+    return r;
+}
+
+static void release_instance(ovk_context *c) {
+    if (!c->shared_instance) {
+        if (c->f.vkDestroyInstance) c->f.vkDestroyInstance(c->instance, NULL);
+        return;
+    }
+    pthread_mutex_lock(&g_instance_lock);
+    for (uint32_t i = 0; i < g_instance_count; i++)
+        if (g_instances[i].instance == c->instance && g_instances[i].refs > 0) {
+            g_instances[i].refs--;
+            g_instance_refs--;
+            break;
+        }
+    if (g_instance_refs == 0) {
+        for (uint32_t i = 0; i < g_instance_count; i++) {
+            if (g_instances[i].destroy) g_instances[i].destroy(g_instances[i].instance, NULL);
+            free(g_instances[i].key);
+        }
+        memset(g_instances, 0, sizeof g_instances);
+        g_instance_count = 0;
+    }
+    pthread_mutex_unlock(&g_instance_lock);
+}
+
 ovk_context *ovk_create(const char *const *extensions, uint32_t extension_count, int with_swapchain,
                         char *err, size_t errlen) {
     if (ovk_load(err, errlen) != 0) return NULL;
@@ -224,7 +320,7 @@ ovk_context *ovk_create(const char *const *extensions, uint32_t extension_count,
                              .pEngineName = "OVRender", .apiVersion = VK_API_VERSION_1_3};
     VkInstanceCreateInfo ici = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pApplicationInfo = &app,
                                 .enabledExtensionCount = extension_count, .ppEnabledExtensionNames = extensions};
-    VkResult r = c->f.vkCreateInstance(&ici, NULL, &c->instance);
+    VkResult r = acquire_instance(c, &ici);
     if (r != VK_SUCCESS) {
         fail(err, errlen, "vkCreateInstance failed (%d)", r);
         free(c);
@@ -813,6 +909,6 @@ void ovk_destroy(ovk_context *c) {
         c->f.vkDestroyDevice(c->device, NULL);
     }
     if (c->surface && c->f.vkDestroySurfaceKHR) c->f.vkDestroySurfaceKHR(c->instance, c->surface, NULL);
-    if (c->instance && c->f.vkDestroyInstance) c->f.vkDestroyInstance(c->instance, NULL);
+    if (c->instance) release_instance(c);
     free(c);
 }

@@ -365,9 +365,14 @@ public final class SettingsRowView: NSView {
             s.translatesAutoresizingMaskIntoConstraints = false
             s.setHuggingPriority(.required, for: .horizontal)
             addSubview(s)
+            // A switch's centre sits 0.9 under the label's cap centre (R7.1:
+            // the 36 × 16 switch 10.5 under a 36.5 row's top, y 516–532 in
+            // the row from 505.5); other controls on the label's frame centre.
+            let capHeight = NSFont.systemFont(ofSize: SettingsMetrics.fontSize).capHeight
             cs += [
                 s.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -SettingsMetrics.controlInset),
-                s.centerYAnchor.constraint(equalTo: label.centerYAnchor),
+                rowKind == .toggle ? s.centerYAnchor.constraint(equalTo: label.firstBaselineAnchor, constant: 0.9 - capHeight / 2)
+                    : s.centerYAnchor.constraint(equalTo: label.centerYAnchor),
                 s.leadingAnchor.constraint(greaterThanOrEqualTo: label.trailingAnchor, constant: 12),
                 s.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 4),
                 s.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -4),
@@ -527,6 +532,8 @@ final class ClosureSwitch: NSSwitch {
     /// The row's title.
     let title: String
     var onChange: ((ClosureSwitch) -> Void)?
+    /// Drawn in full but not changeable (a built-in theme's switches, R7.1).
+    var readOnly = false
 
     init(title: String) {
         self.title = title
@@ -565,7 +572,7 @@ final class ClosureSwitch: NSSwitch {
 
     /// A click flips the switch (no drag; the knob moves at once).
     override func mouseDown(with event: NSEvent) {
-        guard isEnabled else { return }
+        guard isEnabled, !readOnly else { return }
         flip()
     }
 
@@ -578,7 +585,7 @@ final class ClosureSwitch: NSSwitch {
     override func accessibilityRole() -> NSAccessibility.Role? { .checkBox }
     override func accessibilitySubrole() -> NSAccessibility.Subrole? { .switch }
     override func accessibilityPerformPress() -> Bool {
-        guard isEnabled else { return false }
+        guard isEnabled, !readOnly else { return false }
         flip()
         return true
     }

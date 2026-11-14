@@ -35,8 +35,9 @@ func settingsColor(_ c: (r: Double, g: Double, b: Double)) -> Color { Color(.sRG
 
 // MARK: Appearance thumbnails
 
-/// One appearance's 67 × 44 window-on-wallpaper picture, with the 3-point
-/// ring 1 point outside it when chosen (the view is 4 points larger on
+/// One appearance's 67 × 44 picture (a close-up of a window's top-left
+/// corner over a wallpaper, R7.4), with the 3-point ring 1 point outside it
+/// when chosen (the view is 4 points larger on
 /// every side, as on macOS).
 struct AppearanceThumbnail: View {
     var appearance: Preferences.Appearance
@@ -64,41 +65,53 @@ struct AppearanceThumbnail: View {
 
     @ViewBuilder var picture: some View {
         switch appearance {
-        case .light: Self.look(AppearanceThumbnailArt.light)
-        case .dark: Self.look(AppearanceThumbnailArt.dark)
+        case .light: Self.look(AppearanceThumbnailArt.light, dark: false, system: false)
+        case .dark: Self.look(AppearanceThumbnailArt.dark, dark: true, system: false)
         case .system:
             ZStack(alignment: .leading) {
-                Self.look(AppearanceThumbnailArt.dark)
-                Self.look(AppearanceThumbnailArt.light)
+                Self.look(AppearanceThumbnailArt.dark, dark: true, system: true)
+                Self.look(AppearanceThumbnailArt.light, dark: false, system: true)
                     .frame(width: SettingsAppearanceLayout.thumbnailSize.width)
                     .mask(alignment: .leading) { Rectangle().frame(width: AppearanceThumbnailArt.splitX) }
             }
         }
     }
 
-    static func look(_ l: AppearanceThumbnailArt.Look) -> some View {
-        let w = AppearanceThumbnailArt.window
+    /// The close-up of R7.4 (`AppearanceThumbnailCloseUp`) over the look's
+    /// wallpaper: the bar and its mark, the translucent panel, the window's
+    /// top-left corner with its title area and buttons.
+    static func look(_ l: AppearanceThumbnailArt.Look, dark: Bool, system: Bool) -> some View {
+        let C = AppearanceThumbnailCloseUp.self
+        let w = C.window(system: system)
         let hex = SettingsPalette.hex
+        let bar = C.barFill(dark: dark), panel = C.panelFill(dark: dark)
+        let shape = RoundedRectangle(cornerRadius: C.windowRadius, style: .continuous)
         return ZStack(alignment: .topLeading) {
             LinearGradient(colors: [hex(l.wallpaperTop), hex(l.wallpaperBottom)], startPoint: .top, endPoint: .bottom)
             ThumbnailWave().fill(hex(l.wave).opacity(l.waveOpacity))
+            Rectangle().fill(hex(bar.color).opacity(bar.opacity)).frame(height: C.barHeight)
+            Circle().fill(hex(C.markFill(dark: dark))).frame(width: C.markDiameter, height: C.markDiameter)
+                .offset(x: C.markCenter.x - C.markDiameter / 2, y: C.markCenter.y - C.markDiameter / 2)
+            RoundedRectangle(cornerRadius: C.panelRadius, style: .continuous).fill(hex(panel.color).opacity(panel.opacity))
+                .frame(width: C.panel.width, height: C.panel.height)
+                .offset(x: C.panel.minX, y: C.panel.minY)
             ZStack(alignment: .top) {
-                RoundedRectangle(cornerRadius: AppearanceThumbnailArt.windowRadius, style: .continuous).fill(hex(l.window))
-                Rectangle().fill(hex(l.titleArea)).frame(height: AppearanceThumbnailArt.titleAreaHeight)
-                    .clipShape(UnevenRoundedRectangle(cornerRadii: RectangleCornerRadii(topLeading: AppearanceThumbnailArt.windowRadius,
-                                                                                         bottomLeading: 0, bottomTrailing: 0,
-                                                                                         topTrailing: AppearanceThumbnailArt.windowRadius)))
-                RoundedRectangle(cornerRadius: AppearanceThumbnailArt.windowRadius, style: .continuous).stroke(hex(l.windowEdge), lineWidth: 0.5)
+                shape.fill(hex(l.window))
+                Rectangle().fill(hex(l.titleArea)).frame(height: C.titleAreaHeight)
+                    .clipShape(UnevenRoundedRectangle(cornerRadii: RectangleCornerRadii(topLeading: C.windowRadius, bottomLeading: 0,
+                                                                                         bottomTrailing: 0, topTrailing: C.windowRadius)))
+                shape.stroke(hex(l.windowEdge), lineWidth: 0.5)
             }
-            .frame(width: w.width, height: w.height)
+            .frame(width: w.width, height: w.height, alignment: .top)
             .offset(x: w.minX, y: w.minY)
-            ForEach(Array(AppearanceThumbnailArt.dots.enumerated()), id: \.offset) { pair in
-                let d = AppearanceThumbnailArt.dotDiameter
-                Circle().fill(hex(pair.element.color)).frame(width: d, height: d)
-                    .offset(x: pair.element.x - d / 2, y: AppearanceThumbnailArt.dotY - d / 2)
+            ForEach(Array(zip(C.buttonCenters(system: system), C.buttonColors).enumerated()), id: \.offset) { pair in
+                let d = C.buttonDiameter
+                Circle().fill(hex(pair.element.1)).frame(width: d, height: d)
+                    .offset(x: pair.element.0.x - d / 2, y: pair.element.0.y - d / 2)
             }
         }
         .frame(width: SettingsAppearanceLayout.thumbnailSize.width, height: SettingsAppearanceLayout.thumbnailSize.height, alignment: .topLeading)
+        .clipped()
     }
 }
 
@@ -190,95 +203,7 @@ struct SettingsPaneSeparator: View {
     var body: some View { Rectangle().fill(SettingsPalette(scheme).paneSeparator).frame(height: height).frame(maxWidth: .infinity) }
 }
 
-// MARK: Colour rows
-
-/// The colour slider (R6.1): a 14-point track in one hue, from a pale
-/// tint at the left to the full colour at the right
-/// (`ThemeColorRows.paleTint`), with a 1-point darker edge, and a knob
-/// about 28 across (a white rim around the colour under it) at the row's
-/// strength. A built-in theme's row is read-only but drawn in full.
-struct ThemeColorSlider: View {
-    /// The full colour (the track's right end).
-    var base: (r: Double, g: Double, b: Double)
-    var value: Binding<Double>
-    var target: String
-    @Environment(\.isEnabled) private var isEnabled
-
-    var body: some View {
-        let L = SettingsAppearanceLayout.self
-        let R = SettingsAppearanceR6.self
-        let k = L.sliderKnob
-        let pale = ThemeColorRows.paleTint(base, strength: 0)
-        let shown = ThemeColorRows.paleTint(base, strength: value.wrappedValue)
-        let e = R.trackEdgeFactor
-        ZStack(alignment: .leading) {
-            ZStack {
-                Capsule(style: .continuous)
-                    .fill(LinearGradient(colors: [settingsColor(ThemeColorRows.darker(pale, e)), settingsColor(ThemeColorRows.darker(base, e))],
-                                         startPoint: .leading, endPoint: .trailing))
-                Capsule(style: .continuous)
-                    .fill(LinearGradient(colors: [settingsColor(pale), settingsColor(base)], startPoint: .leading, endPoint: .trailing))
-                    .padding(R.edgeWidth)
-            }
-            .frame(height: L.sliderTrackHeight)
-            ZStack {
-                Circle().fill(Color.white).shadow(color: Color.black.opacity(0.2), radius: 2, y: 0.5)
-                Circle().fill(settingsColor(shown)).padding(R.knobRim)
-            }
-            .frame(width: k, height: k)
-            .offset(x: CGFloat(value.wrappedValue) * (L.sliderWidth - k))
-        }
-        .frame(width: L.sliderWidth, height: k)
-        .contentShape(Rectangle())
-        .gesture(DragGesture(minimumDistance: 0).onChanged { g in
-            guard isEnabled else { return }
-            value.wrappedValue = min(max(Double((g.location.x - k / 2) / (L.sliderWidth - k)), 0), 1)
-        })
-        .accessibilityLabel(target)
-        .shellTarget(target)
-    }
-}
-
-/// The colour well: a 48 × 28 capsule, a 3-point #DFDFDF rim around the
-/// colour (the knob's), the colour edged 1 point darker (R6.1); a click
-/// shows #RRGGBB in a popover to edit (empty: the system's).
-struct ThemeColorWell: View {
-    var color: (r: Double, g: Double, b: Double)
-    var hex: String
-    var target: String
-    var onCommit: (String?) -> Void
-    @State private var editing = false
-    @State private var text = ""
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        let p = SettingsPalette(scheme)
-        let L = SettingsAppearanceLayout.self
-        let R = SettingsAppearanceR6.self
-        Button { text = hex; editing = true } label: {
-            ZStack {
-                Capsule(style: .continuous).fill(p.wellRim)
-                Capsule(style: .continuous).fill(settingsColor(ThemeColorRows.darker(color, R.wellEdgeFactor))).padding(L.wellRim)
-                Capsule(style: .continuous).fill(settingsColor(color)).padding(L.wellRim + R.edgeWidth)
-            }
-            .frame(width: L.wellSize.width, height: L.wellSize.height)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(target)
-        .shellTarget(target)
-        .popover(isPresented: $editing) {
-            TextField("System", text: $text)
-                .font(.system(size: 12, design: .monospaced))
-                .frame(width: 110)
-                .padding(12)
-                .onSubmit {
-                    let t = text.trimmingCharacters(in: .whitespaces)
-                    if t.isEmpty { onCommit(nil) } else if let c = ThemeColorRows.components(t) { onCommit(ThemeColorRows.hex(c.r, c.g, c.b)) }
-                    editing = false
-                }
-        }
-    }
-}
+// The colour rows (slider, colour button, row) are in SettingsR7Controls.swift.
 
 // MARK: Components
 

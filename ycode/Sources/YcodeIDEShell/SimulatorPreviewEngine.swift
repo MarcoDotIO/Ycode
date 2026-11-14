@@ -99,7 +99,8 @@ public final class SimulatorPreviewEngine: PreviewCanvasEngine, @unchecked Senda
         }
         let t0 = Date()
         let fm = FileManager.default
-        let cache = workDirectory.appendingPathComponent("ModuleCache")
+        let cache = PreviewModuleCache.prepare(workDirectory.appendingPathComponent("ModuleCache"))
+        let crashed: ((status: Int32, output: String)) -> Bool = { $0.status != 0 && PreviewModuleCache.looksLikeCompilerCrash($0.output) }
         // The host's executable, once per SDK and host source.
         let version = "\(tc.sdkVersion)-v\(PreviewHost.sourceVersion)"
         if hostExecutable?.version != version {
@@ -108,7 +109,9 @@ public final class SimulatorPreviewEngine: PreviewCanvasEngine, @unchecked Senda
             let src = dir.appendingPathComponent("main.swift"), exe = dir.appendingPathComponent(PreviewHost.executableName)
             if !fm.isExecutableFile(atPath: exe.path) {
                 do { try PreviewPayloadGenerator.write(PreviewHost.bundledPlanSource, to: src) } catch { return .failure(.host("\(error)")) }
-                let r = PreviewChild.runSwiftc(tc.arguments(sources: [src], output: exe, moduleName: PreviewHost.executableName, library: false, moduleCache: cache))
+                let r = PreviewModuleCache.retryingAfterCrash(cache, {
+                    PreviewChild.runSwiftc(tc.arguments(sources: [src], output: exe, moduleName: PreviewHost.executableName, library: false, moduleCache: cache))
+                }, crashed: crashed)
                 guard r.status == 0 else { return .failure(.host("The preview host did not build: \(r.output.suffix(600))")) }
             }
             hostExecutable = (version, exe)
@@ -129,7 +132,9 @@ public final class SimulatorPreviewEngine: PreviewCanvasEngine, @unchecked Senda
         let previewsDir = app.appendingPathComponent("Previews")
         let payload = previewsDir.appendingPathComponent("payload.dylib")
         do { try fm.createDirectory(at: previewsDir, withIntermediateDirectories: true) } catch { return .failure(.host("\(error)")) }
-        let compiled = PreviewChild.runSwiftc(tc.arguments(sources: sources.files, output: payload, moduleName: module.name, library: true, moduleCache: cache))
+        let compiled = PreviewModuleCache.retryingAfterCrash(cache, {
+            PreviewChild.runSwiftc(tc.arguments(sources: sources.files, output: payload, moduleName: module.name, library: true, moduleCache: cache))
+        }, crashed: crashed)
         guard compiled.status == 0, fm.fileExists(atPath: payload.path) else {
             return .failure(.compile(PreviewCompiler.issues(from: compiled.output, lineMaps: sources.lineMaps)))
         }

@@ -4,10 +4,17 @@
 // panel, sheet, alert or menu of a test process reaches a display.
 //
 // - Every window ordered in, and every frame given to a visible window, is
-//   moved to the left of all displays (only when it would touch one), and
-//   AppKit's constraint to a screen is off, so it stays there. Windows order
-//   in and out without AppKit's animations, which draw on a display even
-//   for a window off every display.
+//   moved 20,000 points to the left of all displays (only when it would
+//   touch one), and AppKit's constraint to a screen is off, so it stays
+//   there. A visible window that moves, resizes or changes screen by any
+//   other path (AppKit's own, the window server's, a display added or
+//   rearranged) is moved off again at once. Windows order in and out
+//   without AppKit's animations, which draw on a display even for a window
+//   off every display.
+// - Every window is fully transparent on the window server (its
+//   `alphaValue` still reads what was set; drawing is unchanged), so a
+//   window that reaches a display shows nothing there. Such a window still
+//   counts as on a display for the checks below.
 // - App-modal alerts and panels (`runModal`, open and save panels) are not
 //   shown: they return Cancel at once. Menus do not pop up. The app is not
 //   activated. Finder and other apps are not asked to open anything. Each of
@@ -40,6 +47,16 @@ NSArray<NSString *> *YcodeOffscreenWindowsOnDisplays(void);
 /// Every window of this process the sentinel found on a display since the
 /// process started, one line each. Empty when none.
 NSArray<NSString *> *YcodeOffscreenViolations(void);
+
+/// Runs `capture` (a `screencapture -l` of the window) with the window
+/// opaque on the window server; the window is moved off the displays first,
+/// and is transparent again afterwards. Without it a capture is blank.
+void YcodeOffscreenOpaqueDuringCapture(NSWindow *window, void (NS_NOESCAPE ^capture)(void));
+
+/// Moves a window as AppKit's own paths or the window server would, past
+/// the guard's setters (tests of the guard). The sentinel ignores the
+/// window during the call.
+void YcodeOffscreenMoveUnguardedForTesting(NSWindow *window, NSRect frame);
 
 /// How many times the guard moved a window off the displays.
 NSInteger YcodeOffscreenParkCount(void);

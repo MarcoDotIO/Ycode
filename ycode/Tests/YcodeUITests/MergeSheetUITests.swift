@@ -185,18 +185,18 @@ import Testing
         let mergeItem = try #require(menu.items.first { $0.title == "Merge \u{201C}feature\u{201D} into \u{201C}main\u{201D}…" })
         #expect(scm.menuState().isEnabled("scmMerge:"))
 
-        // Choosing it: the alert, centred, 420 × 133, Merge the default.
+        // Choosing it: the alert, centred, 420 × 132 (row 195), Merge the default.
         _ = (mergeItem.target as? NSObject)?.perform(mergeItem.action, with: mergeItem)
         let overlay = try #require(scm.mergeOverlay)
         let alert = try #require(overlay.alert)
         overlay.layoutSubtreeIfNeeded()
         let expected = MergeSheetMetrics.alertFrame(window: (overlay.bounds.width, overlay.bounds.height))
-        #expect(alert.frame == NSRect(x: expected.x, y: expected.y, width: 420, height: 133))
+        #expect(alert.frame == NSRect(x: expected.x, y: expected.y, width: 420, height: 132))
         #expect(overlay.bounds.size == wc.window?.contentView?.superview?.bounds.size)
         #expect(alert.titleField.stringValue == "Are you sure you want to merge from \u{201C}feature\u{201D}?")
         #expect(alert.messageField.stringValue == "Changes from \u{201C}feature\u{201D} will be merged into your current branch (\u{201C}main\u{201D}).")
         #expect(alert.cancelButton.frame.size == NSSize(width: 58, height: 20) && alert.mergeButton.frame.size == NSSize(width: 79, height: 20))
-        #expect(alert.mergeButton.frame.maxX == 420 - 20.5 && alert.mergeButton.frame.maxY == 133 - 18)
+        #expect(alert.mergeButton.frame.maxX == 420 - 20.5 && alert.mergeButton.frame.maxY == 132 - 18)
         #expect(alert.mergeButton.frame.minX - alert.cancelButton.frame.maxX == 14.5)
         #expect(alert.iconView.frame == NSRect(x: 28.5, y: 22, width: 55, height: 55))
         // The veil: black at 19.6 % (white becomes #CDCDCD) over 255 ms.
@@ -230,7 +230,7 @@ import Testing
         await eventually("the abort") { await scm.idle(); return scm.mergeOverlay == nil }
         wc.scmMerge(nil)
         let chooser = try #require(scm.mergeOverlay?.alert)
-        #expect(chooser.chooser?.itemTitles == ["feature"] && chooser.frame.height == 133 + 30)
+        #expect(chooser.chooser?.itemTitles == ["feature"] && chooser.frame.height == 132 + 30)
         chooser.cancel(nil)
         #expect(scm.mergeOverlay == nil)
     }

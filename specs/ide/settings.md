@@ -848,8 +848,193 @@ hue and strength functions (YcodeIDECore `SettingsRound6.swift`); YcodeUI
   laid out (`SettingsRowMetrics.snappedSeparatorTops` gives the
   reference's 260.5, 298.5, 337, 375 for General's card from 223).
 
+## Council round 7: Appearance below the first screen, the dark Foreground row, the slider's accessibility, the thumbnails (2026-11-08)
+
+Round 7 ran with the **system in Dark** (steps 20–22 dark; each app's own
+Appearance set to Light for 23–26 and to Dark for the supplement D02–D05)
+and added **X13**: Settings ▸ Appearance (system dark) with its list
+scrolled **360 points** down by a 60-event scroll. The list below the
+first screen was rebuilt from X13's recording (each frame matched to the
+previous one and pasted into one tall picture), so every row from Theme
+to Keywords is measured, not only what the after still shows. The
+accessibility trees of both panes were recorded at X10 (the unscrolled
+pane). 710 × 452 window, 2x; y below is the window's y **as if the list
+were not scrolled** (the list's first card starts at 305, as in R6.1).
+Ycode `0afb3bd7`. Checklist rows 182–185 in `fidelity-council.md`.
+
+**Owner's design rules:** where the reference has the element, match it;
+where Ycode has an element the reference lacks, design it to the
+platform's human interface guidelines in the OS 26+ glass language; and
+Ycode's macOS and Linux IDEs look one to one.
+
+### R7.1 The Theme list, row by row (X13, dark)
+
+The default theme ("Standard" in the reference, Ycode's own default in
+Ycode), Theme segment. Cards are separated by **10-point gaps**
+(#1F1F1F); rows inside a card by a 1-point line (#303031). Every label's
+cap top is **13 below its row's top**, whatever the row's height.
+
+| # | Row (card) | Reference: y, height | Its control | Ycode now |
+|---|---|---|---|---|
+| 1 | Theme (card A) | to 344.5 | Choose… (R6.1) | the same |
+| 2 | Name (card A) | 345.5–381.5 (36) | the name, right-aligned | the same |
+| — | gap | 381.5–391.5 | | the same |
+| 3 | **Foreground** (card B) | 391.5–447.5 (**56**) | slider track x 421.5–624 (R6.1); colour button x 632–680, y 405.5–433.5 (**48 × 28**) | the same row (colours: R7.2) |
+| 4 | **Background** (card B) | 448.5–504.5 (**56**) | slider: the knob at the **left end** (centre about x 436), filled with the background colour (#484748) and a white rim; to its left the track is that grey, to its right a **blue gradient** #4A5A69 → #5695C4 → #3B93CE at x 624; colour button 48 × 28 showing **#484748** (accessibility value "rgb 0.277 0.277 0.277") | **missing** |
+| 5 | **Background Gradient** (card B) | 505.5–542 (**36.5**) | a switch x **644–680**, y 516–532 (**36 × 16**), **on**: blue fill #067DFF, white knob on the right | **missing** |
+| — | gap | 542–552 | | |
+| 6 | **Customize All Colors** (card C, alone) | 552–588.5 (36.5) | a switch 36 × 16 at x 644–680, **off**: track #393939–#3B3B3C, white knob on the left | **missing** |
+| — | gap | 588.5–598.5 | | |
+| 7 | **Plain Text** (card D, alone) | 598.5–645.5 (**47**) | **a colour button only**, x 632–680, **48 × 24**, centred in the row (11.5 from its top and bottom), showing #FBF2F4 | **missing** |
+| — | gap | 645.5–655.5 | | |
+| 8 | **Comments** (card E) | 655.5–702.5 (47) | colour button only, 48 × 24, #ACB4CE | a **56** row with a slider and a 48 × 28 well (#CCD1E0) |
+| 9 | **Documentation Comments** (card E) | 703.5–750.5 (47) | colour button only, #ACB4CE | 56, slider and well (a green, #7EE397) |
+| 10 | **Keywords** (card E) | 751.5–798.5 (47) | colour button only, #FF83B4 | Ycode's 6th row (after Strings and Numbers), 56, slider and well |
+| … | card E continues | (the scroll ended here) | | Preprocessor Statements, Attributes, Type Names, Background, Selection, Current Line, then a note that built-in themes cannot be changed and the Theme File buttons |
+
+So the colour-only rows are **47 + 1 = 48** on centre, the slider rows
+**56 + 1 = 57**, the switch rows 36.5. The colour button in a
+colour-only row is 4 points shorter than in a slider row (24 against
+28), the same width (48), the same right edge (680). The reference's
+order is **Foreground, Background, Background Gradient │ Customize All
+Colors │ Plain Text │ Comments, Documentation Comments, Keywords, …**;
+its rows after Keywords were not reached (R7.5).
+
+What the switches do was not captured (none was pressed). By their
+names and the list: Background Gradient draws the editor's background as
+a gradient (on in the default theme); Customize All Colors, when on,
+gives each syntax row its own full control (it was off, and the syntax
+rows showed colour buttons only). Ycode's per-row strength sliders
+(round 6's implementation) are therefore the reference's
+Customize-All-Colors state at most, not its default.
+
+**Target:** the reference's rows, order, cards, heights and controls as
+in the table; syntax rows as colour buttons only (48 × 24) while
+Customize All Colors is off; Ycode's rows that the reference lacks
+(Strings, Numbers and the others it has not been seen to show) follow
+the reference's order once it is captured, and until then come after
+Keywords; Ycode's note and Theme File buttons stay at the end (rule 2).
+
+### R7.2 The Foreground row in dark (D02, X13; refines R6.1)
+
+| Part | Reference, light (23) | Reference, dark (D02) | Ycode now, light and dark alike |
+|---|---|---|---|
+| Track, left end → right end | a pale tint #E5C8D0, #F1C5D2 → #F1B6C7, #E9A1B8 → the knob → #E984A7, #EB759F, #E86496 → **deep #DA4982** | a **muted mid pink** #DCAAB9, #DD9FB3 → #E99EB9, #ED99B9 → the knob → #FBA7C7, #FFB5D1, #FFC0D7 → **pale #FFD4E7** | pale #F7D2E3 → #F0A4C2 → knob → #EB83AE, #E66399 → deep **#E35691** |
+| Knob (50 %) and the colour button | **#EF98B4** | **#FF9EC4** (accessibility value "rgb 1 0.618 0.767") | #EE96BA |
+
+In dark the reference's track runs the **other way in tone**: from a
+muted, slightly greyed pink at the left to a pale tint at the right, and
+the colour at 50 % is lighter (#FF9EC4 against light's #EF98B4). In both
+appearances the right end is the one that stands out more from the
+editor's background (deep on white, pale on dark), so the slider reads
+as low contrast at the left and high contrast at the right (an inference
+from the look; the slider was not moved, R7.3). **Target:** in dark,
+the track from a muted tone of the colour (#DCAAB9 here) to a pale tint
+(#FFD4E7), the knob and the button at the dark 50 % colour (#FF9EC4 for
+the default theme); in light, unchanged (R6.1, met in round 7).
+
+### R7.3 The Foreground slider in the accessibility tree (X10)
+
+| | Reference | Ycode now |
+|---|---|---|
+| Elements of the Foreground row, in order | the label (static text at x 210, y 401.5, 70.5 × 16); **an element for the slider, x 421.5–624, y 401.5–437.5 (202.5 × 36)**, role *unknown*, no value; the colour **button**, x 632–680, y 405.5–433.5, value "rgb 1 0.617596 0.766966 1", actions Press and one that opens the colour panel | the label; a **colour well** "Foreground", x 631–681, y 404.5–434.5 (50 × 30), value "System"; **nothing for the slider** |
+| Background row | the same three (slider element 202.5 × 36; button value "rgb 0.277317 …") | — |
+| Background Gradient, Customize All Colors | switches (check boxes of subrole switch), 36 × 16, values 1 and 0 | — |
+
+Neither app exposes the track as a slider, so the capture tool could not
+move it in either (round 7 artefact 9). **Target:** expose the slider as
+an element with the reference's frame (the track plus 11 above and
+below: 202.5 × 36 at x 421.5, y 401.5 for Foreground) between the label
+and the colour button. Its role: the reference's is *unknown* with no
+value, which a screen reader cannot use; Ycode gives it the **slider**
+role, the row's label as its title, and its value as a percentage, with
+increment and decrement actions (rule 2: the platform's accessibility
+guidelines; the frame and the order match). The colour control is a
+**button** whose value is the colour, as in the reference.
+
+### R7.4 The Appearance thumbnails (X10, 23, D02)
+
+Three thumbnails of **67 × 61** (System x 463–530, Light 538–605, Dark
+613–680; y 81–142), the selected one in the blue ring (R5.1). What they
+show:
+
+| | Reference | Ycode now |
+|---|---|---|
+| Composition | a **close-up of a desktop**: a thin bar along the top with a small round mark at its left; a wide translucent rounded panel at the upper left (about x 2–39, y 8–20 of the thumbnail); and the **top-left corner of a large window** filling the lower right, its top edge about **40 %** down (y 24 of 61) and its left edge about 17 in (6 in the split System thumbnail) | a **small whole window** centred on a blue background, its top edge 9 down |
+| Traffic lights | **large**: about 6 across, centres about **10** apart (x 28, 38, 48 in the Light thumbnail), at about **59 %** of the height (y 36 of 61), along the window's top edge | tiny (about 2.5 across, 4–5 apart) at the window's top left, about 13 down |
+| Light / Dark | the light desktop and a white window; the dark desktop (deep blue) and a near-black window; System split down the middle | the same split, Ycode's own blue backgrounds |
+
+**Target:** the reference's composition and scale (Ycode's own drawing:
+its own wallpaper and mark, no Apple artwork): a close-up of a window's
+top-left corner with large traffic lights at about 59 % of the height, a
+translucent panel above it and a thin bar at the top.
+
+### R7.5 Not settled by round 7
+
+- The rows after Keywords and the end of the list (scroll further:
+  about 900 points).
+- What Background Gradient and Customize All Colors change (press each),
+  and what the Foreground slider changes (drag it in a duplicated theme,
+  not the built-in one).
+- The Fonts and Editor segments.
+
+### Ycode implementation (round 7)
+
+Both IDEs draw rows 182–185 from `SettingsAppearanceR7`,
+`ThemeColorTrack` and `AppearanceThumbnailCloseUp` (YcodeIDECore
+`SettingsRound7.swift`); YcodeUI `SettingsAppearancePane.swift`,
+`SettingsR7Views.swift`; ycode-ide `SettingsPaneAppearance.swift`,
+`SettingsR7Controls.swift`.
+
+- **The list (row 182).** After card A: [Foreground, Background, Background
+  Gradient] [Customize All Colors] [Plain Text] [Comments, Documentation
+  Comments, Keywords, then Strings, Numbers, Preprocessor Statements,
+  Attributes, Type Names, Selection, Current Line], 10 apart; the note and
+  Theme File last. Slider rows 56 (the slider x 421.5–624 in a 202.5 × 36
+  frame, a 48 × 28 button); colour-only rows 47 (a 48 × 24 button centred,
+  x 632–680); switch rows 36.5 with the switch 10.5 under the row's top.
+  Plain Text is the plain-text token colour (`tokens.identifier`, absent:
+  the text colour). The two switches are stored in the theme file
+  (`backgroundGradient`, absent = on; `customizeAllColors`, absent = off);
+  with Customize All Colors on every colour row gets a slider. A built-in
+  theme's switches are read-only and drawn in full. What Background
+  Gradient changes in the editor is not implemented (R7.5: not captured).
+- **Background (row 182).** Ycode's meaning: the slider tints the
+  background toward blue; the track runs from the background colour (the
+  knob, strength 0) through #5695C4 at 60 % to #3B93CE. The default theme's
+  row shows #484748 in dark (the reference's swatch) and the editor's
+  background in light. A user theme stores the strength; past 60 % the base
+  is the system's.
+- **Dark tracks (row 183).** In dark a slider runs muted → the colour at
+  50 % → pale: the muted end half the colour and half #B4B4B4, the pale end
+  the colour 55 % toward white. A grey row takes the reference's #FF9EC4 for
+  Foreground and, for the other rows, its light hue with its largest
+  channel at 1, 38 % toward white. A stored strength puts the theme's colour
+  under the knob in both appearances. Light is round 6's track.
+- **Accessibility (row 184).** The slider is an element of role slider
+  (macOS `NSAccessibility` slider; Linux OpenViews'
+  `accessibilitySliderElement`, a small additive modifier), titled by the
+  row, value the percentage (macOS: 0–100 with "50%" as its description),
+  increment and decrement by 5 %; the colour control a button whose value is
+  "rgb r g b 1" (sRGB, up to six decimals); the switches switches (macOS:
+  check box, subrole switch; Linux: a button with the toggle trait, value
+  1 or 0).
+- **Thumbnails (row 185).** R7.4's proportions applied to the 67 × 44
+  picture (R5.1's size, met): the wallpaper and wave as before; a bar 3.5
+  tall along the top (white 55 %, dark black 35 %) with a 2-point mark at
+  x 4.5; a translucent panel x 2–39, y 5.8–14.4; the window from x 17 (6 in
+  System) and y 17.5 (40 %), radius 5, its title area to 8 under the
+  buttons; three buttons 6 across at x 28, 38, 48 (17, 27, 37 in System),
+  y 26 (59 %). R7.4's "67 × 61" and "y 81–142" overlap the captions R5.1
+  measured at 139; Ycode keeps the 44-point picture.
+
 ## Evidence
 
+- Round 7 implementation: the Background slider's meaning and track, the
+  dark track's muted and pale ends and the fallback middles, the switches'
+  storage, the 5 % step, the accessibility value forms on each IDE and the
+  thumbnails' proportions on the 44-point picture are Ycode's own (from
+  R7.1–R7.4 and the owner's rules).
 - Round 6 implementation: the colour rows' strength and full colour, the
   pale tint (a quarter over white), the edge factors, the fallback hues,
   the 50 % for system colours, the stored `strengths`, the pop-up
@@ -913,3 +1098,12 @@ hue and strength functions (YcodeIDECore `SettingsRound6.swift`); YcodeUI
   ends, the slider's gradient, the well's rim), ink boxes and per-row
   ink tops (level 3). The Foreground row's meaning is inferred from its
   look only.
+- Round 7 (R7.1–R7.4): the council round 7 Settings stills and the X13
+  recording of both apps (710 × 452, 2x, dark; light 23), measured in the
+  dirty room: the scrolled list stitched from the recording by per-frame
+  vertical matching, then colour runs down a column (card gaps,
+  separators) and along each row (tracks, knobs, buttons, switches),
+  ink tops of the labels; the accessibility trees the capture tool
+  recorded at X10 (roles, frames, values, order); the thumbnails' parts
+  from enlarged crops, described in words (level 3). The meanings of
+  the switches and the slider are inferred from labels and looks only.

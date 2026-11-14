@@ -72,10 +72,14 @@ extension SourceEditorController {
         }
         // A row's last cell may end a point past the edge (row 115).
         let width = max(40, min(end, visibleEnd) - textView.textContainerOrigin.x) + CGFloat(EditorMetrics.wrapTolerance)
-        tc.widthTracksTextView = false
-        if abs(tc.size.width - width) > 0.5 { tc.size = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude) }
         let docWidth = clip.bounds.width + min(0, clip.bounds.minX)
-        if abs(textView.frame.width - docWidth) > 0.5 { textView.setFrameSize(NSSize(width: docWidth, height: textView.frame.height)) }
+        // A re-wrap keeps the first visible line at the top (I.4, row 179).
+        guard tc.widthTracksTextView || abs(tc.size.width - width) > 0.5 || abs(textView.frame.width - docWidth) > 0.5 else { return }
+        textView.keepingTopLine {
+            tc.widthTracksTextView = false
+            if abs(tc.size.width - width) > 0.5 { tc.size = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude) }
+            if abs(textView.frame.width - docWidth) > 0.5 { textView.setFrameSize(NSSize(width: docWidth, height: textView.frame.height)) }
+        }
     }
 
     /// Where the text container ends, in the text view's coordinates.

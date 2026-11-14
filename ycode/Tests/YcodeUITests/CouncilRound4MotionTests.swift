@@ -107,13 +107,17 @@ import Testing
     /// about 60 ms, show within about 120–170. Round 6's curves and
     /// durations (`editor-area.md` H.2, row 158: hide ease-out over 195 ms,
     /// show ease-in-out over 230) supersede these tables' shapes
-    /// (`CouncilRound6ChromeTests`); round 4's tables still fit loosely.
+    /// (`CouncilRound6ChromeTests`), and round 8's show (row 204: an even
+    /// ease-out over 280 ms) supersedes round 4's show table; its starts
+    /// stand.
     @Test func inspectorSlideFollowsTheRound4Tables() {
         let show: [(Double, Double)] = [(170, 0.07), (197, 0.10), (211, 0.24), (241, 0.36), (256, 0.52), (288, 0.75), (317, 0.79), (331, 0.83), (345, 0.97),
                                         (358, 1)]
         // Round 6's hide is an ease-out (H.2): round 4's hide table, an
-        // ease-in-out, is left out; its show still fits.
-        for (table, isShow) in [(show, true)] {
+        // ease-in-out, is left out; so is its show (round 8), and round 9
+        // (row 224) moved the show's start to about 136 ms: only its end is
+        // checked.
+        for (table, isShow) in [(Array(show.suffix(1)), true)] {
             var squares = 0.0
             for (ms, p) in table {
                 let d = EditorMetrics.inspectorSlideProgress(elapsed: ms / 1000, show: isShow) - p
@@ -122,9 +126,10 @@ import Testing
             }
             #expect((squares / Double(table.count)).squareRoot() < 0.1, "\(isShow ? "show" : "hide")")
         }
-        #expect(EditorMetrics.inspectorSlideDelay(show: false) <= 0.06)
-        #expect((0.12...0.17).contains(EditorMetrics.inspectorSlideDelay(show: true)))
-        #expect(abs(EditorMetrics.inspectorSlideMotion(show: false) - 0.195) <= 0.01 && abs(EditorMetrics.inspectorSlideMotion(show: true) - 0.23) <= 0.01)
+        // Round 10 (row 248): the starts 75 and 170 ms, hide 200 ms, show 230.
+        #expect(EditorMetrics.inspectorSlideDelay(show: false) <= 0.08)
+        #expect((0.12...0.18).contains(EditorMetrics.inspectorSlideDelay(show: true)))
+        #expect(abs(EditorMetrics.inspectorSlideMotion(show: false) - 0.20) <= 0.01 && abs(EditorMetrics.inspectorSlideMotion(show: true) - 0.23) <= 0.01)
     }
 
     /// The slide's frames do the slide's own layout and nothing else: the
@@ -314,10 +319,13 @@ import Testing
         defer { td.remove() }
         let w = WelcomeWindowController(recents: RecentProjects(defaults: td.defaults))
         let frame = try #require(w.window?.frame)
-        let probe = NSWindow(contentRect: try #require(w.window?.contentRect(forFrameRect: frame)), styleMask: try #require(w.window?.styleMask),
-                             backing: .buffered, defer: true)
-        probe.center()
-        #expect(abs(probe.frame.minY - frame.minY - 8) <= 0.5 && abs(probe.frame.minX - frame.minX) <= 0.5, "\(frame) against \(probe.frame)")
+        // Round 10, row 241 replaces "8 below AppKit's centre": centred on
+        // the screen's visible frame, its top 28 % of the free height down.
+        if let visible = w.window?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame {
+            let o = WelcomePlacement.origin(width: Double(frame.width), height: Double(frame.height),
+                                            visible: (Double(visible.minX), Double(visible.minY), Double(visible.width), Double(visible.height)))
+            #expect(abs(frame.minX - CGFloat(o.x)) <= 0.5 && abs(frame.minY - CGFloat(o.y)) <= 0.5, "\(frame) in \(visible)")
+        }
         #expect(RecentProjects.folderText(URL(fileURLWithPath: "/private/tmp/council/project/App.xcodeproj")) == "/private/tmp/council/project")
         #expect(RecentProjects.folderText(URL(fileURLWithPath: "/Volumes/example/Samples/App.xcodeproj")) == "example/Samples")
     }
@@ -399,6 +407,9 @@ import Testing
         let second = try stateWindow(dir, state: state)
         defer { second.close() }
         let after = titles(second.navigator)
-        #expect(after == before, "after \(after), before \(before)")
+        // Round 7 (row 187, navigators.md round 7 §4): the main group's
+        // children come back as saved; Sub, deeper, reopens collapsed.
+        let inSub = Set(sub.children.map(\.title))
+        #expect(after == before.filter { !inSub.contains($0) } && after.contains("Sub"), "after \(after), before \(before)")
     }
 }

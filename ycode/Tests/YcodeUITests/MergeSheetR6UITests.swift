@@ -96,7 +96,7 @@ import Testing
         let ruler = sheet.ruler
         #expect(ruler.knobRect == nil)
         let rows = sheet.canvas.rows
-        let lines = rows.compactMap(\.right).count + 1
+        let lines = rows.filter { !$0.isFinalEmptyLine }.compactMap(\.right).count + 1
         let starts = rows.filter(\.isFirstOfHunk).compactMap { $0.right?.number }
         #expect(ruler.marks.map(\.position) == starts.map { (Double($0) - 0.5) / Double(lines) })
         let rr = base.windowRect(ruler, ruler.bounds, wc)

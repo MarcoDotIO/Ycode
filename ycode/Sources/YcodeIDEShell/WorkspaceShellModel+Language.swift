@@ -47,6 +47,9 @@ public final class ShellLanguageFeatures {
     public internal(set) var isRenaming = false
     /// The occurrences of the symbol being renamed in the open file.
     public internal(set) var highlights: [NSRange] = []
+    /// The instances of the symbol at the insertion point (+SymbolInstances.swift).
+    public internal(set) var symbolInstances: [NSRange] = []
+    @ObservationIgnored var symbolInstancesTask: Task<Void, Never>?
     /// What the last request found nothing for ("No definition found"),
     /// shown briefly in the editor.
     public internal(set) var notice: String?
@@ -229,6 +232,7 @@ extension WorkspaceShellModel {
     public func caretMoved() {
         dismissQuickHelp()
         scheduleCaretSymbolUpdate()
+        scheduleSymbolInstances()
         guard isInspectorShown, languageFeatures.inspectorTab == .quickHelp else { return }
         refreshQuickHelpInspector(after: 0.35)
     }

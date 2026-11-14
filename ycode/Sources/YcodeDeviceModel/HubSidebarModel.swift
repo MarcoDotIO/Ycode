@@ -40,17 +40,26 @@ public struct HubDevice: Equatable, Sendable {
     public var subtitle: String { isSimulator ? "Simulator" : (model.isEmpty ? platform : model) }
     /// The row's trailing text: the OS version, major.minor.
     public var shortVersion: String { HubDevice.shortVersion(osVersion) }
-    /// The window subtitle and status-view line: "iOS 27.1".
-    public var osTitle: String { osVersion.isEmpty ? platform : "\(platform) \(osVersion)" }
+    /// The window subtitle and status-view line: "iOS 27.1"; an iPad's
+    /// "iPadOS 27.2" (§15.5).
+    public var osTitle: String { family.osTitle(osVersion.isEmpty ? platform : "\(platform) \(osVersion)") }
 
     public static func shortVersion(_ v: String) -> String { v.split(separator: ".").prefix(2).joined(separator: ".") }
 
-    /// The family from a platform and a device or model name (a fallback
-    /// when the device type is not known).
-    public static func family(platform: String, name: String) -> DeviceFamily {
-        if platform == "visionOS" || platform == "xrOS" || name.contains("Vision") { return .vision }
-        if platform == "watchOS" || name.contains("Watch") { return .watch }
-        if name.contains("iPad") { return .pad }
+    /// The family from a platform and what names the device (a fallback
+    /// when Ycode has no frame for its type): the device type's identifier
+    /// and the model name first, the user's own device name last, each
+    /// without regard to case. A device named "my-ipad" of an iPad type is
+    /// an iPad; so is an iPad named "Test", by its type.
+    public static func family(platform: String, name: String, typeID: String? = nil, model: String? = nil) -> DeviceFamily {
+        if platform == "visionOS" || platform == "xrOS" { return .vision }
+        if platform == "watchOS" { return .watch }
+        for text in [typeID, model, name].compactMap({ $0?.lowercased() }) where !text.isEmpty {
+            if text.contains("vision") { return .vision }
+            if text.contains("watch") { return .watch }
+            if text.contains("ipad") { return .pad }
+            if text.contains("iphone") { return .phone }
+        }
         return .phone
     }
 }

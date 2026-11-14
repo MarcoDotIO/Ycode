@@ -16,16 +16,30 @@ extension JumpBar {
     }
 
     /// Adds a component's views (after a chevron when it is not the first).
-    func addPathPart(title: String, symbol: String, first: Bool) {
-        if !first { stack.addArrangedSubview(JumpBarChevronView()) }
-        let icon = JumpBarIconView(symbol: symbol)
+    func addPathPart(title: String, symbol: String, first: Bool, role: JumpBarPathLayout.IconRole = .file) {
+        if !first { stack.addArrangedSubview(JumpBarChevronView(active: isActivePane)) }
+        // The navigator's glyphs, smaller (council round 9, row 211): the
+        // file's line-art logo or JSON glyph in its type's tint, a group's
+        // folder, the project's Ycode mark (`FileGlyphs.jumpBarGlyph`).
+        let glyph = FileGlyphs.jumpBarGlyph(symbol: symbol, role: role, fileName: pathState.fileName)
+        let icon = glyph.flatMap { g -> JumpBarIconView? in
+            if g == .ycodeMark {
+                let side = CGFloat(FileGlyphs.jumpBarBox(g).width)
+                return JumpBarIconView(logo: NavigatorRowImages.ycodeMark(side: side), symbol: symbol, role: role)
+            }
+            return NavigatorRowImages.glyph(g, box: FileGlyphs.jumpBarBox(g)).map {
+                let v = JumpBarIconView(glyph: $0, symbol: symbol, role: role)
+                v.glyphIcon = g
+                return v
+            }
+        } ?? JumpBarIconView(symbol: symbol, role: role)
         if first, icon.image != nil, let prev = stack.arrangedSubviews.last {
             // The first icon's ink where the framed image's was (+71.5 in a
             // split pane, E.2 item 3).
             let cur = stack.customSpacing(after: prev)
             stack.setCustomSpacing((cur == NSStackView.useDefaultSpacing ? stack.spacing : cur) + Self.firstIconLeadIn, after: prev)
         }
-        icon.tint = pathIconTint(symbol: symbol, title: title)
+        icon.tint = glyph.map { pathGlyphTint($0, fileName: pathState.fileName) } ?? pathIconTint(symbol: symbol, title: title)
         if icon.image != nil { stack.addArrangedSubview(icon) }
         let label = pathLabel(title)
         stack.addArrangedSubview(label)
@@ -35,10 +49,18 @@ extension JumpBar {
     /// Adds the last item ("No Selection" or the symbol), in the path's
     /// colour (row 145).
     func addPathLast(_ title: String) {
-        if !pathState.parts.isEmpty { stack.addArrangedSubview(JumpBarChevronView()) }
+        if !pathState.parts.isEmpty { stack.addArrangedSubview(JumpBarChevronView(active: isActivePane)) }
         let label = pathLabel(title)
         stack.addArrangedSubview(label)
         pathState.last = label
+    }
+
+    /// A glyph's tint in the path: the jump bar's tint for its type
+    /// (`FileGlyphs.jumpBarGlyphTint`; Markdown #5A8095 / #B7D5EB) in the
+    /// focused pane, grey in the other.
+    func pathGlyphTint(_ g: NavigatorRowIcon, fileName: String?) -> NSColor? {
+        guard isActivePane else { return .secondaryLabelColor }
+        return FileGlyphs.jumpBarGlyphTint(g, fileName: fileName).map(NavigatorRowImages.color) ?? .controlAccentColor
     }
 
     /// The first icon's ink starts this far past the spacing before it.
@@ -60,7 +82,9 @@ extension JumpBar {
         guard let firstView = parts.first.map({ $0.icon ?? $0.title }) ?? pathState.last, bounds.width > 0 else { return false }
         let firstInk = convert(firstView.frame, from: firstView.superview).minX + Self.leadPad(of: firstView)
         let room = Double(pathInkLimit - firstInk)
-        let model = parts.map { JumpBarPathLayout.Part(icon: $0.icon.map { Double($0.inkWidth) }, title: Double($0.title.ink.width)) }
+        let model = parts.map {
+            JumpBarPathLayout.Part(icon: $0.icon.map { Double($0.slotWidth) }, title: Double($0.title.ink.width), initial: Double($0.title.initialInk))
+        }
         let fit = JumpBarPathLayout.fit(parts: model, last: pathState.last.map { Double($0.ink.width) }, room: room)
         guard fit != pathState.fit else { return false }
         pathState.fit = fit
@@ -75,15 +99,20 @@ extension JumpBar {
         return true
     }
 
-    /// The ink gap between two neighbouring path views (H.4).
+    /// The ink gap between two neighbouring path views (H.4); a wide
+    /// (active pane's) chevron takes its extra point from the gap after it
+    /// (round 9, row 217).
     static func inkGap(after a: NSView, before b: NSView) -> CGFloat {
         typealias L = JumpBarPathLayout
+        let base: CGFloat
         switch (a, b) {
-        case (is JumpBarIconView, is FadingTruncationLabel): return CGFloat(L.iconToTitle)
-        case (is JumpBarChevronView, is JumpBarIconView): return CGFloat(L.chevronToIcon)
-        case (is JumpBarChevronView, _): return CGFloat(L.chevronToTitle)
-        default: return CGFloat(L.titleToChevron)
+        case (is JumpBarIconView, is FadingTruncationLabel): base = CGFloat(L.iconToTitle)
+        case (is JumpBarChevronView, is JumpBarIconView): base = CGFloat(L.chevronToIcon)
+        case (is JumpBarChevronView, _): base = CGFloat(L.chevronToTitle)
+        default: base = CGFloat(L.titleToChevron)
         }
+        func extra(_ v: NSView) -> CGFloat { ((v as? JumpBarChevronView)?.inkWidth ?? CGFloat(L.chevronWidth)) - CGFloat(L.chevronWidth) }
+        return base - extra(a)
     }
 
     /// From a view's alignment rect to its ink, at the leading and the
@@ -108,6 +137,10 @@ extension JumpBar {
 
 /// What the path holds and how it was fitted.
 final class JumpBarPathState {
+    /// The file the path ends at (its name with the extension): its
+    /// component shows the navigator's icon for it, a language's logo
+    /// (council round 8, row 200).
+    var fileName: String?
     var parts: [JumpBar.PathPart] = []
     var last: FadingTruncationLabel?
     var fit: JumpBarPathLayout.Fit?
@@ -119,9 +152,11 @@ final class JumpBarPathState {
     }
 }
 
-/// A path icon whose frame is its ink (so the stack spaces ink to ink):
-/// the symbol at the path's 11 points (its ink about the reference's 12–13
-/// wide), drawn in the component's tint.
+/// A path icon whose frame is its slot (so the stack spaces slot to slot):
+/// the symbol at the path's 11 points, drawn in the component's tint, its
+/// ink scaled down to the reference's width for its role when wider (the
+/// project's 13, a group's 12.5, the file's 11.5; `editor-area.md` I.5,
+/// row 180) and centred in the slot.
 final class JumpBarIconView: NSView {
     /// The icons' point size: the path's text size.
     static let pointSize: CGFloat = 11
@@ -129,15 +164,60 @@ final class JumpBarIconView: NSView {
     let image: NSImage?
     /// The image's ink inside its own rectangle (points).
     let inkBox: NSRect
+    let role: JumpBarPathLayout.IconRole
     var tint: NSColor? { didSet { needsDisplay = true } }
-    var inkWidth: CGFloat { inkBox.width }
+    /// A picture drawn in its own colours (not tinted).
+    let isLogo: Bool
+    /// One of Ycode's glyphs, drawn at its own size (not scaled to the role).
+    let isGlyph: Bool
+    /// The glyph's icon: drawn from its vector drawing on the pixel grid
+    /// (round 10, row 246; `GlyphPixelGrid`).
+    var glyphIcon: NavigatorRowIcon? { didSet { needsDisplay = true } }
+    /// The slot's width (the frame) and the ink drawn in it.
+    var slotWidth: CGFloat { image == nil ? 0 : CGFloat(JumpBarPathLayout.iconSlot(role)) }
+    var inkWidth: CGFloat { isGlyph ? inkBox.width : min(inkBox.width, CGFloat(JumpBarPathLayout.iconInk(role))) }
+    /// The image's scale: its ink fits the role's width.
+    var drawScale: CGFloat { isGlyph || inkBox.width <= 0 ? 1 : min(1, CGFloat(JumpBarPathLayout.iconInk(role)) / inkBox.width) }
 
-    init(symbol: String) {
+    init(symbol: String, role: JumpBarPathLayout.IconRole = .file) {
         self.symbol = symbol
+        self.role = role
+        isLogo = false
+        isGlyph = false
         image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: Self.pointSize, weight: .regular))
         inkBox = image.map { Self.ink(of: $0, symbol: symbol) } ?? .zero
-        super.init(frame: NSRect(x: 0, y: 0, width: inkBox.width, height: image?.size.height ?? 0))
+        super.init(frame: NSRect(x: 0, y: 0, width: image == nil ? 0 : CGFloat(JumpBarPathLayout.iconSlot(role)), height: image?.size.height ?? 0))
+        configure()
+    }
+
+    /// A picture drawn in its own colours (the project's Ycode mark), its
+    /// whole square counted as ink, so it is drawn at the role's ink width.
+    init(logo: NSImage, symbol: String, role: JumpBarPathLayout.IconRole) {
+        self.symbol = symbol
+        self.role = role
+        isLogo = true
+        isGlyph = false
+        image = logo
+        inkBox = NSRect(origin: .zero, size: logo.size)
+        super.init(frame: NSRect(x: 0, y: 0, width: CGFloat(JumpBarPathLayout.iconSlot(role)), height: logo.size.height))
+        configure()
+    }
+
+    /// One of Ycode's glyphs (`FileGlyphs`), already at its jump-bar box:
+    /// drawn at that size, centred in the slot, in the tint.
+    init(glyph: NSImage, symbol: String, role: JumpBarPathLayout.IconRole) {
+        self.symbol = symbol
+        self.role = role
+        isLogo = false
+        isGlyph = true
+        image = glyph
+        inkBox = NSRect(origin: .zero, size: glyph.size)
+        super.init(frame: NSRect(x: 0, y: 0, width: CGFloat(JumpBarPathLayout.iconSlot(role)), height: glyph.size.height))
+        configure()
+    }
+
+    private func configure() {
         translatesAutoresizingMaskIntoConstraints = false
         setContentHuggingPriority(.required, for: .horizontal)
         setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -147,14 +227,33 @@ final class JumpBarIconView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    override var intrinsicContentSize: NSSize { NSSize(width: inkBox.width, height: image?.size.height ?? NSView.noIntrinsicMetric) }
+    override var intrinsicContentSize: NSSize { NSSize(width: slotWidth, height: image?.size.height ?? NSView.noIntrinsicMetric) }
+
+    /// The ink's extent in the view (its slot): centred.
+    var inkRange: (minX: CGFloat, maxX: CGFloat) {
+        let w = inkBox.width * drawScale
+        let x = (bounds.width - w) / 2
+        return (x, x + w)
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let image else { return }
-        let size = image.size
-        let r = NSRect(x: -inkBox.minX, y: (bounds.height - size.height) / 2, width: size.width, height: size.height)
+        let k = drawScale
+        let size = NSSize(width: image.size.width * k, height: image.size.height * k)
+        let r = NSRect(x: inkRange.minX - inkBox.minX * k, y: (bounds.height - size.height) / 2, width: size.width, height: size.height)
+        // The Ycode mark keeps its colours; dimmed in a pane without
+        // focus, as the other icons go grey there.
+        if isLogo {
+            image.draw(in: r, from: .zero, operation: .sourceOver, fraction: tint == .secondaryLabelColor ? 0.55 : 1)
+            return
+        }
+        if let g = glyphIcon, let d = FileGlyphs.jumpBarDrawing(g) {
+            GlyphPixelGrid.draw(d, in: NSRect(x: r.minX, y: r.minY, width: CGFloat(d.width), height: CGFloat(d.height)),
+                                color: tint ?? .labelColor, flipped: isFlipped)
+            return
+        }
         // The tint (its own alpha too) through the symbol's shape.
-        let tinted = NSImage(size: size, flipped: false) { rect in
+        let tinted = NSImage(size: image.size, flipped: false) { rect in
             (self.tint ?? .labelColor).setFill()
             rect.fill()
             image.draw(in: rect, from: .zero, operation: .destinationIn, fraction: 1)
@@ -195,11 +294,16 @@ final class JumpBarIconView: NSView {
     @MainActor static var inkCache: [String: NSRect] = [:]
 }
 
-/// The path's chevron: a 1-point stroke 2 wide and 6 tall in the secondary
-/// label colour (Ycode's drawing of the reference's 2-wide chevron).
+/// The path's chevron: a 1.25-point stroke 2 wide (3 in the active pane,
+/// I.5) and 10 tall (round 10, row 247), #808080 / #DEDEDE in the active
+/// pane, the secondary label colour in the other (Ycode's drawing of the
+/// reference's chevron).
 final class JumpBarChevronView: NSView {
-    init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: JumpBarPathLayout.chevronWidth, height: 14))
+    let inkWidth: CGFloat
+
+    init(active: Bool = false) {
+        inkWidth = CGFloat(JumpBarPathLayout.chevronInk(active: active))
+        super.init(frame: NSRect(x: 0, y: 0, width: inkWidth, height: 14))
         translatesAutoresizingMaskIntoConstraints = false
         setContentHuggingPriority(.required, for: .horizontal)
         setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -209,19 +313,19 @@ final class JumpBarChevronView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    override var intrinsicContentSize: NSSize { NSSize(width: JumpBarPathLayout.chevronWidth, height: 14) }
+    override var intrinsicContentSize: NSSize { NSSize(width: inkWidth, height: 14) }
 
     override func draw(_ dirtyRect: NSRect) {
-        let w = CGFloat(JumpBarPathLayout.chevronWidth), h = CGFloat(JumpBarPathLayout.chevronHeight)
+        let w = inkWidth, h = CGFloat(JumpBarPathLayout.chevronHeight), s = CGFloat(JumpBarPathLayout.chevronStroke)
         let midY = bounds.midY
         let p = NSBezierPath()
-        p.move(to: NSPoint(x: 0.5, y: midY + h / 2))
-        p.line(to: NSPoint(x: w - 0.5, y: midY))
-        p.line(to: NSPoint(x: 0.5, y: midY - h / 2))
-        p.lineWidth = 1
+        p.move(to: NSPoint(x: s / 2, y: midY + h / 2))
+        p.line(to: NSPoint(x: w - s / 2, y: midY))
+        p.line(to: NSPoint(x: s / 2, y: midY - h / 2))
+        p.lineWidth = s
         p.lineCapStyle = .round
         p.lineJoinStyle = .round
-        NSColor.secondaryLabelColor.setStroke()
+        Self.color(active: inkWidth > CGFloat(JumpBarPathLayout.chevronWidth)).setStroke()
         p.stroke()
     }
 }

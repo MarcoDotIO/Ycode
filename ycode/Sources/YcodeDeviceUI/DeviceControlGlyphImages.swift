@@ -1,7 +1,8 @@
-// The second capsule's glyphs on macOS (device-hub.md §13.1, rows 131–132)
-// and the toolbar's Zoom to Fit (§14.1, row 156): Rotate, the three postures
-// and the magnifier with four arrowheads drawn by Ycode from the shapes the Linux
-// device window draws too (`DeviceControlGlyphs`, YcodeDeviceModel).
+// The capsules' glyphs on macOS (device-hub.md §13.1, §15.6; rows 131–132,
+// 175) and the toolbar's (§14.1, §15.5; rows 156, 174): Home, Rotate, the
+// three postures, the magnifier with four arrowheads, the layout glyph and
+// the compact-window arrows, drawn by Ycode from the shapes the Linux device
+// window draws too (`DeviceControlGlyphs`, YcodeDeviceModel).
 
 #if os(macOS)
 import AppKit
@@ -67,6 +68,27 @@ public enum DeviceControlGlyphImage {
         img.accessibilityDescription = "Rotate"
         return img
     }
+
+    /// A shared glyph as a template image of its own box (the button or
+    /// toolbar segment tints it): Home (§15.6), the resize-mode toggle's
+    /// layout glyph and the compact-window button's arrows (§15.5).
+    @MainActor
+    public static func template(_ g: G.Glyph, description: String) -> NSImage {
+        let img = NSImage(size: NSSize(width: g.size.width, height: g.size.height), flipped: true) { r in
+            draw(g, in: r, line: .black, fill: nil)
+            return true
+        }
+        img.isTemplate = true
+        img.accessibilityDescription = description
+        return img
+    }
+
+    @MainActor public static func home() -> NSImage { template(G.home, description: "Home") }
+    @MainActor public static func layout() -> NSImage { template(G.layout, description: "Enter resize mode") }
+    @MainActor public static func compactWindow() -> NSImage { template(G.compactWindow, description: "Open in New Window") }
+    /// A watch's capsule (row 234): its side button and Digital Crown.
+    @MainActor public static func sideButton() -> NSImage { template(G.sideButton, description: "Side Button") }
+    @MainActor public static func digitalCrown() -> NSImage { template(G.digitalCrown, description: "Digital Crown") }
 
     /// Zoom to Fit (§14.1, row 156): a template image the size of the
     /// toolbar's other magnifiers (16 × 15), so the segment tints it.

@@ -343,7 +343,8 @@ public final class MergeButton: NSControl {
     public override func isAccessibilityElement() -> Bool { true }
     public override func accessibilityRole() -> NSAccessibility.Role? { .button }
     public override func accessibilityTitle() -> String? { title }
-    public override func accessibilityLabel() -> String? { title }
+    /// No description: the title names the button (merge-sheet.md §16.1, row 195).
+    public override func accessibilityLabel() -> String? { nil }
     public override func isAccessibilityEnabled() -> Bool { isEnabled }
 
     public override func accessibilityPerformPress() -> Bool {

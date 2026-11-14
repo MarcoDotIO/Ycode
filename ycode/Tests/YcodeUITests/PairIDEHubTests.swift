@@ -16,8 +16,12 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
 /// a watchOS scheme; a watch app's run on a phone without an active watch
 /// fails with §11.4's texts. ssh is a local stand-in and the launcher a
 /// script that keeps one listing in a file: no network.
+///
+/// The tests await many hops to the main actor in a row (the hub's tasks,
+/// each launcher command and the listing after it); the suite starts once
+/// those hops are quick (`MainActorQuietTrait`).
 @MainActor
-@Suite(.serialized, .timeLimit(.minutes(5))) struct PairIDEHubTests {
+@Suite(.serialized, .mainActorQuiet, .timeLimit(.minutes(5))) struct PairIDEHubTests {
     static let iosRoot = "/rr/iOS-27.0-24A434/RuntimeRoot"
     static let watchRoot = "/rr/watchOS-27.0-24R362/RuntimeRoot"
 

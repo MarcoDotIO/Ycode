@@ -41,6 +41,11 @@ final class SourceEditorController {
     var left: CGFloat = 0
     var viewport = CGSize(width: 800, height: 600)
     private(set) var longestLine: CGFloat = 0
+    /// The flick at the edges (+Flick.swift, `editor-area.md` H.1).
+    var flick = EditorFlick()
+    let flickFrames = NSObject()
+    /// Each drawn frame's time and offset (drivers measure the flick).
+    var frameProbe: ((TimeInterval, CGFloat) -> Void)?
 
     // The caret.
     var caretOn = true
@@ -159,7 +164,19 @@ final class SourceEditorController {
 
     // Lines are counted in visual rows: a wrapped line takes several
     // (+Wrap.swift).
-    var contentHeight: CGFloat { CGFloat(visualRowCount) * lineHeight + Self.topInset + Self.bottomInset }
+    var contentHeight: CGFloat { textHeight + overscroll }
+    /// The text's own height: its rows and the insets.
+    var textHeight: CGFloat { CGFloat(visualRowCount) * lineHeight + Self.topInset + Self.bottomInset }
+    /// Settings ▸ Editing ▸ Editor overscroll, as the macOS editor: blank
+    /// space after the last row once the text is taller than the view, so
+    /// that at Medium the last row's bottom rises to the text area's middle
+    /// (`editor-area.md` I.3, row 178; the final empty line is a row like
+    /// any other).
+    var overscroll: CGFloat {
+        let h = textHeight
+        guard h > viewport.height else { return 0 }
+        return max(0, (viewport.height * Preferences.shared.editorOverscroll.fraction).rounded() - Self.bottomInset)
+    }
     var contentWidth: CGFloat { wrapColumns != nil ? viewport.width : max(viewport.width, textOrigin + longestLine + 40) }
 
     func lineTop(_ n: Int) -> CGFloat { Self.topInset + CGFloat(firstRow(of: n)) * lineHeight }
@@ -263,19 +280,10 @@ final class SourceEditorController {
     func viewportChanged(_ size: CGSize) {
         guard size != viewport, size.width > 0, size.height > 0 else { return }
         viewport = size
-        // Keep the offset inside the content.
+        // A narrower or wider pane re-wraps under the same top line (I.4),
+        // then the offset is kept inside the content.
+        wrapRows()
         scroll(x: left, y: top)
-    }
-
-    /// A wheel or trackpad step (points, positive y up): three times the
-    /// toolkit's step, about two lines per wheel notch.
-    func wheel(_ d: CGSize) -> Bool {
-        let (x, y) = (left - d.width * 3, top - d.height * 3)
-        let mx = max(0, contentWidth - viewport.width), my = max(0, contentHeight - viewport.height)
-        let nx = min(max(x, 0), mx), ny = min(max(y, 0), my)
-        guard nx != left || ny != top else { return false }
-        scroll(x: nx, y: ny)
-        return true
     }
 
     /// The scroll view moved (Apple's SwiftUI).

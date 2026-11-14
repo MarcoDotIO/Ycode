@@ -43,6 +43,8 @@ public final class WorkspaceSession {
     public var includeLiveIssues = true { didSet { notify(.issues) } }
     /// Package resolution failures (shown with the build issues).
     public var packageIssues: [Diagnostic] = [] { didSet { notify(.issues) } }
+    /// Files git reports as conflicted, one error each (ConflictIssues.swift, row 188).
+    public internal(set) var conflictIssues: [Diagnostic] = [] { didSet { notify(.issues) } }
     /// Project-level checks (`reference-ui-5.md` §11.6, T8): warnings about
     /// the project itself, such as signing without a development team.
     /// They count in the toolbar capsule; see `refreshProjectIssues()`.
@@ -59,6 +61,8 @@ public final class WorkspaceSession {
     /// The language service is starting (the toolbar's activity subtitle
     /// says so while the workspace is otherwise idle, council row 141).
     public var isPreparingEditorServices = false { didSet { if isPreparingEditorServices != oldValue { notify(.activity) } } }
+    /// The language server reports work in progress (indexing; row 189).
+    public var isIndexing = false { didSet { if isIndexing != oldValue { notify(.activity) } } }
     /// The build context the language server serves, and its restarts.
     let languageRestart = LanguageRestartState()
 
@@ -68,7 +72,7 @@ public final class WorkspaceSession {
     /// the editor and the toolbar capsule show.
     public var displayedIssues: [Diagnostic] {
         let live = includeLiveIssues ? (language?.liveIssues ?? [:]).keys.sorted().flatMap { language!.liveIssues[$0]! } : []
-        return IssueMerge.merge([projectIssues, packageIssues, issues], live: live, liveHiddenFiles: liveIssuesHiddenFiles)
+        return IssueMerge.merge([projectIssues, packageIssues, conflictIssues, issues], live: live, liveHiddenFiles: liveIssuesHiddenFiles)
     }
 
     /// Files (canonical paths, `IssueMerge.canonicalPath`) whose live issues

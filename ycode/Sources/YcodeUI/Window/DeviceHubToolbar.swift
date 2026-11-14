@@ -13,13 +13,17 @@ import YcodeDeviceUI
 /// Device and Filter are hidden too; the resize-mode toggle shares Capture
 /// Keyboard's capsule (shown with a device, disabled: resize mode is not
 /// built, §4.7); the Info tab is a plain "i"; every item fits at 1100 points
-/// (no overflow "»").
+/// (no overflow "»"). Council round 7 (§15.5, row 174): Capture Keyboard and
+/// the resize toggle are two plain items sharing one glass capsule with no
+/// separator between them, the toggle Ycode's outline layout glyph drawn
+/// dimmed; the compact-window button's arrows lie on the rising diagonal;
+/// with the inspector hidden no tab is drawn selected.
 @MainActor
 final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToolbarItemValidation {
     unowned let owner: DevicesController
     private weak var zoomGroup: NSToolbarItemGroup?
     private weak var tabGroup: NSToolbarItemGroup?
-    private weak var captureGroup: NSToolbarItemGroup?
+    private weak var captureItem: NSToolbarItem?
     private weak var filterItem: NSMenuToolbarItem?
     private let addMenu = NSMenu(title: "Add Device")
     private let filterMenu = NSMenu(title: "Filter")
@@ -27,8 +31,10 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
 
     static let add = NSToolbarItem.Identifier("hub.addDevice")
     static let filter = NSToolbarItem.Identifier("hub.filter")
-    /// Capture Keyboard and the resize-mode toggle in one capsule (§3 items 6, 7).
-    static let captureGroup = NSToolbarItem.Identifier("hub.captureGroup")
+    /// Capture Keyboard and the resize-mode toggle: two plain items the
+    /// toolbar puts in one glass capsule with no separator (§3 items 6, 7;
+    /// §15.5, row 174).
+    static let captureKeyboard = NSToolbarItem.Identifier("hub.captureKeyboard")
     static let resize = NSToolbarItem.Identifier("hub.resizeMode")
     /// The inspector tabs' symbols: sliders, a document, a plain "i" (§11.4).
     static let tabSymbols = ["slider.horizontal.3", "doc.text", "info"]
@@ -59,7 +65,7 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
     /// §3 items 2–4, `specs/ide/metrics.md` §9); they sat at the window
     /// buttons, 27 points short of the edge.
     static let order: [NSToolbarItem.Identifier] = [.flexibleSpace, add, filter, .toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace,
-                                                    headset, captureGroup, zoom, open, more, .inspectorTrackingSeparator, .flexibleSpace, tabs]
+                                                    headset, captureKeyboard, resize, zoom, open, more, .inspectorTrackingSeparator, .flexibleSpace, tabs]
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         if #available(macOS 14.0, *) { return Self.order }
@@ -92,21 +98,28 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
         case .toggleSidebar:
             // The system's item; its action goes to the split view controller.
             return nil
-        case Self.captureGroup:
-            let labels = ["Capture Keyboard", "Enter resize mode"]
-            let images = ["keyboard", "rectangle.inset.filled"].enumerated().compactMap { image($0.element, labels[$0.offset]) }
-            let g = NSToolbarItemGroup(itemIdentifier: id, images: images, selectionMode: .selectAny, labels: labels,
-                                       target: self, action: #selector(captureGroupChosen(_:)))
-            g.subitems[0].toolTip = "Capture Keyboard"
-            g.subitems[1].toolTip = Self.resizeHelp
-            // Resize mode is not built (§4.7): never enabled.
-            g.subitems[1].autovalidates = false
-            g.subitems[1].isEnabled = false
-            g.subitems[1].action = nil
-            g.label = "Capture Keyboard"
-            g.controlRepresentation = .expanded
-            captureGroup = g
-            return g
+        case Self.captureKeyboard:
+            let i = NSToolbarItem(itemIdentifier: id)
+            i.image = image("keyboard", "Capture Keyboard")
+            i.label = "Capture Keyboard"
+            i.toolTip = "Capture Keyboard"
+            i.isBordered = true
+            i.target = self
+            i.action = #selector(captureKeyboardClicked(_:))
+            captureItem = i
+            return i
+        case Self.resize:
+            // Ycode's layout glyph (§15.5): an outline window with a top bar
+            // and a right-side panel; resize mode is not built (§4.7), so it
+            // is never enabled and draws dimmed.
+            let i = NSToolbarItem(itemIdentifier: id)
+            i.image = DeviceControlGlyphImage.layout()
+            i.label = "Enter resize mode"
+            i.toolTip = Self.resizeHelp
+            i.isBordered = true
+            i.autovalidates = false
+            i.isEnabled = false
+            return i
         case Self.zoom:
             let labels = ["Zoom Out", "Zoom to Fit", "Zoom To Actual Size", "Zoom In"]
             // Zoom to Fit is Ycode's own drawing (§14.1: four outward arrowheads in the lens).
@@ -123,7 +136,8 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
             return g
         case Self.open:
             let i = NSToolbarItem(itemIdentifier: id)
-            i.image = image("arrow.down.right.and.arrow.up.left", "Open in New Window")
+            // Ycode's drawing (§15.5): two arrows on the rising diagonal, pointing in.
+            i.image = DeviceControlGlyphImage.compactWindow()
             i.label = "Open in New Window"
             i.toolTip = "Switch to compact window"
             i.isBordered = true
@@ -183,12 +197,30 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
         }
     }
 
-    func updateTabs() { tabGroup?.selectedIndex = owner.inspectorTab.rawValue }
+    /// The current tab drawn selected while the inspector shows; none while
+    /// it is hidden, so every pair of tabs keeps its separator (§15.5).
+    func updateTabs() {
+        guard let g = tabGroup else { return }
+        // A select-one group always keeps a segment selected, so while the
+        // inspector is hidden the group selects any (none) instead.
+        if owner.inspectorShown {
+            g.selectionMode = .selectOne
+            g.selectedIndex = owner.inspectorTab.rawValue
+        } else {
+            g.selectionMode = .selectAny
+            for i in g.subitems.indices { g.setSelected(false, at: i) }
+        }
+    }
 
+    /// Capture Keyboard on: the item drawn prominent (tinted) on macOS 26 and
+    /// later, its glyph filled before.
     func updateCapture(_ on: Bool) {
-        guard let g = captureGroup else { return }
-        g.setSelected(on, at: 0)
-        g.setSelected(false, at: 1)
+        guard let i = captureItem else { return }
+        if #available(macOS 26.0, *) {
+            i.style = on ? .prominent : .plain
+        } else {
+            i.image = NSImage(systemSymbolName: on ? "keyboard.fill" : "keyboard", accessibilityDescription: "Capture Keyboard")
+        }
     }
 
     /// Add Device and Filter go with the sidebar (§11.4); the resize toggle
@@ -198,8 +230,7 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
         for i in t.items {
             switch i.itemIdentifier {
             case Self.add, Self.filter: i.isHidden = !owner.sidebarShown
-            case Self.captureGroup:
-                if let g = i as? NSToolbarItemGroup, g.subitems.count == 2 { g.subitems[1].isHidden = owner.selected == nil }
+            case Self.resize: i.isHidden = owner.selected == nil
             default: break
             }
         }
@@ -215,10 +246,9 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
     /// Items 6–10 are dimmed while nothing is selected (§3).
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
         switch item.itemIdentifier {
-        case Self.captureGroup:
-            // Capture Keyboard needs a device; resize mode is not built (§4.7).
-            if let g = item as? NSToolbarItemGroup, g.subitems.count == 2 { g.subitems[1].isEnabled = false }
-            return owner.selected != nil
+        // Capture Keyboard needs a device; resize mode is not built (§4.7).
+        case Self.captureKeyboard: return owner.selected != nil
+        case Self.resize: return false
         case Self.zoom, Self.more: return owner.selected != nil
         // Enabled whenever the window shows a device (§12.2).
         case Self.open: return owner.selected != nil && owner.multipleSelection.count <= 1
@@ -235,8 +265,8 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
 
     // MARK: Actions
 
-    @objc func captureGroupChosen(_ sender: NSToolbarItemGroup) {
-        owner.canvas.setCapturesKeyboard(sender.isSelected(at: 0))
+    @objc func captureKeyboardClicked(_ sender: Any?) {
+        owner.canvas.setCapturesKeyboard(!owner.canvas.capturesKeyboard)
         updateCapture(owner.canvas.capturesKeyboard)
     }
 
@@ -250,7 +280,9 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
     @objc func headsetClicked(_ sender: Any?) { owner.toggleHeadset() }
 
     @objc func tabChosen(_ sender: NSToolbarItemGroup) {
-        owner.selectInspectorTab(DevicesController.InspectorTab(rawValue: sender.selectedIndex) ?? .settings)
+        // (While the inspector is hidden the group selects any: the clicked tab is the one selected.)
+        let i = sender.selectionMode == .selectAny ? sender.subitems.indices.first { sender.isSelected(at: $0) } ?? 0 : sender.selectedIndex
+        owner.selectInspectorTab(DevicesController.InspectorTab(rawValue: i) ?? .settings)
     }
 
     // MARK: Menus

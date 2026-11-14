@@ -107,23 +107,33 @@ struct WelcomeView: View {
                     VStack(spacing: 0) {
                         ForEach(Array(app.recent.enumerated()), id: \.offset) { pair in
                             let url = pair.element
-                            // The AppKit rows: the glyph 16 in, the text at 56;
-                            // the name 13 points semibold, the folder 11 points,
-                            // cut at its head ("…/project") to fit the row.
+                            // The AppKit rows (W7.6, row 194): Ycode's own icon 16 in
+                            // (the package glyph for a package), the text's ink 48.5 from
+                            // the selection's left; the name 12.4 points semibold,
+                            // the folder 10 points, whole or cut in the middle.
+                            let R = WelcomeRecentRow.self
+                            // (The OpenViews row already put the text 48.5 from the
+                            // selection's left; the AppKit cell's inset moved it 6 right.)
                             HStack(spacing: 8) {
-                                Image(systemName: url.pathExtension.isEmpty ? "shippingbox" : "folder.badge.gearshape")
-                                    .font(.system(size: 20)).foregroundStyle(c.secondaryLabel)
-                                    .frame(width: 32)
+                                if url.pathExtension.isEmpty {
+                                    Image(systemName: "shippingbox").font(.system(size: 20)).foregroundStyle(c.secondaryLabel).frame(width: 32)
+                                } else {
+                                    YcodeMark(size: 32)   // AboutSheet.swift
+                                }
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(verbatim: RecentProjects.displayName(url)).font(.system(size: 13, weight: .semibold)).foregroundStyle(c.label)
+                                    Text(verbatim: RecentProjects.displayName(url)).font(.system(size: CGFloat(R.titleSize), weight: .semibold))
+                                        .foregroundStyle(c.label)
                                         .lineLimit(1)
-                                    Text(verbatim: RecentProjects.folderText(url)).font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.secondaryLabel)
-                                        .lineLimit(1).truncationMode(.head)
+                                        .offset(y: CGFloat(R.titleDrop))
+                                    Text(verbatim: RecentProjects.folderText(url)).font(.system(size: CGFloat(R.pathSize)))
+                                        .foregroundStyle(c.secondaryLabel)   // the grey selection keeps it (the accent one: #B3CEF1)
+                                        .lineLimit(1).truncationMode(.middle)
+                                        .offset(y: CGFloat(R.pathDrop))
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .padding(.leading, 16)
-                            .padding(.trailing, 16)
+                            .padding(.trailing, CGFloat(R.trailingInset))
                             .frame(height: CGFloat(WelcomeMetrics.recentRowPitch))
                             .background {
                                 if pair.offset == selected {

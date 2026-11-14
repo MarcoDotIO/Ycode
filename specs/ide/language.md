@@ -41,6 +41,14 @@ line index converts both ways (clamping columns to the line).
 
 ## Features
 
+- Which documents: only Swift and C-family sources and headers (`.swift`,
+  `.c`, `.h`, `.m`, `.mm`, `.cpp`, `.cc`, `.cxx`, `.c++`, `.hpp`, `.hh`,
+  `.hxx`, `.h++`) are opened, changed, saved or closed in the server.
+  Markdown, JSON, property lists, plain text, images and every other file
+  never reach it, so they show no live diagnostic and add nothing to the
+  issue counts, and the preparing subtitle does not wait for them
+  (`fidelity-council.md` row 228). Diagnostics a server publishes for any
+  other file are dropped.
 - Live issues: `textDocument/publishDiagnostics` replaces that file's live
   issues. Severity 1 → error, 2 → warning; information and hints are
   dropped. Lines and columns become 1-based. The issue navigator, editor

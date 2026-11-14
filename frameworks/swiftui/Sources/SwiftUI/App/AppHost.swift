@@ -356,7 +356,7 @@ package final class WindowHost {
         }
     }
 
-    var needsFrame: Bool { graph.needsUpdate || graph.isAnimating || needsDisplay }
+    var needsFrame: Bool { graph.needsUpdate || graph.isAnimating || needsDisplay || services.hasFrameCallbacks }
     var timerDeadline: TimeInterval? {
         [gestures.deadline, services.nextTimerDeadline].compactMap { $0 }.min()
     }
@@ -502,7 +502,7 @@ package final class WindowHost {
 
     func handleScroll(_ s: ScrollEvent) {
         if graph.needsUpdate { update() }
-        gestures.scroll(delta: s.delta, at: s.location)
+        gestures.scroll(ScrollWheelInput(s), at: s.location)
     }
 
     /// Safe-area insets of the window's content (none on desktop windows;
@@ -586,6 +586,15 @@ package final class AppHost: RunLoopClient {
     /// The AT-SPI export (R10; ATSPIBridge.swift), when an accessibility
     /// bus exists.
     package var accessibilityExport: AccessibilityExport?
+
+    /// Touchpad phases and momentum for back ends that report neither
+    /// (B6-OPENVIEWS, ScrollGestureTracker.swift); `OV_SCROLL_MOMENTUM=0`
+    /// turns it off.
+    package var scrollGestures: ScrollGestureTracker = {
+        var t = ScrollGestureTracker()
+        t.isEnabled = ProcessInfo.processInfo.environment["OV_SCROLL_MOMENTUM"] != "0"
+        return t
+    }()
 
     private var delegates: [any AppDelegateAdaptorProtocol] = []
     private var makeRoot: ((AppHost) -> any View)?
@@ -981,7 +990,9 @@ package final class AppHost: RunLoopClient {
         case .pointer(let p):
             if p.phase == .down, closePopups(outside: p.window, at: p.location) { return }
             window(for: p.window)?.handlePointer(p)
-        case .scroll(let s): window(for: s.window)?.handleScroll(s)
+        case .scroll(let s):
+            scrollGestures.configuration.step = runLoop.displayLink.period
+            for e in scrollGestures.feed(s) { window(for: e.window)?.handleScroll(e) }
         case .key(let k):
             if k.isDown { log?("key \(k.key) \(k.modifiers.rawValue) window \(k.window)") }
             // Keys go to the innermost pop-up open over the window.
@@ -1064,7 +1075,10 @@ package final class AppHost: RunLoopClient {
         for w in windows { w.applySettings(apply) }
     }
 
-    package var nextTimerDeadline: TimeInterval? { windows.compactMap(\.timerDeadline).min() }
+    package var nextTimerDeadline: TimeInterval? {
+        let scroll = scrollGestures.deadline(nextFrame: runLoop.displayLink.nextTick)
+        return (windows.compactMap(\.timerDeadline) + [scroll].compactMap { $0 }).min()
+    }
 
     /// R10: `UserDefaults` writes made outside the wrappers (swift-corelibs-
     /// foundation posts no change notification) are noticed after each wake
@@ -1072,6 +1086,7 @@ package final class AppHost: RunLoopClient {
     package func afterWait() { AppStorageCenter.shared.refreshIfObserved() }
 
     package func fireTimers(now: TimeInterval) {
+        for e in scrollGestures.advance(to: now) { window(for: e.window)?.handleScroll(e) }
         for w in windows {
             w.gestures.tick(now)
             w.services.fireTimers(now: now)
@@ -1084,6 +1099,7 @@ package final class AppHost: RunLoopClient {
         clock.frameTime = time
         defer { clock.frameTime = nil }
         appGraph?.update()
+        for w in windows { w.services.runFrameCallbacks(at: time) }
         for w in windows { w.renderFrame() }
         accessibilityExport?.afterFrame()
     }

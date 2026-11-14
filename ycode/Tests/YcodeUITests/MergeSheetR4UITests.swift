@@ -43,15 +43,17 @@ import Testing
         var sheets: [NSAccessibilityProtocol] = []
         Self.walk(frame) { e, _ in if Self.role(e) == .sheet, let a = e as? NSAccessibilityProtocol { sheets.append(a) } }
         let ax = try #require(sheets.first { ($0 as AnyObject) === alert })
-        #expect(ax.accessibilityLabel() == "Are you sure you want to merge from \u{201C}feature\u{201D}?")
+        // Round 7 (merge-sheet.md §16.1, row 195): no description on the sheet.
+        #expect(ax.accessibilityLabel() == nil)
         let children = try #require(ax.accessibilityChildren())
-        // Round 6 (merge-sheet.md §15.4, row 168): the reference's order,
-        // Merge, Cancel, the message, the icon (an image with a
-        // description), the informative text.
-        #expect(children.map { Self.role($0) } == [.button, .button, .staticText, .image, .staticText], "\(children.map { Self.role($0)?.rawValue ?? "nil" })")
+        // Round 6 (§15.4, row 168): the reference's order, Merge, Cancel,
+        // the message, the icon (an image with a description), the
+        // informative text; round 7: an empty image before them.
+        #expect(children.map { Self.role($0) } == [.image, .button, .button, .staticText, .image, .staticText], "\(children.map { Self.role($0)?.rawValue ?? "nil" })")
         #expect(children.compactMap { ($0 as? NSTextField)?.stringValue }
                 == [MergeSheetText.alertTitle(branch: "feature"), MergeSheetText.alertMessage(branch: "feature", current: "main")])
-        #expect((children[3] as? NSImageView)?.accessibilityLabel() == MergeSheetText.alertIconDescription)
+        #expect((children[0] as? NSAccessibilityProtocol)?.accessibilityLabel() == nil)
+        #expect((children[4] as? NSImageView)?.accessibilityLabel() == MergeSheetText.alertIconDescription)
         let buttons = children.compactMap { $0 as? MergeButton }
         #expect(buttons.map { Self.title($0) } == ["Merge", "Cancel"])
         #expect(buttons.allSatisfy { $0.isAccessibilityElement() && $0.isAccessibilityEnabled() })

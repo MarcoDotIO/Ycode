@@ -183,12 +183,22 @@ struct TileEncoder {
     }
 
     /// Encodes every rectangle, banded, on up to `maxParallel` threads; the
-    /// tiles come back in order. Nil entries (encoder failures) are dropped.
+    /// tiles come back in order. Nil entries (encoder failures) are dropped:
+    /// callers that send lossy frames use `encodeAllChecked`, which counts them.
     func encodeAll(_ rects: [PixelRect], mirror: DisplayMirror) -> [DisplayTile] {
+        encodeAllChecked(rects, mirror: mirror).tiles
+    }
+
+    /// `encodeAll`, with the number of bands the encoder failed on. A frame
+    /// with failed bands must not be sent as it is: the viewer would keep the
+    /// old pixels there (or nothing, at the first frame), so a JPEG library
+    /// that stopped working looked like a stream of empty frames.
+    func encodeAllChecked(_ rects: [PixelRect], mirror: DisplayMirror) -> (tiles: [DisplayTile], failed: Int) {
         let pieces = Self.bands(rects, downscale: downscale)
         if pieces.count == 1 {
             var e = self
-            return e.encode(pieces[0], mirror: mirror).map { [$0] } ?? []
+            let tile = e.encode(pieces[0], mirror: mirror)
+            return (tile.map { [$0] } ?? [], tile == nil ? 1 : 0)
         }
         let results = BandResults(count: pieces.count)
         let workers = min(Self.maxParallel, pieces.count)
@@ -202,7 +212,8 @@ struct TileEncoder {
                 i += workers
             }
         }
-        return results.tiles
+        let tiles = results.tiles
+        return (tiles, pieces.count - tiles.count)
     }
 
     /// One slot per band, filled by the encoding threads.
@@ -212,6 +223,12 @@ struct TileEncoder {
         init(count: Int) { slots = [DisplayTile?](repeating: nil, count: count) }
         func set(_ i: Int, _ t: DisplayTile?) { lock.withLock { slots[i] = t } }
         var tiles: [DisplayTile] { lock.withLock { slots.compactMap { $0 } } }
+    }
+
+    /// What the stream does when tiles of `encoding` failed: JPEG goes on as
+    /// zlib (nil when zlib failed too: the session ends with the reason).
+    static func fallback(after encoding: DisplayEncoding, zlibAvailable: Bool) -> DisplayEncoding? {
+        encoding == .jpeg && zlibAvailable ? .zlibBGRA : nil
     }
 
     mutating func encode(_ r: PixelRect, mirror: DisplayMirror) -> DisplayTile? {

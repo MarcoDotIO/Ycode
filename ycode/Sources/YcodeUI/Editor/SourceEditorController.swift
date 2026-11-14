@@ -13,11 +13,22 @@ final class SourceTextView: NSTextView {
     /// scroll view's content insets: with the caret on line 1 that put
     /// the first lines under the jump bar. The text keeps its place
     /// instead (council round 2).
+    override func viewWillStartLiveResize() {
+        super.viewWillStartLiveResize()
+        beginMotionAnchor()   // row 223: the top line stays through the resize
+    }
+
     override func viewDidEndLiveResize() {
         guard let scroll = enclosingScrollView else { return super.viewDidEndLiveResize() }
         let clip = scroll.contentView
         let before = clip.bounds.origin
         super.viewDidEndLiveResize()
+        // The exact height the resize's re-wraps left for its end (row 206).
+        settleAfterMotion(liveResizeEnded: true)
+        if rowsState.motionAnchor != nil {
+            endMotionAnchor()
+            return
+        }
         guard clip.bounds.origin != before else { return }
         let kept = clip.constrainBoundsRect(NSRect(origin: before, size: clip.bounds.size)).origin
         clip.scroll(to: kept)
@@ -59,10 +70,17 @@ final class SourceTextView: NSTextView {
         super.flagsChanged(with: event)
     }
 
-    /// Editor overscroll: blank space after the last line.
+    /// Editor overscroll: blank space after the last line. A width change
+    /// re-wraps under the same top line (SourceTextView+Rows.swift).
     override func setFrameSize(_ newSize: NSSize) {
+        if newSize.width != frame.width, frame.width > 0, !rowsState.isRewrapping, enclosingScrollView != nil {
+            keepingTopLine { super.setFrameSize(NSSize(width: newSize.width, height: heightWithOverscroll(newSize.height))) }
+            return
+        }
         super.setFrameSize(NSSize(width: newSize.width, height: heightWithOverscroll(newSize.height)))
     }
+    /// The re-wrap's state (SourceTextView+Rows.swift).
+    let rowsState = SourceTextRowsState()
 
     override func performFindPanelAction(_ sender: Any?) {
         if owner?.performFind(tag: (sender as? NSMenuItem)?.tag ?? (sender as? NSControl)?.tag ?? 1) != true {
@@ -291,11 +309,14 @@ final class SourceTextView: NSTextView {
     }
 
     func lineRect(_ line: Int) -> NSRect? {
+        // The empty line after a final line break (row 178).
+        if line == lineIndex.lineCount, line > 1, lineIndex.range(ofLine: line)?.length == 0 { return finalEmptyLineRect() }
         guard let tlm = textLayoutManager, let tcm = tlm.textContentManager,
               let r = lineIndex.range(ofLine: line),
               let loc = tcm.location(tcm.documentRange.location, offsetBy: r.location),
               let frag = tlm.textLayoutFragment(for: loc) else { return nil }
         var f = frag.layoutFragmentFrame
+        f.size.height = Self.height(of: frag)
         f.origin.y += textContainerOrigin.y
         f.origin.x = 0
         f.size.width = bounds.width
@@ -345,13 +366,6 @@ final class SourceTextView: NSTextView {
                 NSBezierPath(roundedRect: r.insetBy(dx: -3, dy: 0.5), xRadius: 5, yRadius: 5).fill()
             }
         }
-        for m in findMatches {
-            let isCurrent = m == currentFindMatch
-            (isCurrent ? NSColor.systemYellow : NSColor.systemYellow.withAlphaComponent(0.3)).setFill()
-            for r in segmentRects(m) where r.intersects(rect) {
-                NSBezierPath(roundedRect: r.insetBy(dx: -1, dy: 0), xRadius: 2, yRadius: 2).fill()
-            }
-        }
         if let l = caretLine, l != highlightedLine, var r = lineRect(l), r.intersects(rect) {
             // The band ends at the text container's edge, with rounded
             // corners there; it continues in the gutter (editor-area.md §C.2).
@@ -368,6 +382,15 @@ final class SourceTextView: NSTextView {
             Theme.currentLineColor.setFill()
             r.fill()
             if let a = stopAnnotation { drawStopAnnotation(a, in: r) }
+        }
+        // Find matches and symbol instances over the current-line band, so
+        // the one on the caret's line shows too (row 227).
+        for m in findMatches {
+            let isCurrent = m == currentFindMatch
+            (isCurrent ? NSColor.systemYellow : NSColor.systemYellow.withAlphaComponent(0.3)).setFill()
+            for r in segmentRects(m) where r.intersects(rect) {
+                NSBezierPath(roundedRect: r.insetBy(dx: -1, dy: 0), xRadius: 2, yRadius: 2).fill()
+            }
         }
         drawDisplayExtras(in: rect)
         drawReviewMarks(in: rect)
@@ -395,6 +418,9 @@ final class JumpBar: NSView {
     let paneState = JumpBarPaneState()
     /// The path's views and their fit (JumpBar+Path.swift).
     let pathState = JumpBarPathState()
+    /// The stack's leading inset: 6, or the grid's 13 when the grid comes
+    /// first (round 10, row 247; JumpBar+Leading.swift).
+    lazy var stackLeading = stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6)
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -405,7 +431,7 @@ final class JumpBar: NSView {
             addSubview(s)
         }
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            stackLeading,
             // The path's ink centres on the band's centre less 0.5
             // (metrics.md §16.1, row 78: it sat 2.75 lower).
             stack.centerYAnchor.constraint(equalTo: centerYAnchor, constant: Self.pathRaise),
@@ -490,14 +516,18 @@ final class JumpBar: NSView {
             closeButton = b
             stack.addArrangedSubview(b)
         } else {
-            let b = iconButton("square.grid.2x2", "Navigate to Related Items")
+            // Ycode's grid, 13 × 13 at 13 in (row 247, JumpBar+Leading.swift).
+            let b = JumpBarGridButton()
             b.setAccessibilityLabel("Related Items")
             b.target = self
             b.action = #selector(relatedItemsClicked)
             relatedItemsButton = b
             stack.addArrangedSubview(b)
         }
+        stackLeading.constant = stack.arrangedSubviews.first is JumpBarGridButton ? CGFloat(JumpBarLeading.gridX) : 6
         if showsPaneCloseButton { addPaneDivider() }
+        // With a file: the 1 × 12 divider at 35, the path from 49 (row 247).
+        if !components.isEmpty, stack.arrangedSubviews.first is JumpBarGridButton, !showsPaneCloseButton, modes.isEmpty { addPathDivider() }
         counterpartsMenu = nil
         modeMenu = nil
         if !modes.isEmpty {
@@ -539,7 +569,9 @@ final class JumpBar: NSView {
             stack.addArrangedSubview(label("No Selection", secondary: false))
         }
         // The path, spaced and fitted by ink (JumpBar+Path.swift, H.4).
-        for (i, (title, symbol)) in components.enumerated() { addPathPart(title: title, symbol: symbol, first: i == 0) }
+        for (i, (title, symbol)) in components.enumerated() {
+            addPathPart(title: title, symbol: symbol, first: i == 0, role: JumpBarPathLayout.iconRole(index: i, count: components.count))
+        }
         if let symbolTitle, !components.isEmpty { addPathLast(symbolTitle) }
         needsLayout = true
     }
@@ -667,7 +699,12 @@ final class JumpBar: NSView {
 @MainActor
 public final class SourceEditorController: NSViewController, NSTextViewDelegate, NSTextContentManagerDelegate {
     public private(set) var fileURL: URL?
-    public var pathComponents: [(String, String)] = [] { didSet { jumpBar.setPath(pathComponents) } }
+    public var pathComponents: [(String, String)] = [] {
+        didSet {
+            jumpBar.pathState.fileName = fileURL?.lastPathComponent
+            jumpBar.setPath(pathComponents)
+        }
+    }
     public var onBreakpointClick: ((String, Int) -> Void)?
     private var prefsObserver: NSObjectProtocol?
     private var scrollerStyleObserver: NSObjectProtocol?
@@ -762,6 +799,8 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     let jumpBar = JumpBar()
     /// Code Review mode state (CodeReviewViews.swift).
     let review = CodeReviewState()
+    /// Each document's selection and top line (+Places.swift, row 226).
+    let places = EditorPlaces()
     /// The empty-editor view, when shown (EmptyEditorView.swift).
     let emptyHolder = EmptyStateHolder()
     /// The editor stopped showing a document (the window shows Recent Files).
@@ -1329,6 +1368,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
 
     public func open(_ url: URL) throws {
         _ = view
+        rememberPlace()
         dismissPrediction()
         hideComparison()
         hideInlineComparison()
@@ -1348,14 +1388,21 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         isDirty = false
         reindex()
         resetSyntax()
+        // The exact height after the first frame (row 206): TextKit lays out
+        // what is on screen for it.
+        textView.settleAfterFirstFrame()
         updateMinimapRows()
         updateDisplayExtras()
         refreshSourceChanges()
         onDocumentOpened?(url, text)
         // A newly opened file starts at line 1, column 1 (reference-ui-6.md
-        // §4.2.2); an open that names a line moves the caret afterwards.
-        textView.setSelectedRange(NSRange(location: 0, length: 0))
-        textView.scrollRangeToVisible(NSRange(location: 0, length: 0))
+        // §4.2.2); a file shown again in this window gets its selection and
+        // top line back (row 226). An open that names a line moves the caret
+        // afterwards.
+        if !restorePlace(of: url) {
+            textView.setSelectedRange(NSRange(location: 0, length: 0))
+            textView.scrollRangeToVisible(NSRange(location: 0, length: 0))
+        }
         textViewDidChangeSelection(Notification(name: NSTextView.didChangeSelectionNotification, object: textView))
         contentMovedUnderBars()
     }
@@ -1378,6 +1425,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
 
     public func showText(_ text: String, title: String) {
         _ = view
+        rememberPlace()
         try? save()
         fileURL = nil
         language = .plain
@@ -1391,6 +1439,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         isDirty = false
         reindex()
         resetSyntax()
+        textView.settleDocumentHeight()
         pathComponents = [(title, "doc.plaintext")]
         setIssues([])
         setBreakpoints([:], active: true)
@@ -1601,7 +1650,10 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
 
     /// The innermost declaration at or before the caret's line.
     func updateSymbolComponent() {
-        guard fileURL != nil, language.isCode else { jumpBar.symbolTitle = nil; return }
+        guard fileURL != nil else { jumpBar.symbolTitle = nil; return }
+        // A document without symbols (Markdown, JSON, text) ends its path
+        // with "No Selection" too (council round 9, row 217).
+        guard language.isCode else { jumpBar.symbolTitle = WorkspaceChrome.jumpBarNoSymbol; return }
         // Large files: while typing, the symbol component waits for the
         // pause that updates folds (re-scanning symbols per keystroke cost
         // most of a keystroke on a 10,000-line file).
@@ -1649,10 +1701,16 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         }
     }
 
+    /// Highlights the instances of the symbol at the caret: only an
+    /// identifier in code, never a word in a comment or a string, and only
+    /// its instances in code (`SymbolInstances`, council row 227).
     public func applySymbolHighlight(_ name: String) {
         guard identifierAtCaret == name else { return }
+        let ranges = SymbolInstances.ranges(in: textView.string, caret: textView.selectedRange().location, language: language)
+        guard !ranges.isEmpty else { return }
         symbolCache.highlighted = name
-        highlightOccurrences(of: name)
+        textView.findMatches = ranges
+        textView.currentFindMatch = nil
     }
 
     public func textViewDidChangeSelection(_ notification: Notification) {
