@@ -30,7 +30,8 @@ import YcodeProject
                                 #selector(WorkspaceWindowController.jumpToNextBookmark(_:)), #selector(WorkspaceWindowController.jumpToPreviousBookmarkInWorkspace(_:)),
                                 #selector(WorkspaceWindowController.bookmarkLine(_:)), #selector(WorkspaceWindowController.bookmarkFile(_:)),
                                 #selector(WorkspaceWindowController.jumpToLine(_:)), #selector(WorkspaceWindowController.hideFindBar(_:)),
-                                #selector(WorkspaceWindowController.duplicateEditorTab(_:)), #selector(WorkspaceWindowController.openWithExternalEditor(_:)),
+                                // Duplicate Editor Tab is enabled with a workspace (P-008).
+                                #selector(WorkspaceWindowController.openWithExternalEditor(_:)),
                                 #selector(WorkspaceWindowController.openInNewTab(_:)),
                                 // A package has no archive; no file, no review.
                                 #selector(WorkspaceWindowController.archiveProduct(_:)), #selector(WorkspaceWindowController.toggleComparison(_:))]

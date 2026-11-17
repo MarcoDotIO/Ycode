@@ -119,6 +119,9 @@ def write(out_dir: pathlib.Path) -> pathlib.Path:
     greeting.write_text(BASE)
     (root / ".gitignore").write_text("xcuserdata/\n*.xcuserstate\nproject.xcworkspace/\nDerivedData/\n")
     git(root, "init", "-q", "-b", "main")
+    # The repository's own identity, so an app's commit UI shows the test identity, not the Mac's global one.
+    git(root, "config", "user.name", IDENTITY["GIT_AUTHOR_NAME"])
+    git(root, "config", "user.email", IDENTITY["GIT_AUTHOR_EMAIL"])
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "Start Merger")
     git(root, "branch", "feature")

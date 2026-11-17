@@ -41,7 +41,7 @@ import YcodeBuild
     /// insertion point on a line; Settings ▸ General ▸ Appearance goes from
     /// Dark to Light and back. The row stays selected and the band stays on
     /// the caret's line (#353535 in dark, #EEEEEE on white in light).
-    @Test func selectionAndBandSurviveAnAppearanceChange() throws {
+    @Test(.appearanceWriter) func selectionAndBandSurviveAnAppearanceChange() throws {
         let prefs = IsolatedPreferences("r8-appearance")
         defer { prefs.restore() }
         let (wc, dir) = try r5.longWindow("r8-appearance")

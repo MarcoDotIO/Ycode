@@ -153,9 +153,10 @@ struct ProductEngine: BuildEngine {
         #expect(session.model.diagnostics(scheme: "Tool", action: .test) == SchemeDiagnostics(undefinedBehaviorSanitizer: true))
     }
 
-    /// Debug ▸ Simulate Location ▸ is the debug bar's menu: a note without
-    /// a run on the Ycode simulator; the places and trips with one, each
-    /// sending its location command.
+    /// Debug ▸ Simulate Location ▸ is the debug bar's menu: without a run on
+    /// the Ycode simulator, Don’t Simulate Location, the places and Add GPS
+    /// Exchange to Project… listed disabled (P-015); the places and trips
+    /// with one, each sending its location command.
     @Test func simulateLocationSubmenu() async throws {
         let dir = scratch("loc-menu")
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -164,14 +165,16 @@ struct ProductEngine: BuildEngine {
         let debug = try #require(bar.item(withTitle: "Debug")?.submenu)
         let sub = try #require(debug.item(withTitle: "Simulate Location")?.submenu)
         MenuBarDelegate.shared.update(sub, controller: wc)
-        #expect(sub.items.map(\.title).contains("Location simulation needs a run on the Ycode simulator"))
+        let titles = sub.items.map(\.title)
+        #expect(titles.first == "Don\u{2019}t Simulate Location" && titles.last == "Add GPS Exchange to Project…")
+        #expect(SimLocation.presets.allSatisfy { titles.contains($0.name) } && !titles.contains { $0.hasPrefix("Location simulation needs") })
         #expect(!sub.items.contains { $0.isEnabled && !$0.isSeparatorItem })
         let sent = Calls()
         wc.debugArea.simulatorRunKey = { "dev.ycode.Probe#42" }
         wc.debugArea.simulateLocationHandler = { words in sent.add(words, ""); return (true, "") }
         MenuBarDelegate.shared.update(sub, controller: wc)
         let places = sub.items.filter { $0.isEnabled && !$0.isSeparatorItem }
-        #expect(places.first?.title == "Don't Simulate Location" && places.count == 1 + SimLocation.presets.count + SimLocation.builtInScenarios.count)
+        #expect(places.first?.title == "Don\u{2019}t Simulate Location" && places.count == 1 + SimLocation.presets.count + SimLocation.builtInScenarios.count)
         let first = try #require(sub.items.first { $0.title == SimLocation.presets[0].name })
         _ = (first.target as? NSObject)?.perform(first.action, with: first)
         try await Task.sleep(nanoseconds: 100_000_000)

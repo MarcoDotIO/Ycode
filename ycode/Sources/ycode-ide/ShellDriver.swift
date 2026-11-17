@@ -67,10 +67,13 @@ import OVPlatform
 //   YCODE_IDE_WINDOWCLOSE9=<p>  closing Settings and the wizard, then File ▸ Quit, from Welcome (ShellDriver+WindowClose.swift)
 //   YCODE_IDE_ORGANIZER=<p> Window ▸ Organizer's walk (OrganizerDriver.swift)
 //   YCODE_IDE_CONFLICT=<p>  the merge alert and merge sheet walk (ShellDriver+Conflicts.swift)
+//   YCODE_IDE_WORKFLOWS4=<p> beta 4 workflows: Activate Console, New Branch (ShellDriver+Workflows4.swift)
 //   YCODE_IDE_TESTS=<p>     testing's walk (ShellDriver+Tests.swift)
 //   YCODE_IDE_POLISH=<p>    the beta 2 polish pass (ShellDriver+Polish.swift)
 //   YCODE_IDE_IB=<p>        Interface Builder documents (InterfaceBuilderDriver.swift)
 //   YCODE_IDE_PREVIEWS=<p>  the preview canvas's walk (PreviewsDriver.swift)
+//   YCODE_IDE_TOUR=<p>      the 2026-11-15 parity tour's parts (ShellDriver+Tour.swift)
+//   YCODE_IDE_TOOLKIT4=<p>  beta 4's OpenViews menus, alerts and sheets (ShellDriver+Toolkit4.swift)
 //   YCODE_IDE_WALK=<p>      a tester's walk: Welcome, About, Clone, New Project
 //                           (each tab) with no path; with a path every
 //                           navigator, the menus, Build, Test, Run; writes
@@ -112,7 +115,9 @@ enum ShellDriver {
                         "YCODE_IDE_GLASS4", "YCODE_IDE_R4EDITOR", "YCODE_IDE_MOTION4", "YCODE_IDE_PARITY5", "YCODE_IDE_SETTINGS5", "YCODE_IDE_PANES5",
                         "YCODE_IDE_FLICK6", "YCODE_IDE_SETTINGS7", "YCODE_IDE_EDITOR7", "YCODE_IDE_CHROME8", "YCODE_IDE_MOTION8",
                         "YCODE_IDE_FILETYPES9", "YCODE_IDE_MOTION9", "YCODE_IDE_CHROME9", "YCODE_IDE_GLYPHS9",
-                        "YCODE_IDE_WINDOWCLOSE9", "YCODE_IDE_CHROME10"]
+                        "YCODE_IDE_WINDOWCLOSE9", "YCODE_IDE_CHROME10", "YCODE_IDE_TOUR", "YCODE_IDE_TOOLKIT4",
+                        "YCODE_IDE_PANES4", "YCODE_IDE_WINDOWS4", "YCODE_IDE_B4EDITOR", "YCODE_IDE_B4LANG",
+                        "YCODE_IDE_WORKFLOWS4", "YCODE_IDE_MENUS4", "YCODE_IDE_B4POLISH"]
         guard switches.contains(where: { env[$0] != nil }) else { return }
         await pause(0.4)
         say("backend \(OpenViewsAutomation.backendName)")
@@ -133,6 +138,7 @@ enum ShellDriver {
         if let prefix = env["YCODE_IDE_ACCOUNTS"] { await AccountsDriver.run(prefix: prefix) }   // AccountsDriver.swift
         if let prefix = env["YCODE_IDE_ORGANIZER"] { await OrganizerDriver.run(app, prefix: prefix) }   // OrganizerDriver.swift
         if let prefix = env["YCODE_IDE_LSP"] { await LanguageDriver.run(app, prefix: prefix) }   // LanguageDriver.swift
+        if let prefix = env["YCODE_IDE_B4LANG"] { await b4LanguageWalk(app, prefix: prefix) }   // ShellDriver+B4Language.swift
         if env["YCODE_IDE_IME"] != nil { await prepareInputMethodTest(app) }  // ShellDriverInputMethod.swift
         if let prefix = env["YCODE_IDE_DEBUG"] { await DebugDriver.run(app, prefix: prefix) }
         if let prefix = env["YCODE_IDE_POLISH"] { await polish(app, prefix: prefix) }   // ShellDriver+Polish.swift
@@ -163,6 +169,11 @@ enum ShellDriver {
             await flick6Walk(app, prefix: prefix)
             OpenViewsAutomation.terminate()
         }
+        if let prefix = env["YCODE_IDE_B4POLISH"] { await b4PolishWalk(app, prefix: prefix); OpenViewsAutomation.terminate() }   // ShellDriver+B4Polish.swift
+        if let prefix = env["YCODE_IDE_B4EDITOR"] {   // ShellDriver+B4Editor.swift
+            await b4EditorWalk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
         if let prefix = env["YCODE_IDE_EDITOR7"] {   // ShellDriver+Editor7.swift
             await editor7Walk(app, prefix: prefix)
             OpenViewsAutomation.terminate()
@@ -175,7 +186,12 @@ enum ShellDriver {
             await motion9Walk(app, prefix: prefix)
             OpenViewsAutomation.terminate()
         }
+        if let prefix = env["YCODE_IDE_MENUS4"] {   // ShellDriver+Menus4.swift
+            await menus4Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
         if let prefix = env["YCODE_IDE_WINDOWCLOSE9"] { await windowClose9Walk(app, prefix: prefix) }   // ShellDriver+WindowClose.swift
+        if let prefix = env["YCODE_IDE_WINDOWS4"] { await windows4Walk(app, prefix: prefix) }   // ShellDriver+Windows4.swift
         if let prefix = env["YCODE_IDE_PARITY5"] {   // ShellDriver+Parity5.swift
             await parity5Walk(app, prefix: prefix)
             OpenViewsAutomation.terminate()
@@ -200,6 +216,18 @@ enum ShellDriver {
             await chrome10Walk(app, prefix: prefix)
             OpenViewsAutomation.terminate()
         }
+        if let prefix = env["YCODE_IDE_PANES4"] {   // ShellDriver+Panes4.swift
+            await panes4Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_TOUR"] {   // ShellDriver+Tour.swift
+            await tourWalk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_TOOLKIT4"] {   // ShellDriver+Toolkit4.swift
+            await toolkit4Walk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
         if let prefix = env["YCODE_IDE_CHROME9"] {   // ShellDriver+Chrome9.swift
             await chrome9Walk(app, prefix: prefix)
             OpenViewsAutomation.terminate()
@@ -214,6 +242,10 @@ enum ShellDriver {
         }
         if let prefix = env["YCODE_IDE_SCM"] {
             await scmWalk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_WORKFLOWS4"] {   // ShellDriver+Workflows4.swift (B4-WORKFLOWS)
+            await workflows4Walk(app, prefix: prefix)
             OpenViewsAutomation.terminate()
         }
         if let prefix = env["YCODE_IDE_CONFLICT"] {   // ShellDriver+Conflicts.swift
@@ -312,7 +344,17 @@ enum ShellDriver {
     }
 
     static func clickText(_ text: String, inPopup: Bool) async {
-        guard let t = OpenViewsAutomation.texts().first(where: { $0.text == text && $0.inPopup == inPopup }) else {
+        // The workspace window's menu bar shows on demand (B5-OPENVIEWS):
+        // reveal it before clicking one of its titles, as a pointer resting
+        // on the window's top edge or a tap of Alt does.
+        if !inPopup, OpenViewsAutomation.menuTitles().contains(text), !OpenViewsAutomation.isMenuBarRevealed() {
+            OpenViewsAutomation.setMenuBarRevealed(true)
+            await pause(0.3)
+        }
+        let candidates = OpenViewsAutomation.texts().filter { $0.text == text && $0.inPopup == inPopup }
+        // A menu title is the topmost text with that title (Welcome draws "Ycode" too).
+        let menuTitle = !inPopup && OpenViewsAutomation.menuTitles().contains(text) ? candidates.min { $0.frame.minY < $1.frame.minY } : nil
+        guard let t = menuTitle ?? candidates.first else {
             say("no text \(text)")
             return
         }

@@ -1,0 +1,589 @@
+{
+ "name": "parity-a-welcome",
+ "title": "Part A 1: launch to the Welcome window, its buttons' hover, tooltips and key-view order, the New Project menu, the Open panel and the Clone window (all cancelled). Clone comes last: Xcode closes the Welcome window when its Clone window opens.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "The Welcome window at rest after launch (no project). AX tree and the whole menu bar.",
+   "do": [
+    {
+     "tree": "welcome",
+     "depth": 40
+    },
+    {
+     "menubar": "welcome"
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "tab-order",
+   "note": "Tab through the Welcome window: a still and AX tree after each Tab (focus ring, key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "hover-open",
+   "note": "Pointer onto Open…, held 2.2 s (hover state, tooltip).",
+   "do": [
+    {
+     "hover": {
+      "label": "Open…",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-clone",
+   "note": "Pointer onto Clone…, held 2.2 s.",
+   "do": [
+    {
+     "hover": {
+      "label": "Clone…",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-new",
+   "note": "Pointer onto New Project (a menu button), held 2.2 s.",
+   "do": [
+    {
+     "hover": {
+      "label": "New Project",
+      "role": "AXMenuButton",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-close",
+   "note": "Pointer onto the close (x) button, held 2.2 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Close",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-out",
+   "note": "Pointer off the buttons (onto the version text).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXStaticText",
+      "value~": "Version",
+      "scope": "app"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "new-menu",
+   "note": "Click New Project: its menu opens (animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "New Project",
+      "role": "AXMenuButton",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "new-menu",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "new-menu-keys",
+   "note": "Keyboard in the open menu: Down, Down, then Escape (stills after each).",
+   "do": [
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "snap": "down1",
+     "mode": "app"
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "snap": "down2",
+     "mode": "app"
+    },
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "snap": "escaped",
+     "mode": "app"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "open",
+   "note": "Click Open…: the open panel (it starts in a folder of test projects; its sidebar is painted out afterwards). AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Open…",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "open-panel",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "open-tab-order",
+   "note": "Tab through the open panel (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "open-cancel",
+   "note": "Cancel the open panel.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "welcome-again",
+   "note": "Window ▸ Welcome (cmd+shift+1), in case the panel closed the Welcome window.",
+   "do": [
+    {
+     "key": "cmd+shift+1"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "clone",
+   "note": "Click Clone…: the Clone window or sheet appears (animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Clone…",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "clone",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "clone-tab-order",
+   "note": "Tab through the Clone UI (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "clone-cancel",
+   "note": "Cancel the Clone UI (Cancel button, else Escape).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "after-clone",
+   "note": "What is left on screen after cancelling Clone.",
+   "do": [
+    {
+     "wait": 0.5
+    },
+    {
+     "tree": "after-clone",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "after"
+  }
+ ],
+ "project_targets": [],
+ "window": {
+  "size": null,
+  "display": "builtin",
+  "title": "Welcome to {app}",
+  "timeout": 60
+ },
+ "per_target_setup": {
+  "ycode": [
+   {
+    "run": [
+     "defaults",
+     "write",
+     "io.github.MarcoDotIO.Ycode.capture",
+     "NSNavLastRootDirectory",
+     "/private/tmp/ycode-parity-a/panel"
+    ]
+   }
+  ]
+ }
+}

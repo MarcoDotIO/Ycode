@@ -62,7 +62,7 @@
 # (shell assignments; keep machine paths there, not here):
 #   YCODE_SIM_TREE         ycode/ tree with release builds (required)
 #   YCODE_SIM_DATA         data directory for snapshots, frames and logs (required;
-#                          must be on the data volume, not the system disk)
+#                          under $YCODE_DATA, a volume with room: each save is about 3 GB)
 #   YCODE_SIM_LOCKS        directory of the shared boot-slot locks (default: $YCODE_SIM_DATA/locks)
 #   YCODE_SIM_SLOTS        number of boot slots (default 3)
 #   YCODE_SIM_GPU_CACHE    --gpu-cache-dir (default: $YCODE_SIM_DATA/gpu-cache)

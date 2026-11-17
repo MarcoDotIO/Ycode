@@ -31,6 +31,14 @@ public final class MergeSheetController: NSViewController, NSTextViewDelegate {
 
     var onMerge: (() -> Void)?
     var onCancel: (() -> Void)?
+    /// The repository has nothing left to show: no operation stopped and no
+    /// conflicted file (aborted or resolved elsewhere); the window closes
+    /// the sheet instead of leaving an empty "0/0" one (P-131).
+    var onNothingLeft: (() -> Void)?
+    /// Ycode itself started the stopped operation (a merge, rebase, pull,
+    /// pick or stash apply from its menus): Cancel aborts it, leaving the
+    /// repository unmerged, without asking (P-131).
+    public var abortsOnCancel = false
     /// A file was marked resolved (the window reads git again).
     var onResolved: (() -> Void)?
 
@@ -146,6 +154,10 @@ public final class MergeSheetController: NSViewController, NSTextViewDelegate {
 
     /// The window's latest snapshot: a file resolved elsewhere moves on.
     public func update(integration: GitRepository.IntegrationState, conflicted: [String]) {
+        if !integration.isInProgress && conflicted.isEmpty, let done = onNothingLeft {
+            done()
+            return
+        }
         guard loading == nil else { return }
         if case .show(let next) = state.update(integration: integration, conflicted: conflicted) {
             track { [weak self] in await self?.show(file: next) }

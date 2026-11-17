@@ -1,0 +1,643 @@
+{
+ "name": "parity-a-newproject2",
+ "title": "Part A 2b: the New Project options page: key-view order, the product name, its pop-up menus, the save sheet (cancelled), cancelling the assistant.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "to-options",
+   "note": "Not judged: reach the options page of macOS ▸ App (the first macOS template, selected by default).",
+   "do": [
+    {
+     "key": "cmd+shift+n"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Choose Template…",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "click": {
+      "role": "AXRadioButton",
+      "label": "macOS",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "click": {
+      "label": "macOS",
+      "scope": "app",
+      "visible": true
+     },
+     "fallback": true
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Next",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "options",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "after",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "label": "New Project",
+        "role": "AXMenuButton",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "click": {
+        "role": "AXMenuItem",
+        "title": "Choose Template…",
+        "scope": "app",
+        "visible": true
+       }
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "move": [
+        56,
+        57
+       ],
+       "window": "Untitled"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "label": "macOS",
+        "scope": "app",
+        "visible": true
+       }
+      },
+      {
+       "click": {
+        "label": "macOS",
+        "scope": "app",
+        "visible": true
+       },
+       "fallback": true
+      },
+      {
+       "wait": 0.8
+      },
+      {
+       "wait": 0.5
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "title": "Next",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "options",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "options-tab-order",
+   "note": "Tab through the options page (key-view order). The Team, organization and bundle identifier values are painted out in Xcode's stills.",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k07",
+     "mode": "app"
+    },
+    {
+     "tree": "k07",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k08",
+     "mode": "app"
+    },
+    {
+     "tree": "k08",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "product-name",
+   "note": "Click the Product Name field and type 'ParityApp' (the bundle identifier follows).",
+   "do": [
+    {
+     "click": {
+      "identifier": "productName",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "cmd+a"
+    },
+    {
+     "text": "ParityApp"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "popup-interface",
+   "note": "Open the interface pop-up (identifier userInterface; never the Team pop-up): its menu (animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "identifier": "userInterface",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "popup-interface",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "popup-interface-close",
+   "note": "Escape (the value stays).",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "popup-language",
+   "note": "Open the language pop-up (identifier languageChoice; never the Team pop-up): its menu (animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "identifier": "languageChoice",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "popup-language",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "popup-language-close",
+   "note": "Escape (the value stays).",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "popup-testing",
+   "note": "Open the testing pop-up (identifier testingSystem; never the Team pop-up): its menu (animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "identifier": "testingSystem",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "popup-testing",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "popup-testing-close",
+   "note": "Escape (the value stays).",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "popup-storage",
+   "note": "Open the storage pop-up (identifier storageType; never the Team pop-up): its menu (animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "identifier": "storageType",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "popup-storage",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "popup-storage-close",
+   "note": "Escape (the value stays).",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "save-panel",
+   "note": "Next: the save sheet (animation). Its sidebar is painted out afterwards. AX tree.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Next",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "save",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "save-tab-order",
+   "note": "Tab through the save sheet (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "save-cancel",
+   "note": "Cancel the save sheet: back to the options page.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "assistant-cancel",
+   "note": "Cancel the assistant (its Cancel button).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.2
+   },
+   "still": "both"
+  },
+  {
+   "id": "after-cancel",
+   "note": "What is left: the untitled window or nothing.",
+   "do": [
+    {
+     "wait": 0.5
+    },
+    {
+     "tree": "after",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "after"
+  }
+ ],
+ "project_targets": [],
+ "window": {
+  "size": null,
+  "display": "builtin",
+  "title": "Welcome to {app}",
+  "timeout": 60
+ },
+ "per_target_setup": {
+  "ycode": [
+   {
+    "run": [
+     "defaults",
+     "write",
+     "io.github.MarcoDotIO.Ycode.capture",
+     "NSNavLastRootDirectory",
+     "/private/tmp/ycode-parity-a/panel"
+    ]
+   }
+  ]
+ }
+}

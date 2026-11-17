@@ -148,14 +148,23 @@ package final class ShortcutRegistry {
         /// A menu command's shortcut (R11): tried after the shortcuts of the
         /// window's own views.
         package var isCommand = false
+        /// The view that registered it (P-214: while a sheet or an alert is
+        /// up, only the views inside the innermost one take keys).
+        package weak var node: ViewNode?
         package init(shortcut: KeyboardShortcut, action: @escaping () -> Void, isEnabled: @escaping () -> Bool,
-                     isCommand: Bool = false) {
+                     isCommand: Bool = false, node: ViewNode? = nil) {
             self.shortcut = shortcut
             self.action = action
             self.isEnabled = isEnabled
             self.isCommand = isCommand
+            self.node = node
         }
     }
+
+    /// The innermost modal presentation of the window (its card), when one
+    /// is up: view shortcuts outside it are not taken (P-214). Menu commands
+    /// still are.
+    package var modalRoot: () -> ViewNode? = { nil }
 
     private var entries: [(owner: ObjectIdentifier, order: Int, entry: Entry)] = []
     private var counter = 0
@@ -187,22 +196,42 @@ package final class ShortcutRegistry {
     /// rather than the field's Redo).
     package func hasEnabledShortcut(key: Key, modifiers: KeyModifiers) -> Bool {
         guard let k = KeyEquivalent(platformKey: key) else { return false }
-        return entries.contains { $0.entry.shortcut.matches(key: k, modifiers: modifiers) && $0.entry.isEnabled() }
+        let modal = modalRoot()
+        return entries.contains { $0.entry.shortcut.matches(key: k, modifiers: modifiers) && $0.entry.isEnabled()
+            && Self.isInScope($0.entry, modal: modal) }
     }
 
     /// Runs the first enabled shortcut matching the key press; true if one ran.
     package func perform(key: Key, modifiers: KeyModifiers) -> Bool {
         guard let k = KeyEquivalent(platformKey: key) else { return false }
+        let modal = modalRoot()
         // Views first, then menu commands (R11: the focused window's views,
         // then its menu bar, as desktop key equivalents go).
         for pass in [false, true] {
-            for e in entries where e.entry.isCommand == pass && e.entry.shortcut.matches(key: k, modifiers: modifiers)
-                && e.entry.isEnabled() {
+            let matching = entries.filter { e in
+                e.entry.isCommand == pass && e.entry.shortcut.matches(key: k, modifiers: modifiers) && e.entry.isEnabled()
+                    && Self.isInScope(e.entry, modal: modal)
+            }
+            // Ctrl alone matches both ⌘ and ⌃ shortcuts (§ Linux mapping
+            // above): ⌘, the primary modifier, wins (L-006).
+            if let e = matching.first(where: { $0.entry.shortcut.modifiers.contains(.command) }) ?? matching.first {
                 e.entry.action()
                 return true
             }
         }
         return false
+    }
+
+    /// Whether a view's shortcut may run while `modal` is the innermost
+    /// presentation: only when the view is inside it.
+    static func isInScope(_ e: Entry, modal: ViewNode?) -> Bool {
+        guard let modal, !e.isCommand else { return true }
+        var n = e.node
+        while let x = n {
+            if x === modal { return true }
+            n = x.parent
+        }
+        return e.node == nil
     }
 }
 

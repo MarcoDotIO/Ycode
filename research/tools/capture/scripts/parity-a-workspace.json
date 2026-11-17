@@ -1,0 +1,1214 @@
+{
+ "name": "parity-a-workspace",
+ "title": "Part A 4: the workspace window, toolbar items one by one: hover, tooltip and press; scheme and destination menus, Edit/Manage Schemes, activity area, coding assistant button, Library, navigator and inspector toggles, Run and Stop.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "first-launch",
+   "note": "The workspace window as first opened (first-launch layout). AX tree and menu bar.",
+   "do": [
+    {
+     "tree": "workspace",
+     "depth": 40
+    },
+    {
+     "menubar": "workspace"
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "tab-order",
+   "note": "Tab through the workspace window (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k07",
+     "mode": "app"
+    },
+    {
+     "tree": "k07",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k08",
+     "mode": "app"
+    },
+    {
+     "tree": "k08",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k09",
+     "mode": "app"
+    },
+    {
+     "tree": "k09",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k10",
+     "mode": "app"
+    },
+    {
+     "tree": "k10",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "hover-navigators",
+   "note": "Pointer onto the navigator toggle, held 2.2 s: hover state and tooltip.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton|AXCheckBox",
+      "description": "Navigators"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-assistant",
+   "note": "Pointer onto the coding assistant button, held 2.2 s: hover state and tooltip.",
+   "do": [
+    {
+     "hover": {
+      "description": "Coding Assistant"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-run",
+   "note": "Pointer onto Run, held 2.2 s: hover state and tooltip.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Run"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-stop",
+   "note": "Pointer onto Stop (disabled), held 2.2 s: hover state and tooltip.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Stop"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-back",
+   "note": "Pointer onto Go Back (disabled), held 2.2 s: hover state and tooltip.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Go Back"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-activity",
+   "note": "Pointer onto the activity area / title, held 2.2 s: hover state and tooltip.",
+   "do": [
+    {
+     "hover": {
+      "description": "Window Title/Activity|Ycode project"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-new-conversation",
+   "note": "Pointer onto New Conversation, held 2.2 s: hover state and tooltip.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "New Conversation"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-scheme",
+   "note": "Pointer onto the scheme pop-up, held 2.2 s: hover state and tooltip.",
+   "do": [
+    {
+     "hover": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-destination",
+   "note": "Pointer onto the destination pop-up, held 2.2 s: hover state and tooltip.",
+   "do": [
+    {
+     "hover": {
+      "label": "Active Run Destination",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-add-editor",
+   "note": "Pointer onto Add Editor, held 2.2 s: hover state and tooltip.",
+   "do": [
+    {
+     "hover": {
+      "description": "Add Editor"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-editor-options",
+   "note": "Pointer onto Editor Options, held 2.2 s: hover state and tooltip.",
+   "do": [
+    {
+     "hover": {
+      "description": "Editor Options"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-canvas",
+   "note": "Pointer onto the Canvas segment, held 2.2 s: hover state and tooltip.",
+   "do": [
+    {
+     "hover": {
+      "description": "Canvas"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-inspector",
+   "note": "Pointer onto the inspector toggle, held 2.2 s: hover state and tooltip.",
+   "do": [
+    {
+     "hover": {
+      "description": "Hide Inspector|Show Inspector"
+     }
+    },
+    {
+     "wait": 2.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "hover-off",
+   "note": "Pointer off the toolbar (onto the editor).",
+   "do": [
+    {
+     "hover": [
+      800,
+      500
+     ]
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "scheme-menu",
+   "note": "Click the scheme pop-up: its menu (animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "scheme-menu",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "scheme-menu-walk",
+   "note": "Sub-menus of the scheme menu, if any.",
+   "do": [
+    {
+     "submenus": "sub",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "edit-scheme",
+   "note": "Choose Edit Scheme… in that menu: the scheme editor sheet (animation). AX tree.",
+   "do": [
+    {
+     "menuclick": "Edit Scheme…"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "scheme-sheet",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-scheme-tabs",
+   "note": "Tab through the scheme editor (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "edit-scheme-close",
+   "note": "Close it (Close or Cancel, else Escape).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Close|Cancel|Done",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "manage-schemes",
+   "note": "Scheme pop-up ▸ Manage Schemes…: the sheet (animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 0.7
+    },
+    {
+     "menuclick": "Manage Schemes…"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "manage",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "manage-schemes-close",
+   "note": "Close it.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Close|Cancel|Done|OK",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-scheme-menubar",
+   "note": "Product ▸ Scheme ▸ Edit Scheme… (menu bar): the scheme editor sheet. AX tree.",
+   "do": [
+    {
+     "menu": "Product > Scheme > Edit Scheme…"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "scheme-sheet",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-scheme-menubar-tabs",
+   "note": "Tab through the scheme editor (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "edit-scheme-menubar-close",
+   "note": "Close it (Close, else Escape).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Close|Cancel|Done",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "manage-schemes-menubar",
+   "note": "Product ▸ Scheme ▸ Manage Schemes… (menu bar): the sheet. AX tree.",
+   "do": [
+    {
+     "menu": "Product > Scheme > Manage Schemes…"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "manage",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "manage-schemes-menubar-close",
+   "note": "Close it.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Close|Cancel|Done|OK",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "destination-menu",
+   "note": "Click the run destination pop-up: its menu (animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Run Destination",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "destination-menu",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "destination-walk",
+   "note": "Every sub-menu of the destination menu, hovered: a still of each.",
+   "do": [
+    {
+     "submenus": "sub",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "destination-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "activity-click",
+   "note": "Click the activity area (title / status in the middle of the toolbar).",
+   "do": [
+    {
+     "click": {
+      "description": "Window Title/Activity|Ycode project"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "activity",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "activity-close",
+   "note": "Escape (closes whatever opened).",
+   "do": [
+    {
+     "key": "escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "library-open",
+   "note": "View ▸ Show Library (cmd+shift+L): the Library panel (animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+l"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "library",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "library-tabs",
+   "note": "Tab inside the Library (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "library-close",
+   "note": "Escape closes the Library.",
+   "do": [
+    {
+     "key": "escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "inspector-hide",
+   "note": "Click Hide Inspector (animation).",
+   "do": [
+    {
+     "click": {
+      "description": "Hide Inspector"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "inspector-show",
+   "note": "Click Show Inspector (animation).",
+   "do": [
+    {
+     "click": {
+      "description": "Show Inspector"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "navigator-hide",
+   "note": "Click the Navigators toggle to hide the navigator (animation).",
+   "do": [
+    {
+     "click": {
+      "description": "Navigators"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "navigator-show",
+   "note": "Click it again to show the navigator.",
+   "do": [
+    {
+     "click": {
+      "description": "Navigators"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "run",
+   "note": "Click Run: the macOS test app builds and runs (activity area progress, Run/Stop states).",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton",
+      "description": "Run"
+     }
+    },
+    {
+     "wait": 6.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "running",
+   "note": "While it runs (or after the build): toolbar and activity area.",
+   "do": [
+    {
+     "wait": 4.0
+    },
+    {
+     "tree": "running",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "stop",
+   "note": "Click Stop (cmd+. if the button is not enabled).",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton",
+      "description": "Stop"
+     }
+    },
+    {
+     "key": "cmd+.",
+     "fallback": true
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  }
+ ],
+ "project": {
+  "generator": "make-test-project.py",
+  "path": "GlassScroll/GlassScroll.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

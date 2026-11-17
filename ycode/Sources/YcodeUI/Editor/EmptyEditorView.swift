@@ -170,10 +170,63 @@ extension SourceEditorController {
     public func hideEmptyState() {
         emptyHolder.view?.removeFromSuperview()
         emptyHolder.view = nil
+        emptyHolder.placeholder?.removeFromSuperview()
+        emptyHolder.placeholder = nil
     }
 
     public var emptyView: EmptyEditorView? { emptyHolder.view }
+
+    /// An assistant pane with nothing to show (no counterpart): "No Editor"
+    /// centred on the editor's background under its jump bar, which keeps
+    /// the mode pop-up; no text, gutter or scroll bar (P-066).
+    public func showNoEditor() {
+        _ = view
+        showText("", title: "")
+        pathComponents = []
+        jumpBar.symbolTitle = nil
+        textView.caretLine = nil
+        gutter.caretLine = nil
+        showsNoDocument = true
+        let v = NoEditorPlaceholderView()
+        v.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(v, positioned: .above, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            v.topAnchor.constraint(equalTo: jumpBar.bottomAnchor), v.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            v.leadingAnchor.constraint(equalTo: view.leadingAnchor), v.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
+        emptyHolder.placeholder = v
+    }
+
+    /// The "No Editor" placeholder, while shown.
+    public var noEditorPlaceholder: NoEditorPlaceholderView? { emptyHolder.placeholder }
+}
+
+/// "No Editor" centred in an empty pane, in the secondary label colour at
+/// the size of the editor's other empty-state titles.
+@MainActor
+public final class NoEditorPlaceholderView: NSView {
+    public let label = NSTextField(labelWithString: "No Editor")
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        label.font = .systemFont(ofSize: 20, weight: .regular)
+        label.textColor = .tertiaryLabelColor
+        label.alignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([label.centerXAnchor.constraint(equalTo: centerXAnchor), label.centerYAnchor.constraint(equalTo: centerYAnchor)])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    public override var wantsUpdateLayer: Bool { true }
+    public override func updateLayer() { layer?.backgroundColor = Theme.backgroundColor.cgColor }
 }
 
 /// Holds the empty view (an extension cannot add stored properties).
-@MainActor final class EmptyStateHolder { var view: EmptyEditorView? }
+@MainActor final class EmptyStateHolder {
+    var view: EmptyEditorView?
+    var placeholder: NoEditorPlaceholderView?
+}

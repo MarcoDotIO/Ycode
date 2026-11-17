@@ -1,0 +1,283 @@
+{
+ "name": "parity-b-project-caplib",
+ "title": "Part B 3b: the capability library opened, then Escape, cmd+., a click outside, and a double-click on a capability (the ways out).",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "open-project",
+   "note": "Not judged: the project editor, Signing & Capabilities.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Parity",
+      "index": 0
+     }
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "click": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Signing & Capabilities",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "capability-library",
+   "note": "Click '+ Capability': the library. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton",
+      "label~": "Capability",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "library",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "library-tab-order",
+   "note": "Tab through the library (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "try-escape",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "try-cmd-period",
+   "note": "cmd+. (the standard cancel shortcut).",
+   "do": [
+    {
+     "key": "cmd+."
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "try-click-outside",
+   "note": "Click outside it, on the navigator.",
+   "do": [
+    {
+     "click": [
+      150,
+      600
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "try-double-click-row",
+   "note": "Double-click App Sandbox (adds it?): what closes the library. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow|AXCell|AXStaticText",
+      "text~": "App Sandbox",
+      "scope": "app",
+      "visible": true
+     },
+     "count": 2
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "after-double-click",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "end",
+   "note": "What is left: AX tree.",
+   "do": [
+    {
+     "tree": "end",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ },
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Shapes|Shapes.swift"
+   }
+  },
+  {
+   "wait": 2.0
+  }
+ ]
+}

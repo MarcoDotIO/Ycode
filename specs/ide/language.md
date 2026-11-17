@@ -50,12 +50,32 @@ line index converts both ways (clamping columns to the line).
   (`fidelity-council.md` row 228). Diagnostics a server publishes for any
   other file are dropped.
 - Live issues: `textDocument/publishDiagnostics` replaces that file's live
-  issues. Severity 1 → error, 2 → warning; information and hints are
-  dropped. Lines and columns become 1-based. The issue navigator, editor
+  issues. Those on the line being typed (the first line that differs from
+  the text last sent) wait until 1.5 s after the last edit of that line, so
+  a partial word or a fresh "." is not marked an error at once (P-080,
+  `LiveIssueHold`; **decision:** 1.5 s, no reference value was measured);
+  the rest of the file's issues show at once. Severity 1 → error, 2 → warning; information and hints are
+  dropped. Lines and columns become 1-based. Messages are shown in
+  display form, as build issues are (`Diagnostic.displayMessage`, P-121):
+  the diagnostic-group suffix (" [#VariableNeverMutated]") is dropped and a
+  first word in lower-case letters is capitalized ("Variable 'x' was never
+  mutated…"). The issue navigator, editor
   annotations and activity-view counts show build issues plus live issues,
   without duplicates.
-- Completion: Show Completions (⌃Space), or typing `.` in a Swift file,
-  sends `textDocument/completion` at the insertion point. The popup sits
+- Completion: Show Completions (⌃Space), typing `.` in a Swift file, or
+  typing the first character of a word (a letter or `_` after a character
+  that is not part of an identifier) in a Swift or C-family file, sends
+  `textDocument/completion` at the insertion point (parity inventory P-080:
+  typing "Co" on a new line lists CodingKey, Counter, Codable…). Never in a
+  `//` or `/* */` comment or a string literal opened on the line, after a
+  number, or for the name after `let`, `var`, `func`, `struct`, `class`,
+  `enum`, `protocol`, `typealias`, `actor`, `associatedtype`, `macro`,
+  `precedencegroup` or `operator` (`CompletionTrigger`, shared by both
+  IDEs). Items are listed in the server's order: `sortText` ascending, else
+  the label. When the server marks the list incomplete (`isIncomplete`,
+  sourcekit-lsp caps it at 200), each further character of the word asks
+  again; otherwise the list only filters. An answer that arrives after more
+  of the word was typed still shows, filtered by the whole word. The popup sits
   below the word being completed, shows up to 8 rows (kind letter, label,
   detail), and filters as the user types (prefix matches first, then
   substring matches). Placement: the popup's top edge is 2 pt below the

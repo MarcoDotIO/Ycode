@@ -120,6 +120,10 @@ enum PortProbe {
         let fd = socket(AF_INET, type, 0)
         guard fd >= 0 else { return "socket: \(String(cString: strerror(errno)))" }
         defer { close(fd) }
+        // As serve binds (LinkSockets): a connection of the previous run in
+        // TIME_WAIT does not make the port "in use".
+        var one: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, socklen_t(MemoryLayout<Int32>.size))
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = in_port_t(UInt16(port).bigEndian)

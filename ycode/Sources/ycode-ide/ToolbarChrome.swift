@@ -172,9 +172,9 @@ struct ToolbarOverflowMenu: View {
 
 /// Add Editor and Editor Options in one capsule (81 wide with its rim, as
 /// the AppKit toolbar's). Add Editor is a pull-down, as the AppKit item's
-/// (`EditorOptionsMenu.addItems`): Add Editor Tab (the Linux IDE has no
-/// editor tabs), Add Editor Pane on Right, Add Editor Pane Below
-/// (WorkspaceShellModel+Panes.swift). Editor Options is not in the beta.
+/// (`EditorOptionsMenu.addItems`): Tab (the Linux IDE has no editor tabs),
+/// Editor Pane On Right, Editor Pane Below (WorkspaceShellModel+Panes.swift);
+/// Editor Options a pull-down too (EditorOptionsMenu.swift).
 struct AddEditorGroup: View {
     var model: WorkspaceShellModel
     @Environment(\.colorScheme) private var scheme
@@ -187,9 +187,7 @@ struct AddEditorGroup: View {
         let w = Self.segmentWidth + 6, h = CGFloat(WorkspaceChrome.toolbarItemHeight)
         HStack(spacing: 0) {
             Menu {
-                Button("Add Editor Tab") {}.disabled(true)
-                Button("Add Editor Pane on Right") { model.perform(.splitEditor) }.disabled(!canSplit)
-                Button("Add Editor Pane Below") { model.perform(.splitEditorBelow) }.disabled(!model.isEnabled(.splitEditorBelow))
+                AddEditorMenuItems(model: model)   // EditorOptionsMenu.swift (P-065)
             } label: {
                 Image(systemName: WorkspaceChrome.addEditor.symbols[0]).font(.system(size: 15)).foregroundStyle(c.toolbarIcon)
                     .opacity(canSplit ? 1 : ShellColors.disabledGlyphOpacity)
@@ -201,14 +199,16 @@ struct AddEditorGroup: View {
             .help(WorkspaceChrome.addEditor.toolTips[0])
             .accessibilityLabel("Add Editor")
             .shellTarget("tb add editor")
-            Button {} label: {
+            Menu {
+                EditorOptionsMenuItems(model: model, revision: ShellPreferences.shared.revision)   // EditorOptionsMenu.swift (P-065)
+            } label: {
                 Image(systemName: WorkspaceChrome.editorOptions.symbols[0]).font(.system(size: 15)).foregroundStyle(c.toolbarIcon)
-                    .opacity(ShellColors.disabledGlyphOpacity)
                     .frame(width: w, height: h)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .disabled(true)
-            .help(ShellText.notInBeta(WorkspaceChrome.editorOptions.toolTips[0]))
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help(WorkspaceChrome.editorOptions.toolTips[0])
             .accessibilityLabel("Editor Options")
             .shellTarget("tb editor options")
         }

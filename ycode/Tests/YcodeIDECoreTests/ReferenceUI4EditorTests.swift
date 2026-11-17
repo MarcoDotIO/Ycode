@@ -39,7 +39,7 @@ import YcodeBuild
         #expect(d.discussion == ["The result is scaled. Second line of the discussion."])
         #expect(d.callouts.map(\.title) == ["Note", "Warning"])
         #expect(d.sectionOrder == ["Title", "Summary", "Declaration", "File", "Parameters", "Return Value", "Throws",
-                                   "Discussion", "Note", "Warning", "Open in Developer Documentation"])
+                                   "Discussion", "Note", "Warning"])   // a project symbol: no documentation link (P-083)
     }
 
     @Test func quickHelpSingleParameterAndUndocumented() {

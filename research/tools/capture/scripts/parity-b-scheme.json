@@ -1,0 +1,1259 @@
+{
+ "name": "parity-b-scheme",
+ "title": "Part B 5: the scheme editor (every section and tab, an argument row, the configuration pop-up, keyboard), Manage Schemes, the Test navigator, running one test from the gutter and all tests, results.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "edit-scheme",
+   "note": "Product ▸ Scheme ▸ Edit Scheme… (cmd+<): the scheme editor sheet (animation). AX tree.",
+   "do": [
+    {
+     "menu": "Product > Scheme > Edit Scheme…"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "scheme",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "section-build",
+   "note": "Click the Build section in the sheet's list. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Build",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "build",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "section-run",
+   "note": "Click the Run section in the sheet's list. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Run",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "run",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "run-info",
+   "note": "Run ▸ Info tab (switch animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton|AXButton",
+      "label": "Info",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "run-info",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "run-arguments",
+   "note": "Run ▸ Arguments tab (switch animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton|AXButton",
+      "label": "Arguments",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "run-arguments",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "run-options",
+   "note": "Run ▸ Options tab (switch animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton|AXButton",
+      "label": "Options",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "run-options",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "run-diagnostics",
+   "note": "Run ▸ Diagnostics tab (switch animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton|AXButton",
+      "label": "Diagnostics",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "run-diagnostics",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "section-test",
+   "note": "Click the Test section in the sheet's list. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Test",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "test",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "test-info",
+   "note": "Test ▸ Info tab (switch animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton|AXButton",
+      "label": "Info",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "test-info",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "test-arguments",
+   "note": "Test ▸ Arguments tab (switch animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton|AXButton",
+      "label": "Arguments",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "test-arguments",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "test-options",
+   "note": "Test ▸ Options tab (switch animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton|AXButton",
+      "label": "Options",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "test-options",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "test-diagnostics",
+   "note": "Test ▸ Diagnostics tab (switch animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton|AXButton",
+      "label": "Diagnostics",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "test-diagnostics",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "section-profile",
+   "note": "Click the Profile section in the sheet's list. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Profile",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "profile",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "profile-info",
+   "note": "Profile ▸ Info tab (switch animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton|AXButton",
+      "label": "Info",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "profile-info",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "profile-arguments",
+   "note": "Profile ▸ Arguments tab (switch animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton|AXButton",
+      "label": "Arguments",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "profile-arguments",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "profile-options",
+   "note": "Profile ▸ Options tab (switch animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton|AXButton",
+      "label": "Options",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "profile-options",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "section-analyze",
+   "note": "Click the Analyze section in the sheet's list. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Analyze",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "analyze",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "section-archive",
+   "note": "Click the Archive section in the sheet's list. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Archive",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "archive",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "run-arguments-add",
+   "note": "Run ▸ Arguments: click '+' under Arguments Passed On Launch (a new editable row). (No Escape afterwards: it closes the reference's sheet.)",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Run",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "click": {
+      "role": "AXRadioButton|AXButton",
+      "label": "Arguments",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "click": {
+      "role": "AXButton",
+      "label": "add|Add",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "argument-row",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "build-config-popup",
+   "note": "Run ▸ Info: the Build Configuration pop-up (menu). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton|AXButton",
+      "label": "Info",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "click": {
+      "role": "AXPopUpButton",
+      "value": "Debug",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "config-popup",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "build-config-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "scheme-tab-order",
+   "note": "Tab through the sheet (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k07",
+     "mode": "app"
+    },
+    {
+     "tree": "k07",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k08",
+     "mode": "app"
+    },
+    {
+     "tree": "k08",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "scheme-keys",
+   "note": "Down and Up in the section list after clicking Build (keyboard in the list).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Build",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "key": "up"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "scheme-close",
+   "note": "Close (button).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Close|Done",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "manage-schemes",
+   "note": "Product ▸ Scheme ▸ Manage Schemes…: the sheet (Parity listed, shared). AX tree.",
+   "do": [
+    {
+     "menu": "Product > Scheme > Manage Schemes…"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "manage",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "manage-tab-order",
+   "note": "Tab through it.",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "manage-close",
+   "note": "Close.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Close|Done|OK",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "test-navigator",
+   "note": "cmd+6: the Test navigator. AX tree.",
+   "do": [
+    {
+     "key": "cmd+6"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "tests",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "test-expand",
+   "note": "Expand Parity and ParityTests (the two tests listed).",
+   "do": [
+    {
+     "set": {
+      "role": "AXRow",
+      "text~": "ParityTests",
+      "index": 0
+     },
+     "attr": "AXDisclosing",
+     "value": true
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "tests-open",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "test-row-hover",
+   "note": "Pointer onto the testAddition() row, held 2 s (its run button).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "text~": "testAddition"
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "test-hover",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "test-row-context",
+   "note": "Right-click testAddition(): its context menu. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "testAddition"
+     },
+     "button": "right"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "test-context",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "test-row-context-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "open-test-file",
+   "note": "Open ParityTests.swift (click its row in the project navigator): the test diamonds in the gutter.",
+   "do": [
+    {
+     "key": "cmd+1"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "set": {
+      "role": "AXRow",
+      "text": "ParityTests",
+      "index": 0
+     },
+     "attr": "AXDisclosing",
+     "value": true
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "ParityTests|ParityTests.swift",
+      "index": 1
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "test-file",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "diamond-hover",
+   "note": "Pointer onto the diamond of testAddition (gutter, left of 'func testAddition'), held 2 s.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "func testAddition",
+      "occurrence": 1,
+      "offset": 0,
+      "dx": -40
+     },
+     "hover": true
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "diamond-run",
+   "note": "Click it: build and run that one test (25 s). Snaps at +3 and +10 s.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "func testAddition",
+      "occurrence": 1,
+      "offset": 0,
+      "dx": -40
+     }
+    },
+    {
+     "wait": 3.0
+    },
+    {
+     "wait": 7.0
+    },
+    {
+     "wait": 15.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "diamond-result",
+   "note": "After the single test: the diamond's state. AX tree.",
+   "do": [
+    {
+     "tree": "one-test",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "test-all",
+   "note": "Product ▸ Test (cmd+U): both tests (one fails on purpose), 30 s. Snaps at +3 and +10 s.",
+   "do": [
+    {
+     "key": "cmd+u"
+    },
+    {
+     "wait": 3.0
+    },
+    {
+     "wait": 7.0
+    },
+    {
+     "wait": 20.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "test-results-editor",
+   "note": "After the tests: pass and fail diamonds, the failure annotation. AX tree.",
+   "do": [
+    {
+     "tree": "results",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "test-results-navigator",
+   "note": "cmd+6: the Test navigator with results. AX tree.",
+   "do": [
+    {
+     "key": "cmd+6"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "results-nav",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "test-report",
+   "note": "cmd+9: the Report navigator; click the test report (the newest row). AX tree.",
+   "do": [
+    {
+     "key": "cmd+9"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "Test",
+      "index": 0
+     }
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "test-report",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  }
+ ],
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ },
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Shapes|Shapes.swift"
+   }
+  },
+  {
+   "wait": 2.0
+  }
+ ]
+}

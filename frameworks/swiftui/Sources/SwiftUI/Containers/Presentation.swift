@@ -31,9 +31,15 @@ import SwiftUICore
 // being half the window's height plus 17 points (356 at 678, the measured
 // value), `.fraction(f)` f × the large height, `.height(h)` h. On desktop
 // hosts a sheet is a card centred in the window at its content's ideal
-// size, at least 360 × 200 and at most the window less 40 points. Alerts are
-// 270 points wide (300 on desktop) and centred; dialogs are action sheets at
-// the bottom on the phone host and centred cards on desktop hosts.
+// size, at least 360 × 200 and at most the window less 40 points; a window
+// smaller than that grows to it while the sheet is up, up to its display's
+// usable size, and gets its size back when the sheet goes (P-215: New
+// Project and Clone were cut off). Alerts are 270 points wide and centred
+// on the phone host; on desktop hosts alerts and dialogs are drawn as the
+// macOS IDE's alerts (DesktopAlert.swift). While a presentation is up the
+// keyboard is inside the innermost one: a view under it loses focus (and
+// gets it back afterwards) and only shortcuts inside it are taken; Return
+// and Escape choose an alert's default and cancel buttons (P-214).
 
 // MARK: - Detents
 
@@ -147,6 +153,9 @@ final class PresentationEntry {
     var progress: Double = 0
     var isDismissing = false
     var driver: FrameDriver?
+    /// The size a desktop sheet's content asks for (P-215; written by its
+    /// placement during layout).
+    let need = SheetNeed()
 
     init(id: ObjectIdentifier, kind: Kind, content: AnyView, onDismiss: (() -> Void)?, setPresented: @escaping (Bool) -> Void) {
         self.id = id
@@ -157,6 +166,12 @@ final class PresentationEntry {
     }
 }
 
+/// What a desktop sheet's content asks for: its size before the window
+/// clamps it (P-215).
+final class SheetNeed: @unchecked Sendable {
+    var size: CGSize?
+}
+
 /// The presentations of a window, innermost last.
 @MainActor
 package final class PresentationCenter {
@@ -164,6 +179,28 @@ package final class PresentationCenter {
     var onChange: (() -> Void)?
     weak var layerNode: ViewNode?
     weak var graph: ViewGraph?
+    weak var services: WindowServices?
+    /// P-214: the view that had the keyboard when the first presentation
+    /// came up; it gets it back when the last one goes.
+    weak var focusBeforeModal: ViewNode?
+    /// P-215: the window's size before a sheet made it grow, and the size
+    /// it grew to (restored when the last sheet goes, unless the window was
+    /// resized meanwhile).
+    var sizeBeforeGrowth: CGSize?
+    var grownSize: CGSize?
+    /// Room a sheet keeps around it in its window (points, both sides
+    /// together; as the clamp of the header comment).
+    nonisolated static let sheetMargin: CGFloat = 40
+
+    /// The card of the innermost presentation that is not going away: the
+    /// keys' scope while it is up (P-214).
+    package var modalCard: ViewNode? {
+        guard let layer = layerNode, layer.isAlive, !entries.isEmpty else { return nil }
+        let cards = layer.children
+        guard cards.count == entries.count else { return cards.last }
+        for (e, c) in zip(entries, cards).reversed() where !e.isDismissing { return c }
+        return nil
+    }
 
     static let presentDuration: TimeInterval = 0.35
     static let dismissDuration: TimeInterval = 0.5
@@ -205,7 +242,60 @@ package final class PresentationCenter {
         e.onDismiss = nil
         action?()
         entries.removeAll { $0 === e }
+        if !entries.contains(where: { $0.kind == .sheet }) { restoreWindowSize() }
+        if entries.isEmpty, let f = focusBeforeModal {
+            focusBeforeModal = nil
+            if f.isAlive, let services { services.focus.focus(f) }
+        }
         onChange?()
+    }
+
+    /// P-214: while a presentation is up, a view outside it loses the
+    /// keyboard (an editor under an alert took Return and Escape).
+    func takeFocus(layer: ViewNode) {
+        guard let services, let f = services.focus.focusedNode else { return }
+        var n: ViewNode? = f
+        while let x = n {
+            if x === layer { return }
+            n = x.parent
+        }
+        focusBeforeModal = f
+        services.focus.focus(nil)
+    }
+
+    /// P-215: a desktop window grows so that its sheets fit with their
+    /// margin (up to the largest size its display allows); the sheet is
+    /// clamped to the window only beyond that.
+    func growWindowForSheets() {
+        guard let services, let resize = services.resizeWindow else { return }
+        let window = services.windowSize()
+        guard window.width > 0, window.height > 0 else { return }
+        var want = window
+        for e in entries where e.kind == .sheet && !e.isDismissing {
+            guard let n = e.need.size else { continue }
+            want.width = max(want.width, (n.width + Self.sheetMargin).rounded(.up))
+            want.height = max(want.height, (n.height + Self.sheetMargin).rounded(.up))
+        }
+        if let largest = services.largestWindowSize() {
+            want.width = max(window.width, min(want.width, largest.width))
+            want.height = max(window.height, min(want.height, largest.height))
+        }
+        guard want.width > window.width + 0.5 || want.height > window.height + 0.5 else { return }
+        if sizeBeforeGrowth == nil { sizeBeforeGrowth = window }
+        grownSize = want
+        resize(want)
+    }
+
+    private func restoreWindowSize() {
+        defer {
+            sizeBeforeGrowth = nil
+            grownSize = nil
+        }
+        guard let before = sizeBeforeGrowth, let grown = grownSize, let services, let resize = services.resizeWindow else { return }
+        let now = services.windowSize()
+        // The person resized the window meanwhile: it keeps their size.
+        guard abs(now.width - grown.width) < 1, abs(now.height - grown.height) < 1 else { return }
+        resize(before)
     }
 
     private func run(_ e: PresentationEntry, to target: Double, duration: TimeInterval) {
@@ -260,8 +350,18 @@ struct PresentationLayer: View, PrimitiveView {
         }
         node.reconcileChildren(items, transaction: transaction)
         if let services = node.environment._windowServices {
+            center.services = services
             services.focus.modalScopes.removeAll { $0.node == nil || $0.node === node }
             if !entries.isEmpty { services.focus.modalScopes.append(WeakNode(node)) }
+        }
+        if !entries.isEmpty {
+            // After this update's layout: the sheets' sizes are known.
+            let center = center
+            node.graph.queuePreferenceAction { [weak node] in
+                guard let node, node.isAlive else { return }
+                center.takeFocus(layer: node)
+                if node.environment._desktopChrome { center.growWindowForSheets() }
+            }
         }
     }
 
@@ -281,7 +381,7 @@ struct PresentationLayer: View, PrimitiveView {
             let w = LayoutNode(OpacityBehavior(e.kind == .cover ? 0 : e.progress), children: [dim])
             layers.append(w)
             layers.append(LayoutNode(PresentationPlacementBehavior(kind: e.kind, progress: e.progress, options: PlacementOptions(e.options),
-                                                                   desktop: env._desktopChrome), children: [card]))
+                                                                   desktop: env._desktopChrome, need: e.need), children: [card]))
         }
         guard !layers.isEmpty else { return [LayoutNode.empty()] }
         return [LayoutNode.zstack(alignment: .topLeading, layers)]
@@ -306,6 +406,7 @@ struct PresentationPlacementBehavior: NodeBehavior {
     let progress: Double
     let options: PlacementOptions
     let desktop: Bool
+    var need: SheetNeed?
 
     func sizeThatFits(_ p: ProposedViewSize, node: LayoutNode) -> CGSize {
         CGSize(width: p.width ?? 0, height: p.height ?? 0)
@@ -331,13 +432,25 @@ struct PresentationPlacementBehavior: NodeBehavior {
             return CGRect(x: inset, y: size.height - inset - hh, width: max(0, size.width - inset), height: hh)
         case .sheet:
             let ideal = card.sizeThatFits(.unspecified)
-            let w = min(max(ideal.width.isFinite ? ideal.width : 480, 360), max(0, size.width - 40))
+            let iw = max(ideal.width.isFinite ? ideal.width : 480, 360)
+            let margin = PresentationCenter.sheetMargin
+            let w = min(iw, max(0, size.width - margin))
             let ih = card.sizeThatFits(ProposedViewSize(width: w, height: nil)).height
-            let h = min(max(ih.isFinite ? ih : 320, 200), max(0, size.height - 40))
+            let h = min(max(ih.isFinite ? ih : 320, 200), max(0, size.height - margin))
+            if let need {
+                // P-215: what the sheet asks for at its own width (the
+                // window grows to it after this layout).
+                let fullHeight = w < iw ? card.sizeThatFits(ProposedViewSize(width: iw, height: nil)).height : ih
+                need.size = CGSize(width: iw, height: max(fullHeight.isFinite ? fullHeight : 320, 200))
+            }
             return CGRect(x: (size.width - w) / 2, y: (size.height - h) / 2, width: w, height: h)
         case .alert, .dialog:
             let phoneDialog = kind == .dialog && !desktop
-            let w = phoneDialog ? max(0, size.width - 16) : (desktop ? 300 : 270)
+            // Desktop alerts are as wide as their card (P-214: 260 points,
+            // 330 with a text field).
+            let ideal = desktop ? card.sizeThatFits(.unspecified).width : 0
+            let desktopWidth = min(ideal.isFinite && ideal > 0 ? ideal : DesktopAlertMetrics.width, max(0, size.width - 16))
+            let w = phoneDialog ? max(0, size.width - 16) : (desktop ? desktopWidth : 270)
             let h = min(card.sizeThatFits(ProposedViewSize(width: w, height: nil)).height, size.height - 40)
             if phoneDialog { return CGRect(x: 8, y: size.height - 8 - h, width: w, height: h) }
             return CGRect(x: (size.width - w) / 2, y: (size.height - h) / 2, width: w, height: h)
@@ -377,7 +490,8 @@ struct PresentationCard: View {
     var body: some View {
         let palette = ControlPalette(scheme)
         let e = entry
-        let radius: CGFloat = e.kind == .cover ? 0 : (e.kind == .alert ? 14 : 12)
+        let alertLike = e.kind == .alert || (e.kind == .dialog && desktop)
+        let radius: CGFloat = e.kind == .cover ? 0 : alertLike && desktop ? DesktopAlertMetrics.cornerRadius : (e.kind == .alert ? 14 : 12)
         let fill: Color = e.kind == .alert || e.kind == .dialog ? palette.alertBackground : palette.sheetBackground
         content
             .frame(maxWidth: .infinity, maxHeight: e.kind == .sheet || e.kind == .cover ? .infinity : nil, alignment: .top)
@@ -700,9 +814,14 @@ struct PopoverChrome: View {
 
 // MARK: - Alert and dialog cards
 
-/// An alert or confirmation dialog: title, message, buttons (two side by
-/// side, otherwise one per row; cancel last). Choosing a button runs its
-/// action and dismisses.
+/// An alert or confirmation dialog: title, message, buttons. Choosing a
+/// button runs its action and dismisses. Return chooses the default button
+/// and Escape the cancel button (P-214, as NSAlert: the button the alert
+/// marks with `.defaultAction` or else its first button that does not
+/// cancel; the `.cancel` button, or the only button). On a desktop host the
+/// card is drawn as the macOS IDE's alerts are (`DesktopAlertCard`); on the
+/// phone host as the reference phone's (two buttons side by side, otherwise
+/// one per row; cancel last).
 struct AlertCard: View {
     let title: Text?
     let message: AnyView
@@ -710,13 +829,30 @@ struct AlertCard: View {
     let dialog: Bool
     let dismiss: () -> Void
     @Environment(\.colorScheme) private var scheme
+    @Environment(\._desktopChrome) private var desktop
 
     var body: some View {
-        let palette = ControlPalette(scheme)
         var buttons = enumeratedViews(actions).map(\.1)
         if buttons.isEmpty { buttons = [Button("OK") {}] }
+        let keys = AlertKeys(buttons)
+        if desktop {
+            return AnyView(DesktopAlertCard(title: title, message: message, hasMessage: !enumeratedViews(message).isEmpty,
+                                            buttons: buttons, keys: keys, dismiss: dismiss).background { escape(keys) })
+        }
+        return AnyView(phoneCard(buttons, keys: keys).background { escape(keys) })
+    }
+
+    /// Escape for an alert without a cancel button (P-214).
+    @ViewBuilder
+    func escape(_ keys: AlertKeys) -> some View {
+        if keys.escapeDismisses { EscapeShortcut(action: dismiss) }
+    }
+
+    private func phoneCard(_ buttons: [any View], keys: AlertKeys) -> some View {
+        let palette = ControlPalette(scheme)
         let side = buttons.count == 2 && !dialog
         let dismiss = dismiss
+        func button(_ i: Int) -> some View { keys.apply(i, to: buttons[i]) }
         return VStack(spacing: 0) {
             VStack(spacing: 4) {
                 if let title { title.font(.headline).multilineTextAlignment(.center) }
@@ -727,26 +863,129 @@ struct AlertCard: View {
             Rectangle().fill(palette.separator).frame(height: 1 / 3)
             if side {
                 HStack(spacing: 0) {
-                    AnyView(_fromValue: buttons[0])!.frame(maxWidth: .infinity)
+                    button(0).frame(maxWidth: .infinity)
                     Rectangle().fill(palette.separator).frame(width: 1 / 3)
-                    AnyView(_fromValue: buttons[1])!.frame(maxWidth: .infinity)
+                    button(1).frame(maxWidth: .infinity)
                 }
                 .frame(height: 44)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(buttons.enumerated()), id: \.offset) { pair in
-                        if pair.offset > 0 { Rectangle().fill(palette.separator).frame(height: 1 / 3) }
-                        AnyView(_fromValue: pair.element)!.frame(maxWidth: .infinity).frame(height: 44)
+                    ForEach(Array(buttons.indices), id: \.self) { i in
+                        if i > 0 { Rectangle().fill(palette.separator).frame(height: 1 / 3) }
+                        button(i).frame(maxWidth: .infinity).frame(height: 44)
                     }
                     if dialog {
                         Rectangle().fill(palette.separator).frame(height: 1 / 3)
                         Button("Cancel", role: .cancel) {}.frame(maxWidth: .infinity).frame(height: 44)
+                            .keyboardShortcut(keys.cancel == nil ? KeyboardShortcut.cancelAction : nil)
                     }
                 }
             }
         }
         .buttonStyle(AlertButtonStyle(dismiss: dismiss))
+        .environment(\._afterButtonAction, { dismiss() })
     }
+}
+
+/// Escape as a keyboard shortcut of an alert, with no button (P-214).
+struct EscapeShortcut: View {
+    let action: () -> Void
+    @State private var owner = ShortcutOwner()
+    var body: some View {
+        let action = action
+        Color.clear.frame(width: 0, height: 0)
+            .modifier(ShortcutRegistrationModifier(owner: owner, action: { action() }))
+            .keyboardShortcut(.cancelAction)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Which of an alert's buttons Return and Escape choose (P-214).
+@MainActor
+struct AlertKeys {
+    /// The buttons' roles and their own shortcuts, in order.
+    let roles: [ButtonRole?]
+    let own: [KeyboardShortcut?]
+    /// The default (Return) and cancel (Escape) buttons.
+    let defaultIndex: Int?
+    let cancel: Int?
+
+    init(_ buttons: [any View]) {
+        let roles = buttons.map { AlertKeys.role(of: $0) }
+        let own = buttons.map { AlertKeys.shortcut(of: $0) }
+        self.roles = roles
+        self.own = own
+        let explicitDefault = own.firstIndex { $0 == .defaultAction }
+        let explicitCancel = own.firstIndex { $0 == .cancelAction }
+        let fields = buttons.map { AlertKeys.isTextField($0) }
+        let pressable = buttons.indices.filter { !fields[$0] }
+        defaultIndex = explicitDefault ?? pressable.first { roles[$0] != .cancel }
+        cancel = explicitCancel ?? pressable.first { roles[$0] == .cancel }
+        // An alert with one button (OK) goes away on Escape too.
+        escapeDismisses = cancel == nil && pressable.count == 1
+    }
+
+    /// Escape dismisses the alert without a cancel button of its own.
+    let escapeDismisses: Bool
+
+    /// The shortcut the alert gives button `i` (its own one stays).
+    func shortcut(_ i: Int) -> KeyboardShortcut? {
+        if let o = own[i] { return o }
+        if i == defaultIndex { return .defaultAction }
+        if i == cancel { return .cancelAction }
+        return nil
+    }
+
+    func apply(_ i: Int, to view: any View) -> AnyView {
+        let v = AnyView(_fromValue: view)!
+        guard own[i] == nil else { return v }
+        return AnyView(v.keyboardShortcut(shortcut(i)))
+    }
+
+    /// The role of a button, through the modifiers around it.
+    static func role(of view: Any, depth: Int = 0) -> ButtonRole? {
+        if let b = view as? any _AlertButtonRoleProviding { return b._alertRole }
+        guard depth < 8 else { return nil }
+        for c in Mirror(reflecting: view).children where c.label == "content" {
+            return role(of: c.value, depth: depth + 1)
+        }
+        return nil
+    }
+
+    /// The shortcut a `keyboardShortcut` modifier around the button gives it.
+    static func shortcut(of view: Any, depth: Int = 0) -> KeyboardShortcut? {
+        guard depth < 8 else { return nil }
+        var content: Any?
+        for c in Mirror(reflecting: view).children {
+            if c.label == "content" { content = c.value }
+            if c.label == "modifier", let k = shortcutValue(in: c.value) { return k }
+        }
+        return content.flatMap { shortcut(of: $0, depth: depth + 1) }
+    }
+
+    private static func shortcutValue(in modifier: Any) -> KeyboardShortcut? {
+        for c in Mirror(reflecting: modifier).children {
+            if let k = c.value as? KeyboardShortcut { return k }
+        }
+        return nil
+    }
+
+    /// Text fields among an alert's actions are its input fields.
+    static func isTextField(_ view: Any, depth: Int = 0) -> Bool {
+        let name = String(describing: type(of: view))
+        if name.hasPrefix("TextField<") || name.hasPrefix("SecureField<") { return true }
+        guard depth < 8 else { return false }
+        for c in Mirror(reflecting: view).children where c.label == "content" {
+            return isTextField(c.value, depth: depth + 1)
+        }
+        return false
+    }
+}
+
+/// Buttons report their role to the alert around them.
+@MainActor
+protocol _AlertButtonRoleProviding {
+    var _alertRole: ButtonRole? { get }
 }
 
 /// Alert buttons: the tinted label (red when destructive, semibold when

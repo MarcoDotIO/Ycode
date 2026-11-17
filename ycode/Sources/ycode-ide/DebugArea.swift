@@ -12,6 +12,9 @@ struct DebugArea: View {
     @Environment(\.colorScheme) private var scheme
     /// The console bar's filter field's text.
     @State private var consoleSearch = ""
+    /// Where Activate Console puts the keyboard (P-123).
+    enum ConsoleFocus: Hashable { case prompt, output }
+    @FocusState private var consoleFocus: ConsoleFocus?
 
     var body: some View {
         let c = ShellColors(scheme)
@@ -22,12 +25,18 @@ struct DebugArea: View {
             }
             if model.debug.showsConsole {
                 VStack(spacing: 0) {
-                    if showsRunOutput {
-                        ConsoleRowsView(model: model, colors: c, search: consoleSearch)   // DebugConsoleRows.swift
-                    } else {
-                        LogView(lines: shownLines.filter { consoleSearch.isEmpty || $0.localizedCaseInsensitiveContains(consoleSearch) }, colors: c)
+                    VStack(spacing: 0) {
+                        if showsRunOutput {
+                            ConsoleRowsView(model: model, colors: c, search: consoleSearch)   // DebugConsoleRows.swift
+                        } else {
+                            LogView(lines: shownLines.filter { consoleSearch.isEmpty || $0.localizedCaseInsensitiveContains(consoleSearch) }, colors: c)
+                        }
                     }
-                    if model.debug.isDebugging { ConsolePrompt(model: model) }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .focusable()
+                    .focused($consoleFocus, equals: .output)
+                    .shellTarget("console output")
+                    if model.debug.isDebugging { prompt(c) }
                     // Quick Look, the output options, the filter, Clear and
                     // the halves' toggles, as the AppKit bar (parity §6).
                     bar(c) {
@@ -52,6 +61,46 @@ struct DebugArea: View {
         }
         .background(c.debugPane)
         .shellTarget("debug area")
+        .onAppear { takeConsoleFocus() }
+        .onChange(of: model.consoleFocusPending) { _, _ in takeConsoleFocus() }
+    }
+
+    /// Activate Console (⇧⌘C): the lldb prompt during a debug session,
+    /// else the console's output, takes the keyboard from the editor.
+    func takeConsoleFocus() {
+        guard model.consoleFocusPending else { return }
+        model.consoleFocusPending = false
+        let target: ConsoleFocus = model.debug.isDebugging ? .prompt : .output
+        // After the pass that shows the debug area (the editor asks for the
+        // keyboard again as it is laid out anew; the later request wins),
+        // and as a fresh request: the focus follows a binding that changes.
+        Task { @MainActor in
+            if consoleFocus != nil {
+                consoleFocus = nil
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            consoleFocus = target
+        }
+    }
+
+    /// The `(lldb)` command line (as `ConsolePrompt`, with the focus
+    /// Activate Console moves into it).
+    func prompt(_ c: ShellColors) -> some View {
+        let d = model.debug
+        return HStack(spacing: 6) {
+            Text(verbatim: "(lldb)").font(.system(size: 11, weight: .bold, design: .monospaced)).foregroundStyle(c.secondaryLabel)
+            TextField("", text: Binding(get: { d.consoleInput }, set: { d.consoleInput = $0 }))
+                .textFieldStyle(.plain)
+                .font(.system(size: 11, design: .monospaced))
+                .onSubmit { d.submitConsoleLine() }
+                .onKeyPress(.upArrow) { d.consoleHistory(older: true); return .handled }
+                .onKeyPress(.downArrow) { d.consoleHistory(older: false); return .handled }
+                .focused($consoleFocus, equals: .prompt)
+                .shellTarget("console input")
+        }
+        .padding(.horizontal, 6)
+        .frame(height: 20)
     }
 
     /// Whether the console shows the run's output (rows that can be

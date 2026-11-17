@@ -157,8 +157,10 @@ import YcodeBuild
         c.view.layoutSubtreeIfNeeded()
         let pill = c.pausedCapsule.convert(c.pausedCapsule.bounds, to: c.body)
         #expect(c.body.bounds.maxY - pill.maxY <= 20 && abs(pill.midX - c.body.bounds.midX) < 1)
+        // The bar sits on the canvas's safe area, above the window's status
+        // bar (P-156).
         let device = c.devicePopUp.convert(c.devicePopUp.bounds, to: c.view)
-        #expect(device.minX < 20 && device.minY < 28)
+        #expect(device.minX < 20 && device.minY - c.view.safeAreaInsets.bottom < 28)
         // A file without previews: the canvas goes away; the mode stays on.
         wc.open(path: model, line: nil)
         #expect(wc.canvas == nil && wc.isCanvasModeOn)

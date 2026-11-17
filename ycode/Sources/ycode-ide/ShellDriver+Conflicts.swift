@@ -16,7 +16,7 @@ import OVPlatform
 // then Right), the Flat file list; Greeting.swift written by hand
 // (double-click the change, type); Merge (the merge commit). Then a
 // cherry-pick of "pick" through the sheet (Right, Continue Cherry-Pick) and
-// a rebase of "topic" cancelled from the sheet (Cancel → Abort). Writes
+// a rebase of "topic" cancelled from the sheet (Cancel aborts it). Writes
 // <prefix>-conflict-<state>.png and prints one "conflict ..." line per step
 // (scripts/linux-conflict/run.sh checks the repository afterwards).
 extension ShellDriver {
@@ -248,10 +248,10 @@ extension ShellDriver {
         await waitIdle()
         await sheetReady()
         await shot("rebase-sheet")
+        // P-131: Cancel closes the sheet at once and aborts the rebase.
         await click("merge cancel")
-        await shot("rebase-cancel-question", settle: 0.5)
-        await answer("Abort")
-        await shot("rebase-aborted")
+        await waitIdle()
+        await shot("rebase-aborted", settle: 0.5)
         scm.perform(.checkout("main", .carry))
         await waitIdle()
         say("conflict walk done: branch=\(scm.snapshot.currentBranch ?? "-") integration=\(scm.snapshot.integration) "

@@ -1,0 +1,944 @@
+{
+ "name": "parity-b-scm",
+ "title": "Part B 6: source control with Merger: the Source Control navigator (Changes, Repositories, branches, tags, history, a commit), the merge confirmation and sheet (cancelled), a new branch (deleted again), change bars, Code Review, the History inspector, the commit sheet (cancelled), the Source Control context sub-menu.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "Merger open (clean main). AX tree.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "scm-navigator",
+   "note": "cmd+2: the Source Control navigator (its Changes view, empty). AX tree.",
+   "do": [
+    {
+     "key": "cmd+2"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "scm",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "repositories",
+   "note": "Its Repositories view; Merger, Branches and Tags expanded. AX tree.",
+   "do": [
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "label": "Repositories"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "set": {
+      "role": "AXRow",
+      "text": "project|Merger"
+     },
+     "attr": "AXDisclosing",
+     "value": true
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "set": {
+      "role": "AXRow",
+      "text": "Branches"
+     },
+     "attr": "AXDisclosing",
+     "value": true
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "set": {
+      "role": "AXRow",
+      "text": "Tags"
+     },
+     "attr": "AXDisclosing",
+     "value": true
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "repos",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "branch-main",
+   "note": "Click the main branch row: its history in the editor (commits by Capture Test). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "main"
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "history",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "commit-click",
+   "note": "Click the newest commit in that history (its files / detail). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow|AXCell|AXGroup|AXButton",
+      "text~": "Time-of-day",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "commit",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "branch-context",
+   "note": "Right-click the feature branch row: its context menu. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "feature"
+     },
+     "button": "right"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "feature-menu",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "merge-alert",
+   "note": "Choose 'Merge “feature” into “main”…': the confirmation (alert or sheet). AX tree.",
+   "do": [
+    {
+     "press": {
+      "role": "AXMenuItem",
+      "title~": "into “main”",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "merge-alert",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "merge-sheet",
+   "note": "Press Merge: the merge (conflict) sheet (animation), 4 s. AX tree.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Merge",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "return",
+     "fallback": true
+    },
+    {
+     "wait": 4.0
+    },
+    {
+     "tree": "merge-sheet",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "merge-cancel",
+   "note": "Cancel the merge sheet.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "merge-cleanup",
+   "note": "Not judged: the copy's merge state is reset with git (merge --abort, reset --hard) so the next steps start clean.",
+   "do": [
+    {
+     "run": [
+      "sh",
+      "-c",
+      "git merge --abort 2>/dev/null; git reset -q --hard; git status --short"
+     ],
+     "allow_fail": true
+    },
+    {
+     "wait": 3.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "new-branch-menu",
+   "note": "Right-click the main branch: context menu (New Branch from “main”…).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "main",
+      "index": 0
+     },
+     "button": "right"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "main-menu",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "new-branch-sheet",
+   "note": "Choose New Branch…: the sheet (animation). AX tree.",
+   "do": [
+    {
+     "press": {
+      "role": "AXMenuItem",
+      "title~": "New Branch",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "new-branch",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "new-branch-type",
+   "note": "Type 'parity-temp' and press Create.",
+   "do": [
+    {
+     "text": "parity-temp"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Create",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "return",
+     "fallback": true
+    },
+    {
+     "wait": 3.0
+    },
+    {
+     "tree": "branch-created",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "branch-delete",
+   "note": "Not judged: back to main and the new branch deleted with git; the navigator refreshes.",
+   "do": [
+    {
+     "run": [
+      "sh",
+      "-c",
+      "git checkout -q main && git branch -D parity-temp"
+     ],
+     "allow_fail": true
+    },
+    {
+     "wait": 4.0
+    },
+    {
+     "tree": "branch-deleted",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "local-edit",
+   "note": "Greeting.swift changed on disk (one line edited, two appended); open it from the project navigator: change bars in the gutter, the M badge.",
+   "do": [
+    {
+     "run": [
+      "sh",
+      "-c",
+      "sed -i '' 's/Good morning/Good evening/' Merger/Greeting.swift && printf '\\n// A local change for the source control captures.\\nlet localChange = 1\\n' >> Merger/Greeting.swift"
+     ]
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "key": "cmd+1"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Greeting|Greeting.swift"
+     }
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "changed",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "change-bar-hover",
+   "note": "Pointer onto the change bar of the edited line ('Good evening'), held 2 s.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "Good evening",
+      "occurrence": 1,
+      "offset": 0,
+      "dx": -120
+     },
+     "hover": true
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "change-bar-click",
+   "note": "Click the change bar: its menu or inline comparison. AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "Good evening",
+      "occurrence": 1,
+      "offset": 0,
+      "dx": -120
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "change-bar",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "change-bar-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "scm-changes",
+   "note": "cmd+2, Changes view: Greeting.swift listed as modified.",
+   "do": [
+    {
+     "key": "cmd+2"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "label": "Changes"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "changes",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "code-review",
+   "note": "Editor ▸ Code Review (option+shift+cmd+Return): the comparison of Greeting.swift (animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+1"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Greeting|Greeting.swift"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "key": "cmd+alt+shift+return"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "review",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "code-review-scroll",
+   "note": "Scroll the comparison 200 pt down and back.",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       800,
+       450
+      ]
+     },
+     "dy": -200,
+     "steps": 30,
+     "interval": 0.008333
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "scroll": {
+      "at": [
+       800,
+       450
+      ]
+     },
+     "dy": 200,
+     "steps": 30,
+     "interval": 0.008333
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "code-review-off",
+   "note": "Back to the standard editor (cmd+Return).",
+   "do": [
+    {
+     "key": "cmd+return"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "history-inspector",
+   "note": "option+cmd+2: the History inspector for Greeting.swift (three commits). AX tree.",
+   "do": [
+    {
+     "key": "cmd+alt+2"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "history-inspector",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "commit-sheet",
+   "note": "Integrate ▸ Commit… (option+cmd+C): the commit sheet (animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+alt+c"
+    },
+    {
+     "wait": 3.0
+    },
+    {
+     "tree": "commit-sheet",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "commit-tab-order",
+   "note": "Tab through the commit sheet (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "commit-message",
+   "note": "Type a message 'Parity capture' into the focused field (stills show where it went).",
+   "do": [
+    {
+     "text": "Parity capture"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "commit-stage-toggle",
+   "note": "Toggle the file's stage checkbox (first checkbox in the sheet), twice.",
+   "do": [
+    {
+     "click": {
+      "role": "AXCheckBox",
+      "scope": "app",
+      "visible": true,
+      "index": 0
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "click": {
+      "role": "AXCheckBox",
+      "scope": "app",
+      "visible": true,
+      "index": 0
+     }
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "commit-cancel",
+   "note": "Cancel the commit sheet (nothing committed).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "discard-menu",
+   "note": "Right-click Greeting.swift in the project navigator: Source Control ▸ sub-menu (Discard Changes, Commit, …). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Greeting|Greeting.swift"
+     },
+     "button": "right"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Source Control",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "scm-submenu",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "discard-menu-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "menubar-integrate",
+   "note": "The Integrate menu with a local change (menu bar dump).",
+   "do": [
+    {
+     "menubar": "integrate"
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "project": {
+  "generator": "make-conflict-project.py",
+  "path": "Merger/Merger.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

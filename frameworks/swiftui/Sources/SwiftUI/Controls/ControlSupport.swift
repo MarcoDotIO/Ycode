@@ -386,7 +386,7 @@ struct ShortcutRegistrationModifier: PrimitiveModifier {
                                                                            guard let node, node.isAlive else { return false }
                                                                            return node.environment.isEnabled && !node.isInSuspendedSubtree
                                                                        },
-                                                                       isCommand: env._inCommandHost))
+                                                                       isCommand: env._inCommandHost, node: node))
             reg.services = services
         } else {
             reg.services?.shortcuts.unregister(owner)

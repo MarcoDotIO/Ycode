@@ -11,6 +11,9 @@ public struct EditorCompletion: Equatable, Sendable {
     public var text: String
     /// Where the caret goes in `text` (the first snippet stop, else its end).
     public var caretOffset: Int
+    /// It came in a list the server marked incomplete (a longer prefix
+    /// may bring other items).
+    public var fromIncompleteList = false
 
     public init(label: String, detail: String? = nil, text: String, caretOffset: Int? = nil) {
         self.label = label
@@ -22,6 +25,25 @@ public struct EditorCompletion: Equatable, Sendable {
     init(_ item: CompletionItem) {
         let (text, stop) = item.isSnippet ? Self.plain(snippet: item.insertText) : (item.insertText, nil)
         self.init(label: item.label, detail: item.detail, text: text, caretOffset: stop)
+        fromIncompleteList = item.fromIncompleteList
+    }
+
+    /// After `typed` was inserted at the caret of `buffer` (P-080, the same
+    /// rules as the macOS editor, `CompletionTrigger`): whether to ask for
+    /// completions. With a list showing (`showing`), only when that list was
+    /// incomplete and the word grew; else when `typed` starts a word, or is
+    /// a "." in Swift, in Swift and C-family files outside comments and
+    /// strings.
+    @MainActor
+    public static func shouldRequest(typed: String, in buffer: EditorBuffer, showing: [EditorCompletion]?) -> Bool {
+        let caret = buffer.caret
+        guard buffer.selection.isEmpty, caret > 0 else { return false }
+        if let showing { return showing.first?.fromIncompleteList == true && caret - buffer.identifierStart(before: caret) > 1 }
+        let language = buffer.language
+        guard [.swift, .objc, .c, .cpp].contains(language) else { return false }
+        let lineStart = buffer.lineRangeIncludingEnding(at: caret - 1).lowerBound
+        let line = buffer.string(lineStart..<caret)
+        return CompletionTrigger.kind(typed: typed, lineBeforeCaret: line, memberAccess: language == .swift) != nil
     }
 
     /// An LSP snippet as plain text (`${1:name}` → `name`, `$1`, `${1}` and
@@ -91,6 +113,7 @@ extension WorkspaceShellModel {
     public func completions(timeout: Double = 3) async -> [EditorCompletion] {
         guard let d = editor, let language = session.language, d.readOnlyReason == nil else { return [] }
         let url = URL(fileURLWithPath: d.path)
+        guard LanguageService.handles(url) else { return [] }
         languageUpdates.removeValue(forKey: d.path)?.cancel()
         language.change(url, text: d.buffer.text)
         let b = d.buffer

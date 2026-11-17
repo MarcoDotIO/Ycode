@@ -43,6 +43,11 @@ public enum SettingsColors {
     public static let switchOff = dynamic(SettingsPaletteHex.switchOff)
     public static let switchOn = dynamic(SettingsPaletteHex.switchOn)
     public static let disclosure = dynamic(SettingsPaletteHex.disclosure)
+    /// A pressed drill-in row's tint over its card: black at 8 % in light,
+    /// white at 10 % in dark (the Linux IDE's `SettingsPalette.pressedRow`).
+    public static let pressedRow = NSColor(name: nil) {
+        $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor.white.withAlphaComponent(0.1) : NSColor.black.withAlphaComponent(0.08)
+    }
 }
 
 /// A view filled with one (dynamic) colour.
@@ -466,14 +471,43 @@ public final class SettingsRowView: NSView {
         ])
     }
 
+    /// A drill-in row is pressed: it tints until the press ends (P-138:
+    /// the reference's row tints for a frame before the page is pushed).
+    public private(set) var isPressed = false { didSet { if oldValue != isPressed { needsDisplay = true } } }
+
+    public override func mouseDown(with event: NSEvent) {
+        if onClick != nil { isPressed = true } else { super.mouseDown(with: event) }
+    }
+
     public override func mouseUp(with event: NSEvent) {
-        if let onClick { onClick() } else { super.mouseUp(with: event) }
+        guard let onClick else { return super.mouseUp(with: event) }
+        let inside = bounds.contains(convert(event.locationInWindow, from: nil))
+        isPressed = false
+        if inside { onClick() }
+    }
+
+    public override func draw(_ dirtyRect: NSRect) {
+        guard isPressed else { return }
+        SettingsColors.pressedRow.setFill()
+        bounds.fill()
     }
 
     public override func accessibilityPerformPress() -> Bool {
         guard let onClick else { return false }
         onClick()
         return true
+    }
+
+    // A drill-in row is reachable by keyboard (Tab with full keyboard
+    // access; Space or Return pushes its page).
+    public override var acceptsFirstResponder: Bool { onClick != nil }
+    public override var canBecomeKeyView: Bool { onClick != nil && NSApp.isFullKeyboardAccessEnabled }
+    public override var focusRingMaskBounds: NSRect { bounds }
+    public override func drawFocusRingMask() { bounds.fill() }
+
+    public override func keyDown(with event: NSEvent) {
+        guard let onClick, [" ", "\r", "\u{3}"].contains(event.charactersIgnoringModifiers ?? "") else { return super.keyDown(with: event) }
+        onClick()
     }
 }
 

@@ -25,6 +25,9 @@ public final class WorkspaceShellModel {
     public var isDebugAreaShown = false
     public enum DebugPane: String, CaseIterable, Sendable { case buildLog = "Build Log", console = "Console" }
     public var debugPane: DebugPane = .buildLog
+    /// Activate Console asked for the keyboard in the console (P-123); the
+    /// debug area takes it and clears this.
+    public var consoleFocusPending = false
 
     // MARK: Project navigator
 
@@ -218,6 +221,7 @@ public final class WorkspaceShellModel {
         c.caretLineBreakpointsEnabled = debug.caretLineBreakpointsEnabled
         c.integrationVerb = sourceControl.snapshot.integration.verb
         c.hasConflicts = sourceControl.snapshot.changes.contains { $0.status == .conflicted }
+        fillMenuBarContext(&c)   // ShellAppModel+MenuActions.swift
         return c
     }
 
@@ -550,8 +554,10 @@ public final class WorkspaceShellModel {
     public func isEnabled(_ c: ShellCommand) -> Bool {
         switch c {
         case .revealInProjectNavigator: document != nil
-        case .save: editor.map { $0.readOnlyReason == nil && (editedPaths.contains($0.path) || $0.diskChange != nil) } ?? false
-        case .saveAll: !editedPaths.isEmpty
+        // P-008: Save with any writable document, Save All with a workspace
+        // (as macOS and the reference).
+        case .save: editor.map { $0.readOnlyReason == nil } ?? false
+        case .saveAll: true
         case .closeDocument: document != nil
         case .revertToSaved: editor.map { editedPaths.contains($0.path) } ?? false
         case .find, .findAndReplace, .useSelectionForFind, .jumpToLine: editor != nil
@@ -561,7 +567,8 @@ public final class WorkspaceShellModel {
         case .goForward: canGoForward
         case .nextIssue, .previousIssue: !issueGroups.isEmpty
         case .stop: isBusy
-        case .run, .test, .build, .clean: !isBusy
+        case .run, .build, .clean: !isBusy
+        case .test: !isBusy && session.model.hasTestTargets   // P-013
         case .jumpToDefinition, .jumpToOriginalSource, .renameSymbol, .showQuickHelp, .findSelectedSymbol, .showCallHierarchy:
             isLanguageCommandEnabled(c)
         case .pauseOrContinue, .stepOver, .stepInto, .stepOut, .toggleBreakpointAtCurrentLine, .toggleBreakpointsEnabledAtCurrentLine,
@@ -606,6 +613,8 @@ public final class WorkspaceShellModel {
         case .activateConsole:
             isDebugAreaShown = true
             debugPane = .console
+            debug.showsConsole = true
+            consoleFocusPending = true
         case .findInWorkspace: showFindInWorkspace()
         case .revealInProjectNavigator: revealInProjectNavigator()
         case .goBack: goBack()
@@ -628,7 +637,15 @@ public final class WorkspaceShellModel {
         }
     }
 
+    /// View ▸ Navigators ▸ <navigator> (⌘1–⌘9): on the navigator already
+    /// shown it hides the area, as the reference does (P-036).
     private func show(_ n: ShellNavigator) {
+        if isNavigatorShown && !assistant.isShown && navigator == n { isNavigatorShown = false; return }
+        showNavigator(n)
+    }
+
+    /// Shows a navigator in the left area (the issue capsule; never hides).
+    public func showNavigator(_ n: ShellNavigator) {
         navigator = n
         isNavigatorShown = true
     }

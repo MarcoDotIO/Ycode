@@ -60,7 +60,7 @@ public final class CapabilityLibraryController: NSViewController, NSTableViewDat
         table.dataSource = self
         table.delegate = self
         table.target = self
-        table.doubleAction = #selector(addSelected)
+        table.doubleAction = #selector(rowDoubleClicked)
         listScroll.documentView = table
         listScroll.hasVerticalScroller = true
         grid.orientation = .vertical
@@ -140,16 +140,42 @@ public final class CapabilityLibraryController: NSViewController, NSTableViewDat
     public func addSelectedCapability() -> Bool {
         guard let c = selected, !present.contains(c) else { return false }
         if onAdd?(c) != nil { return false }
-        if let w = view.window { if let p = w.sheetParent { p.endSheet(w) } else { w.close() } }
+        dismissLibrary()
         return true
     }
 
+    /// Closes the panel without adding (Escape, ⌘., a click outside;
+    /// P-098).
+    public func dismissLibrary() {
+        guard isViewLoaded, let w = view.window else { return }
+        if let p = w.sheetParent { p.endSheet(w) } else { w.close() }
+    }
+
+    /// Escape and ⌘. close the library without adding (P-098).
+    public override func cancelOperation(_ sender: Any?) { dismissLibrary() }
+
     @objc private func addSelected() { addSelectedCapability() }
+
+    /// A row double-click adds that row's capability.
+    @objc private func rowDoubleClicked() {
+        let row = table.clickedRow >= 0 ? table.clickedRow : table.selectedRow
+        guard row >= 0, row < items.count else { return }
+        select(items[row])
+        addSelectedCapability()
+    }
     @objc private func searchChanged() { filter = searchField.stringValue }
     @objc private func layoutChosen() { setLayout(Layout(rawValue: layoutControl.selectedSegment) ?? .list) }
     @objc private func gridClicked(_ b: NSButton) { select(Capability(rawValue: b.identifier?.rawValue ?? "")) }
 
     public func controlTextDidChange(_ obj: Notification) { filter = searchField.stringValue }
+
+    /// Escape in the filter closes the library (the field would otherwise
+    /// only clear its text).
+    public func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+        guard sel == #selector(NSResponder.cancelOperation(_:)) else { return false }
+        dismissLibrary()
+        return true
+    }
 
     public func numberOfRows(in tableView: NSTableView) -> Int { items.count }
 
@@ -163,5 +189,46 @@ public final class CapabilityLibraryController: NSViewController, NSTableViewDat
 
     public func tableViewSelectionDidChange(_ notification: Notification) {
         if table.selectedRow >= 0, table.selectedRow < items.count, items[table.selectedRow] != selected { select(items[table.selectedRow]) }
+    }
+}
+
+/// The capability library's window (P-098): a floating panel over the
+/// workspace window, not a sheet. Escape and ⌘. close it without adding,
+/// and so does a click outside it (the panel stops being key).
+@MainActor
+public final class CapabilityLibraryPanel: NSPanel {
+    /// Shows `library` centred over `parent`'s content and makes it key.
+    @discardableResult
+    public static func show(_ library: CapabilityLibraryController, over parent: NSWindow) -> CapabilityLibraryPanel {
+        let panel = CapabilityLibraryPanel(contentRect: NSRect(origin: .zero, size: library.view.frame.size),
+                                           styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        panel.contentViewController = library
+        panel.title = ProjectEditorModel.capabilityLibraryTitle
+        panel.isReleasedWhenClosed = false
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = true
+        panel.isExcludedFromWindowsMenu = true
+        let p = parent.frame, size = panel.frame.size
+        panel.setFrameOrigin(NSPoint(x: p.midX - size.width / 2, y: p.midY - size.height / 2))
+        parent.addChildWindow(panel, ordered: .above)
+        panel.makeKeyAndOrderFront(nil)
+        panel.makeFirstResponder(library.searchField)
+        return panel
+    }
+
+    public override var canBecomeKey: Bool { true }
+
+    /// Escape (and ⌘.) close the panel without adding.
+    public override func cancelOperation(_ sender: Any?) { close() }
+
+    /// A click outside: another window took the keyboard.
+    public override func resignKey() {
+        super.resignKey()
+        if isVisible { close() }
+    }
+
+    public override func close() {
+        parent?.removeChildWindow(self)
+        super.close()
     }
 }

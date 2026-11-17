@@ -1,0 +1,1267 @@
+{
+ "name": "parity-b-editor",
+ "title": "Part B 1a: the source editor with Showcase.swift: syntax colouring, scrolling, minimap, code folding, jump bar menus, Related Items, find and replace, Go to Line, multiple insertion points, comment toggling, indentation, Authors.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "Showcase.swift open (selected in the navigator), at rest: syntax colouring of the first screen. AX tree and the whole menu bar.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    },
+    {
+     "menubar": "showcase"
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "focus",
+   "note": "Click into the editor at 'import Foundation' (caret, current-line highlight). The menu bar again (enabled states with the editor focused).",
+   "do": [
+    {
+     "textclick": {
+      "needle": "import Foundation",
+      "occurrence": 1,
+      "offset": 3
+     }
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "menubar": "editor-focused"
+    },
+    {
+     "tree": "focused",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "scroll-down",
+   "note": "Wheel scroll 1200 pt down over 1 s (phase-less wheel events, exact deltas).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       500
+      ]
+     },
+     "dy": -1200,
+     "steps": 120,
+     "interval": 0.008333
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "flick-down",
+   "note": "A fast flick down (8 gesture events of 40 pt, then momentum).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       500
+      ]
+     },
+     "dy": -320,
+     "steps": 8,
+     "interval": 0.008333,
+     "momentum": true,
+     "momentum_tau": 0.33,
+     "phases": true
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "to-top",
+   "note": "cmd+Up: back to the top of the file.",
+   "do": [
+    {
+     "key": "cmd+up"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "minimap-hover",
+   "note": "Pointer onto the minimap (about a third down), held 2 s: hover highlight, the section label under the pointer.",
+   "do": [
+    {
+     "hover": [
+      1060,
+      330
+     ]
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "minimap-click",
+   "note": "Click in the minimap 60 % down: the editor jumps there.",
+   "do": [
+    {
+     "click": [
+      1060,
+      560
+     ]
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "minimap-drag",
+   "note": "Drag in the minimap from 15 % to 75 % of its height over 1.2 s (the visible-region box follows).",
+   "do": [
+    {
+     "drag": {
+      "from": [
+       1060,
+       150
+      ],
+      "to": [
+       1060,
+       680
+      ]
+     },
+     "duration": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "minimap-off",
+   "note": "Editor ▸ Minimap: hide it.",
+   "do": [
+    {
+     "menu": "Editor > Minimap"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "minimap-on",
+   "note": "Editor ▸ Minimap: show it again.",
+   "do": [
+    {
+     "menu": "Editor > Minimap"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "to-top-2",
+   "note": "cmd+Up, caret on line 1.",
+   "do": [
+    {
+     "key": "cmd+up"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "ribbon-hover",
+   "note": "Pointer onto the gutter just left of 'enum Mode0' (line 8; the code folding ribbon), held 2 s.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "enum Mode0",
+      "occurrence": 1,
+      "offset": 0,
+      "dx": -10
+     },
+     "hover": true
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "ribbon-click",
+   "note": "Click there: fold the enumeration (animation).",
+   "do": [
+    {
+     "textclick": {
+      "needle": "enum Mode0",
+      "occurrence": 1,
+      "offset": 0,
+      "dx": -10
+     }
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "ribbon-unfold",
+   "note": "Click there again: unfold.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "enum Mode0",
+      "occurrence": 1,
+      "offset": 0,
+      "dx": -10
+     }
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "fold-caret",
+   "note": "Caret inside struct Box0 ('values.append'), Editor ▸ Code Folding ▸ Fold (option+cmd+Left).",
+   "do": [
+    {
+     "textclick": {
+      "needle": "values.append",
+      "occurrence": 1,
+      "offset": 2
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "cmd+alt+left"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "unfold-caret",
+   "note": "Unfold (option+cmd+Right).",
+   "do": [
+    {
+     "key": "cmd+alt+right"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "fold-methods",
+   "note": "Fold Methods & Functions (option+shift+cmd+Left).",
+   "do": [
+    {
+     "key": "cmd+alt+shift+left"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "unfold-methods",
+   "note": "Unfold Methods & Functions (option+shift+cmd+Right).",
+   "do": [
+    {
+     "key": "cmd+alt+shift+right"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "fold-comments",
+   "note": "Fold Comment Blocks (control+shift+cmd+Left).",
+   "do": [
+    {
+     "key": "cmd+ctrl+shift+left"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "unfold-comments",
+   "note": "Unfold Comment Blocks (control+shift+cmd+Right).",
+   "do": [
+    {
+     "key": "cmd+ctrl+shift+right"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "jump-project",
+   "note": "Click the jump bar's project segment (window point [370, 66]): its menu (animation). AX tree.",
+   "do": [
+    {
+     "click": [
+      370,
+      66
+     ]
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "jump-project",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "jump-project-type",
+   "note": "Type-select in that menu: type 'S', still.",
+   "do": [
+    {
+     "text": "S"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "jump-project-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.3
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "jump-group",
+   "note": "Click the jump bar's group segment (window point [437, 66]): its menu (animation). AX tree.",
+   "do": [
+    {
+     "click": [
+      437,
+      66
+     ]
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "jump-group",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "jump-group-type",
+   "note": "Type-select in that menu: type 'S', still.",
+   "do": [
+    {
+     "text": "S"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "jump-group-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.3
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "jump-file",
+   "note": "Click the jump bar's file segment (window point [515, 66]): its menu (animation). AX tree.",
+   "do": [
+    {
+     "click": [
+      515,
+      66
+     ]
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "jump-file",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "jump-file-type",
+   "note": "Type-select in that menu: type 'S', still.",
+   "do": [
+    {
+     "text": "S"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "jump-file-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.3
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "jump-symbol",
+   "note": "Click the jump bar's symbol segment (window point [600, 66]): its menu (animation). AX tree.",
+   "do": [
+    {
+     "click": [
+      600,
+      66
+     ]
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "jump-symbol",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "jump-symbol-type",
+   "note": "Type-select in that menu: type 'S', still.",
+   "do": [
+    {
+     "text": "S"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "jump-symbol-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.3
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "related-items",
+   "note": "The Related Items button (left end of the jump bar): its menu. AX tree.",
+   "do": [
+    {
+     "click": {
+      "description": "Related Items"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "related",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "related-walk",
+   "note": "Every sub-menu of the Related Items menu, hovered: a still of each.",
+   "do": [
+    {
+     "submenus": "sub",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "related-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.3
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "find-bar",
+   "note": "cmd+F: the find bar (animation). AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "import Foundation",
+      "occurrence": 1,
+      "offset": 0
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "cmd+f"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "find",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "find-type",
+   "note": "Type 'values': matches highlighted, match count.",
+   "do": [
+    {
+     "text": "values"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "find-next",
+   "note": "Return, Return: next match (scroll, current-match flash).",
+   "do": [
+    {
+     "key": "return"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "key": "return"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "find-tab-order",
+   "note": "Tab through the find bar (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "find-replace",
+   "note": "Find ▸ Find and Replace… (option+cmd+F): the replace row (animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+alt+f"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "replace",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "find-close",
+   "note": "Escape (twice) closes the find bar.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "goto-line",
+   "note": "Navigate ▸ Jump to Line (cmd+L): the line field (animation). AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "import Foundation",
+      "occurrence": 1,
+      "offset": 0
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "cmd+l"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "goto",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "goto-line-enter",
+   "note": "Type 120 and Return: the editor jumps to line 120.",
+   "do": [
+    {
+     "text": "120"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "key": "return"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "to-top-3",
+   "note": "cmd+Up.",
+   "do": [
+    {
+     "key": "cmd+up"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "multi-cursor",
+   "note": "Click in 'case idle', then control+shift+click in 'case .idle' and 'case .running': three insertion points.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "case idle",
+      "occurrence": 1,
+      "offset": 2
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "textclick": {
+      "needle": "case .idle",
+      "occurrence": 1,
+      "offset": 2
+     },
+     "modifiers": "ctrl,shift"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "textclick": {
+      "needle": "case .running",
+      "occurrence": 1,
+      "offset": 2
+     },
+     "modifiers": "ctrl,shift"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "multi-type",
+   "note": "Type 'x' at all of them, then cmd+Z.",
+   "do": [
+    {
+     "text": "x"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "key": "cmd+z"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "comment-toggle",
+   "note": "Caret in 'let limit', Editor ▸ Structure ▸ Comment Selection (cmd+/).",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "textclick": {
+      "needle": "let limit",
+      "occurrence": 1,
+      "offset": 2
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "cmd+/"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "comment-toggle-back",
+   "note": "cmd+/ again: uncomment.",
+   "do": [
+    {
+     "key": "cmd+/"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "shift-right",
+   "note": "Editor ▸ Structure ▸ Shift Right (cmd+]) on that line.",
+   "do": [
+    {
+     "key": "cmd+]"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "reindent",
+   "note": "Editor ▸ Structure ▸ Re-Indent (control+I): back in place.",
+   "do": [
+    {
+     "key": "ctrl+i"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "shift-left",
+   "note": "Shift Left (cmd+[) then Re-Indent (control+I).",
+   "do": [
+    {
+     "key": "cmd+["
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "key": "ctrl+i"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "authors",
+   "note": "Editor ▸ Authors (control+shift+cmd+A): the blame column (two commits by Capture Test). AX tree.",
+   "do": [
+    {
+     "menu": "Editor > Authors"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "authors",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "authors-hover",
+   "note": "Pointer onto the authors column at line 8, held 2 s (hover, tooltip or popover).",
+   "do": [
+    {
+     "textclick": {
+      "needle": "enum Mode0",
+      "occurrence": 1,
+      "offset": 0,
+      "dx": -160
+     },
+     "hover": true
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "authors-off",
+   "note": "Editor ▸ Authors again: off.",
+   "do": [
+    {
+     "menu": "Editor > Authors"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "menubar-after",
+   "note": "The whole menu bar after this session's actions.",
+   "do": [
+    {
+     "menubar": "after"
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ },
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Showcase|Showcase.swift"
+   }
+  },
+  {
+   "wait": 2.5
+  }
+ ]
+}

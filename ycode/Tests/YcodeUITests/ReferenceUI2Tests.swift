@@ -77,10 +77,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             wc.openFromNavigator(path: other, line: nil)
             #expect(wc.editorArea.tabs.count == 1) // unpinned tab is replaced
             wc.toggleEditorTabBar(nil)
-            #expect(wc.editorArea.isTabBarVisible && wc.editorArea.tabTitles == ["Other"])
+            #expect(wc.editorArea.isTabBarVisible && wc.editorArea.tabTitles == ["Other.swift"])
             wc.togglePinEditorTab(nil)
             wc.openFromNavigator(path: main, line: nil)
-            #expect(wc.editorArea.tabs.count == 2 && wc.editorArea.tabTitles == ["Other", "main"])
+            #expect(wc.editorArea.tabs.count == 2 && wc.editorArea.tabTitles == ["Other.swift", "main.swift"])
             #expect(CommandTable.command(titled: "Close Tab, Editor Pane, Window Tab, or Window")?.shortcutText == "⌘W")
             #expect(CommandTable.command(titled: "Close Editor Pane")?.shortcutText == "⌃⇧⌘W")
             #expect(CommandTable.command(titled: "Close Window")?.shortcutText == "⇧⌘W")

@@ -132,7 +132,7 @@ extension WorkspaceShellModel {
         case (.assetCatalog(let m), "addNewAsset:"): return m.add(tag: tag)
         case (.assetCatalog(let m), "deleteSelectedAssets:"): return m.removeSelected()
         case (.interfaceBuilder(let m), _): return m.perform(action, tag: tag)
-        default: return false
+        default: return performFindMenuAction(action, tag: tag)   // +FindMenu.swift (P-003)
         }
         return true
     }
@@ -150,7 +150,7 @@ extension WorkspaceShellModel {
                                                                && tag != AssetCatalog.AddMenuTags.stickerFrame, false)
         case (.assetCatalog(let m), "deleteSelectedAssets:"): return (m.selectedRow != nil, false)
         case (.interfaceBuilder(let m), _): return m.actionState(action, tag: tag)
-        default: return nil
+        default: return findMenuActionState(action, tag: tag)   // +FindMenu.swift (P-003)
         }
     }
 

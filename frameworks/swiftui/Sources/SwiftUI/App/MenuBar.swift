@@ -19,14 +19,14 @@ import SwiftUICore
 // `(after:)` items around them; non-empty groups are separated by a
 // separator. Menus with no items are not shown.
 //
-// Default items (Ycode's, with the Linux shortcuts): About <App>; Settings…
-// (Ctrl+, — when the app has a `Settings` scene); Quit <App> (Ctrl+Q); New
-// Window (Ctrl+N — when the app has a `WindowGroup`); Close Window (Ctrl+W);
-// Undo (Ctrl+Z), Redo (Ctrl+Shift+Z), Cut (Ctrl+X), Copy (Ctrl+C), Paste
-// (Ctrl+V), Select All (Ctrl+A) — acting on the focused text view; Show/Hide
-// Toolbar (when the window has a toolbar), Show/Hide Sidebar (Ctrl+Alt+S,
-// with `SidebarCommands`); Minimize (Ctrl+M), the open windows, the app's
-// single `Window` scenes; <App> Help (disabled: no help book).
+// Default items (Ycode's; ⌘ is pressed as Ctrl on Linux): About <App>;
+// Settings… (⌘, — when the app has a `Settings` scene); Quit <App> (⌘Q); New
+// Window (⌘N — when the app has a `WindowGroup`); Close Window (⌘W); Undo
+// (⌘Z), Redo (⇧⌘Z), Cut (⌘X), Copy (⌘C), Paste (⌘V), Select All (⌘A) —
+// acting on the focused text view; Show/Hide Toolbar (when the window has a
+// toolbar), Show/Hide Sidebar (⌥⌘S, with `SidebarCommands`); Minimize (⌘M),
+// the open windows, the app's single `Window` scenes; <App> Help (disabled:
+// no help book).
 //
 // Interaction: a press on a title opens its menu (a pop-up window, R8); while
 // a menu is open, moving the pointer over another title opens that one; Left
@@ -73,40 +73,45 @@ extension EnvironmentValues {
 // MARK: - Shortcut text
 
 extension KeyboardShortcut {
-    /// The shortcut as a Linux menu shows it: "Ctrl+Shift+Z" (`.command` is
-    /// Ctrl, 09-open-design.md §4.1).
+    /// The shortcut as a menu shows it, as the macOS IDE's menus do
+    /// (P-212, L-006): the modifier glyphs in the order ⌃ ⌥ ⇧ ⌘, then the
+    /// key ("⇧⌘Z", "⌃⌘F", "⌥⌘←", "⌘↩"). On Linux ⌘ is pressed as Ctrl (or
+    /// Super) and ⌃ as Ctrl (09-open-design.md §4.1); the menus still name
+    /// them apart, so ⌘1 and ⌃1 read differently.
     package var displayText: String {
-        var parts: [String] = []
-        let ctrl = modifiers.contains(.command) || modifiers.contains(.control)
-        if modifiers.contains(.command) && modifiers.contains(.control) { parts.append("Super") }
-        if ctrl { parts.append("Ctrl") }
-        if modifiers.contains(.option) { parts.append("Alt") }
-        if modifiers.contains(.shift) { parts.append("Shift") }
-        let k: String
+        var text = ""
+        if modifiers.contains(.control) { text += "⌃" }
+        if modifiers.contains(.option) { text += "⌥" }
+        if modifiers.contains(.shift) { text += "⇧" }
+        if modifiers.contains(.command) { text += "⌘" }
+        return text + Self.keyGlyph(key)
+    }
+
+    /// The key's glyph in a menu: arrows, Return, Escape, Delete and the
+    /// like as symbols, function keys as "F5", letters in upper case.
+    static func keyGlyph(_ key: KeyEquivalent) -> String {
         switch key {
-        case .return: k = "Enter"
-        case .escape: k = "Esc"
-        case .delete: k = "Backspace"
-        case .deleteForward: k = "Delete"
-        case .tab: k = "Tab"
-        case .space: k = "Space"
-        case .upArrow: k = "Up"
-        case .downArrow: k = "Down"
-        case .leftArrow: k = "Left"
-        case .rightArrow: k = "Right"
-        case .home: k = "Home"
-        case .end: k = "End"
-        case .pageUp: k = "Page Up"
-        case .pageDown: k = "Page Down"
+        case .return: return "↩"
+        case .escape: return "⎋"
+        case .delete: return "⌫"
+        case .deleteForward: return "⌦"
+        case .tab: return "⇥"
+        case .space: return "Space"
+        case .upArrow: return "↑"
+        case .downArrow: return "↓"
+        case .leftArrow: return "←"
+        case .rightArrow: return "→"
+        case .home: return "↖"
+        case .end: return "↘"
+        case .pageUp: return "⇞"
+        case .pageDown: return "⇟"
+        case .clear: return "⌧"
         default:
             if let v = key.character.unicodeScalars.first?.value, key.character.unicodeScalars.count == 1, (0xF704...0xF726).contains(v) {
-                k = "F\(v - 0xF703)"
-            } else {
-                k = String(key.character).uppercased()
+                return "F\(v - 0xF703)"
             }
+            return String(key.character).uppercased()
         }
-        parts.append(k)
-        return parts.joined(separator: "+")
     }
 }
 

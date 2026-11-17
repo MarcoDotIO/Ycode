@@ -1,0 +1,1200 @@
+{
+ "name": "parity-c-settings2",
+ "title": "Part C 1b: Settings drill-in pages (Editing ▸ Display / Completion / Indentation, Behaviors ▸ Build / Running, Source Control ▸ Git settings) with Back, and the Shortcuts filter with results, no results and cleared.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "settings-open",
+   "note": "cmd+comma, General, moved.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "General",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "move": [
+      401,
+      40
+     ],
+     "window": "General"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "resize": [
+      710,
+      900
+     ],
+     "window": "General"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "editing-pane",
+   "note": "Editing pane (710 x 900).",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Editing",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Editing"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Editing"
+      },
+      {
+       "wait": 0.6
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Editing",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Editing"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Editing"
+      },
+      {
+       "wait": 0.6
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-display",
+   "note": "Click the 'Display' row: the drill-in page (push animation). AX tree. (Ycode's rows are static text in Accessibility, so its click targets the row's label.)",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXButton|AXRow|AXCell",
+        "label~": "Display",
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "page",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXStaticText",
+        "value~": "Display",
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "page",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-display-back",
+   "note": "Back (the Go Back button; the window may be titled after the page).",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Display"
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Editing",
+       "fallback": true
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Display"
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Editing",
+       "fallback": true
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-completion",
+   "note": "Click the 'Completion' row: the drill-in page (push animation). AX tree. (Ycode's rows are static text in Accessibility, so its click targets the row's label.)",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXButton|AXRow|AXCell",
+        "label~": "Completion",
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "page",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXStaticText",
+        "value~": "Completion",
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "page",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-completion-back",
+   "note": "Back (the Go Back button; the window may be titled after the page).",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Completion"
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Editing",
+       "fallback": true
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Completion"
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Editing",
+       "fallback": true
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-indentation",
+   "note": "Click the 'Indentation' row: the drill-in page (push animation). AX tree. (Ycode's rows are static text in Accessibility, so its click targets the row's label.)",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXButton|AXRow|AXCell",
+        "label~": "Indentation",
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "page",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXStaticText",
+        "value~": "Indentation",
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "page",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-indentation-back",
+   "note": "Back (the Go Back button; the window may be titled after the page).",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Indentation"
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Editing",
+       "fallback": true
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Indentation"
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Editing",
+       "fallback": true
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-pane",
+   "note": "Behaviors pane (710 x 900).",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Behaviors",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.6
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Behaviors",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.6
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-build",
+   "note": "Click the 'Build' row: the drill-in page (push animation). AX tree. (Ycode's rows are static text in Accessibility, so its click targets the row's label.)",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXButton|AXRow|AXCell",
+        "label~": "Build",
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "page",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXStaticText",
+        "value~": "Build",
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "page",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-build-back",
+   "note": "Back (the Go Back button; the window may be titled after the page).",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Build"
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Behaviors",
+       "fallback": true
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Build"
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Behaviors",
+       "fallback": true
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-running",
+   "note": "Click the 'Running' row: the drill-in page (push animation). AX tree. (Ycode's rows are static text in Accessibility, so its click targets the row's label.)",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXButton|AXRow|AXCell",
+        "label~": "Running",
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "page",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXStaticText",
+        "value~": "Running",
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "page",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-running-back",
+   "note": "Back (the Go Back button; the window may be titled after the page).",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Running"
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Behaviors",
+       "fallback": true
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Running"
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Behaviors",
+       "fallback": true
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-pane",
+   "note": "Source Control pane (710 x 900).",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Source Control",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.6
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Source Control",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.6
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-git-settings",
+   "note": "Click the 'Git settings' row: the drill-in page (push animation). AX tree. (Ycode's rows are static text in Accessibility, so its click targets the row's label.)",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXButton|AXRow|AXCell",
+        "label": "Git settings|Git Settings|Git",
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "page",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXStaticText",
+        "value~": "Git settings",
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "page",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-git-settings-back",
+   "note": "Back (the Go Back button; the window may be titled after the page).",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Git settings"
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Source Control",
+       "fallback": true
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Git settings"
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "Go Back|Back"
+       },
+       "window": "Source Control",
+       "fallback": true
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-pane",
+   "note": "Shortcuts pane (710 x 900).",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Shortcuts",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.6
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Shortcuts",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.6
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-filter",
+   "note": "Click the Shortcuts filter field and type 'build': the filtered list. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXTextField",
+        "subrole": "AXSearchField",
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.5
+      },
+      {
+       "text": "build"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "filtered",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXTextField",
+        "subrole": "AXSearchField",
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.5
+      },
+      {
+       "text": "build"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "filtered",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-filter-empty",
+   "note": "Type 'qqqzz' more: no results (empty state).",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "text": "qqqzz"
+      },
+      {
+       "wait": 1.5
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "text": "qqqzz"
+      },
+      {
+       "wait": 1.5
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-filter-clear",
+   "note": "Select all and delete (clear the filter).",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "key": "cmd+a"
+      },
+      {
+       "key": "delete"
+      },
+      {
+       "wait": 1.0
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "key": "cmd+a"
+      },
+      {
+       "key": "delete"
+      },
+      {
+       "wait": 1.0
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "settings-close",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ],
+ "project": {
+  "generator": "make-formats-project.py",
+  "path": "formats/Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

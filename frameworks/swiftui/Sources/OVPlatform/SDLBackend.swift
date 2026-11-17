@@ -119,6 +119,14 @@ public final class SDLWindow: PlatformWindow {
         _ = sdl.SetWindowSize(handle, Int32((size.width / k).rounded()), Int32((size.height / k).rounded()))
     }
 
+    /// The resize limits (points; `.infinity` unbounded).
+    func setSizeLimits(minimum: CGSize?, maximum: CGSize?) {
+        let k = pointsPerCoordinate
+        func c(_ v: CGFloat) -> Int32 { v.isFinite ? Int32((v / k).rounded()) : 0 }
+        if let m = minimum { _ = sdl.SetWindowMinimumSize(handle, c(m.width), c(m.height)) }
+        if let m = maximum { _ = sdl.SetWindowMaximumSize(handle, c(m.width), c(m.height)) }
+    }
+
     public func minimize() {
         guard !isClosed else { return }
         _ = sdl.MinimizeWindow(handle)
@@ -130,6 +138,38 @@ public final class SDLWindow: PlatformWindow {
         var x: Int32 = 0, y: Int32 = 0
         guard sdl.GetWindowPosition(handle, &x, &y) else { return nil }
         return CGPoint(x: Double(x), y: Double(y))
+    }
+
+    /// The usable bounds of the window's display, in SDL's coordinates.
+    private var displayUsableBounds: SDL_Rect? {
+        guard !isClosed else { return nil }
+        let display = sdl.GetDisplayForWindow(handle)
+        guard display != 0 else { return nil }
+        var r = SDL_Rect()
+        guard sdl.GetDisplayUsableBounds(display, &r), r.w > 0, r.h > 0 else { return nil }
+        return r
+    }
+
+    public var usableDisplaySize: CGSize? {
+        guard let r = displayUsableBounds else { return nil }
+        let k = pointsPerCoordinate
+        return CGSize(width: Double(r.w) * k, height: Double(r.h) * k)
+    }
+
+    /// P-212: pop-ups may cover the display around the window. X11 tells the
+    /// window's place, so the area is the display's usable bounds; Wayland
+    /// does not, and its compositor keeps pop-ups on the screen itself, so
+    /// the area is unbounded there.
+    public var popupArea: CGRect? {
+        guard !isClosed, popupParent == nil else { return nil }
+        if backend?.name == "sdl:wayland" {
+            return CGRect(x: -100_000, y: -100_000, width: 200_000, height: 200_000)
+        }
+        guard let r = displayUsableBounds else { return nil }
+        var x: Int32 = 0, y: Int32 = 0
+        guard sdl.GetWindowPosition(handle, &x, &y) else { return nil }
+        let k = pointsPerCoordinate
+        return CGRect(x: Double(r.x - x) * k, y: Double(r.y - y) * k, width: Double(r.w) * k, height: Double(r.h) * k)
     }
 
     public func activate() {
@@ -473,6 +513,7 @@ public final class SDLBackend: PlatformBackend {
         // Window systems that measure windows in pixels (X11) get the size in
         // points scaled to the display.
         if abs(w.pointsPerCoordinate - 1) > 0.01 { w.setSize(configuration.size) }
+        w.setSizeLimits(minimum: configuration.minimumSize, maximum: configuration.maximumSize)
         w.fitToDisplay()
         _ = sdl.ShowWindow(h)
         open.append(w)

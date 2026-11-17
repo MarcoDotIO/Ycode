@@ -60,7 +60,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         wc.newTab(nil)
         #expect(wc.editorArea.tabs.count == 2 && wc.editor !== first && wc.editor.fileURL == nil && wc.editor.emptyView != nil)
         wc.open(path: a, line: nil)
-        #expect(wc.editorArea.tabTitles == ["B", "A"])
+        #expect(wc.editorArea.tabTitles == ["B.swift", "A.swift"])   // P-062: with the extension
         wc.selectPreviousTab(nil)
         #expect(wc.editor === first)
         wc.selectNextTab(nil)

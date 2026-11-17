@@ -5,7 +5,7 @@ import Testing
 @Suite struct DiagnosticParserTests {
     @Test func parsesLocatedIssues() {
         let d = DiagnosticParser.parseLine("/src/App/main.swift:12:5: error: cannot find 'foo' in scope")
-        #expect(d == Diagnostic(severity: .error, message: "cannot find 'foo' in scope",
+        #expect(d == Diagnostic(severity: .error, message: "Cannot find 'foo' in scope",
                                 location: .init(file: "/src/App/main.swift", line: 12, column: 5)))
         let w = DiagnosticParser.parseLine("/src/a.c:3: warning: unused variable 'x' [-Wunused-variable]")
         #expect(w?.location == .init(file: "/src/a.c", line: 3, column: 0))
@@ -28,7 +28,7 @@ import Testing
 
     @Test func messageMayContainMarker() {
         let d = DiagnosticParser.parseLine("/a.swift:1:1: error: string ': warning: ' is odd")
-        #expect(d?.severity == .error && d?.message == "string ': warning: ' is odd")
+        #expect(d?.severity == .error && d?.message == "String ': warning: ' is odd")
     }
 
     @Test func attachesNotesAndFixIts() {
@@ -46,7 +46,7 @@ import Testing
         """
         let issues = DiagnosticParser.parse(log)
         #expect(issues.count == 2) // the repeated error is dropped
-        #expect(issues[0].notes.map(\.message) == ["did you mean 'std::cout'?"])
+        #expect(issues[0].notes.map(\.message) == ["Did you mean 'std::cout'?"]) // display form (P-121)
         #expect(issues[0].fixIts == [.init(file: "/s/a.c", start: .init(file: "/s/a.c", line: 4, column: 3),
                                            end: .init(file: "/s/a.c", line: 4, column: 3), replacement: "std::")])
         #expect(issues[1].severity == .warning)

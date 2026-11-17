@@ -308,11 +308,23 @@ public final class ProjectEditorController: NSViewController, NSTableViewDataSou
         }
         v.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(v)
+        // P-100: a tab's minimum width never reaches the window. The tab
+        // fills the content below the window's own size priorities, so a
+        // tab wider than the editor is clipped (its tables scroll) instead
+        // of widening the window or refusing a resize back.
+        content.clipsToBounds = true
+        let trailing = v.trailingAnchor.constraint(equalTo: content.trailingAnchor)
+        trailing.priority = Self.tabFillPriority
         NSLayoutConstraint.activate([
             v.topAnchor.constraint(equalTo: content.topAnchor), v.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            v.leadingAnchor.constraint(equalTo: content.leadingAnchor), v.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            v.leadingAnchor.constraint(equalTo: content.leadingAnchor), trailing,
+            v.trailingAnchor.constraint(greaterThanOrEqualTo: content.trailingAnchor),
         ])
     }
+
+    /// Below `windowSizeStayPut` (500) and the drag priorities: the window's
+    /// size wins over a tab's content (P-100).
+    static let tabFillPriority = NSLayoutConstraint.Priority(rawValue: 480)
 
     /// A form row: label, value, and the setting it edits (nil = read-only).
     typealias FormRow = (label: String, value: String, setting: String?)

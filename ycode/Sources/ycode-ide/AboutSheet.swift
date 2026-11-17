@@ -78,6 +78,12 @@ struct AboutSheet: View {
             Spacer(minLength: 0)
             Button("Close") { app.isAboutShown = false }.keyboardShortcut(.defaultAction).buttonStyle(.bordered).shellTarget("about close")
         }
+        // Escape closes it too (on macOS About is a window that ⌘W and
+        // Escape close): a cancel action with nothing drawn.
+        .background {
+            Button("") { app.isAboutShown = false }.keyboardShortcut(.cancelAction)
+                .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
+        }
         .padding(24)
         .frame(width: 400, height: 410)
         .background(c.content)

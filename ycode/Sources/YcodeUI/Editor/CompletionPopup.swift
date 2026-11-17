@@ -9,6 +9,9 @@ import YcodeLanguage
 final class CompletionPopupView: NSView {
     var model = CompletionModel() { didSet { keepSelectionVisible(); needsDisplay = true } }
     var onAccept: (() -> Void)?
+    /// The text the last edit inserted at an empty selection (one keystroke
+    /// when it is one character); nil for other edits. Read by the trigger.
+    var lastTyped: String?
     static let rowHeight: CGFloat = 20
     static let maxRows = 8
     static let docHeight: CGFloat = 22
@@ -103,5 +106,48 @@ final class CompletionPopupView: NSView {
         case 22: "S"          // struct
         default: "·"
         }
+    }
+}
+
+// MARK: Opening the list while typing (P-080)
+
+extension SourceEditorController {
+    /// Notes an edit for the trigger: what was typed at an empty selection.
+    func noteEditForCompletion(range: NSRange, replacement: String) {
+        completionPopup.lastTyped = range.length == 0 ? replacement : nil
+    }
+
+    /// After a keystroke: asks for completions when it starts a word or is
+    /// a "." in Swift (`CompletionTrigger`, shared with the Linux editor),
+    /// in Swift and the C family; while the word grows, asks again when the
+    /// list was incomplete. Undo, paste and deletions never ask.
+    func requestCompletionWhileTyping() {
+        guard let typed = completionPopup.lastTyped, [.swift, .objc, .c, .cpp].contains(language) else { return }
+        completionPopup.lastTyped = nil
+        let caret = textView.selectedRange().location
+        let ns = textView.string as NSString
+        guard textView.selectedRange().length == 0, caret > 0, caret <= ns.length else { return }
+        // The list shown (or emptied by filtering) is for this word: ask
+        // again only when the server said it was incomplete.
+        let start = CompletionModel.wordStart(in: ns, before: caret)
+        let m = completionPopup.model
+        let sameWord = !m.all.isEmpty && m.wordStart == start && caret - start > 1
+        if isShowingCompletions || sameWord {
+            if sameWord, m.all.first?.fromIncompleteList == true { requestCompletion() }
+            return
+        }
+        let lineStart = ns.lineRange(for: NSRange(location: caret - 1, length: 0)).location
+        let line = ns.substring(with: NSRange(location: lineStart, length: caret - lineStart))
+        guard CompletionTrigger.kind(typed: typed, lineBeforeCaret: line, memberAccess: language == .swift) != nil else { return }
+        requestCompletion()
+    }
+
+    /// Whether completions that arrive for `caret`'s word may still show:
+    /// the insertion point is in the same word (typing went on while the
+    /// server answered; the list is filtered by what was typed).
+    func completionStillApplies(wordStart start: Int) -> Bool {
+        let sel = textView.selectedRange()
+        guard sel.length == 0, sel.location >= start else { return false }
+        return CompletionModel.wordStart(in: textView.string as NSString, before: sel.location) == start
     }
 }

@@ -26,7 +26,8 @@ import YcodeSyntax
         m.open(p)
         let d = try #require(m.editor)
         #expect(d.path == p && m.document?.name == "README.md" && !d.isDirty)
-        #expect(!m.isEnabled(.save) && !m.isEnabled(.saveAll))
+        // P-008: Save with any writable document, Save All with a workspace.
+        #expect(m.isEnabled(.save) && m.isEnabled(.saveAll))
     }
 
     @Test func editingMarksTheFileAndSavingWritesIt() throws {
@@ -42,7 +43,7 @@ import YcodeSyntax
         #expect(m.windowTitle.hasSuffix("README.md — Edited"))
         #expect(m.projectRows.first { $0.isEdited }?.title.hasPrefix("README") == true)
         m.perform(.save)
-        #expect(m.editedPaths.isEmpty && !m.isEnabled(.save))
+        #expect(m.editedPaths.isEmpty && m.isEnabled(.save))
         #expect(contents(p).hasPrefix("X") && !m.windowTitle.contains("Edited"))
         // Undo past the save is an edit again; redo is the saved text.
         b.undo()

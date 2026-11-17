@@ -1,0 +1,385 @@
+{
+ "name": "parity-d-light",
+ "title": "Part D 9: the Quick Help popover with each app's own Appearance set to Light (Shapes.swift open), then back to System.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "appearance-light",
+   "note": "Settings ▸ Appearance: the app's own Appearance set to Light.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "AppearanceLight",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "tree": "appearance",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "press": {
+        "title": "Light",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "tree": "appearance",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "settings-close",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "open-shapes",
+   "note": "Click Shapes in the navigator; caret into the editor.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Shapes|Shapes.swift"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "shapes-light",
+   "note": "Shapes.swift in light. AX tree.",
+   "do": [
+    {
+     "tree": "shapes",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "popover-light",
+   "note": "option+click 'Circle' in 'struct Circle': the Quick Help popover in light. AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "struct Circle",
+      "occurrence": 1,
+      "offset": 9
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "popover",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "popover-light-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "popover-light-2",
+   "note": "option+click 'scaled' in 'circle.scaled(by: 2)' (a second lookup, light).",
+   "do": [
+    {
+     "textclick": {
+      "needle": "scaled(by: 2)",
+      "occurrence": 1,
+      "offset": 2
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "popover-light-2-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "appearance-system",
+   "note": "Settings ▸ Appearance back to System.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "AppearanceAuto",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "tree": "appearance",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "press": {
+        "title": "System",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "tree": "appearance",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "settings-close-2",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "dark-after",
+   "note": "Back to dark.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

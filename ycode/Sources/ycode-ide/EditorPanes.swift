@@ -19,32 +19,52 @@ struct EditorPanesView: View {
     var body: some View {
         let p = model.panes
         let c = ShellColors(scheme)
-        let panes = Array(p.panes.enumerated())
-        let n = CGFloat(panes.count)
-        // Equal shares, as the macOS editor area equalizes its splits.
+        let lanes = p.laneGroups
+        // Equal shares, as the macOS editor area equalizes its splits; a
+        // lane of several panes stacks them across the split (P-064).
         GeometryReader { geo in
-            let along = p.sideBySide ? geo.size.width : geo.size.height
-            let share = max(0, (along - (n - 1)) / n).rounded(.down)
             if p.sideBySide {
                 HStack(spacing: 0) {
-                    ForEach(panes, id: \.element.id) { pair in
-                        if pair.offset > 0 { Hairline(color: c.separator, vertical: true) }
-                        EditorPaneView(model: model, pane: pair.element, closable: p.isSplit)
-                            .frame(width: pair.offset == panes.count - 1 ? max(0, along - (n - 1) * (share + 1)) : share)
+                    ForEach(Array(lanes.enumerated()), id: \.element.id) { lane in
+                        if lane.offset > 0 { Hairline(color: c.separator, vertical: true) }
+                        let w = Self.share(lane.offset, of: lanes.count, along: geo.size.width)
+                        VStack(spacing: 0) {
+                            ForEach(Array(lane.element.panes.enumerated()), id: \.element.id) { row in
+                                if row.offset > 0 { Hairline(color: c.separator) }
+                                EditorPaneView(model: model, pane: row.element, closable: p.isSplit)
+                                    .frame(height: Self.share(row.offset, of: lane.element.panes.count, along: geo.size.height))
+                            }
+                        }
+                        .frame(width: w)
                     }
                 }
             } else {
                 VStack(spacing: 0) {
-                    ForEach(panes, id: \.element.id) { pair in
-                        if pair.offset > 0 { Hairline(color: c.separator) }
-                        EditorPaneView(model: model, pane: pair.element, closable: p.isSplit)
-                            .frame(height: pair.offset == panes.count - 1 ? max(0, along - (n - 1) * (share + 1)) : share)
+                    ForEach(Array(lanes.enumerated()), id: \.element.id) { lane in
+                        if lane.offset > 0 { Hairline(color: c.separator) }
+                        let h = Self.share(lane.offset, of: lanes.count, along: geo.size.height)
+                        HStack(spacing: 0) {
+                            ForEach(Array(lane.element.panes.enumerated()), id: \.element.id) { col in
+                                if col.offset > 0 { Hairline(color: c.separator, vertical: true) }
+                                EditorPaneView(model: model, pane: col.element, closable: p.isSplit)
+                                    .frame(width: Self.share(col.offset, of: lane.element.panes.count, along: geo.size.width))
+                            }
+                        }
+                        .frame(height: h)
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: p.panes.map(\.id)) { _, ids in PaneControllers.keep(panes: Set(ids)) }
+    }
+
+    /// Item `i`'s length of `n` equal shares of `along` with 1-point
+    /// dividers between them (the last takes the rounding's rest).
+    static func share(_ i: Int, of n: Int, along: CGFloat) -> CGFloat {
+        let k = CGFloat(n)
+        let share = max(0, (along - (k - 1)) / k).rounded(.down)
+        return i == n - 1 ? max(0, along - (k - 1) * (share + 1)) : share
     }
 }
 
@@ -102,6 +122,7 @@ struct EditorPaneView: View {
                 let controller = PaneControllers.controller(pane: pane.id, document: editor, focused: true)
                 PreviewEditorSplit(canvas: model.previewCanvas) {   // PreviewCanvasView.swift
                     SourcePaneText(model: model, pane: pane, controller: controller, palette: palette, prefs: prefs, focused: true)
+                        .overlay { InlineRenameLayer(model: model, controller: controller, palette: palette) }   // P-084
                         .overlay { QuickHelpPopoverLayer(model: model, controller: controller) }
                 }
             }
@@ -161,7 +182,10 @@ struct SourcePaneText: View {
             HStack(spacing: 0) {
                 SourceEditorView(controller: controller, model: model, palette: palette, preferences: prefs, isFocusedPane: focused)
                     .id("\(paneID)|\(controller.document.path)")
-                Minimap(controller: controller, colors: c, palette: palette, width: Minimap.width(forPane: geo.size.width))
+                // Editor ▸ Minimap and Editor Options ▸ Minimap (P-065).
+                if Preferences.shared.showMinimap {
+                    Minimap(controller: controller, colors: c, palette: palette, width: Minimap.width(forPane: geo.size.width))
+                }
             }
         }
         .onAppear {

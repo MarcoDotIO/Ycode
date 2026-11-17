@@ -55,9 +55,9 @@ sys.path.insert(0, str(REPO / "tools" / "capture"))
 # and menu items that act on a window are disabled while the app has no main
 # window; these need the foreground. press, set, hover and scroll (through AX
 # scroll bars) work in the background.
-FOCUS_ACTIONS = {"menu", "key", "text", "click", "drag"}
+FOCUS_ACTIONS = {"menu", "key", "text", "click", "drag", "glide", "menuclick", "textclick", "hoveritem"}
 ACTION_KINDS = {"open", "press", "set", "select", "menu", "key", "text", "click", "hover", "scroll", "drag", "wait",
-                "resize", "run", "move"}
+                "resize", "run", "move", "glide", "menuclick", "textclick", "hoveritem"}
 COUNCIL_FPS = 120
 
 
@@ -103,6 +103,20 @@ def tool(directory: pathlib.Path, name: str) -> pathlib.Path:
     return binary
 
 
+def scrub(node):
+    """Drops the Apple menu from an accessibility dump: its items name the
+    logged-in user (Log Out ...), which must not leave the Mac's owner."""
+    if isinstance(node, dict):
+        kids = node.get("children")
+        if kids is not None:
+            node["children"] = [scrub(c) for c in kids
+                                if not (c.get("role") == "AXMenuBarItem" and c.get("title") == "Apple")]
+        for key in ("tree", "menubar"):
+            if key in node:
+                node[key] = [scrub(x) for x in node[key]] if isinstance(node[key], list) else scrub(node[key])
+    return node
+
+
 def alert_buttons(tree_result):
     """The buttons inside AXSheet and AXDialog elements of an axdrive tree."""
     found = []
@@ -126,13 +140,20 @@ class Driver:
     def __init__(self, binary, pid=None):
         self.binary, self.pid = binary, pid
 
-    def run(self, *args, check=True):
+    def run(self, *args, check=True, timeout=None):
         cmd = [str(self.binary), *args]
         if self.pid and args[0] not in ("check", "apps", "displays"):
             cmd += ["--pid", str(self.pid)]
-        proc = subprocess.run(cmd, capture_output=True, text=True)
         try:
-            out = json.loads(proc.stdout.strip().splitlines()[-1])
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # Parity run: an accessibility walk that an app answers too slowly (a
+            # table that makes a view for every row it is asked about).
+            return {"ok": False, "error": f"axdrive {args[0]} timed out after {timeout} s", "exit": -1}
+        try:
+            # split("\n"), not splitlines(): JSON text may hold U+2028 or U+0085,
+            # which splitlines() treats as line ends (a build log in an AX tree).
+            out = json.loads(proc.stdout.strip().split("\n")[-1])
         except (IndexError, json.JSONDecodeError):
             out = {"ok": False, "error": proc.stderr.strip() or proc.stdout.strip()}
         out["exit"] = proc.returncode
@@ -147,6 +168,8 @@ def match_args(spec):
     for key, value in spec.items():
         if key in ("index", "scope", "window"):
             args += [f"--{key}", str(value)]
+        elif key == "visible":
+            args += ["--visible"] if value else []
         elif key.endswith("~"):
             args += ["--match", f"{key[:-1]}~={value}"]
         else:
@@ -374,7 +397,10 @@ class Session:
         front = [w for w in candidates if w["on_screen"] and w["z"] >= 0]
         chosen = min(front, key=lambda w: w["z"]) if front else candidates[0]
         self.window_select = ["--window-id", str(chosen["id"])]
-        w, h = win.get("size", [1280, 800])
+        # "size": null keeps the window's own size (a fixed-size window such as
+        # a Welcome window); it is only moved.
+        keep_size = "size" in win and win["size"] is None
+        w, h = (chosen["frame_pt"][2], chosen["frame_pt"][3]) if keep_size else win.get("size", [1280, 800])
         dx, dy, dw, dh = display["frame"]
         w, h = min(w, dw - 20), min(h, dh - 60)
         px, py = win.get("position", [dx + (dw - w) / 2, dy + 40 + (dh - 40 - h) / 2])
@@ -382,8 +408,8 @@ class Session:
             # [x, y] from the display's top left (room below the window for a
             # sheet taller than it, captured with a "margin").
             px, py = dx + win["offset"][0], dy + win["offset"][1]
-        placed = ax.run("window", "--window", chosen["title"], "--position", f"{px},{py}", "--size", f"{w},{h}",
-                        "--raise")
+        size = [] if keep_size else ["--size", f"{w},{h}"]
+        placed = ax.run("window", "--window", chosen["title"], "--position", f"{px},{py}", *size, "--raise")
         frame = placed["window"]["frame"]
         self.ax_window = ["--window-origin", f"{frame[0]},{frame[1]}"]
         time.sleep(0.5)
@@ -436,6 +462,8 @@ class Session:
             extra = []
             if kind == "click":
                 extra = ["--button", a.get("button", "left"), "--count", str(a.get("count", 1))]
+                if a.get("modifiers"):
+                    extra += ["--modifiers", a["modifiers"]]
             return ax.run(kind, *point_args(a, kind), *window, *route, *extra, check=False)
         if kind == "scroll":
             via = a.get("via", "events" if focus == "foreground" else "ax")
@@ -447,10 +475,82 @@ class Session:
             if a.get("momentum"):
                 extra += ["--momentum", "--momentum-tau", str(a.get("momentum_tau", 0.33))]
             return ax.run("scroll", *point_args(a, "scroll"), *window, *extra, check=False)
+        if kind == "menuclick":
+            # Parity run: click an item of the menu open now (a pop-up button's
+            # menu, whose items an element search of a big window may not reach),
+            # found by title among the visible menu items.
+            r = ax.run("menuitems", "--scope", "all", check=False)
+            items = [i for i in r.get("items", []) if (i.get("title") or "").replace("...", "…") == a["menuclick"]]
+            if not items:
+                return {"ok": False, "error": f"no visible menu item {a['menuclick']!r}"}
+            f = items[0]["frame"]
+            return ax.run("click", "--at", f"{f[0] + f[2] / 2},{f[1] + f[3] / 2}", "--global", *route, check=False)
+        if kind == "hoveritem":
+            # Parity run (part D): point at a visible item of the menu open now,
+            # found by title among the visible menu items (its frame), so a
+            # sub-menu opens by hovering its parent; "index" picks among equal titles.
+            r = ax.run("menuitems", "--scope", "all", check=False)
+            items = [i for i in r.get("items", []) if (i.get("title") or "").replace("...", "…") == a["hoveritem"]]
+            if len(items) <= a.get("index", 0):
+                return {"ok": False, "error": f"no visible menu item {a['hoveritem']!r}"}
+            f = items[a.get("index", 0)]["frame"]
+            return {**ax.run("hover", "--at", f"{f[0] + f[2] / 2},{f[1] + f[3] / 2}", "--global", *route, check=False),
+                    "frame": f}
+        if kind == "textclick":
+            # Parity run: click (or with "hover": true, only point at) a piece of
+            # text in a source editor, found through AXBoundsForRange, with
+            # optional "modifiers" (option-click, control-shift-click).
+            t = a["textclick"]
+            r = ax.run("textpoint", "--needle", t["needle"], "--occurrence", str(t.get("occurrence", 1)),
+                       "--char-offset", str(t.get("offset", 0)), "--scope", "app", check=False)
+            if not r.get("ok"):
+                return r
+            x, y = r["point"]
+            x, y = x + t.get("dx", 0), y + t.get("dy", 0)   # the gutter left of a line, say
+            if a.get("hover"):
+                return {**ax.run("hover", "--at", f"{x},{y}", "--global", *route, check=False), "text_rect": r["rect"]}
+            extra = ["--button", a.get("button", "left"), "--count", str(a.get("count", 1))]
+            if a.get("modifiers"):
+                extra += ["--modifiers", a["modifiers"]]
+            return {**ax.run("click", "--at", f"{x},{y}", "--global", *route, *extra, check=False),
+                    "text_rect": r["rect"]}
+        if kind == "glide":
+            # Parity run: a straight pointer move between two elements (their
+            # centres), for a diagonal move into a sub-menu.
+            points = []
+            for end in ("from", "to"):
+                r = ax.run("find", *match_args(a["glide"][end]), *window, check=False)
+                f = (r.get("element") or {}).get("frame")
+                if not f:
+                    return {"ok": False, "error": f"glide {end}: {r.get('error', 'no frame')}"}
+                dx = a["glide"].get(end + "_dx", 0)
+                dy = a["glide"].get(end + "_dy", 0)
+                points.append((f[0] + f[2] / 2 + dx, f[1] + f[3] / 2 + dy))
+            (fx, fy), (tx, ty) = points
+            return ax.run("glide", "--from", f"{fx},{fy}", "--to", f"{tx},{ty}", "--duration",
+                          str(a.get("duration", 0.35)), *route, check=False)
         if kind == "drag":
             d = a["drag"]
+            if isinstance(d["from"], dict) or isinstance(d["to"], dict):
+                # Parity run: element ends (their centres, plus "to_dy"), in global points.
+                ends = []
+                for end in ("from", "to"):
+                    if isinstance(d[end], dict):
+                        r = ax.run("find", *match_args(d[end]), *window, check=False)
+                        f = (r.get("element") or {}).get("frame")
+                        if not f:
+                            return {"ok": False, "error": f"drag {end}: {r.get('error', 'no frame')}"}
+                        ends.append((f[0] + f[2] / 2, f[1] + f[3] / 2 + d.get(end + "_dy", 0)))
+                    else:
+                        wf = self.ax_window[1].split(",")
+                        ends.append((float(wf[0]) + d[end][0], float(wf[1]) + d[end][1]))
+                (fx, fy), (tx, ty) = ends
+                return ax.run("drag", "--from", f"{fx},{fy}", "--to", f"{tx},{ty}", "--global",
+                              "--duration", str(a.get("duration", 0.4)), "--hold", str(a.get("hold", 0)), *route,
+                              check=False)
             return ax.run("drag", "--from", f"{d['from'][0]},{d['from'][1]}", "--to", f"{d['to'][0]},{d['to'][1]}",
-                          "--duration", str(a.get("duration", 0.4)), *window, *route, check=False)
+                          "--duration", str(a.get("duration", 0.4)), "--hold", str(a.get("hold", 0)), *window, *route,
+                          check=False)
         if kind == "run":
             # A command in the project copy (for example `git merge`), for an
             # app that has no menu path for that step.
@@ -478,8 +578,23 @@ class Session:
 
     def still(self, pid, path, mode, select=None, margin=None):
         extra = ["--margin", str(margin)] if margin and mode == "app" else []
-        r = subprocess.run([str(self.wincap), "still", "--pid", str(pid), "--mode", mode, *(select or self.window_select),
-                            *extra, "-o", str(path)], capture_output=True, text=True)
+        try:
+            # Parity run: a still taken while a recording of the same window runs
+            # can wait for a frame that never comes (an unchanging window): give up
+            # after 10 s instead of hanging the session.
+            r = subprocess.run([str(self.wincap), "still", "--pid", str(pid), "--mode", mode,
+                                *(select or self.window_select), *extra, "-o", str(path)], capture_output=True,
+                               text=True, timeout=10)
+        except subprocess.TimeoutExpired:
+            log(f"still {path.name}: timed out (no frame)")
+            return None
+        if r.returncode != 0 and "no matching window" in r.stderr and not select:
+            # Parity run: the session window has closed (Xcode's Welcome window
+            # closes when its Clone window opens): use the app's frontmost window.
+            r = subprocess.run([str(self.wincap), "still", "--pid", str(pid), "--mode", mode, *extra, "-o", str(path)],
+                               capture_output=True, text=True)
+            if r.returncode == 0:
+                log(f"  still {path.name}: session window gone, used the frontmost window")
         if r.returncode != 0:
             log(f"still failed: {r.stderr.strip()}")
             return None
@@ -494,6 +609,15 @@ class Session:
         if rec.get("cursor"):
             cmd.append("--cursor")
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if select is None and proc.poll() is None:
+            time.sleep(0.3)
+        if select is None and proc.poll() is not None and "no matching window" in proc.stderr.read():
+            # The session window has closed: record the app's frontmost window.
+            log("  recording: session window gone, using the frontmost window")
+            sel = self.window_select
+            cmd = [c for i, c in enumerate(cmd) if c not in sel or cmd[i - 1] not in ("--window-id", "--title")]
+            cmd = [c for c in cmd if c not in ("--window-id", "--title")]
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         deadline = time.time() + 10
         while time.time() < deadline:
             line = proc.stdout.readline()
@@ -507,7 +631,13 @@ class Session:
 
     def stop_recording(self, proc):
         proc.send_signal(signal.SIGINT)
-        out, err = proc.communicate(timeout=60)
+        try:
+            out, err = proc.communicate(timeout=60)
+        except subprocess.TimeoutExpired:
+            # Parity run: a recorder that never got going; drop it, keep the session.
+            proc.kill()
+            out, err = proc.communicate()
+            log("  recorder did not stop: killed")
         events = [json.loads(line) for line in out.splitlines() if line.strip()]
         return next((e for e in events if e.get("event") == "done"), {"error": err.strip()})
 
@@ -624,21 +754,70 @@ class Session:
         proc = None
         if record:
             video = target_dir / f"{sid}.mov"
-            proc, first_wall = self.start_recording(pid, video, rec, select)
-            entry["video"] = video.name
-            entry["video_first_frame_wall"] = first_wall
-            time.sleep(float(rec.get("pre", 0.4)))
+            try:
+                proc, first_wall = self.start_recording(pid, video, rec, select)
+                entry["video"] = video.name
+                entry["video_first_frame_wall"] = first_wall
+                time.sleep(float(rec.get("pre", 0.4)))
+            except RuntimeError as e:
+                # Parity run: the app may have no window at all at this moment
+                # (Xcode after its open panel is cancelled); act without a video.
+                log(f"  no video: {e}")
+                entry["video_error"] = str(e)[:300]
+                proc = None
         try:
             for action in step.get("do", []):
                 t = time.time()
+                if action.get("if_ok"):
+                    # Parity run part C: runs only when the action before it worked
+                    # (Escape after a pop-up button that may not exist on this pane).
+                    # (waits and skipped actions do not count).
+                    done = [a["result"] for a in entry["actions"]
+                            if "wait" not in a["spec"] and not a["result"].get("skipped")]
+                    if not (done and done[-1].get("ok")):
+                        entry["actions"].append({"spec": action, "result": {"ok": True, "skipped": "previous action failed",
+                                                                            "wall_start": t, "wall": t}})
+                        continue
                 if "tree" in action:
                     # The app's accessibility tree at this moment, as another
                     # process sees it (an alert's buttons): NN-step-<name>-tree.json,
                     # with the buttons inside sheets and dialogs counted.
                     name = f"{sid}-{action['tree']}-tree.json"
-                    r = ax.run("tree", "--scope", "app", "--depth", str(action.get("depth", 12)), check=False)
+                    r = scrub(ax.run("tree", "--scope", "app", "--depth", str(action.get("depth", 12)), check=False,
+                                     timeout=float(action.get("timeout", 90))))
+                    if not r.get("ok"):
+                        log(f"  tree {action['tree']}: {str(r.get('error'))[:200]}")
                     (target_dir / name).write_text(json.dumps(r, indent=1))
                     entry.setdefault("trees", {})[action["tree"]] = {"file": name, **alert_buttons(r)}
+                    continue
+                if "submenus" in action:
+                    # Parity run: hover every sub-menu parent of the menu that is
+                    # open now (the shallowest open level) and take a still of
+                    # each cascade. Stills only: never inside a recorded step.
+                    scope = ["--scope", "all"] if action.get("all_windows") else []
+                    r = ax.run("menuitems", *scope, check=False)
+                    items = [i for i in r.get("items", []) if i.get("submenu") and "enabled" not in i]
+                    top = min((i["depth"] for i in items), default=0)
+                    items = [i for i in items if i["depth"] == top][: int(action.get("max", 30))]
+                    done = []
+                    for n, item in enumerate(items, 1):
+                        f = item["frame"]
+                        h = ax.run("hover", "--at", f"{f[0] + f[2] / 2},{f[1] + f[3] / 2}", "--global",
+                                   "--route", "tap", check=False)
+                        time.sleep(float(action.get("wait", 0.8)))
+                        snap = f"{sid}-{action['submenus']}-{n:02d}.png"
+                        self.still(pid, target_dir / snap, "app", select, rec.get("margin"))
+                        done.append({"title": item.get("title"), "snap": snap, "ok": h.get("ok", False)})
+                    entry.setdefault("submenus", {})[action["submenus"]] = done
+                    (target_dir / f"{sid}-{action['submenus']}-items.json").write_text(json.dumps(scrub(r), indent=1))
+                    continue
+                if "menubar" in action:
+                    # Parity run: the whole menu bar (titles, key equivalents,
+                    # enabled state, checkmarks) at this moment, without opening it.
+                    name = f"{sid}-{action['menubar']}-menubar.json"
+                    r = scrub(ax.run("menubar", "--depth", str(action.get("depth", 12)), check=False))
+                    (target_dir / name).write_text(json.dumps(r, indent=1))
+                    entry.setdefault("menubars", {})[action["menubar"]] = name
                     continue
                 if "remember" in action:
                     # Round 7: an element's value kept under a name, for a later

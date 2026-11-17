@@ -13,7 +13,6 @@ import YcodeIDEShell
 /// in the background.
 struct ComponentsSettingsPane: View {
     var model: ShellSettingsModel
-    @State private var inventory: ComponentsInventory?
     @State private var info: ComponentsRow?
 
     /// A fixed inventory and date (the parity walk shows the macOS IDE's).
@@ -22,7 +21,7 @@ struct ComponentsSettingsPane: View {
 
     var body: some View {
         let _ = ShellPreferences.shared.revision
-        let inv = Self.inventoryOverride ?? inventory ?? ComponentsInventory()
+        let inv = Self.inventoryOverride ?? model.componentsInventory ?? ComponentsInventory()
         let pc = Preferences.shared.predictiveCompletion
         let platforms = ComponentsPage.platformRows(inv, isMac: false, now: Self.nowOverride ?? Date())
         let other = ComponentsPage.otherRows(predictiveEnabled: pc.enabled, predictiveBackend: pc.backend.displayName, predictiveModel: pc.model,
@@ -35,10 +34,7 @@ struct ComponentsSettingsPane: View {
                 ForEach(other) { row in rowView(row) }
             }
         }
-        .task {
-            guard Self.inventoryOverride == nil, inventory == nil else { return }
-            inventory = await ComponentsInventory.read(choices: RuntimeSetupChoices.load(ShellApp.model.runtimeDefaults))
-        }
+        .task { model.prefetchComponents() }   // read when the window opened (P-140)
     }
 
     func rowView(_ row: ComponentsRow) -> some View {
@@ -51,9 +47,7 @@ struct ComponentsSettingsPane: View {
     func open(_ row: ComponentsRow) {
         switch row.kind {
         case .simulatorHost: model.showHostPage()
-        case .predictiveCompletion:
-            model.editingPage = .completion
-            model.select(.editing)
+        case .predictiveCompletion: model.showEditing(.completion)
         case .thisComputer, .platform: info = row
         }
     }
@@ -87,7 +81,6 @@ struct SimulatorHostSettingsPane: View {
     var body: some View {
         let _ = ShellPreferences.shared.revision
         SettingsForm(startsWithCard: true) {
-            BackRow(title: "Components", target: "settings host back") { model.hideHostPage() }
             SettingsSection(nil, cardFollows: false) {
                 SettingsContentRow(inset: 0) { hero }
             }

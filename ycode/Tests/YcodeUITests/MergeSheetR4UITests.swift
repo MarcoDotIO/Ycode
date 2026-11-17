@@ -11,7 +11,7 @@ import Testing
 /// dark colours and token rims read back from the window, the Choose menu's
 /// place, the jump bar's project and the footers' branch.
 @MainActor
-@Suite(.serialized) struct MergeSheetR4UITests {
+@Suite(.serialized, .appearanceReader) struct MergeSheetR4UITests {
     let base = MergeSheetUITests()
     typealias Repo = MergeSheetUITests.Repo
 

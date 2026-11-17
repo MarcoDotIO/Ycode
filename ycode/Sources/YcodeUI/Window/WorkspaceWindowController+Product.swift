@@ -214,21 +214,18 @@ extension WorkspaceWindowController {
     // MARK: "…" variants
 
     /// Run… / Test… / Analyze… / Archive…: the scheme editor on that
-    /// action; the action runs when the editor closes (§2.9). A scheme
-    /// without a file (autocreated) runs at once.
+    /// action; the action runs when the editor closes (§2.9). An
+    /// autocreated scheme (no file yet) opens too; with no scheme at all
+    /// the action runs at once.
     @discardableResult
     public func editSchemeThenPerform(action index: Int, _ perform: @escaping @MainActor () -> Void) -> SchemeEditorController? {
-        guard let scheme = session.model.loadSchemes().first(where: { $0.name == session.scheme }) else {
+        // The scheme's file, else the one autocreated for its target (P-108).
+        guard let scheme = session.model.schemeForEditing(named: session.scheme) else {
             perform()
             return nil
         }
-        let editor = SchemeEditorController(scheme: scheme, configurations: session.model.configurationNames)
+        let editor = configuredSchemeEditor(scheme)
         editor.startSelection = (index, 0)
-        editor.onSelect = { [weak self] a, t in self?.schemeEditorState.selection = (a, t) }
-        editor.onManage = { [weak self, weak editor] in
-            guard let self else { return }
-            editor?.presentAsSheet(self.manageSchemesController())
-        }
         editor.onClose = { _ in perform() }
         if window?.isVisible == true { contentViewController?.presentAsSheet(editor) }
         return editor

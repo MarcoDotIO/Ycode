@@ -1,0 +1,649 @@
+{
+ "name": "parity-d-states",
+ "title": "Part D 11: pressed (mouse-down) states of Run, a navigator tab, a toolbar toggle, a pop-up button, a sheet's default button, a segmented control and a tab; keyboard focus with the system's defaults; tooltips.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "Shapes.swift open. AX tree.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "press-run",
+   "note": "Hold the mouse button on Run 0.6 s, slide off to the editor (window point 700, 500), release there (nothing runs).",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "description": "Run"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.6,
+     "duration": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "press-nav-tab",
+   "note": "Hold on the Find navigator tab 0.6 s, release on the editor.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXRadioButton|AXCheckBox",
+       "label": "Find"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.6,
+     "duration": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "press-toggle",
+   "note": "Hold on the Hide Inspector toolbar toggle 0.6 s, release on the editor.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "description": "Hide Inspector"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.6,
+     "duration": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "press-scheme-popup",
+   "note": "Hold on the scheme pop-up 0.6 s, release on the editor (Escape after).",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "label": "Active Scheme",
+       "role": "AXPopUpButton"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.6,
+     "duration": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "press-scheme-popup-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "sheet-open",
+   "note": "cmd+N: the File from Template sheet.",
+   "do": [
+    {
+     "key": "cmd+n"
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "press-sheet-default",
+   "note": "Hold on the sheet's default button (Next) 0.6 s, release on the sheet's grid (window point 700, 300).",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "title": "Next",
+       "scope": "app"
+      },
+      "to": [
+       700,
+       300
+      ]
+     },
+     "hold": 0.6,
+     "duration": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "sheet-close",
+   "note": "Cancel.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "open-project-editor",
+   "note": "The project editor, Build Settings.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Parity",
+      "index": 0
+     }
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "click": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Build Settings",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "resize": [
+      1400,
+      880
+     ]
+    },
+    {
+     "move": [
+      56,
+      71
+     ]
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "press-segment",
+   "note": "Hold on the Build Settings 'Customized' segment 0.6 s, release on the settings list (window point 700, 600).",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton|AXRadioButton",
+       "label": "Customized",
+       "visible": true
+      },
+      "to": [
+       700,
+       600
+      ]
+     },
+     "hold": 0.6,
+     "duration": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "press-tab-segment",
+   "note": "Hold on the 'Build Phases' tab 0.6 s, release on the settings list.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton|AXRadioButton",
+       "label": "Build Phases",
+       "visible": true
+      },
+      "to": [
+       700,
+       600
+      ]
+     },
+     "hold": 0.6,
+     "duration": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "back-to-shapes",
+   "note": "Back to Shapes.swift.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Shapes|Shapes.swift"
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "focus-tab",
+   "note": "Tab from the editor with the system's keyboard navigation setting left as it is (full keyboard access off): which controls get focus. Stills and AX trees.",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "focus-shift-tab",
+   "note": "shift+Tab back.",
+   "do": [
+    {
+     "key": "shift+tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "shift+tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "shift+tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "tip-run",
+   "note": "Pointer onto Run, held 2.5 s (tooltip).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Run"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "tip-scheme",
+   "note": "Pointer onto the scheme, held 2.5 s (tooltip).",
+   "do": [
+    {
+     "hover": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "tip-destination",
+   "note": "Pointer onto the destination, held 2.5 s (tooltip).",
+   "do": [
+    {
+     "hover": {
+      "label": "Active Run Destination",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "tip-library",
+   "note": "Pointer onto the Library button, held 2.5 s (tooltip).",
+   "do": [
+    {
+     "hover": {
+      "description": "Library|Show Library|Add"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "tip-nav-tab",
+   "note": "Pointer onto the Find tab, held 2.5 s (tooltip).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton|AXCheckBox",
+      "label": "Find"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "tip-inspector-tab",
+   "note": "Pointer onto the History inspector tab, held 2.5 s (tooltip).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton|AXButton|AXCheckBox",
+      "description~": "History inspector"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "end",
+   "note": "End. AX tree.",
+   "do": [
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "tree": "end",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ },
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Shapes|Shapes.swift"
+   }
+  },
+  {
+   "wait": 2.5
+  }
+ ]
+}

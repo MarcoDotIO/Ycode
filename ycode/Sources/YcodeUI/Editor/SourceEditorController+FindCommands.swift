@@ -101,3 +101,33 @@ extension SourceEditorController {
         return NSRange(location: a, length: b - a)
     }
 }
+
+/// Find menu enabling (P-003): with a source file shown, every in-file
+/// item is enabled, from the text view and from the editor (the reference
+/// enables them whether or not the bar shows); with no file, none is.
+/// Editor ▸ Minimap's check mark follows the editor (P-065).
+extension SourceEditorController: NSMenuItemValidation {
+    /// The in-file Find menu actions besides `performFindPanelAction:`.
+    static let findBarActions: Set<Selector> = [
+        #selector(findAndSelectNext(_:)), #selector(findAndSelectPrevious(_:)), #selector(replaceAndFindPrevious(_:)),
+        #selector(useSelectionForReplace(_:)), #selector(selectNextOccurrence(_:)), #selector(selectPreviousOccurrence(_:)),
+    ]
+
+    /// Whether the editor shows a source file the find bar can search.
+    public var canUseFindBar: Bool { fileURL != nil && auxiliary == nil && !showsNoDocument }
+
+    /// Enablement of a Find menu item in this editor; nil = not one.
+    public func validateFindItem(_ item: NSMenuItem) -> Bool? {
+        guard let a = item.action else { return nil }
+        if a == #selector(NSTextView.performFindPanelAction(_:)) || Self.findBarActions.contains(a) { return canUseFindBar }
+        return nil
+    }
+
+    public func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if let r = validateFindItem(item) { return r }
+        if item.action == #selector(toggleMinimap(_:)) {
+            item.state = showsMinimap ? .on : .off
+        }
+        return true
+    }
+}

@@ -161,8 +161,8 @@ struct ContentView: View {
         """
         let issues = PreviewCompiler.issues(from: log, lineMaps: ["/w/src/0_ContentView.swift": map])
         #expect(issues.count == 3)
-        #expect(issues[0] == PreviewIssue(file: user, line: 15, column: 9, message: "cannot find 'Nope' in scope"))
-        #expect(issues[1].line == 7 && issues[1].description == "ContentView.swift:7: missing argument")
+        #expect(issues[0] == PreviewIssue(file: user, line: 15, column: 9, message: "Cannot find 'Nope' in scope"))
+        #expect(issues[1].line == 7 && issues[1].description == "ContentView.swift:7: Missing argument")
         #expect(issues[2].file == nil)
         // A log without diagnostics still gives one issue.
         #expect(PreviewCompiler.issues(from: "ld: library not found\n", lineMaps: [:]).first?.message == "ld: library not found")

@@ -1,0 +1,620 @@
+{
+ "name": "parity-c-probe2",
+ "title": "Part C probe 2 (not judged): each file of the formats project opened; AX tree and menu bar for each.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "open-assets",
+   "note": "Click assets's row in the project navigator.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Assets|Assets.xcassets"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "assets",
+       "depth": 40
+      },
+      {
+       "menubar": "assets"
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Assets|Assets.xcassets"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "assets",
+       "depth": 40
+      },
+      {
+       "menubar": "assets"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "open-plist",
+   "note": "Click plist's row in the project navigator.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Defaults|Defaults.plist"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "plist",
+       "depth": 40
+      },
+      {
+       "menubar": "plist"
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Defaults|Defaults.plist"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "plist",
+       "depth": 40
+      },
+      {
+       "menubar": "plist"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "open-entitlements",
+   "note": "Click entitlements's row in the project navigator.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Parity.entitlements"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "entitlements",
+       "depth": 40
+      },
+      {
+       "menubar": "entitlements"
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Parity|Parity.entitlements",
+        "index": 2
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "entitlements",
+       "depth": 40
+      },
+      {
+       "menubar": "entitlements"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "open-strings",
+   "note": "Click strings's row in the project navigator.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Localizable|Localizable.xcstrings"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "strings",
+       "depth": 40
+      },
+      {
+       "menubar": "strings"
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Localizable|Localizable.xcstrings"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "strings",
+       "depth": 40
+      },
+      {
+       "menubar": "strings"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "open-testplan",
+   "note": "Click testplan's row in the project navigator.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Parity.xctestplan"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "testplan",
+       "depth": 40
+      },
+      {
+       "menubar": "testplan"
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Parity|Parity.xctestplan",
+        "index": 3
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "testplan",
+       "depth": 40
+      },
+      {
+       "menubar": "testplan"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "open-storyboard",
+   "note": "Click storyboard's row in the project navigator.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Main|Main.storyboard"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "storyboard",
+       "depth": 40
+      },
+      {
+       "menubar": "storyboard"
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Main|Main.storyboard"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "storyboard",
+       "depth": 40
+      },
+      {
+       "menubar": "storyboard"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "open-datamodel",
+   "note": "Click datamodel's row in the project navigator.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Model|Model.xcdatamodeld"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "datamodel",
+       "depth": 40
+      },
+      {
+       "menubar": "datamodel"
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Model|Model.xcdatamodeld"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "datamodel",
+       "depth": 40
+      },
+      {
+       "menubar": "datamodel"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "open-markdown",
+   "note": "Click markdown's row in the project navigator.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "NOTES|NOTES.md"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "markdown",
+       "depth": 40
+      },
+      {
+       "menubar": "markdown"
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "NOTES|NOTES.md"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "markdown",
+       "depth": 40
+      },
+      {
+       "menubar": "markdown"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "open-json",
+   "note": "Click json's row in the project navigator.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "palette|palette.json"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "json",
+       "depth": 40
+      },
+      {
+       "menubar": "json"
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "palette|palette.json"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "json",
+       "depth": 40
+      },
+      {
+       "menubar": "json"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "open-image",
+   "note": "Click image's row in the project navigator.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Stripes.png"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "image",
+       "depth": 40
+      },
+      {
+       "menubar": "image"
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Stripes|Stripes.png"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "image",
+       "depth": 40
+      },
+      {
+       "menubar": "image"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "open-swiftui",
+   "note": "Click swiftui's row in the project navigator.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "ContentView|ContentView.swift"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "swiftui",
+       "depth": 40
+      },
+      {
+       "menubar": "swiftui"
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "ContentView|ContentView.swift"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "swiftui",
+       "depth": 40
+      },
+      {
+       "menubar": "swiftui"
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "project": {
+  "generator": "make-formats-project.py",
+  "path": "formats/Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

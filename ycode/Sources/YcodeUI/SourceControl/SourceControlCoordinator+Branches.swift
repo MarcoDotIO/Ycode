@@ -31,10 +31,7 @@ extension SourceControlCoordinator {
         func q(_ s: String) -> String { "\u{201C}\(s)\u{201D}" }
         switch action {
         case .checkout(let b): checkoutAsking(b)
-        case .newBranch(let from):
-            guard let name = prompt("New Branch", "Creates a branch from \(q(from ?? current)) and checks it out.", placeholder: "Branch name"),
-                  !name.isEmpty else { return }
-            createBranch(name, from: from, checkout: true)
+        case .newBranch(let from): presentNewBranchSheet(from: from)
         case .newTag(let at):
             guard let name = prompt("New Tag", "Tags \(q(at ?? current)). A message makes an annotated tag.", placeholder: "Tag name"),
                   !name.isEmpty else { return }
@@ -179,7 +176,7 @@ extension SourceControlCoordinator {
             guard let self else { return }
             self.integrationResult = box.value
             switch box.value {
-            case .conflicts(let files)?: self.showConflictEditor(path: files.first)
+            case .conflicts(let files)?: self.showConflictEditor(path: files.first)?.abortsOnCancel = true
             case .some: self.closeConflictEditor()
             case nil: if self.mergeOverlay?.sheet == nil { self.mergeOverlay?.close() }
             }

@@ -153,7 +153,7 @@ import Testing
         #expect(!m.menuContext.hasConflicts && m.menuContext.integrationVerb.isEmpty)
     }
 
-    @Test func cancelAsksThenAbortsTheMerge() async throws {
+    @Test func cancelClosesAndAbortsTheMerge() async throws {
         let g = try conflictingPackage()
         defer { g.remove() }
         let m = try await model(g)
@@ -167,16 +167,11 @@ import Testing
 
         let editor = try await mergeFeature(scm)
         editor.choose(.theirs, forHunk: 0)
-        // The sheet's Cancel asks (Ycode's choice, open question 3).
+        // The sheet's Cancel closes it at once, without a question, and
+        // aborts the merge Ycode started (P-131, merge-sheet.md §9).
+        #expect(editor.abortsOnCancel)
         scm.cancelMerge()
-        let c = try #require(scm.confirmation)
-        #expect(c.title == MergeSheetText.cancelTitle(verb: "Merge") && c.title == "Abort the merge?")
-        #expect(c.message == MergeSheetText.cancelMessage(verb: "Merge") && c.choices.map(\.title) == ["Abort"])
-        // Answering Cancel keeps the sheet.
-        scm.confirmation = nil
-        #expect(scm.conflictEditor != nil)
-        scm.cancelMerge()
-        scm.confirm(try #require(scm.confirmation).choices[0])
+        #expect(scm.conflictEditor == nil && scm.confirmation == nil)
         await scm.idle()
         #expect(scm.conflictEditor == nil && scm.snapshot.integration == .none)
         #expect(try g.git(["rev-parse", "HEAD"]) == before)
@@ -198,8 +193,7 @@ import Testing
         await sheet.idle()
         #expect(sheet.state.primaryTitle == "Continue Rebase" && sheet.state.document?.theirsLabel == "feature")
         scm.cancelMerge()
-        #expect(scm.confirmation?.title == "Abort the rebase?")
-        scm.confirm(try #require(scm.confirmation).choices[0])
+        #expect(scm.confirmation == nil && scm.conflictEditor == nil)
         await scm.idle()
         #expect(scm.snapshot.integration == .none && scm.conflictEditor == nil)
         #expect(try g.git(["rev-parse", "HEAD"]) == before)
@@ -297,7 +291,6 @@ import Testing
         await editor.show(file: shown)
         #expect(editor.state.document != nil && editor.state.token(forHunk: 0)?.glyph == "1")
         m.sourceControl.cancelMerge()
-        m.sourceControl.confirm(try #require(m.sourceControl.confirmation).choices[0])
         await m.sourceControl.idle()
     }
 

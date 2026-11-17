@@ -96,7 +96,9 @@ final class SourceTextView: NSTextView {
     }
 
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        item.action == #selector(delete(_:)) ? isEditable : super.validateMenuItem(item)
+        // The Find menu follows the editor, not NSTextView's own finder (P-003).
+        if let r = owner?.validateFindItem(item) { return r }
+        return item.action == #selector(delete(_:)) ? isEditable : super.validateMenuItem(item)
     }
 
     /// Rectangles covering a character range (one per line fragment), in
@@ -210,6 +212,8 @@ final class SourceTextView: NSTextView {
     /// SourceEditorController+Typing.swift). An explicit replacement range
     /// (input methods, the rules' own edits) inserts as it is.
     override func insertText(_ string: Any, replacementRange: NSRange) {
+        // The empty editor takes no typing (P-071).
+        guard owner?.showsNoDocument != true else { return }
         let s = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
         if multipleRanges.count > 1, replacementRange.location == NSNotFound {
             editEachSelection { ($0, s) }
@@ -257,6 +261,11 @@ final class SourceTextView: NSTextView {
             }
         }
     }
+
+    /// The Tab key never moves the keyboard into the editor: from the
+    /// navigator it cycles the navigator's own controls (P-071); a click,
+    /// ⌘J or opening a file focuses the editor.
+    override var canBecomeKeyView: Bool { false }
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
@@ -329,11 +338,13 @@ final class SourceTextView: NSTextView {
     /// Tab and Shift-Tab follow Settings ▸ Editing ▸ Indentation ▸ Tab key
     /// (`TypingRules.tab`); without a file, Tab inserts one indentation step.
     override func insertTab(_ sender: Any?) {
+        guard owner?.showsNoDocument != true else { return }   // P-071: nothing to indent
         if owner?.typeTab(backward: false) == true { return }
         insertText(Preferences.shared.indentUnit, replacementRange: selectedRange())
     }
 
     override func insertBacktab(_ sender: Any?) {
+        guard owner?.showsNoDocument != true else { return }
         if owner?.typeTab(backward: true) == true { return }
         super.insertBacktab(sender)
     }
@@ -385,7 +396,8 @@ final class SourceTextView: NSTextView {
         }
         // Find matches and symbol instances over the current-line band, so
         // the one on the caret's line shows too (row 227).
-        for m in findMatches {
+        // A rename boxes its occurrences instead (P-084, +Rename.swift).
+        for m in findMatches where owner?.isShowingRenameBoxes != true {
             let isCurrent = m == currentFindMatch
             (isCurrent ? NSColor.systemYellow : NSColor.systemYellow.withAlphaComponent(0.3)).setFill()
             for r in segmentRects(m) where r.intersects(rect) {
@@ -778,7 +790,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     public var onJumpToDefinition: ((URL, Position) -> Void)?
     /// The insertion point moved (Quick Help inspector follows it).
     public var onSelectionChange: ((URL, Position) -> Void)?
-    public private(set) var isDirty = false
+    public internal(set) var isDirty = false   // set by the disk follower too (+DiskChanges.swift)
     /// Language-service hooks (set by the window).
     public var onDocumentOpened: ((URL, String) -> Void)?
     /// The editor stopped showing a file (it opened another one).
@@ -986,6 +998,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         ])
         findBarHeight = findBar.heightAnchor.constraint(equalToConstant: 0)
         findBarHeight.isActive = true
+        findBar.isHidden = true   // P-203
         view = root
         prefsObserver = NotificationCenter.default.addObserver(forName: Preferences.didChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.applyPreferences() }
@@ -1017,6 +1030,9 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         set {
             noDocument.value = newValue
             scrollView.rulersVisible = !newValue
+            // No text area in the accessibility tree without a document (P-203).
+            textView.setAccessibilityElement(!newValue)
+            scrollView.setAccessibilityElement(!newValue)
             if newValue { textView.isEditable = false }
             // Pure white: no minimap, its separator or shade, and no scroll
             // lane until a document is open (editor-area.md E.5, row 74).
@@ -1139,6 +1155,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
 
     public func showFindBar(replace: Bool) {
         _ = view
+        findBar.isHidden = false
         findBar.replaceRow.isHidden = !replace
         findBarHeight.constant = replace ? 60 : 32
         view.window?.makeFirstResponder(findBar.queryField)
@@ -1147,6 +1164,8 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
 
     public func hideFindBar() {
         findBarHeight.constant = 0
+        // Hidden, not only zero tall: out of the accessibility tree (P-203).
+        findBar.isHidden = true
         textView.findMatches = []
         textView.currentFindMatch = nil
         view.window?.makeFirstResponder(textView)
@@ -1333,24 +1352,6 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     /// The occurrences highlighted for a rename.
     public var highlightedOccurrences: [NSRange] { textView.findMatches }
 
-    /// The rename field: a small text field over the symbol; Return
-    /// commits, Escape cancels.
-    func showRenameField(name: String, at range: NSRange, onCommit: @escaping (String) -> Void) {
-        let rect = textView.segmentRects(range).first ?? .zero
-        let field = RenameField(string: name)
-        field.frame = NSRect(x: rect.minX - 2, y: rect.minY - 2, width: max(120, rect.width + 40), height: rect.height + 4)
-        field.font = Theme.font
-        field.onCommit = { [weak field, weak self] text in
-            field?.removeFromSuperview()
-            self?.view.window?.makeFirstResponder(self?.textView)
-            if let text { onCommit(text) } else { self?.highlightOccurrences(of: nil) }
-        }
-        field.onChange = { [weak self] text in self?.highlightOccurrences(of: name); _ = text }
-        textView.addSubview(field)
-        view.window?.makeFirstResponder(field)
-        field.currentEditor()?.selectAll(nil)
-    }
-
     // MARK: Content
 
     /// Inserts text at the selection (a Library item), as one undoable
@@ -1425,6 +1426,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
 
     public func showText(_ text: String, title: String) {
         _ = view
+        hideEmptyState()   // and the "No Editor" placeholder (P-066)
         rememberPlace()
         try? save()
         fileURL = nil
@@ -1478,6 +1480,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
 
     func noteEdit(range: NSRange, replacement: String) {
         if !textView.issues.isEmpty { textView.issuesStale = true; gutter.marks.issuesStale = true }
+        noteEditForCompletion(range: range, replacement: replacement)
         let ns = textView.string as NSString
         let old = NSMaxRange(range) <= ns.length ? ns.substring(with: range) : ""
         // Several edits before one change notification: fall back to a full pass.
@@ -1503,9 +1506,8 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
                 m.filter(ns.substring(with: NSRange(location: start, length: caret - start)))
                 showCompletions(m)
             }
-        } else if caret > 0, ns.character(at: caret - 1) == 46 /* . */, language == .swift {
-            requestCompletion()
         }
+        requestCompletionWhileTyping() // CompletionPopup.swift (P-080)
         predictionTextDidChange()
     }
 
@@ -1520,13 +1522,14 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         let caret = textView.selectedRange().location
         let ns = textView.string as NSString
         let start = CompletionModel.wordStart(in: ns, before: caret)
-        let prefix = ns.substring(with: NSRange(location: start, length: caret - start))
         let pos = textView.lineIndex.position(at: caret)
         Task {
             let items = await provider(url, pos)
-            guard self.textView.selectedRange().location == caret, !items.isEmpty else { return }
+            guard !items.isEmpty, self.completionStillApplies(wordStart: start) else { return }
+            // Typing may have gone on in the word: filter by all of it.
+            let now = self.textView.selectedRange().location
             var m = CompletionModel()
-            m.reset(items: items, wordStart: start, prefix: prefix)
+            m.reset(items: items, wordStart: start, prefix: (self.textView.string as NSString).substring(with: NSRange(location: start, length: now - start)))
             self.showCompletions(m)
         }
     }
@@ -1987,6 +1990,8 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
 
 /// The in-editor rename field.
 final class RenameField: NSTextField, NSTextFieldDelegate {
+    /// The cell's padding on each side of the text.
+    static let textInset: CGFloat = 2
     var onCommit: ((String?) -> Void)?
     var onChange: ((String) -> Void)?
     override init(frame: NSRect) { super.init(frame: frame); delegate = self }

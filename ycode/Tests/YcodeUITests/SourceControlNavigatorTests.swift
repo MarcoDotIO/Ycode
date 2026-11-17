@@ -213,16 +213,20 @@ private func find(_ items: [OutlineItem], _ title: String) -> OutlineItem? {
                            "Stage All Changes", "Stage Selected Files", "Unstage All Changes", "Unstage Selected Files",
                            "Mark as Resolved", "Add", "Cherry-Pick…", "Merge…", "Stash Changes…", "Resolve Conflicts…", "Continue", "Abort",
                            "Create Pull Request…",
-                           "Discard All Changes…", "Discard Changes in Selected Files…", "Clone…", "New Git Repository…",
-                           "Create Workflow…", "Manage Workflows…"])
+                           "Discard All Changes…", "Discard Changes in Selected Files…", "Clone…", "New Git Repository…"])
         let pull = CommandTable.command(titled: "Pull…")
         #expect(pull?.key == "x" && pull?.modifiers == [.command, .option])
-        #expect(CommandTable.command(titled: "Create Workflow…")?.action.hasPrefix("ycodeUnavailable") == true)
+        // Owner decision 5 (2026-11-16): no cloud entries.
+        #expect(CommandTable.command(titled: "Create Workflow…") == nil)
 
         var s = IntegrateMenuState()
         #expect(s.isEnabled("scmClone:") && s.isEnabled("scmNewRepository:") && !s.isEnabled("showCommitSheet:") && !s.isEnabled("scmPush:"))
         s.hasRepository = true
-        #expect(!s.isEnabled("scmNewRepository:") && !s.isEnabled("scmStageAll:") && !s.isEnabled("scmPull:") && !s.isEnabled("scmCherryPick:"))
+        // P-016: a clean repository without a remote enables Commit…, Push…,
+        // Pull…, Fetch, Cherry-Pick…, Stash…, Discard All… and New Git Repository….
+        #expect(s.isEnabled("scmNewRepository:") && !s.isEnabled("scmStageAll:") && s.isEnabled("scmPull:") && s.isEnabled("scmCherryPick:"))
+        #expect(s.isEnabled("showCommitSheet:") && s.isEnabled("scmPush:") && s.isEnabled("scmFetch:") && s.isEnabled("scmStash:")
+            && s.isEnabled("scmDiscardAll:"))
         s.hasUnstaged = true
         s.selectedStatus = .untracked
         #expect(s.isEnabled("scmStageAll:") && !s.isEnabled("scmUnstageAll:") && s.isEnabled("scmAddSelected:") && !s.isEnabled("scmStageSelected:"))

@@ -44,7 +44,7 @@ struct QuickHelpContent: View {
                     .contextMenu { Button("Copy") { ShellPasteboard.copy(d.declaration) } }
                     .shellTarget("quickhelp declaration")
             }
-            if let f = d.file {
+            if let f = d.file, d.showsFileLink {
                 Button { model.openQuickHelpFile(f) } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "doc").font(.system(size: 11))
@@ -72,9 +72,9 @@ struct QuickHelpContent: View {
                 section("Throws", c)
                 paragraph(t, c)
             }
-            if !d.discussion.isEmpty {
+            if !d.discussionBlocks.isEmpty {
                 section("Discussion", c)
-                ForEach(Array(d.discussion.enumerated()), id: \.offset) { pair in paragraph(pair.element, c) }
+                ForEach(Array(d.discussionBlocks.enumerated()), id: \.offset) { pair in QuickHelpBlockView(block: pair.element, colors: c) }   // QuickHelpBlocks.swift
             }
             ForEach(Array(d.callouts.enumerated()), id: \.offset) { pair in
                 VStack(alignment: .leading, spacing: 3) {
@@ -89,11 +89,13 @@ struct QuickHelpContent: View {
                         .overlay { RoundedRectangle(cornerRadius: 5, style: .continuous).stroke(c.accent.opacity(0.35), lineWidth: 1) }
                 }
             }
-            Button { model.openDocumentation(for: d.title) } label: {
-                Text("Open in Developer Documentation").font(ShellFonts.small).foregroundStyle(c.accent)
+            if d.showsDocumentationLink {
+                Button { model.openDocumentation(for: d.title) } label: {
+                    Text("Open in Developer Documentation").font(ShellFonts.small).foregroundStyle(c.accent)
+                }
+                .buttonStyle(.plain)
+                .shellTarget("quickhelp documentation")
             }
-            .buttonStyle(.plain)
-            .shellTarget("quickhelp documentation")
         }
     }
 
@@ -103,7 +105,7 @@ struct QuickHelpContent: View {
     }
 
     func paragraph(_ s: String, _ c: ShellColors) -> some View {
-        Text(verbatim: s).font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.label)
+        QuickHelpText.text(document.runs(for: s)).font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.label)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -258,7 +260,7 @@ struct RenameSheet: View {
     init(model: WorkspaceShellModel, request: RenameRequest) {
         self.model = model
         self.request = request
-        _name = State(initialValue: request.oldName)
+        _name = State(initialValue: model.languageFeatures.renamePreview?.newName ?? request.oldName)
     }
 
     var body: some View {
@@ -362,7 +364,9 @@ struct LanguageSheets: ViewModifier {
     func body(content: Content) -> some View {
         let f = model.languageFeatures
         content
-            .sheet(isPresented: Binding(get: { f.rename != nil }, set: { if !$0 { model.cancelRename() } })) {
+            // The new name is typed in place (InlineRename.swift, P-084);
+            // the sheet shows a rename over several files before it applies.
+            .sheet(isPresented: Binding(get: { f.rename != nil && f.renamePreview != nil }, set: { if !$0 { model.cancelRename() } })) {
                 if let r = f.rename { RenameSheet(model: model, request: r) }
             }
             .onAppear { f.openExternally = { [weak app] url in app?.openExternally(url) } }

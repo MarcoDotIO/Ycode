@@ -30,6 +30,11 @@ public struct WindowConfiguration: Sendable, Equatable {
     /// the app's hit test (`PlatformWindow.setHitTest`) says where the
     /// window moves and resizes (client-side decorations, B5-OPENVIEWS).
     public var decorated: Bool
+    /// The smallest and largest content sizes the person may resize the
+    /// window to (points; a dimension of `.infinity` is unbounded). nil:
+    /// the window system's limits.
+    public var minimumSize: CGSize?
+    public var maximumSize: CGSize?
 
     public init(title: String = "", size: CGSize = CGSize(width: 800, height: 600), resizable: Bool = true,
                 vulkan: Bool = false, highPixelDensity: Bool = true, popupParent: PlatformWindowID? = nil,
@@ -128,10 +133,19 @@ public protocol PlatformWindow: AnyObject {
     /// The window's top-left corner on the screen in pixels, when the
     /// window system tells (accessibility extents in screen coordinates).
     var screenOrigin: CGPoint? { get }
+    /// Where this window's pop-ups (menus) may go, in the window's points:
+    /// the usable area of its display around it (P-212: a menu is not cut
+    /// at the window's edges). nil: inside the window itself.
+    var popupArea: CGRect? { get }
+    /// The usable size of the window's display in points (the largest size
+    /// the window can take), when the window system tells.
+    var usableDisplaySize: CGSize? { get }
 }
 
 extension PlatformWindow {
     public var screenOrigin: CGPoint? { nil }
+    public var popupArea: CGRect? { nil }
+    public var usableDisplaySize: CGSize? { nil }
 }
 
 /// The window-state operations of client-side decorations (the close,

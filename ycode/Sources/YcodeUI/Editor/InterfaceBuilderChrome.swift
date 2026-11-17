@@ -106,16 +106,18 @@ extension InterfaceBuilderController {
             jumpBar.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -8),
             top.topAnchor.constraint(equalTo: root.topAnchor, constant: 24), top.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             top.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            outlineColumn.topAnchor.constraint(equalTo: top.bottomAnchor), outlineColumn.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            // P-156: the canvas bar and the outline's filter sit above the
+            // window's status bar (the editor area's safe area).
+            outlineColumn.topAnchor.constraint(equalTo: top.bottomAnchor), outlineColumn.bottomAnchor.constraint(equalTo: root.safeAreaLayoutGuide.bottomAnchor),
             outlineColumn.leadingAnchor.constraint(equalTo: root.leadingAnchor), w,
-            sep.topAnchor.constraint(equalTo: top.bottomAnchor), sep.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            sep.topAnchor.constraint(equalTo: top.bottomAnchor), sep.bottomAnchor.constraint(equalTo: root.safeAreaLayoutGuide.bottomAnchor),
             sep.leadingAnchor.constraint(equalTo: outlineColumn.trailingAnchor),
             canvasScroll.topAnchor.constraint(equalTo: top.bottomAnchor), canvasScroll.bottomAnchor.constraint(equalTo: barSep.topAnchor),
             canvasScroll.leadingAnchor.constraint(equalTo: sep.trailingAnchor), canvasScroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             barSep.leadingAnchor.constraint(equalTo: sep.trailingAnchor), barSep.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             barSep.bottomAnchor.constraint(equalTo: bar.topAnchor),
             bar.leadingAnchor.constraint(equalTo: sep.trailingAnchor), bar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            bar.bottomAnchor.constraint(equalTo: root.bottomAnchor), bar.heightAnchor.constraint(equalToConstant: 28),
+            bar.bottomAnchor.constraint(equalTo: root.safeAreaLayoutGuide.bottomAnchor), bar.heightAnchor.constraint(equalToConstant: 28),
         ])
         bar.zoomLabel.stringValue = zoomText
         updateJumpBar()

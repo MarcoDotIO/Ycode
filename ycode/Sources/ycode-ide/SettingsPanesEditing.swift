@@ -22,7 +22,7 @@ struct EditingSettingsPane: View {
         switch model.editingPage {
         case .main: main
         case .display: display
-        case .completion: CompletionSettingsPage { model.editingPage = .main }
+        case .completion: CompletionSettingsPage()
         case .indentation: indentation
         }
     }
@@ -64,7 +64,6 @@ struct EditingSettingsPane: View {
 
     var display: some View {
         SettingsForm {
-            BackRow(title: "Editing", target: "settings editing back") { model.editingPage = .main }
             SettingsSection("Display") {
                 CheckRow(title: "Line numbers", isOn: setting(\.showLineNumbers), target: "settings line numbers")
                 CheckRow(title: "Code folding ribbon", isOn: setting(\.showFoldingRibbon), target: "settings folding ribbon")
@@ -98,7 +97,6 @@ struct EditingSettingsPane: View {
 
     var indentation: some View {
         SettingsForm {
-            BackRow(title: "Editing", target: "settings editing back") { model.editingPage = .main }
             SettingsSection("Indentation") {
                 PickerRow(title: "Prefer indent using", selection: setting(\.indentWithTabs), options: [(false, "Spaces"), (true, "Tabs")],
                           target: "settings indent using")
@@ -120,13 +118,11 @@ struct EditingSettingsPane: View {
 /// Editing ▸ Completion: completion while typing, and where predictive
 /// completion's model comes from (`specs/ide/predictive-completion.md` §5).
 struct CompletionSettingsPage: View {
-    var back: () -> Void
     @State private var prediction = Preferences.shared.predictiveCompletion
     @State private var whileTyping = ShellPreferences.completionWhileTyping
 
     var body: some View {
         SettingsForm {
-            BackRow(title: "Editing", target: "settings editing back", action: back)
             SettingsSection("Code Completion") {
                 CheckRow(title: "Suggest completions after a period", isOn: $whileTyping, target: "settings completion",
                          help: "Ctrl+Space or Escape asks at any time. Completions come from sourcekit-lsp, which must be on the PATH.")

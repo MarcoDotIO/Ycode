@@ -87,6 +87,36 @@ enum TemplateContents {
         """
     }
 
+    /// The macOS tab's Application (a main menu) and Window documents
+    /// (P-184): Ycode's own minimal AppKit interface documents.
+    static func cocoaXib(application: Bool) -> String {
+        let body = application ? """
+
+                <customObject id="-3" userLabel="Application" customClass="NSObject"/>
+                <menu title="Main Menu" systemMenu="main" id="Ycd-mm-1"/>
+        """ : """
+
+                <window title="Window" allowsToolTipsWhenApplicationIsInactive="NO" autorecalculatesKeyViewLoop="NO" releasedWhenClosed="NO" animationBehavior="default" id="Ycd-wn-1">
+                    <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" resizable="YES"/>
+                    <rect key="contentRect" x="0.0" y="0.0" width="480" height="270"/>
+                    <view key="contentView" id="Ycd-vw-1">
+                        <rect key="frame" x="0.0" y="0.0" width="480" height="270"/>
+                        <autoresizingMask key="autoresizingMask"/>
+                    </view>
+                </window>
+        """
+        return """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="1" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES">
+            <objects>
+                <placeholder placeholderIdentifier="IBFilesOwner" id="-1" userLabel="File's Owner" customClass="\(application ? "NSApplication" : "NSObject")"/>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="-2" userLabel="First Responder" customClass="FirstResponder"/>\(body)
+            </objects>
+        </document>
+
+        """
+    }
+
     static let catalogInfo = "{\n  \"info\" : {\n    \"author\" : \"ycode\",\n    \"version\" : 1\n  }\n}\n"
 
     /// (relative path, contents) for an entry and a name (without extension).
@@ -104,6 +134,8 @@ enum TemplateContents {
         case "Storyboard": return [(file, storyboard(cocoa: cocoa, scene: false))]
         case "Launch Screen": return [(file, storyboard(cocoa: false, scene: true))]
         case "View": return [(file, xib(cocoa: cocoa, view: true))]
+        case "Application" where ext == "xib": return [(file, cocoaXib(application: true))]
+        case "Window" where ext == "xib": return [(file, cocoaXib(application: false))]
         case "Empty" where ext == "xib": return [(file, xib(cocoa: cocoa, view: false))]
         case "Swift Testing Unit Test":
             return [(file, "import Testing\n\nstruct \(id) {\n    @Test func example() {\n        #expect(Bool(true))\n    }\n}\n")]

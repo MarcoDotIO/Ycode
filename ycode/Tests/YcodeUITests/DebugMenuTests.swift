@@ -137,8 +137,8 @@ private final class MenuAdapter: DAPTransport, @unchecked Sendable {
         #expect(!wc.validateMenuItem(item("createSwiftErrorBreakpoint:")))
         wc.createExceptionBreakpoint(nil)
         #expect(session.breakpoints.exceptionFilters == ["swift_throw", "objc_throw", "cpp_throw"])
-        // No adapter offering a test-failure filter: disabled.
-        #expect(!wc.validateMenuItem(item("createTestFailureBreakpoint:")))
+        // P-015: enabled as in the reference, with or without an adapter.
+        #expect(wc.validateMenuItem(item("createTestFailureBreakpoint:")))
 
         // Delete All asks first; the window is off screen here, so the
         // command leaves everything in place.
@@ -149,7 +149,8 @@ private final class MenuAdapter: DAPTransport, @unchecked Sendable {
         wc.deleteAllBreakpoints(nil)
         #expect(!session.breakpoints.isEmpty)
         session.breakpoints.removeAll()
-        #expect(!wc.validateMenuItem(item("deleteAllBreakpoints:")))
+        // P-015: Delete All Breakpoints stays enabled with none.
+        #expect(wc.validateMenuItem(item("deleteAllBreakpoints:")))
     }
 
     @Test func continueToLineAndSteppingOptions() async throws {

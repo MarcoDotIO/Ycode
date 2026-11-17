@@ -252,7 +252,7 @@ public enum CommandTable {
             c("Show All", "", "unhideAllApplications:"),
             sep,
             c("Quit Ycode", "⌘Q", "terminate:"),
-            alt("Quit and Keep Windows", "⌥⌘Q"),
+            alt("Quit and Keep Windows", "⌥⌘Q", "terminateKeepingWindows:"),
         ]
     }
 
@@ -281,13 +281,14 @@ public enum CommandTable {
                 u("Target…"),
                 sep,
                 c("Project…", "⇧⌘N", "newProject:"),
-                alt("Choose Template…", "⌥⇧⌘N"),
+                alt("Choose Template…", "⌥⇧⌘N", "chooseProjectTemplate:"),
                 u("Workspace…", "⌃⌘N"),
                 sep,
                 c("Group", "", "newGroup:", when: .groupsAllowed),
-                c("Group without Folder", "", "newGroupWithoutFolder:", when: .groupsAllowed),
+                // P-001: the "without Folder" variants are ⌥ alternates.
+                alt("Group without Folder", "⌥", "newGroupWithoutFolder:", when: .groupsAllowed),
                 c("Group from Selection", "", "newGroupFromSelection:", when: .groupsAllowed),
-                c("Group from Selection without Folder", "", "newGroupFromSelectionWithoutFolder:", when: .groupsAllowed),
+                alt("Group from Selection without Folder", "⌥", "newGroupFromSelectionWithoutFolder:", when: .groupsAllowed),
                 c("Folder", "⌥⌘N", "newFolder:"),
                 c("Folder from Selection", "", "newFolderFromSelection:"),
             ]),
@@ -305,21 +306,22 @@ public enum CommandTable {
             c("Close Document", "⌃⌘W", "closeDocument:"),
             c("Close Editor Pane", "⌃⇧⌘W", "closeEditor:"),
             alt("Close Other Editor Panes", "⌃⌥⇧⌘W"),
-            c("Close Window", "⇧⌘W", "performClose:", when: .separateCloseWindow),
-            alt("Close Other Window Tabs", "⌥⇧⌘W", "closeOtherWindowTabs:", when: .separateCloseWindow),
+            // P-008: both always listed (the reference binds ⇧⌘W in every state).
+            c("Close Window", "⇧⌘W", "performClose:"),
+            alt("Close Other Window Tabs", "⌥⇧⌘W", "closeOtherWindowTabs:"),
             c("Close Workspace", "⌃⌥⌘W", "closeWorkspace:"),
             sep,
             c("Duplicate Editor Tab", "", "duplicateEditorTab:"),
             c("Save", "⌘S", "saveDocument:"),
-            u("Save All", "⌥⌘S"),
+            c("Save All", "⌥⌘S", "saveAllDocuments:"),
             u("Duplicate…", "⇧⌘S"),
-            u("Save As…", "⌥⇧⌘S"),
+            alt("Save As…", "⌥⇧⌘S"),
             c("Revert to Saved…", "", "revertDocumentToSaved:"),
             u("Unlock…"),
             u("Export…"),
             sep,
             c("Show in Finder", "", "showInFinder:"),
-            u("Open Terminal at Location"),
+            c("Open Terminal at Location", "", "openTerminalAtLocation:"),
             c("Open in New Tab", "⌥⌘O", "openInNewTab:"),
             u("Open in New Window"),
             c("Open with External Editor", "", "openWithExternalEditor:"),
@@ -335,7 +337,7 @@ public enum CommandTable {
             u("Workspace Settings…"),
             sep,
             c("Page Setup…", "", "runPageLayout:"),
-            u("Print…", "⌘P"),
+            c("Print…", "⌘P", "printEditor:"),
         ]
     }
 
@@ -356,7 +358,8 @@ public enum CommandTable {
             ]),
             .submenu("Paste", [
                 c("Paste", "⌘V", "paste:"),
-                c("Move Item Here", "⌥⌘V", "moveItemHere:", when: .itemToMove),
+                // P-009: always listed; enabled once an item was cut for moving.
+                c("Move Item Here", "⌥⌘V", "moveItemHere:"),
                 c("Paste and Preserve Formatting", "⌥⇧⌘V", "pasteAndPreserveFormatting:"),
             ]),
             c("Duplicate", "⌘D", "duplicateSelection:"),
@@ -364,10 +367,12 @@ public enum CommandTable {
             sep,
             c("Select All", "⌘A", "selectAll:"),
             sep,
-            c("Bookmark Line", "⌃⌘'", "bookmarkLine:"),
-            c("Bookmark Line With Dialog", "⌃⌥⌘'", "bookmarkLineWithDialog:"),
-            c("Bookmark File", "⌃⌘\"", "bookmarkFile:"),
-            c("Bookmark File With Dialog", "⌃⌥⌘\"", "bookmarkFileWithDialog:"),
+            // P-009: the dialog variants are ⌥ alternates; ⇧ is spelled
+            // as a modifier of ' (P-001), not as the shifted character.
+            c("Add Line Bookmark", "⌃⌘'", "bookmarkLine:"),
+            alt("Add Line Bookmark…", "⌃⌥⌘'", "bookmarkLineWithDialog:"),
+            c("Add File Bookmark", "⌃⇧⌘'", "bookmarkFile:"),
+            alt("Add File Bookmark…", "⌃⌥⇧⌘'", "bookmarkFileWithDialog:"),
             sep,
             .submenu("Sort", [c("By Name", "", "sortByName:"), c("By Type", "", "sortByType:")]),
             .submenu("Format", formatMenu),
@@ -437,9 +442,9 @@ public enum CommandTable {
                 sep,
                 c("Show Related Items", "⌃1", "showRelatedItemsMenu:"),
                 c("Show Previous History", "⌃2", "showPreviousHistoryMenu:"),
-                c("Show Previous Files History", "⌃⌘2", "showPreviousFilesHistoryMenu:"),
+                alt("Show Previous Files History", "⌃⌘2", "showPreviousFilesHistoryMenu:"),
                 c("Show Next History", "⌃3", "showNextHistoryMenu:"),
-                c("Show Next Files History", "⌃⌘3", "showNextFilesHistoryMenu:"),
+                alt("Show Next Files History", "⌃⌘3", "showNextFilesHistoryMenu:"),
                 c("Show Top Level Items", "⌃4", "showTopLevelItemsMenu:"),
                 c("Show Group Files", "⌃5", "showGroupFilesMenu:"),
                 c("Show Document Items", "⌃6", "showDocumentItemsMenu:"),
@@ -447,7 +452,7 @@ public enum CommandTable {
             sep,
             c("Show Editor Tab Bar", "", "toggleEditorTabBar:"),
             c("Pin Editor Tab", "⇧⌘P", "togglePinEditorTab:"),
-            u("Change Editor Orientation"),
+            c("Change Editor Orientation", "", "changeEditorOrientation:"),
             u("Reset Editor Sizes"),
             u("Reset Assistant Selection", "⌥⇧⌘Z"),
             sep,
@@ -471,7 +476,7 @@ public enum CommandTable {
                 c("Show Inspector", "", "toggleInspector:"),
             ]),
             c("Show Library", "⇧⌘L", "showLibrary:"),
-            u("Open Library", "⌥⇧⌘L"),
+            alt("Open Library", "⌥⇧⌘L"),
             u("Reload Organizer", "⌃R"),
             sep,
             c("Choose Theme…", "", "chooseTheme:"),
@@ -479,7 +484,7 @@ public enum CommandTable {
             c("Show Toolbar", "⌥⌘T", "toggleToolbarShown:"),
             c("Customize Toolbar…", "", "runToolbarCustomizationPalette:"),
             c("Show Window Tab Bar", "", "toggleWindowTabBar:"),
-            c("Show All Window Tabs", "⌘|", "showAllWindowTabs:"),
+            c("Show All Window Tabs", "⇧⌘\\", "showAllWindowTabs:"),
             sep,
             // Its own action: AppKit rebinds a toggleFullScreen: item to fn-F (§1.6).
             c("Enter Full Screen", "⌃⌘F", "toggleWorkspaceFullScreen:"),
@@ -536,13 +541,15 @@ public enum CommandTable {
             c("Reveal in Project Navigator", "⇧⌘J", "revealInProjectNavigator:"),
             u("Reveal in Changes Navigator", "⇧⌘M"),
             u("Reveal in Debug Navigator", "⇧⌘D"),
-            u("Open using Tab", "⌥⌘,"),
-            alt("Open in Next Editor Pane", "⌥⌘<"),
+            c("Open using Tab", "⌥⌘,", "openUsingTab:"),
+            // P-001: its own row (the reference does not pair it with
+            // Open using Tab), drawn with the shifted character.
+            c("Open in Next Editor Pane", "⌥⌘<", "openInNextEditorPane:"),
             sep,
-            u("Move Focus to Next Area", "⌥⌘`"),
-            u("Move Focus to Previous Area", "⌥⌘~"),
-            u("Move Focus to Next Editor Pane", "⌃`"),
-            u("Move Focus to Previous Editor Pane", "⌃~"),
+            c("Move Focus to Next Area", "⌥⌘`", "moveFocusToNextArea:"),
+            alt("Move Focus to Previous Area", "⌥⇧⌘`", "moveFocusToPreviousArea:"),
+            c("Move Focus to Next Editor Pane", "⌃`", "moveFocusToNextEditorPane:"),
+            alt("Move Focus to Previous Editor Pane", "⌃⇧`", "moveFocusToPreviousEditorPane:"),
             u("Move Focus to Editor Pane…", "⌘J"),
             sep,
             c("Show Previous Tab", "⌘{", "showPreviousTab:"),
@@ -559,8 +566,8 @@ public enum CommandTable {
             sep,
             c("Jump to Selection", "⌥⌘L", "jumpToSelection:"),
             c("Jump to Definition", "⌃⌘J", "jumpToDefinition:"),
-            alt("Jump to Definition using Tab", "⌃⌥⌘J"),
-            alt("Jump to Definition in Next Editor Pane", "⌃⌥⇧⌘J"),
+            alt("Jump to Definition using Tab", "⌃⌥⌘J", "jumpToDefinitionUsingTab:"),
+            alt("Jump to Definition in Next Editor Pane", "⌃⌥⇧⌘J", "jumpToDefinitionInNextEditorPane:"),
             c("Jump to Original Source/Generated Interface", "", "jumpToOriginalSource:"),
             u("Jump to Last Destination"),
             sep,
@@ -639,7 +646,7 @@ public enum CommandTable {
             sep,
             c("Build", "⌘B", "buildProduct:"),
             c("Clean Build Folder…", "⇧⌘K", "cleanProduct:"),
-            c("Clean Build Folder Immediately", "⌥⇧⌘K", "cleanProductImmediately:"),
+            alt("Clean Build Folder Immediately", "⌥⇧⌘K", "cleanProductImmediately:"),
             c("Delete Derived Data…", "", "deleteDerivedData:"),
             c("Clear Test Results", "⌃⌥⌘K", "clearTestResults:"),
             c("Clear All Issues", "", "clearAllIssues:"),
@@ -661,11 +668,13 @@ public enum CommandTable {
                 c("Edit Scheme…", "⌘<", "editScheme:"),
                 u("New Scheme…"),
                 c("Manage Schemes…", "", "manageSchemes:"),
+                sep,
+                u("Convert Scheme to use Test Plans…"),
             ]),
             // The device, simulator and generic rows follow their labels,
             // filled at display (§11.4; DynamicMenus.fillDestinations).
             .submenu("Destination", [
-                c("Choose Destination", "⌃)", "chooseDestination:"),
+                c("Choose Destination", "⌃⇧0", "chooseDestination:"),
                 c("Select Next Destination", "⌃⌥⌘]", "selectNextDestination:"),
                 c("Select Previous Destination", "⌃⌥⌘[", "selectPreviousDestination:"),
                 sep,
@@ -699,16 +708,19 @@ public enum CommandTable {
     /// others (follow program counter, library info, symbols, memory,
     /// interrupt, crash logs, GPU, view debugging, StoreKit) stay disabled.
     static var debugMenu: [MenuItemSpec] {
-        let similar = ["Type", "Process", "PID", "Library", "Subsystem", "Category", "TID"]
+        // P-015: each names its field and the selected row's value ("-":
+        // no row selected).
+        let similar = ["Type", "Process", "PID", "Library", "Subsystem", "Category", "TID"].map { "\($0) '-'" }
         return [
             c("Pause", "⌃⌘Y", "pauseOrContinue:"),
             c("Continue To Current Line", "⌃⌘C", "continueToCurrentLine:"),
             c("Step Over", "F6", "stepOver:"),
-            c("Step Over Instruction", "⌃F6", "stepOverInstruction:"),
-            c("Step Over Thread", "⌃⇧F6", "stepOverThread:"),
+            // P-001: the instruction and thread steps are ⌃ alternates.
+            alt("Step Over Instruction", "⌃F6", "stepOverInstruction:"),
+            alt("Step Over Thread", "⌃⇧F6", "stepOverThread:"),
             c("Step Into", "F7", "stepInto:"),
-            c("Step Into Instruction", "⌃F7", "stepIntoInstruction:"),
-            c("Step Into Thread", "⌃⇧F7", "stepIntoThread:"),
+            alt("Step Into Instruction", "⌃F7", "stepIntoInstruction:"),
+            alt("Step Into Thread", "⌃⇧F7", "stepIntoThread:"),
             c("Step Out", "F8", "stepOut:"),
             sep,
             u("Step Over and Follow Program Counter"),
@@ -759,7 +771,10 @@ public enum CommandTable {
             u("Debug Crash Log…"),
             sep,
             u("Capture GPU Workload"),
-            .submenu("Simulate Location", []),
+            // P-015: filled at display on macOS (the debug bar's menu while
+            // an app runs on the Ycode simulator); listed disabled otherwise.
+            .submenu("Simulate Location", [u("Don\u{2019}t Simulate Location"), sep] + SimulateLocationMenu.places.map { u($0) }
+                + [sep, u("Add GPS Exchange to Project…")]),
             .submenu("Induce Device Conditions", []),
             .submenu("View Debugging", [
                 // D4: disabled until the simulator can capture views.
@@ -798,6 +813,7 @@ public enum CommandTable {
                 sep,
                 u("Delete Transaction"),
             ]),
+            sep,
             .submenu("GameKit", [u("Manage Game Progress…")]),
         ]
     }
@@ -835,11 +851,8 @@ public enum CommandTable {
             sep,
             c("Clone…", "", "scmClone:"),
             c("New Git Repository…", "", "scmNewRepository:"),
-            sep,
-            // The reference's cloud CI section; Ycode has no such service.
-            .label("Cloud"),
-            u("Create Workflow…"),
-            u("Manage Workflows…"),
+            // Owner decision 5 (2026-11-16): no cloud entries; Ycode has no
+            // cloud service.
         ]
     }
 
@@ -925,4 +938,15 @@ public enum CloseShortcutRule {
     public static func commandWTitle(tabCount: Int) -> String { tabCount <= 1 ? "Close Window" : "Close Tab" }
     /// Whether the ⇧⌘W Close Window item is shown.
     public static func showsSeparateCloseWindow(tabCount: Int) -> Bool { tabCount > 1 }
+}
+
+/// Debug ▸ Simulate Location's places (P-015): the Ycode simulator's
+/// preset locations by name (`SimLocation.presets`; a test keeps the two
+/// lists equal).
+public enum SimulateLocationMenu {
+    public static let places = [
+        "Berlin, Germany", "Cupertino, CA, USA", "Hong Kong, China", "Johannesburg, South Africa", "London, England",
+        "Mexico City, Mexico", "Mumbai, India", "New York, NY, USA", "Paris, France", "Rio de Janeiro, Brazil",
+        "San Francisco, CA, USA", "Sydney, Australia", "Tokyo, Japan", "Warsaw, Poland",
+    ]
 }

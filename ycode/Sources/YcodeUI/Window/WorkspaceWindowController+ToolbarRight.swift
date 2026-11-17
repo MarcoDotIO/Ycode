@@ -11,36 +11,42 @@ public enum EditorOptionsMenu {
     /// (no Account item, reference-ui-6.md §2.1).
     public static let rightGroup = ["addEditor", "editorOptions", "editorModes"]
 
-    /// Adjust Editor Options, in order. The choices apply to the focused editor.
+    /// Adjust Editor Options, in order (P-065): Layout places the canvas,
+    /// as Editor ▸ Layout does; the toggles carry the Editor menu's key
+    /// equivalents and check marks. The choices apply to the focused editor.
     static var items: [MenuItemSpec] {
-        let u = CommandTable.unavailable
+        func c(_ t: String, _ s: String, _ a: String, tag: Int = 0) -> MenuItemSpec { .command(.init(t, shortcut: s, a, tag: tag)) }
         return [
             .submenu("Layout", [
-                .command(.init("Editor Pane On Right", "", [], "splitEditor:")),
-                .command(.init("Editor Pane Below", "", [], "splitEditorBelow:")),
+                c("Automatic", "", "setCanvasLayout:", tag: 0),
+                .separator,
+                c("Canvas on Right", "", "setCanvasLayout:", tag: 1),
+                c("Canvas on Bottom", "", "setCanvasLayout:", tag: 2),
             ]),
             .separator,
-            .command(.init("Inline Comparison", "", [], "showInlineComparison:")),
-            .command(.init("Side By Side Comparison", "", [], "showSideBySideComparison:")),
+            c("Inline Comparison", "", "showInlineComparison:"),
+            c("Side By Side Comparison", "", "showSideBySideComparison:"),
             .separator,
-            .command(.init("Minimap", "", [], "toggleMinimap:")),
-            .command(.init("Authors", "", [], "toggleAuthors:")),
-            u("Code Coverage"),
+            c("Minimap", "⌃⇧⌘M", "toggleMinimap:"),
+            c("Authors", "⌃⇧⌘A", "toggleAuthors:"),
+            c("Code Coverage", "", "toggleCodeCoverage:"),
             .separator,
-            .command(.init("Invisibles", "", [], "toggleInvisibles:")),
-            .command(.init("Scope Guides", "", [], "toggleScopeGuides:")),
-            .command(.init("Wrap Lines", "", [], "toggleWrapLines:")),
+            c("Invisibles", "", "toggleInvisibles:"),
+            c("Scope Guides", "", "toggleScopeGuides:"),
+            c("Wrap Lines", "⌃⇧⌘L", "toggleWrapLines:"),
             .separator,
-            .command(.init("Choose Workspace Theme…", "", [], "chooseTheme:")),
+            c("Choose Workspace Theme…", "", "chooseTheme:"),
         ]
     }
 
-    /// Add Editor Tabs or Editor Panes.
+    /// Add Editor Tabs or Editor Panes (P-065, `editor-area.md` D.9): Tab,
+    /// a separator, then the two panes, with File ▸ New's key equivalents.
     static var addItems: [MenuItemSpec] {
         [
-            .command(.init("Add Editor Tab", "", [], "newTab:")),
-            .command(.init("Add Editor Pane on Right", "", [], "splitEditor:")),
-            .command(.init("Add Editor Pane Below", "", [], "splitEditorBelow:")),
+            .command(.init("Tab", shortcut: "⌘T", "newTab:")),
+            .separator,
+            .command(.init("Editor Pane On Right", shortcut: "⌃⌘T", "splitEditor:")),
+            .command(.init("Editor Pane Below", shortcut: "⌃⌥⌘T", "splitEditorBelow:")),
         ]
     }
 

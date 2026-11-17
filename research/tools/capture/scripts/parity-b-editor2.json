@@ -1,0 +1,1116 @@
+{
+ "name": "parity-b-editor2",
+ "title": "Part B 1b: code completion, Quick Help, Jump to Definition, code actions, rename, split editors, Add Editor and Editor Options menus, the assistant, the SwiftUI canvas, Open Quickly, editor tabs.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "Shapes.swift open. AX tree.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "completion",
+   "note": "Caret at the end of 'let bigger = circle.scaled(by: 2)', Return, type 'circle.': the completion list (animation). AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "scaled(by: 2)",
+      "occurrence": 1,
+      "offset": 12
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "cmd+right"
+    },
+    {
+     "key": "return"
+    },
+    {
+     "text": "circle."
+    },
+    {
+     "wait": 1.8
+    },
+    {
+     "tree": "completion",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "completion-arrows",
+   "note": "Down, Down, Up in the list (selection, detail line).",
+   "do": [
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "key": "up"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "completion-filter",
+   "note": "Type 'sc': the list narrows to scaled(by:).",
+   "do": [
+    {
+     "text": "sc"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "completion-sc",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "completion-accept",
+   "note": "Return: accept (placeholder for the argument).",
+   "do": [
+    {
+     "key": "return"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "placeholder-next",
+   "note": "Tab (or control+/): to the placeholder; then Escape.",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "key": "escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "completion-explicit",
+   "note": "Undo the inserted text (cmd+Z until clean, up to 6), then Editor ▸ Show Completions (control+Space) after 'circle.' typed again.",
+   "do": [
+    {
+     "key": "cmd+z cmd+z cmd+z cmd+z cmd+z cmd+z"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "textclick": {
+      "needle": "scaled(by: 2)",
+      "occurrence": 1,
+      "offset": 12
+     }
+    },
+    {
+     "key": "cmd+right"
+    },
+    {
+     "key": "return"
+    },
+    {
+     "text": "circle."
+    },
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "key": "ctrl+space"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "completion-escape",
+   "note": "Escape closes it; undo the typing.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "key": "cmd+z cmd+z cmd+z cmd+z"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "quick-help-own",
+   "note": "option+click on 'scaled' in 'circle.scaled(by: 2)': Quick Help popover for our own documented method (animation). AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "scaled(by: 2)",
+      "occurrence": 1,
+      "offset": 2
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "quick-help",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "quick-help-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "quick-help-sdk",
+   "note": "option+click on 'reduce': Quick Help for a standard library method.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "reduce(",
+      "occurrence": 1,
+      "offset": 2
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "quick-help-sdk",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "quick-help-sdk-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "cmd-hover",
+   "note": "Hold cmd over 'Circle' in 'Circle(radius: 2)' (cmd+hover: link underline)? Pointer there, 2 s (without cmd: hover only).",
+   "do": [
+    {
+     "textclick": {
+      "needle": "Circle(radius: 2)",
+      "occurrence": 1,
+      "offset": 2
+     },
+     "hover": true
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "jump-definition",
+   "note": "Caret in 'Circle(radius: 2)', Navigate ▸ Jump to Definition (control+cmd+J).",
+   "do": [
+    {
+     "textclick": {
+      "needle": "Circle(radius: 2)",
+      "occurrence": 1,
+      "offset": 2
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "ctrl+cmd+j"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "code-actions",
+   "note": "Caret in 'totalArea', Editor ▸ Show Code Actions (cmd+shift+A): the code actions menu. AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "totalArea",
+      "occurrence": 1,
+      "offset": 3
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "cmd+shift+a"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "code-actions",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "code-actions-walk",
+   "note": "Sub-menus of the code actions menu, if any.",
+   "do": [
+    {
+     "submenus": "sub",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "code-actions-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "rename",
+   "note": "Caret in 'bigger', Editor ▸ Refactor ▸ Rename…: the rename mode (all occurrences, animation). AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "let bigger",
+      "occurrence": 1,
+      "offset": 6
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "menu": "Editor > Refactor > Rename…"
+    },
+    {
+     "wait": 3.0
+    },
+    {
+     "tree": "rename",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "rename-type",
+   "note": "Type 'larger' (every occurrence follows).",
+   "do": [
+    {
+     "text": "larger"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "rename-cancel",
+   "note": "Escape: cancel the rename (Cancel button first if there is one).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "split-right",
+   "note": "File ▸ New ▸ Editor Pane On Right (control+cmd+T): a second editor (animation). AX tree.",
+   "do": [
+    {
+     "key": "ctrl+cmd+t"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "split-right",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "split-below",
+   "note": "File ▸ New ▸ Editor Pane Below (control+option+cmd+T).",
+   "do": [
+    {
+     "key": "ctrl+alt+cmd+t"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "split-below",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "split-close-1",
+   "note": "File ▸ Close Editor Pane (control+shift+cmd+W).",
+   "do": [
+    {
+     "key": "ctrl+shift+cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "split-close-2",
+   "note": "Close Editor Pane again (one editor left).",
+   "do": [
+    {
+     "key": "ctrl+shift+cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "add-editor-menu",
+   "note": "The Add Editor toolbar menu (its items). AX tree.",
+   "do": [
+    {
+     "click": {
+      "description": "Add Editor"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "add-editor",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "add-editor-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-options-menu",
+   "note": "The Editor Options toolbar menu (Canvas, Minimap, Authors, Code Coverage…). AX tree.",
+   "do": [
+    {
+     "click": {
+      "description": "Editor Options"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "editor-options",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-options-walk",
+   "note": "Its sub-menus: a still of each.",
+   "do": [
+    {
+     "submenus": "sub",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "editor-options-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "assistant",
+   "note": "Editor ▸ Assistant (control+option+cmd+Return): the assistant editor (animation). AX tree.",
+   "do": [
+    {
+     "key": "ctrl+alt+cmd+return"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "assistant",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "assistant-menu",
+   "note": "The assistant pane's jump bar first segment (Automatic / Counterparts…): click near its left end. AX tree.",
+   "do": [
+    {
+     "click": [
+      1000,
+      66
+     ]
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "assistant-menu",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "assistant-menu-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "assistant-off",
+   "note": "Show the standard editor again (cmd+Return).",
+   "do": [
+    {
+     "key": "cmd+return"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "open-contentview",
+   "note": "Click ContentView in the navigator (it has a #Preview): the canvas opens beside the code (animation).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "ContentView|ContentView.swift"
+     }
+    },
+    {
+     "wait": 6.0
+    },
+    {
+     "tree": "canvas",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "canvas-later",
+   "note": "8 s later: the preview rendered (or its status).",
+   "do": [
+    {
+     "wait": 8.0
+    },
+    {
+     "tree": "canvas-later",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "canvas-toggle-off",
+   "note": "Editor ▸ Canvas (option+cmd+Return): hide the canvas.",
+   "do": [
+    {
+     "key": "cmd+alt+return"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "canvas-toggle-on",
+   "note": "option+cmd+Return again: show it.",
+   "do": [
+    {
+     "key": "cmd+alt+return"
+    },
+    {
+     "wait": 4.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "open-quickly",
+   "note": "File ▸ Open Quickly (shift+cmd+O): the panel (animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+o"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "open-quickly",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "open-quickly-type",
+   "note": "Type 'Count' one character at a time (results update).",
+   "do": [
+    {
+     "text": "Count"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "open-quickly-count",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "open-quickly-arrows",
+   "note": "Down, Up (selection).",
+   "do": [
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "key": "up"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "open-quickly-open",
+   "note": "Return: Counter.swift opens.",
+   "do": [
+    {
+     "key": "return"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-open-1",
+   "note": "Select Shapes in the navigator, File ▸ Open in New Tab (option+cmd+O): a second editor tab.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Shapes|Shapes.swift"
+     }
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "menu": "File > Open in New Tab"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "tabs",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-open-2",
+   "note": "Select Showcase, Open in New Tab: a third.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Showcase|Showcase.swift"
+     }
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "menu": "File > Open in New Tab"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-prev",
+   "note": "Navigate ▸ Show Previous Tab (cmd+{).",
+   "do": [
+    {
+     "key": "cmd+shift+["
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-next",
+   "note": "Navigate ▸ Show Next Tab (cmd+}).",
+   "do": [
+    {
+     "key": "cmd+shift+]"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-hover",
+   "note": "Pointer onto the first editor tab, held 1.6 s (close button, tooltip).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton",
+      "subrole": "AXTabButton",
+      "description~": "ContentView|Counter",
+      "index": 0
+     }
+    },
+    {
+     "wait": 1.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-close",
+   "note": "cmd+W closes the current editor tab (animation).",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-close-2",
+   "note": "cmd+W again.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "end",
+   "note": "What is left: AX tree.",
+   "do": [
+    {
+     "tree": "end",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ },
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Shapes|Shapes.swift"
+   }
+  },
+  {
+   "wait": 2.5
+  }
+ ]
+}

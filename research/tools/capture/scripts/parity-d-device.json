@@ -1,0 +1,360 @@
+{
+ "name": "parity-d-device",
+ "title": "Part D 12: Ycode's Device Hub (Ycode ▸ Open Developer Tool ▸ Device Hub): the iPad and watch selected again by clicking their sidebar rows, Zoom to Fit, rotate, Home.",
+ "targets": [
+  "ycode"
+ ],
+ "compare_order": [
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "Ycode's Device Hub, ycode-test-parity-iphone selected (the sidebar lists every simulator on this Mac; painted out except our rows). AX tree.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "sidebar-hide",
+   "note": "Hide the sidebar (toolbar button; View has no Hide Sidebar).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Sidebar|Show Sidebar|Hide Sidebar",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "ipad-fit",
+   "note": "Show the sidebar (toolbar button), click the iPad's row (pointer on its frame), hide the sidebar, Zoom to Fit.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Sidebar|Show Sidebar|Hide Sidebar",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "ycode-test-parity-ipad",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 3.0
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Sidebar|Show Sidebar|Hide Sidebar",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "help": "Zoom to Fit",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "ipad",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "ipad-rotate",
+   "note": "Rotate.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Rotate Left|Rotate Right|Rotate (Option-click to rotate right)",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "ipad-rotate-back",
+   "note": "Rotate three more times.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Rotate Left|Rotate Right|Rotate (Option-click to rotate right)",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Rotate Left|Rotate Right|Rotate (Option-click to rotate right)",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Rotate Left|Rotate Right|Rotate (Option-click to rotate right)",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "watch-fit",
+   "note": "Sidebar shown; its Search field (window point 110, 72) filtered to 'parity-watch' (the watch's row is far below the fold: Ycode groups the list by platform), click the watch's row (pointer on its frame), clear the filter, sidebar hidden, Zoom to Fit. AX tree.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Sidebar|Show Sidebar|Hide Sidebar",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "click": [
+      110,
+      72
+     ]
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "text": "parity-watch"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "ycode-test-parity-watch",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 3.0
+    },
+    {
+     "click": [
+      110,
+      72
+     ]
+    },
+    {
+     "key": "cmd+a"
+    },
+    {
+     "key": "delete"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Sidebar|Show Sidebar|Hide Sidebar",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "help": "Zoom to Fit",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "watch",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "watch-home",
+   "note": "Press the watch's first hardware control (Home / crown).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Home|Digital Crown|Crown",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "back-iphone",
+   "note": "Sidebar, click the iPhone's row.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Sidebar|Show Sidebar|Hide Sidebar",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "ycode-test-parity-iphone",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 3.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  }
+ ],
+ "project": {
+  "generator": "make-test-project.py",
+  "path": "GlassScroll/GlassScroll.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1100,
+   800
+  ],
+  "display": "builtin",
+  "title": "ycode-test-parity-iphone",
+  "wait_title": null,
+  "first_window_wait": 6.0,
+  "timeout": 90
+ },
+ "per_target_setup": {
+  "ycode": [
+   {
+    "menu": "Ycode > Open Developer Tool > Device Hub"
+   },
+   {
+    "wait": 3.0
+   },
+   {
+    "select": {
+     "role": "AXRow",
+     "text~": "ycode-test-parity-iphone",
+     "scope": "app"
+    }
+   },
+   {
+    "wait": 2.0
+   }
+  ]
+ },
+ "project_targets": [
+  "ycode"
+ ],
+ "setup_settle": 2.0
+}

@@ -79,6 +79,61 @@ final class PreviewDeviceFrameView: NSView {
     }
 }
 
+/// A Mac preview's frame (P-166): a window with a title bar titled with the
+/// previews' name, its body the window background of the canvas's
+/// appearance (#1E1E1F in dark), so the preview's text reads as in a window.
+final class PreviewWindowFrameView: NSView {
+    static let titleBarHeight: CGFloat = 28
+    static let radius: CGFloat = 10
+    /// The title bar's text (Ycode's previews, as the reference names its own).
+    static let title = "Ycode Previews"
+    let titleLabel = NSTextField(labelWithString: PreviewWindowFrameView.title)
+
+    init(content: NSView) {
+        super.init(frame: .zero)
+        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        titleLabel.textColor = .secondaryLabelColor
+        titleLabel.alignment = .center
+        for v in [titleLabel, content] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(v)
+        }
+        NSLayoutConstraint.activate([
+            titleLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            titleLabel.centerYAnchor.constraint(equalTo: topAnchor, constant: Self.titleBarHeight / 2),
+            titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 8),
+            content.topAnchor.constraint(equalTo: topAnchor, constant: Self.titleBarHeight),
+            content.bottomAnchor.constraint(equalTo: bottomAnchor),
+            content.leadingAnchor.constraint(equalTo: leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel(Self.title)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let outline = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Self.radius, yRadius: Self.radius)
+        NSColor.windowBackgroundColor.setFill()
+        outline.fill()
+        NSGraphicsContext.saveGraphicsState()
+        outline.addClip()
+        NSColor.underPageBackgroundColor.setFill()
+        NSRect(x: 0, y: 0, width: bounds.width, height: Self.titleBarHeight).fill()
+        NSColor.separatorColor.setFill()
+        NSRect(x: 0, y: Self.titleBarHeight - 1, width: bounds.width, height: 1).fill()
+        NSGraphicsContext.restoreGraphicsState()
+        NSColor.separatorColor.setStroke()
+        outline.lineWidth = 1
+        outline.stroke()
+    }
+}
+
 /// The "Canvas paused" capsule with its resume button.
 final class PreviewPausedCapsule: NSView {
     let resume: NSButton

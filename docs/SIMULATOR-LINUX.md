@@ -120,8 +120,11 @@ Each stage has a contract or spec in `specs/simulator/`.
 
 You need arm64 Linux with `/dev/kvm`, a Vulkan driver, Swift 6.4, LLVM 18 and
 SPIRV-Tools, and your own copy of the simulator runtime (`RuntimeRoot`) from
-your own Xcode installation. Keep devices, snapshots and run output on a
-separate data volume, called `$YCODE_DATA` in specs and scripts.
+your own Xcode installation. Keep runtimes, devices, snapshots and run
+output in one folder with room (about 120 GB), called `$YCODE_DATA` in specs
+and scripts: a separate data volume or a folder on the system disk. The
+project's own host, its always-on service and its pristine devices are
+described in [THOR-HOST.md](THOR-HOST.md).
 
 On the Linux host, from `ycode/`:
 

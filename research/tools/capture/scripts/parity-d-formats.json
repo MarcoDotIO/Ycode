@@ -1,0 +1,449 @@
+{
+ "name": "parity-d-formats",
+ "title": "Part D 10: the Interface Builder drag (Ycode's part C run lost it) and the canvas's Live, Variants and Device Settings controls by their real names.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "open-storyboard",
+   "note": "Click Main.storyboard.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Main|Main.storyboard"
+     }
+    },
+    {
+     "wait": 4.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "ib-zoom-fit",
+   "note": "Editor ▸ Zoom ▸ Zoom to Fit.",
+   "do": [
+    {
+     "menu": "Editor > Zoom > Zoom to Fit"
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "ib-library",
+   "note": "shift+cmd+L, type 'button'. AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+l"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "text": "button"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "library",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "ib-drag-button",
+   "note": "Drag the library's button item onto the view controller's view (window point 700, 600) over 1.2 s.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.2
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "drag": {
+        "from": {
+         "label~": "Push Button",
+         "scope": "app",
+         "visible": true
+        },
+        "to": [
+         700,
+         600
+        ]
+       },
+       "duration": 1.2
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "dropped",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "drag": {
+        "from": {
+         "label": "Button",
+         "scope": "app",
+         "visible": true
+        },
+        "to": [
+         1100,
+         500
+        ]
+       },
+       "duration": 1.2
+      },
+      {
+       "drag": {
+        "from": {
+         "label~": "Button",
+         "scope": "app",
+         "visible": true
+        },
+        "to": [
+         1100,
+         500
+        ]
+       },
+       "duration": 1.2,
+       "fallback": true
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "dropped",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "ib-library-close",
+   "note": "Escape (the Library, if it stayed), then its window's close button if it is a window.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "subrole": "AXCloseButton"
+     },
+     "window": "Library"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "ib-after",
+   "note": "After the drop. AX tree.",
+   "do": [
+    {
+     "tree": "after",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "ib-undo",
+   "note": "cmd+Z.",
+   "do": [
+    {
+     "key": "cmd+z"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "open-swiftui",
+   "note": "Click ContentView.swift.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "ContentView|ContentView.swift"
+     }
+    },
+    {
+     "wait": 3.0
+    },
+    {
+     "menubar": "canvas"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "canvas-resume",
+   "note": "The canvas's Refresh Canvas / Resume button (else option+cmd+P), then up to 60 s.",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton",
+      "description": "Refresh Canvas|Resume",
+      "visible": true
+     }
+    },
+    {
+     "key": "cmd+alt+p",
+     "fallback": true
+    },
+    {
+     "wait": 12.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "canvas-60s",
+   "note": "60 s after the resume. AX tree.",
+   "do": [
+    {
+     "wait": 48.0
+    },
+    {
+     "tree": "canvas",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "canvas-live-menu",
+   "note": "Click the canvas's Live control (Xcode: menu button titled 'Live'): its menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuButton",
+      "title": "Live",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "live",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "canvas-live-items",
+   "note": "Its items.",
+   "do": [
+    {
+     "submenus": "items",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "canvas-live-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "canvas-variants",
+   "note": "Click Variants (menu button): its menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuButton",
+      "title": "Variants",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "variants",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "canvas-variants-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "canvas-device-settings",
+   "note": "Click Device Settings: its popover. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton",
+      "description": "Device Settings",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "device-settings",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "canvas-device-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "canvas-menubar",
+   "note": "Menu bar at the end.",
+   "do": [
+    {
+     "menubar": "end"
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "project": {
+  "generator": "make-formats-project.py",
+  "path": "formats/Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

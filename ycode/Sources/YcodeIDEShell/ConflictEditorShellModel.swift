@@ -64,6 +64,9 @@ public final class ConflictEditorShellModel {
     /// The jump bar's path (§4.1).
     /// The workspace's project: the jump bar starts with it (§13.7).
     @ObservationIgnored public var project: MergeSheetProject?
+    /// Ycode started the stopped operation: the sheet's Cancel aborts it
+    /// without asking (P-131, as the AppKit sheet).
+    @ObservationIgnored public var abortsOnCancel = false
     public var jumpPath: [String] { state.jumpPath(root: repository.root.path, project: project) }
 
     // MARK: Loading

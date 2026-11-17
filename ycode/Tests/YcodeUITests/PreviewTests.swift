@@ -222,7 +222,7 @@ func nonBlankPixels(_ png: URL) throws -> Int {
             _ = try await offMain { try renderer.renderWithPayload(module: module, file: file, previews: PreviewDiscovery.previews(in: broken)) }
             Issue.record("expected a build failure")
         } catch let e as PreviewRenderer.Failure {
-            #expect(e.description.hasPrefix("Badge.swift:15: cannot find 'nope' in scope"), "\(e.description)")
+            #expect(e.description.hasPrefix("Badge.swift:15: Cannot find 'nope' in scope"), "\(e.description)")
         }
         PreviewRenderer.stopMacHosts()
         #expect(PreviewRenderer.macHostPIDs.isEmpty)

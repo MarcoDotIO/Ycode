@@ -281,7 +281,7 @@ public struct TemplateEntry: Equatable, Sendable {
     public var fileTemplate: FileTemplate? {
         switch title {
         case "Swift File": .swiftFile
-        case "Cocoa Touch Class": .swiftClass
+        case "Cocoa Touch Class", "Cocoa Class": .swiftClass
         case "Objective-C File": .objcClass
         case "Header File": .header
         case "Property List": .propertyList
@@ -318,8 +318,11 @@ public enum FileTemplateCatalog {
         func e(_ t: String, _ ext: String, _ name: String = "File", _ sym: String = "doc") -> TemplateEntry {
             TemplateEntry(t, defaultName: name, ext: ext, symbol: sym)
         }
+        // P-184: the macOS tab's class template is "Cocoa Class" and its
+        // interface templates are the AppKit ones (parity 2026-11-15).
+        let mac = platform == "macOS"
         let source = TemplateSection(title: "Source", entries: [
-            e("Swift File", "swift", "File", "swift"), e("Cocoa Touch Class", "swift", "Class", "c.square"),
+            e("Swift File", "swift", "File", "swift"), e(mac ? "Cocoa Class" : "Cocoa Touch Class", "swift", "Class", "c.square"),
             e("Objective-C File", "m", "File", "m.square"), e("Header File", "h", "Header", "h.square"),
             e("C File", "c", "File", "c.square"), e("C++ File", "cpp", "File", "plus.square"),
             e("Metal File", "metal", "Shaders", "cube"),
@@ -327,13 +330,18 @@ public enum FileTemplateCatalog {
         if platform == "DriverKit" {
             return [source, TemplateSection(title: "Other", entries: [e("Empty", "", "File")])]
         }
+        let interface = mac ? [
+            e("SwiftUI View", "swift", "ContentView", "rectangle.on.rectangle"), e("Storyboard", "storyboard", "Main", "rectangle.split.3x1"),
+            e("Application", "xib", "MainMenu", "menubar.rectangle"), e("Window", "xib", "Window", "macwindow"),
+            e("View", "xib", "View", "rectangle"),
+        ] : [
+            e("SwiftUI View", "swift", "ContentView", "rectangle.on.rectangle"), e("Storyboard", "storyboard", "Main", "rectangle.split.3x1"),
+            e("View", "xib", "View", "rectangle"), e("Empty", "xib", "Empty", "rectangle.dashed"),
+            e("Launch Screen", "storyboard", "Launch Screen", "rectangle.portrait"),
+        ]
         return [
             source,
-            TemplateSection(title: "User Interface", entries: [
-                e("SwiftUI View", "swift", "ContentView", "rectangle.on.rectangle"), e("Storyboard", "storyboard", "Main", "rectangle.split.3x1"),
-                e("View", "xib", "View", "rectangle"), e("Empty", "xib", "Empty", "rectangle.dashed"),
-                e("Launch Screen", "storyboard", "Launch Screen", "rectangle.portrait"),
-            ]),
+            TemplateSection(title: "User Interface", entries: interface),
             TemplateSection(title: "Test", entries: [
                 e("Swift Testing Unit Test", "swift", "Tests", "checkmark.diamond"), e("XCTest Unit Test", "swift", "Tests", "checkmark.diamond"),
                 e("XCTest UI Launch Test", "swift", "UITestsLaunchTests", "checkmark.diamond"),

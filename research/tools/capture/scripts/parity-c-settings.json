@@ -1,0 +1,10955 @@
+{
+ "name": "parity-c-settings",
+ "title": "Part C 1: Settings, every pane except Accounts: the pane switch at the window's own size (video), then each pane at 710 x 900 with each segment and each pop-up menu opened once (stills, AX trees, menu items).",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "settings-open",
+   "note": "cmd+comma, then General in the sidebar, the window moved to the top middle of the built-in display (Xcode reopens on the last pane; Ycode's opens on the main display).",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "General",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "move": [
+      401,
+      40
+     ],
+     "window": "General"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "general-rest",
+   "note": "Settings ▸ General at its own size. AX tree.",
+   "do": [
+    {
+     "tree": "general",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "pane-appearance",
+   "note": "Click 'Appearance' (Ycode: 'Appearance') in the sidebar: the pane switch (animation) at the window's own size. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "pane-intelligence",
+   "note": "Click 'Intelligence' (Ycode: 'Coding Assistant') in the sidebar: the pane switch (animation) at the window's own size. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Intelligence",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Intelligence"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Coding Assistant",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Coding Assistant"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "pane-behaviors",
+   "note": "Click 'Behaviors' (Ycode: 'Behaviors') in the sidebar: the pane switch (animation) at the window's own size. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Behaviors",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Behaviors",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "pane-navigation",
+   "note": "Click 'Navigation' (Ycode: 'Navigation') in the sidebar: the pane switch (animation) at the window's own size. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Navigation",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Navigation",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "pane-notifications",
+   "note": "Click 'Notifications' (Ycode: 'Notifications') in the sidebar: the pane switch (animation) at the window's own size. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Notifications",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Notifications",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "pane-editing",
+   "note": "Click 'Editing' (Ycode: 'Editing') in the sidebar: the pane switch (animation) at the window's own size. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Editing",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Editing"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Editing",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Editing"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "pane-shortcuts",
+   "note": "Click 'Shortcuts' (Ycode: 'Shortcuts') in the sidebar: the pane switch (animation) at the window's own size. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Shortcuts",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Shortcuts",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "pane-source-control",
+   "note": "Click 'Source Control' (Ycode: 'Source Control') in the sidebar: the pane switch (animation) at the window's own size. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Source Control",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Source Control",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "pane-components",
+   "note": "Click 'Components' (Ycode: 'Components') in the sidebar: the pane switch (animation) at the window's own size. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Components",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Components"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Components",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Components"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "pane-locations",
+   "note": "Click 'Locations' (Ycode: 'Locations') in the sidebar: the pane switch (animation) at the window's own size. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Locations",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Locations"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Locations",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Locations"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "pane-general",
+   "note": "Click 'General' (Ycode: 'General') in the sidebar: the pane switch (animation) at the window's own size. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "General",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "General"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "General",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "General"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "tree": "pane",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-tooltip",
+   "note": "Pointer on General's first pop-up button, held 2.5 s (tooltip).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXPopUpButton",
+      "index": 0
+     },
+     "window": "General"
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "general-tab-order",
+   "note": "Tab through General (key-view order; full keyboard access is the system's setting, left alone).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "general-tall",
+   "note": "General (Ycode: General) with the window resized to 710 x 900 where it can be, so the whole pane shows. AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "General",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "General"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "General"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "General",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "General"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "General"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-segment-0",
+   "note": "Segment 0 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-segment-1",
+   "note": "Segment 1 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-segment-2",
+   "note": "Segment 2 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-segment-3",
+   "note": "Segment 3 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-segment-4",
+   "note": "Segment 4 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-segment-back",
+   "note": "Back to the first segment.",
+   "do": [],
+   "record": false,
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-popup-0",
+   "note": "Pop-up button 0 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-popup-1",
+   "note": "Pop-up button 1 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-popup-2",
+   "note": "Pop-up button 2 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-popup-3",
+   "note": "Pop-up button 3 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-popup-4",
+   "note": "Pop-up button 4 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-popup-5",
+   "note": "Pop-up button 5 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-popup-6",
+   "note": "Pop-up button 6 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "general-popup-7",
+   "note": "Pop-up button 7 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "General"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "appearance-tall",
+   "note": "Appearance (Ycode: Appearance) with the window resized to 710 x 900 where it can be, so the whole pane shows. AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "appearance-popup-0",
+   "note": "Pop-up button 0 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "appearance-popup-1",
+   "note": "Pop-up button 1 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "appearance-popup-2",
+   "note": "Pop-up button 2 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "appearance-popup-3",
+   "note": "Pop-up button 3 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "appearance-popup-4",
+   "note": "Pop-up button 4 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "appearance-popup-5",
+   "note": "Pop-up button 5 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "appearance-popup-6",
+   "note": "Pop-up button 6 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "appearance-popup-7",
+   "note": "Pop-up button 7 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "intelligence-tall",
+   "note": "Intelligence (Ycode: Coding Assistant) with the window resized to 710 x 900 where it can be, so the whole pane shows. AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Intelligence",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Intelligence"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Intelligence"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Coding Assistant",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Coding Assistant"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Coding Assistant"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-tall",
+   "note": "Behaviors (Ycode: Behaviors) with the window resized to 710 x 900 where it can be, so the whole pane shows. AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Behaviors",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Behaviors",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-segment-0",
+   "note": "Segment 0 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-segment-1",
+   "note": "Segment 1 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-segment-2",
+   "note": "Segment 2 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-segment-3",
+   "note": "Segment 3 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-segment-4",
+   "note": "Segment 4 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-segment-back",
+   "note": "Back to the first segment.",
+   "do": [],
+   "record": false,
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-popup-0",
+   "note": "Pop-up button 0 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-popup-1",
+   "note": "Pop-up button 1 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-popup-2",
+   "note": "Pop-up button 2 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-popup-3",
+   "note": "Pop-up button 3 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-popup-4",
+   "note": "Pop-up button 4 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-popup-5",
+   "note": "Pop-up button 5 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-popup-6",
+   "note": "Pop-up button 6 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "behaviors-popup-7",
+   "note": "Pop-up button 7 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Behaviors"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-tall",
+   "note": "Navigation (Ycode: Navigation) with the window resized to 710 x 900 where it can be, so the whole pane shows. AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Navigation",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Navigation",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-segment-0",
+   "note": "Segment 0 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-segment-1",
+   "note": "Segment 1 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-segment-2",
+   "note": "Segment 2 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-segment-3",
+   "note": "Segment 3 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-segment-4",
+   "note": "Segment 4 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-segment-back",
+   "note": "Back to the first segment.",
+   "do": [],
+   "record": false,
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-popup-0",
+   "note": "Pop-up button 0 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-popup-1",
+   "note": "Pop-up button 1 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-popup-2",
+   "note": "Pop-up button 2 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-popup-3",
+   "note": "Pop-up button 3 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-popup-4",
+   "note": "Pop-up button 4 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-popup-5",
+   "note": "Pop-up button 5 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-popup-6",
+   "note": "Pop-up button 6 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "navigation-popup-7",
+   "note": "Pop-up button 7 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Navigation"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-tall",
+   "note": "Notifications (Ycode: Notifications) with the window resized to 710 x 900 where it can be, so the whole pane shows. AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Notifications",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Notifications",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-segment-0",
+   "note": "Segment 0 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-segment-1",
+   "note": "Segment 1 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-segment-2",
+   "note": "Segment 2 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-segment-3",
+   "note": "Segment 3 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-segment-4",
+   "note": "Segment 4 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-segment-back",
+   "note": "Back to the first segment.",
+   "do": [],
+   "record": false,
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-popup-0",
+   "note": "Pop-up button 0 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-popup-1",
+   "note": "Pop-up button 1 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-popup-2",
+   "note": "Pop-up button 2 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-popup-3",
+   "note": "Pop-up button 3 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-popup-4",
+   "note": "Pop-up button 4 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-popup-5",
+   "note": "Pop-up button 5 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-popup-6",
+   "note": "Pop-up button 6 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "notifications-popup-7",
+   "note": "Pop-up button 7 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Notifications"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-tall",
+   "note": "Editing (Ycode: Editing) with the window resized to 710 x 900 where it can be, so the whole pane shows. AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Editing",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Editing"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Editing"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Editing",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Editing"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Editing"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-segment-0",
+   "note": "Segment 0 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-segment-1",
+   "note": "Segment 1 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-segment-2",
+   "note": "Segment 2 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-segment-3",
+   "note": "Segment 3 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-segment-4",
+   "note": "Segment 4 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-segment-back",
+   "note": "Back to the first segment.",
+   "do": [],
+   "record": false,
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-popup-0",
+   "note": "Pop-up button 0 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-popup-1",
+   "note": "Pop-up button 1 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-popup-2",
+   "note": "Pop-up button 2 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-popup-3",
+   "note": "Pop-up button 3 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-popup-4",
+   "note": "Pop-up button 4 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-popup-5",
+   "note": "Pop-up button 5 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-popup-6",
+   "note": "Pop-up button 6 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "editing-popup-7",
+   "note": "Pop-up button 7 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Editing"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-tall",
+   "note": "Shortcuts (Ycode: Shortcuts) with the window resized to 710 x 900 where it can be, so the whole pane shows. AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Shortcuts",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Shortcuts",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-segment-0",
+   "note": "Segment 0 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-segment-1",
+   "note": "Segment 1 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-segment-2",
+   "note": "Segment 2 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-segment-3",
+   "note": "Segment 3 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-segment-4",
+   "note": "Segment 4 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-segment-back",
+   "note": "Back to the first segment.",
+   "do": [],
+   "record": false,
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-popup-0",
+   "note": "Pop-up button 0 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-popup-1",
+   "note": "Pop-up button 1 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-popup-2",
+   "note": "Pop-up button 2 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-popup-3",
+   "note": "Pop-up button 3 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-popup-4",
+   "note": "Pop-up button 4 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-popup-5",
+   "note": "Pop-up button 5 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-popup-6",
+   "note": "Pop-up button 6 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "shortcuts-popup-7",
+   "note": "Pop-up button 7 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Shortcuts"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-tall",
+   "note": "Source Control (Ycode: Source Control) with the window resized to 710 x 900 where it can be, so the whole pane shows. AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Source Control",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Source Control",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-segment-0",
+   "note": "Segment 0 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-segment-1",
+   "note": "Segment 1 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-segment-2",
+   "note": "Segment 2 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-segment-3",
+   "note": "Segment 3 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-segment-4",
+   "note": "Segment 4 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-segment-back",
+   "note": "Back to the first segment.",
+   "do": [],
+   "record": false,
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-popup-0",
+   "note": "Pop-up button 0 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-popup-1",
+   "note": "Pop-up button 1 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-popup-2",
+   "note": "Pop-up button 2 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-popup-3",
+   "note": "Pop-up button 3 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-popup-4",
+   "note": "Pop-up button 4 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-popup-5",
+   "note": "Pop-up button 5 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-popup-6",
+   "note": "Pop-up button 6 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "source-control-popup-7",
+   "note": "Pop-up button 7 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Source Control"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-tall",
+   "note": "Components (Ycode: Components) with the window resized to 710 x 900 where it can be, so the whole pane shows. AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Components",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Components"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Components"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Components",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Components"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Components"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-segment-0",
+   "note": "Segment 0 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-segment-1",
+   "note": "Segment 1 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-segment-2",
+   "note": "Segment 2 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-segment-3",
+   "note": "Segment 3 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-segment-4",
+   "note": "Segment 4 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-segment-back",
+   "note": "Back to the first segment.",
+   "do": [],
+   "record": false,
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-popup-0",
+   "note": "Pop-up button 0 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-popup-1",
+   "note": "Pop-up button 1 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-popup-2",
+   "note": "Pop-up button 2 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-popup-3",
+   "note": "Pop-up button 3 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-popup-4",
+   "note": "Pop-up button 4 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-popup-5",
+   "note": "Pop-up button 5 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-popup-6",
+   "note": "Pop-up button 6 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "components-popup-7",
+   "note": "Pop-up button 7 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Components"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-tall",
+   "note": "Locations (Ycode: Locations) with the window resized to 710 x 900 where it can be, so the whole pane shows. AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Locations",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Locations"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Locations"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Locations",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Locations"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "resize": [
+        710,
+        900
+       ],
+       "window": "Locations"
+      },
+      {
+       "wait": 0.6
+      },
+      {
+       "tree": "tall",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-segment-0",
+   "note": "Segment 0 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-segment-1",
+   "note": "Segment 1 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-segment-2",
+   "note": "Segment 2 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-segment-3",
+   "note": "Segment 3 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-segment-4",
+   "note": "Segment 4 of the pane's segmented control(s), if any: clicked (a tab switch). AX tree.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "seg",
+       "depth": 40,
+       "if_ok": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-segment-back",
+   "note": "Back to the first segment.",
+   "do": [],
+   "record": false,
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRadioButton",
+        "subrole": "AXSegment",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-popup-0",
+   "note": "Pop-up button 0 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 0,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-popup-1",
+   "note": "Pop-up button 1 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 1,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-popup-2",
+   "note": "Pop-up button 2 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 2,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-popup-3",
+   "note": "Pop-up button 3 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 3,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-popup-4",
+   "note": "Pop-up button 4 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 4,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-popup-5",
+   "note": "Pop-up button 5 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 5,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-popup-6",
+   "note": "Pop-up button 6 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 6,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "locations-popup-7",
+   "note": "Pop-up button 7 of the pane, if any: opened (snap 'menu', its items in -items.json), then Escape.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXPopUpButton",
+        "index": 7,
+        "visible": true
+       },
+       "window": "Locations"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "snap": "menu",
+       "mode": "app",
+       "if_ok": true
+      },
+      {
+       "submenus": "items",
+       "all_windows": true,
+       "if_ok": true
+      },
+      {
+       "key": "escape",
+       "if_ok": true
+      },
+      {
+       "wait": 0.4
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "settings-close",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ],
+ "project": {
+  "generator": "make-formats-project.py",
+  "path": "formats/Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

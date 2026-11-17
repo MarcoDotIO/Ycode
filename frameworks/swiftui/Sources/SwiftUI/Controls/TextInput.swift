@@ -445,6 +445,13 @@ final class TextFieldState: TextInputClient, GeometryObserving {
                 model.insert("\n")
             } else {
                 submit()
+                // P-214: on a desktop host Return in a one-line field also
+                // chooses the default button of its sheet or alert, as
+                // AppKit's fields do.
+                if node?.environment._desktopChrome == true,
+                   services?.shortcuts.hasEnabledShortcut(key: .return, modifiers: []) == true {
+                    return false
+                }
                 return true
             }
         case .tab:

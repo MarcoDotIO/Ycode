@@ -1,0 +1,174 @@
+#!/bin/bash
+# ycode-sim-pristine: the simulator host's pristine (warm-cache) devices.
+#
+# A new device's first boot runs the data migration and seeds the
+# LaunchServices store (specs/simulator/first-boot.md): minutes. A copy of a
+# device that has done that once skips both, and a copy keeps the guest path
+# it was first booted at, so it needs no store rebuild either
+# (specs/simulator/app-launch.md §3.3, lean-boot.md §5.2). This script makes
+# such a device once per device type and runtime, keeps it unchanged as a
+# template, and makes working copies of it.
+#
+# usage: ycode-sim-pristine make <device-type> [--runtime-root RR] [--force]
+#            first-boot $YCODE_DATA/devices/pristine/<device-type> to its home
+#            screen, let it settle, shut it down cleanly (no save), and record
+#            the timings in <template>.timing
+#        ycode-sim-pristine copy <device-type> <new device directory>
+#            a working copy of the template (cp -a --reflink=auto: shared
+#            blocks where the file system can, a plain copy on ext4)
+#        ycode-sim-pristine try <device-type> [--runtime-root RR]
+#            copy the template, boot the copy to its home screen, shut it down,
+#            delete it, and record the copy's timings in <template>.timing
+#        ycode-sim-pristine list
+#
+# Device types: `ycode-simd --list-device-types` (iphone-duo, ipad-a16,
+# apple-watch-series-12-46mm, vision-pro, …). The device is booted through the
+# host-side launcher (scripts/ycode-sim.sh, next to this script) in its warm
+# mode, so the launcher's home-screen watch times it; the save at the stop is
+# held back (YCODE_WARM_SAVE_SETTLE_S), so the guest shuts down cleanly and
+# the template carries no snapshot.
+#
+# Configuration (the environment):
+#   YCODE_DATA            the data volume's Ycode folder (devices/, runtimes/, locks/)   required
+#   YCODE_SIM_TREE        a built ycode/ tree (ycode-simd, SimShim/out, SimHostLibs/out …) required
+#   YCODE_SIM_RUNTIME     the default RuntimeRoot (else --runtime-root)
+#   YCODE_SIM_GUEST_TOOLS the guest tools folder (optional)
+#   YCODE_SIM_LOCKS       boot-slot locks (default $YCODE_DATA/locks)
+#   YCODE_PRISTINE_SETTLE_S  time at the home screen before the shutdown (default 90)
+#   YCODE_PRISTINE_MAX_S  give up when the device is not ready by then (default 1500)
+set -u
+say() { echo "ycode-sim-pristine: $*"; }
+die() { echo "ycode-sim-pristine: error: $*" >&2; exit 2; }
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+LAUNCHER=$HERE/ycode-sim.sh
+[ -x "$LAUNCHER" ] || LAUNCHER=$HERE/ycode-sim
+D=${YCODE_DATA:?YCODE_DATA is not set}
+P=$D/devices/pristine
+SETTLE=${YCODE_PRISTINE_SETTLE_S:-90}
+MAX=${YCODE_PRISTINE_MAX_S:-1500}
+
+cmd=${1:-}; shift || true
+case "$cmd" in
+list)
+    for t in "$P"/*/; do
+        [ -d "$t" ] || continue
+        t=${t%/}
+        echo "$(basename "$t")  $(du -sh "$t" 2>/dev/null | cut -f1)  $(cat "$t/ycode-runtime" 2>/dev/null | head -n 1)"
+        [ -f "$t.timing" ] && sed 's/^/    /' "$t.timing"
+    done
+    exit 0 ;;
+make|copy|try) ;;
+*) sed -n '2,24p' "$0"; exit 64 ;;
+esac
+
+type=${1:-}; shift || true
+[ -n "$type" ] || die "$cmd needs a device type"
+case "$type" in */*|.*|"") die "bad device type $type" ;; esac
+T=$P/$type
+
+copy_template() {
+    local dst=$1
+    [ -d "$T" ] || die "no template $T (ycode-sim-pristine make $type)"
+    [ ! -e "$dst" ] || die "$dst exists"
+    mkdir -p "$(dirname "$dst")"
+    cp -a --reflink=auto "$T" "$dst.partial" && mv "$dst.partial" "$dst"
+}
+
+if [ "$cmd" = copy ]; then
+    dst=${1:?copy needs a destination directory}
+    t0=$(date +%s%N)
+    copy_template "$dst" || die "the copy failed"
+    say "copied $T to $dst in $(awk -v a="$t0" -v b="$(date +%s%N)" 'BEGIN { printf "%.1f", (b - a) / 1e9 }') s"
+    exit 0
+fi
+
+rr=${YCODE_SIM_RUNTIME:-}; force=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --runtime-root) rr=${2:-}; shift ;;
+    --force) force=1 ;;
+    *) die "unknown option $1" ;;
+    esac
+    shift
+done
+{ [ -n "$rr" ] && [ -e "$rr/sbin/launchd_sim" ]; } || die "no RuntimeRoot (--runtime-root or YCODE_SIM_RUNTIME)"
+: "${YCODE_SIM_TREE:?YCODE_SIM_TREE is not set}"
+SIMD=$YCODE_SIM_TREE/.build/release/ycode-simd
+"$SIMD" --list-device-types | grep -qxF -- "$type" || die "ycode-simd does not know the device type $type"
+
+# boot DEV LABEL: boots DEV through the launcher until it is ready, then shuts
+# it down cleanly. Sets HOME_S (launcher's home screen, s after ycode-simd
+# started, or "-") and READY_S (ready, s after the start of the launcher).
+boot() {
+    local dev=$1 label=$2
+    local work=$D/pristine-runs/$label
+    mkdir -p "$work"
+    local log=$work/launcher.log sock=$work/display.sock
+    : > "$log"
+    local args=(--device "$dev" --runtime-root "$rr" --display-server "unix:$sock")
+    [ "$type" != iphone-duo ] && args+=(--device-type "$type")
+    local t0; t0=$(date +%s)
+    # Warm mode for the launcher's home watch; no save at the stop.
+    YCODE_SIM_DATA=$work YCODE_SIM_LOCKS=${YCODE_SIM_LOCKS:-$D/locks} YCODE_SIM_GPU_CACHE=${YCODE_SIM_GPU_CACHE:-$D/gpu-cache} \
+    YCODE_WARM_BOOT=1 YCODE_WARM_SAVE_SETTLE_S=1000000000 YCODE_SIM_TIMEOUT_MS=$(( (MAX + 600) * 1000 )) \
+        setsid "$LAUNCHER" "${args[@]}" > "$log" 2>&1 < /dev/null &
+    local pid=$!
+    say "$label: launcher pid $pid, log $log"
+    HOME_S=-; READY_S=-
+    local mig=$dev/data/Library/Preferences/com.apple.migration.plist ready_at=""
+    while kill -0 "$pid" 2>/dev/null; do
+        local now; now=$(date +%s)
+        if [ "$HOME_S" = - ]; then
+            local h; h=$(grep -o "home screen at [0-9.]* s after ycode-simd started" "$log" | head -n 1 | awk '{print $4}')
+            [ -n "$h" ] && { HOME_S=$h; say "$label: home screen at $h s after ycode-simd started"; }
+        fi
+        # Ready: the migration's marker and the LaunchServices store are written.
+        if [ -z "$ready_at" ] && [ -f "$mig" ] && ls "$dev"/data/var/db/lsd/com.apple.LaunchServices-*-v2.csstore >/dev/null 2>&1 \
+           && { [ "$HOME_S" != - ] || [ $(( now - t0 )) -ge 600 ]; }; then
+            ready_at=$now; READY_S=$(( now - t0 ))
+            say "$label: ready (migration marker and LaunchServices store) $READY_S s after the start; settling ${SETTLE} s"
+        fi
+        if { [ -n "$ready_at" ] && [ $(( now - ready_at )) -ge "$SETTLE" ]; } || [ $(( now - t0 )) -ge "$MAX" ]; then break; fi
+        sleep 2
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        say "$label: shutting down (SIGTERM to the launcher; the guest shuts down cleanly)"
+        kill -TERM "$pid"
+        for _ in $(seq 1 150); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+        kill -0 "$pid" 2>/dev/null && { say "$label: still running after 150 s; killing its process group"; kill -KILL -- "-$pid" 2>/dev/null; }
+    fi
+    wait "$pid" 2>/dev/null
+    grep -q "snapshot: exiting after the snapshot" "$log" && say "$label: warning: the launcher saved a snapshot"
+    [ "$READY_S" != - ]
+}
+
+stamp() { echo "$1 $(date -u +%FT%TZ): $2" >> "$T.timing"; }
+
+if [ "$cmd" = make ]; then
+    if [ -d "$T" ] && [ $force = 0 ]; then die "$T exists (--force makes it again)"; fi
+    if [ -d "$T" ]; then old="$T.old.$(date +%s)"; mv "$T" "$old" && say "moved the old template to $old"; fi
+    mkdir -p "$P" "$T"
+    if ! boot "$T" "make-$type"; then
+        # Not a template: keep it aside for a look, out of the service's way.
+        mv "$T" "$T.failed.$(date +%s)"
+        die "the first boot did not get ready in ${MAX} s (log: $D/pristine-runs/make-$type/launcher.log)"
+    fi
+    stamp first-boot "home screen ${HOME_S} s after ycode-simd started; ready ${READY_S} s after the launcher started (runtime $rr)"
+    # The template stays unchanged from here on: boot copies, never it.
+    say "template $T ($(du -sh "$T" | cut -f1))"
+    exit 0
+fi
+
+# try
+dst=$D/devices/pristine-try/$type-$(date +%s)
+c0=$(date +%s%N)
+copy_template "$dst" || die "the copy failed"
+cs=$(awk -v a="$c0" -v b="$(date +%s%N)" 'BEGIN { printf "%.1f", (b - a) / 1e9 }')
+say "copied the template in $cs s"
+ok=1
+boot "$dst" "try-$type" || ok=0
+stamp copy-boot "copy ${cs} s; home screen ${HOME_S} s after ycode-simd started; ready ${READY_S} s after the launcher started"
+rm -rf -- "${dst:?}"
+[ $ok = 1 ] || die "the copy did not get ready in ${MAX} s (log: $D/pristine-runs/try-$type/launcher.log)"
+exit 0

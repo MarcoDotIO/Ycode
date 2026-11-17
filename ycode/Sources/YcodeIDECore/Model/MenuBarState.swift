@@ -103,13 +103,13 @@ public enum MenuTitles {
         // reference-ui-6.md §8 item 6 (M6): the enabled title.
         case "File from Clipboard": return ctx.pasteboardHasText ? "New File from Clipboard" : g
         // Edit (§2.3)
-        case "Bookmark Line":
+        case "Add Line Bookmark":
             if let file, let n = ctx.caretLine { return "Bookmark \(quoted(file)) Line \(n)" }
-        case "Bookmark Line With Dialog":
+        case "Add Line Bookmark…":
             if let file, let n = ctx.caretLine { return "Bookmark \(quoted(file)) Line \(n)…" }
-        case "Bookmark File":
+        case "Add File Bookmark":
             if let file { return "Bookmark \(quoted(file))" }
-        case "Bookmark File With Dialog":
+        case "Add File Bookmark…":
             if let file { return "Bookmark \(quoted(file))…" }
         // View (§2.4)
         case "Show Editor Tab Bar": return ctx.editorTabBarShown ? "Hide Editor Tab Bar" : g
@@ -120,10 +120,12 @@ public enum MenuTitles {
         case "Show Debug Area": return ctx.debugAreaShown ? "Hide Debug Area" : g
         case "Show Window Tab Bar": return ctx.isWindowTabBarVisible ? "Hide Window Tab Bar" : g
         case "Enter Full Screen": return ctx.isFullScreen ? "Exit Full Screen" : g
-        // Editor (§2.7)
-        case "Show All Issues": return ctx.inlineIssuesShown ? "Hide All Issues" : g
+        // Editor (§2.7). P-007: "Show All Issues" keeps its title.
         case "Format Selection", "Format File":
-            if let file, file.hasSuffix(".swift") { return g + " with \u{2018}swift-format\u{2019}" }
+            if let tool = file.flatMap(formatter(forFile:)) { return g + " with \u{2018}\(tool)\u{2019}" }
+        case "Comment Selection":
+            // P-007: data files that have no comment syntax of their own.
+            if let file, file.lowercased().hasSuffix(".json") { return "Toggle Comments" }
         // Find (reference-ui-6.md §8 item 6, M6)
         case "Find in Selected Groups…": return ctx.projectSelection == .file ? "Find in Selected File…" : g
         // Navigate (§2.6)
@@ -136,14 +138,9 @@ public enum MenuTitles {
         case "Pause": return ctx.isPaused ? "Continue" : g
         case "Deactivate Breakpoints": return ctx.breakpointsActive ? g : "Activate Breakpoints"
         case "Enable Breakpoints at Current Line": return ctx.caretLineBreakpointsEnabled == true ? "Disable Breakpoints at Current Line" : g
-        // Integrate (§2.11; reference-ui-4.md §3)
-        case "Stage Selected Files":
-            if !ctx.hasNavigatorFileSelection, let file { return "Stage Changes in \(quoted(file))" }
-            return "Stage Changes in Selected Files"
-        case "Unstage Selected Files": return "Unstage Changes in Selected Files"
-        case "Mark as Resolved": return "Mark Selected Files as Resolved"
+        // Integrate (§2.11). P-016: Stage / Unstage Selected Files, Mark as
+        // Resolved and Add keep their generic titles.
         case "Continue", "Abort": return ctx.integrationVerb.isEmpty ? g : "\(g) \(ctx.integrationVerb)"
-        case "Add": return "Add Selected Files"
         case "Discard Changes in Selected Files…":
             if ctx.hasNavigatorFileSelection && ctx.selectedFileIsUntracked { return "Move Selected Files to Trash…" }
             if !ctx.hasNavigatorFileSelection, let file { return "Discard Changes in \(quoted(file))…" }
@@ -157,6 +154,19 @@ public enum MenuTitles {
     }
 }
 
+extension MenuTitles {
+    /// The formatter Editor ▸ Structure ▸ Format Selection / File names
+    /// for a file (P-007): swift-format for Swift, clang-format for the
+    /// languages and data files it formats; nil for the others.
+    public static func formatter(forFile name: String) -> String? {
+        switch (name as NSString).pathExtension.lowercased() {
+        case "swift": "swift-format"
+        case "json", "c", "h", "m", "mm", "cc", "cpp", "cxx", "hpp", "hh": "clang-format"
+        default: nil
+        }
+    }
+}
+
 /// Conditional items (§1.5).
 public enum MenuConditions {
     /// Whether an item with condition `c` is shown; items without a
@@ -166,7 +176,8 @@ public enum MenuConditions {
         guard let c else { return true }
         switch c {
         case .sourceEditorFocused: return ctx?.sourceEditorFocused ?? false
-        case .repositoryHasRemote: return ctx?.repositoryHasRemote ?? false
+        // P-004: listed with no workspace (Welcome), as in the reference.
+        case .repositoryHasRemote: return ctx?.repositoryHasRemote ?? true
         case .integrationInProgress: return ctx.map { !$0.integrationVerb.isEmpty || $0.hasConflicts } ?? false
         case .debugging: return ctx?.isDebugging ?? false
         case .separateCloseWindow: return ctx.map { CloseShortcutRule.showsSeparateCloseWindow(tabCount: $0.editorTabCount) } ?? true

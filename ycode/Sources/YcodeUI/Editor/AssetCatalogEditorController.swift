@@ -152,14 +152,17 @@ public final class AssetCatalogEditorController: NSViewController, NSTableViewDa
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: root.topAnchor), scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scroll.widthAnchor.constraint(equalToConstant: 200), scroll.bottomAnchor.constraint(equalTo: addButton.topAnchor, constant: -4),
-            addButton.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 4), addButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -4),
+            // P-156: the list's bar sits above the window's status bar (the
+            // editor area's safe area ends at the translucent debug bar).
+            addButton.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 4),
+            addButton.bottomAnchor.constraint(equalTo: root.safeAreaLayoutGuide.bottomAnchor, constant: -4),
             addButton.widthAnchor.constraint(equalToConstant: 34),
             remove.leadingAnchor.constraint(equalTo: addButton.trailingAnchor), remove.centerYAnchor.constraint(equalTo: addButton.centerYAnchor),
             filterField.leadingAnchor.constraint(equalTo: remove.trailingAnchor, constant: 4), filterField.centerYAnchor.constraint(equalTo: addButton.centerYAnchor),
             filterField.trailingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: -4),
-            sep.topAnchor.constraint(equalTo: root.topAnchor), sep.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            sep.topAnchor.constraint(equalTo: root.topAnchor), sep.bottomAnchor.constraint(equalTo: root.safeAreaLayoutGuide.bottomAnchor),
             sep.leadingAnchor.constraint(equalTo: scroll.trailingAnchor), sep.widthAnchor.constraint(equalToConstant: 1),
-            detail.topAnchor.constraint(equalTo: root.topAnchor), detail.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            detail.topAnchor.constraint(equalTo: root.topAnchor), detail.bottomAnchor.constraint(equalTo: root.safeAreaLayoutGuide.bottomAnchor),
             detail.leadingAnchor.constraint(equalTo: sep.trailingAnchor), detail.trailingAnchor.constraint(equalTo: root.trailingAnchor),
         ])
         view = root

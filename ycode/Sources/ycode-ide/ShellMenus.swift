@@ -7,17 +7,15 @@ import YcodeIDEShell
 /// core's `CommandTable` — Ycode, File, Edit, View, Find, Navigate, Editor,
 /// Product, Debug, Integrate, Window, Help — with the same items, order,
 /// separators, submenus, titles (dynamic ones through `MenuTitles`) and
-/// shortcuts. The commands the shell performs (`ShellCommand`) are
-/// enabled; the others are listed disabled, as the AppKit IDE lists the
-/// commands it does not perform yet. The toolkit keeps its own Undo, Redo
-/// and pasteboard items (they act on the focused text), Quit and the window
-/// list; alternates (shown while ⌥ is held) and conditional items are left
-/// out.
+/// shortcuts. What each item shows and does is `ShellMenuModel`'s (the
+/// menu-bar parity test reads the same model). The toolkit keeps its own
+/// Undo, Redo and pasteboard items (they act on the focused text), Quit and
+/// the window list; alternates (shown while ⌥ is held) are left out.
 struct ShellMenus: Commands {
     var app: ShellAppModel
 
     /// Edit-menu actions the toolkit's own items perform.
-    static let toolkitEditActions: Set<String> = ["undo:", "redo:", "cut:", "copy:", "paste:", "delete:", "selectAll:"]
+    static let toolkitEditActions = ShellMenuModel.toolkitEditActions
 
     static func items(_ menu: String) -> [MenuItemSpec] {
         CommandTable.menus.first { $0.0 == menu }?.1 ?? []
@@ -34,16 +32,17 @@ struct ShellMenus: Commands {
         CommandGroup(replacing: .printItem) {}
         CommandGroup(after: .textEditing) {
             MenuSpecItems(app: app, items: Self.items("Edit").filter {
-                if case .command(let c) = $0 { return !Self.toolkitEditActions.contains(c.action) }
+                if case .command(let c) = $0 { return !ShellMenuModel.toolkitEditActions.contains(c.action) }
                 return true
-            }, trimSeparators: true)
+            })
         }
         CommandGroup(replacing: .toolbar) {}
         CommandGroup(replacing: .sidebar) { MenuSpecItems(app: app, items: Self.items("View")) }
         CommandMenu("Find") { MenuSpecItems(app: app, items: Self.items("Find")) }
         CommandMenu("Navigate") { MenuSpecItems(app: app, items: Self.items("Navigate")) }
-        // The focused editor's own Editor menu (property list, asset catalog).
-        CommandMenu("Editor") { MenuSpecItems(app: app, items: EditorMenu.items(for: app.workspace?.editorKind ?? .source)) }
+        // The focused editor's own Editor menu (property list, asset catalog;
+        // with no editor, the first block, P-006).
+        CommandMenu("Editor") { MenuSpecItems(app: app, items: ShellMenuModel.items("Editor", app: app)) }
         CommandMenu("Product") { MenuSpecItems(app: app, items: Self.items("Product")) }
         CommandMenu("Debug") { MenuSpecItems(app: app, items: Self.items("Debug")) }
         CommandMenu("Integrate") { MenuSpecItems(app: app, items: Self.items("Integrate")) }
@@ -56,37 +55,14 @@ struct ShellMenus: Commands {
 struct MenuSpecItems: View {
     var app: ShellAppModel
     var items: [MenuItemSpec]
-    var trimSeparators = false
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         // Settings ▸ Shortcuts: a changed shortcut rebuilds the items.
         let _ = ShellPreferences.shared.revision
-        ForEach(Array(shown.enumerated()), id: \.offset) { pair in
+        ForEach(Array(ShellMenuModel.shown(items, app: app).enumerated()), id: \.offset) { pair in
             view(pair.element)
         }
-    }
-
-    /// The items shown: no alternates, no conditional items, no doubled,
-    /// leading or trailing separators.
-    var shown: [MenuItemSpec] {
-        var out: [MenuItemSpec] = []
-        for i in items {
-            switch i {
-            // Conditional items are left out, except the ones this shell
-            // performs (Jump to Line… is "when a source editor is open").
-            case .command(let c) where c.isAlternate
-                || (c.condition != nil && !ShellCommand.allCases.contains { $0.action == (c.action, c.tag) }): continue
-            // Resolve Conflicts…, Continue and Abort: only while an operation is stopped.
-            case .command(let c) where c.condition == .integrationInProgress
-                && !MenuConditions.isShown(c.condition, in: app.workspace?.menuContext): continue
-            case .separator:
-                if out.isEmpty || out.last == .separator { continue }
-                out.append(i)
-            default: out.append(i)
-            }
-        }
-        while out.last == .separator { out.removeLast() }
-        return out
     }
 
     func view(_ spec: MenuItemSpec) -> AnyView {
@@ -101,34 +77,47 @@ struct MenuSpecItems: View {
                     ForEach(w.schemes, id: \.self) { s in Button(s) { w.scheme = s } }
                     if !w.schemes.isEmpty { Divider() }
                 }
+                // File ▸ Open Recent: the recent workspaces, newest first
+                // (same-named ones with their folder), then Clear Menu.
+                if title == "Open Recent" {
+                    ForEach(Array(zip(app.recent, RecentProjects.menuTitles(app.recent)).enumerated()), id: \.offset) { pair in
+                        Button(pair.element.1) { app.open(path: pair.element.0.path) }
+                    }
+                    if !app.recent.isEmpty { Divider() }
+                }
                 if title == "Destination", let w = app.workspace {
                     ForEach(w.destinations, id: \.specifier) { d in Button(d.name) { w.destination = d } }
                     if !w.destinations.isEmpty { Divider() }
                 }
-                MenuSpecItems(app: app, items: sub)
-            })
+                MenuSpecItems(app: app, items: ShellMenuModel.submenuItems(title, sub, app: app))
+            }.disabled(sub.isEmpty))
         case .command(let c):
-            let shell = ShellCommand.allCases.first { $0.action == (c.action, c.tag) }
-            let title = shell.map { app.title($0) } ?? MenuTitles.title(for: c, in: app.workspace?.menuContext)
+            let title = ShellMenuModel.title(c, app: app)
             let shortcut = ShellShortcut(command: KeyBindings.effective(c))?.keyboardShortcut
-            // The structured editors' items (StructuredEditors.swift).
-            if shell == nil, let state = app.workspace?.editorActionState(c.action, tag: c.tag) {
-                if ["toggleRawKeysAndValues:", "setPlistValueType:"].contains(c.action) {
-                    return AnyView(Toggle(title, isOn: Binding(get: { state.checked },
-                                                               set: { _ in app.workspace?.performEditorAction(c.action, tag: c.tag) }))
-                        .disabled(!state.enabled))
-                }
-                return AnyView(Button(title) { app.workspace?.performEditorAction(c.action, tag: c.tag) }.disabled(!state.enabled))
-            }
-            // Debug Workflow's toggles carry a check mark.
-            if let shell, let on = app.isChecked(shell) {
-                return AnyView(Toggle(title, isOn: Binding(get: { on }, set: { _ in app.perform(shell) }))
+            let enabled = ShellMenuModel.isEnabled(c, app: app)
+            if let on = ShellMenuModel.checked(c, app: app) {
+                return AnyView(Toggle(title, isOn: Binding(get: { on }, set: { _ in perform(c) }))
                     .keyboardShortcut(shortcut)
-                    .disabled(!app.isEnabled(shell)))
+                    .disabled(!enabled))
             }
-            return AnyView(Button(title) { if let shell { app.perform(shell) } }
+            return AnyView(Button(title) { perform(c) }
                 .keyboardShortcut(shortcut)
-                .disabled(shell.map { !app.isEnabled($0) } ?? true))
+                .disabled(!enabled))
+        }
+    }
+
+    /// The view layer's own actions (`ShellAppModel.viewLayerActions`),
+    /// else the model's.
+    func perform(_ c: MenuCommand) {
+        switch c.action {
+        case "showSettings:": openSettings()
+        case "chooseTheme:":
+            ShellSettingsModel.shared.select(.appearance)
+            openSettings()
+        case "showBehaviorsSettings:":
+            ShellSettingsModel.shared.select(.behaviors)
+            openSettings()
+        default: ShellMenuModel.perform(c, app: app)
         }
     }
 }

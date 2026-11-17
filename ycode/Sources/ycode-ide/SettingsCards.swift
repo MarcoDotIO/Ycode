@@ -45,6 +45,9 @@ struct SettingsPalette {
     var switchOff: Color { color(SettingsPaletteHex.switchOff) }
     var switchOn: Color { color(SettingsPaletteHex.switchOn) }
     var disclosure: Color { color(SettingsPaletteHex.disclosure) }
+    /// A pressed drill-in row's tint over its card: black at 8 % in light,
+    /// white at 10 % in dark (the macOS IDE's `SettingsColors.pressedRow`).
+    var pressedRow: Color { dark ? Color.white.opacity(0.1) : Color.black.opacity(0.08) }
 
     /// An sRGB hex colour (the same in both appearances).
     static func hex(_ v: UInt32) -> Color {
@@ -456,28 +459,20 @@ struct DrillRow: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SettingsDrillPressStyle())
+        .accessibilityLabel(title)
         .shellTarget(target)
     }
 }
 
-/// A sub-page's way back ("‹ Editing"), above its cards.
-struct BackRow: View {
-    var title: String
-    var target: String
-    var action: () -> Void
+/// A drill-in row tints while it is pressed, then pushes its page (P-138,
+/// as the macOS IDE's `SettingsRowView`).
+struct SettingsDrillPressStyle: ButtonStyle {
+    @Environment(\.colorScheme) private var scheme
 
-    var body: some View {
-        Button(action: action) {
-            // The macOS IDE's words and colour: "‹ Editing" in the accent.
-            Text(verbatim: "\u{2039} " + title).font(SettingsFonts.label)
-                .foregroundStyle(SettingsPalette(.light).selection)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.leading, SettingsLayout.labelInset)
-        .padding(.bottom, 14)
-        .shellTarget(target)
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .overlay { if configuration.isPressed { Rectangle().fill(SettingsPalette(scheme).pressedRow) } }
     }
 }
 
@@ -532,7 +527,7 @@ struct SettingsNavigationRow: View {
             .background(p.card)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SettingsDrillPressStyle())
         .accessibilityLabel(title)
         .shellTarget(target)
     }

@@ -10,11 +10,14 @@ import YcodeIDECore
 public final class ActivityView: NSView {
     public var workspaceName = "" { didSet { changed() } }
     /// The activity line; empty while idle (no "Ready", reference-ui-5.md §4.3).
-    public var status = "" { didSet { changed(); needsLayout = true; if isBusy { spinner.setActivity(status) } } }
+    public var status = "" { didSet { changed(); needsLayout = true; if showsSpinner { spinner.setActivity(status) } } }
     public var errors = 0 { didSet { needsDisplay = true } }
     public var warnings = 0 { didSet { needsDisplay = true } }
     /// An action runs: the build ring replaces the mark.
     public var isBusy = false { didSet { if oldValue != isBusy { updateBusy() } } }
+    /// The debugger is paused: the title area is static, the mark in place
+    /// of the ring (`TitleAreaIcon`, B4-POLISH).
+    public var isPaused = false { didSet { if oldValue != isPaused { updateBusy() } } }
     /// The workspace is a package (the mark is the same for both, row 212).
     public var isPackage = false
     /// The widest the mark and the text may be (the toolbar sets it when
@@ -85,10 +88,11 @@ public final class ActivityView: NSView {
     }
 
     func updateBusy() {
-        spinner.isHidden = !isBusy
-        icon.isHidden = isBusy
+        let ring = TitleAreaIcon.shown(busy: isBusy, paused: isPaused) == .ring
+        spinner.isHidden = !ring
+        icon.isHidden = ring
         // Row 236: each build fills the ring from its 15° start to n/m.
-        if isBusy {
+        if ring {
             spinner.reset()
             spinner.setActivity(status)
         }
@@ -215,5 +219,50 @@ public final class ActivityView: NSView {
         // Flipped drawing is not used: y grows upward.
         if !status.isEmpty { line.draw(at: NSPoint(x: textStart, y: nameRect.minY - lineHeight)) }
         name.draw(in: NSRect(x: textStart, y: nameRect.minY, width: width, height: nameRect.height))
+    }
+}
+
+// MARK: Accessibility (P-204)
+
+/// The title area as accessibility clients read it, as the reference's: a
+/// group holding the progress indicator while an action runs, the title,
+/// and the status line ("Building • 39 / 58").
+extension ActivityView {
+    public override func isAccessibilityElement() -> Bool { true }
+    public override func accessibilityRole() -> NSAccessibility.Role? { .group }
+    public override func accessibilityLabel() -> String? { workspaceName }
+
+    public override func accessibilityChildren() -> [Any]? {
+        var out: [Any] = []
+        if showsSpinner {
+            let p = NSAccessibilityElement.element(withRole: .progressIndicator, frame: screenRect(spinner.frame), label: "Activity",
+                                                   parent: self) as? NSAccessibilityElement
+            if let p {
+                p.setAccessibilityValue(status)
+                p.setAccessibilityEnabled(true)
+                out.append(p)
+            }
+        }
+        let (nameRect, lineHeight) = nameLayout
+        if let t = NSAccessibilityElement.element(withRole: .staticText, frame: screenRect(nameRect), label: nil, parent: self) as? NSAccessibilityElement {
+            t.setAccessibilityValue(workspaceName)
+            t.setAccessibilityIdentifier("activity-title")
+            out.append(t)
+        }
+        if !status.isEmpty {
+            let r = NSRect(x: textStart, y: nameRect.minY - lineHeight, width: nameRect.width, height: lineHeight)
+            if let s = NSAccessibilityElement.element(withRole: .staticText, frame: screenRect(r), label: nil, parent: self) as? NSAccessibilityElement {
+                s.setAccessibilityValue(status)
+                s.setAccessibilityIdentifier("activity-status")
+                out.append(s)
+            }
+        }
+        return out
+    }
+
+    /// A rectangle of this view in screen coordinates (zero off-window).
+    private func screenRect(_ r: NSRect) -> NSRect {
+        guard window != nil else { return .zero }
+        return NSAccessibility.screenRect(fromView: self, rect: r)
     }
 }

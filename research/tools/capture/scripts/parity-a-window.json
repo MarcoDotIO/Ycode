@@ -1,0 +1,493 @@
+{
+ "name": "parity-a-window",
+ "title": "Part A 6: window behaviours: live resize narrower and wider (toolbar overflow), very narrow and very wide, cmd+0 / cmd+option+0, window tabs, a new window, Zoom.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "1400 × 880 at rest.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "drag-narrower",
+   "note": "Drag the window's right edge 600 pt to the left over 1.2 s (live layout, toolbar overflow).",
+   "do": [
+    {
+     "drag": {
+      "from": [
+       1399,
+       500
+      ],
+      "to": [
+       799,
+       500
+      ]
+     },
+     "duration": 1.2
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "narrow-tree",
+   "note": "At about 800 pt: AX tree (which toolbar items moved to the overflow).",
+   "do": [
+    {
+     "tree": "narrow",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "overflow-menu",
+   "note": "Click the toolbar overflow (») button if there is one: its menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton|AXMenuButton|AXPopUpButton",
+      "description~": "overflow|more|Show More"
+     }
+    },
+    {
+     "click": {
+      "role": "AXButton",
+      "subrole": "AXToolbarOverflowButton"
+     },
+     "fallback": true
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "overflow-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "resize-640",
+   "note": "Set the window to 640 × 880 (very narrow) through Accessibility.",
+   "do": [
+    {
+     "resize": [
+      640,
+      880
+     ]
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "resize-640-tree",
+   "note": "At 640 pt: AX tree.",
+   "do": [
+    {
+     "tree": "w640",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "drag-wider",
+   "note": "Drag the right edge from 640 to 1490 pt over 1.2 s (very wide on this display).",
+   "do": [
+    {
+     "drag": {
+      "from": [
+       639,
+       500
+      ],
+      "to": [
+       1489,
+       500
+      ]
+     },
+     "duration": 1.2
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "wide-tree",
+   "note": "Wide: AX tree.",
+   "do": [
+    {
+     "tree": "wide",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "resize-back",
+   "note": "Back to 1400 × 880.",
+   "do": [
+    {
+     "resize": [
+      1400,
+      880
+     ]
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "hide-navigator",
+   "note": "cmd+0: hide the navigator (animation).",
+   "do": [
+    {
+     "key": "cmd+0"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "show-navigator",
+   "note": "cmd+0: show it again.",
+   "do": [
+    {
+     "key": "cmd+0"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "hide-inspector",
+   "note": "cmd+option+0: hide the inspector (animation).",
+   "do": [
+    {
+     "key": "cmd+alt+0"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "show-inspector",
+   "note": "cmd+option+0: show it again.",
+   "do": [
+    {
+     "key": "cmd+alt+0"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "hide-both",
+   "note": "Both hidden (cmd+0 then cmd+option+0): editor only.",
+   "do": [
+    {
+     "key": "cmd+0"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "key": "cmd+alt+0"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "show-both",
+   "note": "Both shown again.",
+   "do": [
+    {
+     "key": "cmd+0"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "key": "cmd+alt+0"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "new-tab",
+   "note": "cmd+T: a new window tab (tab bar appears, animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+t"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "tab",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-hover",
+   "note": "Pointer onto the first tab of the tab bar (hover, close button), 1.6 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton",
+      "subrole": "AXTabButton",
+      "index": 0
+     }
+    },
+    {
+     "wait": 1.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "close-tab",
+   "note": "cmd+W closes the new tab (tab bar disappears).",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "new-window",
+   "note": "File ▸ New ▸ Window (cmd+shift+T): a second workspace window (where it appears, animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+t"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "new-window",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "close-new-window",
+   "note": "cmd+W closes that window.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "window-menu",
+   "note": "The Window menu now (open by click): list of windows.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Window",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "window-menu-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "zoom",
+   "note": "Window ▸ Zoom (fills the display; animation).",
+   "do": [
+    {
+     "menu": "Window > Zoom"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "zoom-back",
+   "note": "Window ▸ Zoom again (back).",
+   "do": [
+    {
+     "menu": "Window > Zoom"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  }
+ ],
+ "project": {
+  "generator": "make-test-project.py",
+  "path": "GlassScroll/GlassScroll.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

@@ -1,0 +1,286 @@
+{
+ "name": "parity-d-buildlog",
+ "title": "Part D 7: the failed build's log: filter, a step collapsed and expanded by coordinate, its transcript.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "break-file",
+   "note": "The file is replaced on disk with the broken version (a warning and an error).",
+   "do": [
+    {
+     "run": [
+      "cp",
+      ".parity/issues-broken.txt",
+      "Parity/Issues.swift"
+     ]
+    },
+    {
+     "wait": 3.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "build",
+   "note": "cmd+B; 30 s.",
+   "do": [
+    {
+     "key": "cmd+b"
+    },
+    {
+     "wait": 30.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "report-navigator",
+   "note": "cmd+9: the Report navigator.",
+   "do": [
+    {
+     "key": "cmd+9"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "reports",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "report-open",
+   "note": "Click the build row (the only one). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "Build",
+      "index": 0
+     }
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "log",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "log-all-messages",
+   "note": "Click 'All Messages' in the log's filter bar (window point 456, 98). AX tree.",
+   "do": [
+    {
+     "click": [
+      456,
+      98
+     ]
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "all-messages",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "log-step-disclosure",
+   "note": "Click the disclosure of the 'Compiling Issues.swift' step by coordinate (window point 321, 166): collapse.",
+   "do": [
+    {
+     "click": [
+      321,
+      166
+     ]
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "collapsed",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "log-step-disclosure-2",
+   "note": "Click it again: expand.",
+   "do": [
+    {
+     "click": [
+      321,
+      166
+     ]
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "log-transcript",
+   "note": "Click the step's transcript button at the right (window point 1095, 166): the build command transcript. AX tree.",
+   "do": [
+    {
+     "click": [
+      1095,
+      166
+     ]
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "transcript",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "log-transcript-close",
+   "note": "Click it again.",
+   "do": [
+    {
+     "click": [
+      1095,
+      166
+     ]
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "log-all-issues",
+   "note": "Click 'All Issues' (window point 535, 98).",
+   "do": [
+    {
+     "click": [
+      535,
+      98
+     ]
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "clean",
+   "note": "The clean file back.",
+   "do": [
+    {
+     "run": [
+      "cp",
+      ".parity/issues-clean.txt",
+      "Parity/Issues.swift"
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ],
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ },
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Issues|Issues.swift"
+   }
+  },
+  {
+   "wait": 2.5
+  }
+ ]
+}

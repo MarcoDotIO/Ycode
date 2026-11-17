@@ -32,7 +32,7 @@ extension WorkspaceWindowController {
              #selector(jumpToLine(_:)):
             return hasSourceFile
         case #selector(hideFindBar(_:)):
-            return editor.isShowingFindBar
+            return editor.canUseFindBar   // enabled with a file open, as the reference (P-003)
         case #selector(duplicateEditorTab(_:)), #selector(openWithExternalEditor(_:)):
             return editor.fileURL != nil
         case #selector(archiveProduct(_:)):

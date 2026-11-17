@@ -104,6 +104,16 @@ public final class SettingsController: NSViewController {
 /// the left (179.5 wide, 32-point rows, accent-tinted symbols), the
 /// selected pane's grouped cards at the right under the back/forward
 /// capsule and its title.
+/// The Settings window's resizable range (P-139).
+public enum SettingsWindowSize {
+    /// The tallest the window grows (any taller than a display is clamped
+    /// by the system).
+    public static let maximumHeight: CGFloat = 4000
+    /// The widest it grows (P-139, B07: the reference widens; any wider
+    /// than a display is clamped by the system).
+    public static let maximumWidth: CGFloat = 4000
+}
+
 @MainActor
 public final class SettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     public static let shared = SettingsWindowController()
@@ -116,7 +126,10 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
     let capsule = SettingsNavigationCapsule()
     var backButton: NSButton { capsule.back }
     var forwardButton: NSButton { capsule.forward }
-    final class History { var back: [Int] = []; var forward: [Int] = [] }
+    /// A step of the back/forward history: a page and its sub-page (P-138:
+    /// Editing ▸ Display is a step of its own).
+    struct Entry: Equatable { var tab: Int; var subPage: String? }
+    final class History { var back: [Entry] = []; var forward: [Entry] = [] }
     let history = History()
 
     /// The sidebar's panes in order: the reference's twelve (R4.2: twelve
@@ -232,9 +245,13 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
         window.toolbar = NSToolbar(identifier: "YcodeSettings")
         window.toolbarStyle = .unified
         window.setContentSize(size)
-        // Fixed at 710 × 452 (the size on other panes is open, R3.4).
+        // P-139: resizable from 710 × 452, in height and in width (the
+        // reference was taken to 710 × 900 and to 900 × 760), the panes
+        // laid out to the width; its green button a zoom button, not full
+        // screen.
         window.contentMinSize = size
-        window.contentMaxSize = size
+        window.contentMaxSize = NSSize(width: SettingsWindowSize.maximumWidth, height: SettingsWindowSize.maximumHeight)
+        window.collectionBehavior.insert(.fullScreenNone)
         window.isMovableByWindowBackground = true
         super.init(window: window)
         sidebar.dataSource = self
@@ -253,8 +270,14 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
         componentsPane.onOpenCompletion = { [weak self] in
             self?.show(page: "Editing")
             self?.pane(TextEditingSettingsPane.self)?.page = .completion
+            self?.updateTitle()
         }
-        simulatorsPane.onBack = { [weak self] in self?.show(page: "Components") }
+        // Every pane's drill-in rows push a step of the history (P-138); the
+        // toolbar's back chevron is the way back (no "‹ Editing" link).
+        for p in panes.compactMap({ $0 as? SettingsPane }) {
+            p.onWillPush = { [weak self] in self?.recordStep() }
+            p.onDidPush = { [weak self] in self?.updateTitle() }
+        }
         locations.onChange = { p in
             // Open workspaces switch engines for their next build.
             for doc in NSDocumentController.shared.documents {
@@ -278,13 +301,34 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
         return paneTitles.firstIndex(of: parent) ?? 0
     }
 
-    /// Selects a page (recorded for back/forward).
+    /// The shown pane's controller.
+    var shownPane: SettingsPane? { tabs.tabViewItems[tabs.selectedTabViewItemIndex].viewController as? SettingsPane }
+
+    /// Where the window is: the page and its sub-page.
+    var currentStep: Entry { Entry(tab: tabs.selectedTabViewItemIndex, subPage: shownPane?.subPage) }
+
+    /// Records the current step before the window moves on.
+    func recordStep() {
+        history.back.append(currentStep)
+        history.forward = []
+    }
+
+    /// Selects a page (recorded for back/forward), on its own page: a pane
+    /// chosen in the sidebar opens at its top, not at a sub-page.
     public func select(_ index: Int, recording: Bool = true) {
         guard Self.tabTitles.indices.contains(index), index != tabs.selectedTabViewItemIndex else { return }
-        if recording { history.back.append(tabs.selectedTabViewItemIndex); history.forward = [] }
+        if recording { recordStep() }
         tabs.selectedTabViewItemIndex = index
+        if recording { shownPane?.showSubPage(nil) }
         let row = Self.sidebarRow(forPage: index)
         if sidebar.selectedRow != row { sidebar.selectRowIndexes([row], byExtendingSelection: false) }
+        updateTitle()
+    }
+
+    /// Goes to a recorded step (back and forward record nothing).
+    func go(to e: Entry) {
+        if e.tab != tabs.selectedTabViewItemIndex { select(e.tab, recording: false) }
+        if shownPane?.subPage != e.subPage { shownPane?.showSubPage(e.subPage) }
         updateTitle()
     }
 
@@ -294,20 +338,26 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
     }
 
     @objc public func goBack() {
-        guard let i = history.back.popLast() else { return }
-        history.forward.append(tabs.selectedTabViewItemIndex)
-        select(i, recording: false)
+        guard let e = history.back.popLast() else { return }
+        history.forward.append(currentStep)
+        go(to: e)
     }
 
     @objc public func goForward() {
-        guard let i = history.forward.popLast() else { return }
-        history.back.append(tabs.selectedTabViewItemIndex)
-        select(i, recording: false)
+        guard let e = history.forward.popLast() else { return }
+        history.back.append(currentStep)
+        go(to: e)
+    }
+
+    /// The title shown: a sub-page's own (the reference retitles the window
+    /// for Editing ▸ Display, P-138), else the pane's; a page under a pane
+    /// (Simulators) is titled with the pane.
+    public var shownTitle: String {
+        shownPane?.subPage ?? Self.paneTitles[Self.sidebarRow(forPage: tabs.selectedTabViewItemIndex)]
     }
 
     func updateTitle() {
-        // A page under a pane is titled with the pane (as Editing's pages).
-        titleLabel.stringValue = Self.paneTitles[Self.sidebarRow(forPage: tabs.selectedTabViewItemIndex)]
+        titleLabel.stringValue = shownTitle
         window?.title = titleLabel.stringValue
         backButton.isEnabled = !history.back.isEmpty
         forwardButton.isEnabled = !history.forward.isEmpty

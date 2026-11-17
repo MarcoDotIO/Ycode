@@ -1,0 +1,1449 @@
+{
+ "name": "parity-c-editors",
+ "title": "Part C 2: editors for other file types (asset catalog, property list, entitlements, String Catalog, test plan, Interface Builder, Core Data model, Markdown, JSON, image) and the SwiftUI preview canvas.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "open-assets",
+   "note": "Click Assets in the navigator: the asset catalog editor (asset list, empty detail). AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Assets|Assets.xcassets"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "assets",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Assets|Assets.xcassets"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "assets",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "asset-swatch",
+   "note": "Click the Swatch colour set in the asset list: its detail (Any/Dark swatches).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Swatch",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "asset-attributes",
+   "note": "View ▸ Inspectors ▸ Attributes (option+cmd+5): the colour set's Attributes inspector. AX tree.",
+   "do": [
+    {
+     "key": "cmd+alt+5"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "attributes",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "asset-plus-menu",
+   "note": "Click the asset list's + button: its menu (animation). Menu items in -items.json.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuButton",
+      "description": "Add an image or other asset|Add",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "asset-plus-walk",
+   "note": "Every sub-menu of that menu hovered: a still of each.",
+   "do": [
+    {
+     "submenus": "sub",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "asset-plus-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "asset-add-image",
+   "note": "Editor ▸ Add New Asset ▸ Image Set: a new image set (name field editing). AX tree.",
+   "do": [
+    {
+     "menu": "Editor > Add New Asset > Image Set"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "image-set",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "asset-add-image-return",
+   "note": "Return (accept the name).",
+   "do": [
+    {
+     "key": "return"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "asset-add-color",
+   "note": "Editor ▸ Add New Asset ▸ Color Set: a new colour set, with its Attributes inspector. AX tree.",
+   "do": [
+    {
+     "menu": "Editor > Add New Asset > Color Set"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "key": "return"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "color-set",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "asset-tab-order",
+   "note": "Tab through the asset catalog editor (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "open-plist",
+   "note": "Click Defaults.plist: the property list editor. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Defaults|Defaults.plist"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "plist",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Defaults|Defaults.plist"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "plist",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "plist-select",
+   "note": "Click the Greeting row.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Greeting",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "plist-add",
+   "note": "Editor ▸ Add Item: a new row with its key field editing. AX tree.",
+   "do": [
+    {
+     "menu": "Editor > Add Item"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "added",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "plist-add-escape",
+   "note": "Escape (end editing).",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "plist-type-popup",
+   "note": "Click the first String type pop-up (the Greeting row's Type): the value type menu (items in -items.json).",
+   "do": [
+    {
+     "click": {
+      "role": "AXPopUpButton",
+      "value": "String",
+      "index": 0,
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "submenus": "items",
+     "all_windows": true
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "plist-type-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "plist-disclose",
+   "note": "Collapse then expand the Window dictionary row (disclosure animation).",
+   "do": [
+    {
+     "set": {
+      "role": "AXRow",
+      "text": "Window"
+     },
+     "attr": "AXDisclosing",
+     "value": false
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "set": {
+      "role": "AXRow",
+      "text": "Window"
+     },
+     "attr": "AXDisclosing",
+     "value": true
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "plist-context",
+   "note": "Right-click the Greeting row: its context menu (items in -items.json).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Greeting",
+      "visible": true
+     },
+     "button": "right"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "submenus": "items",
+     "all_windows": true
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "plist-context-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "open-entitlements",
+   "note": "Click Parity.entitlements: the entitlements (property list) editor. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Parity.entitlements"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "entitlements",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Parity|Parity.entitlements",
+        "index": 2
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "entitlements",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "open-strings",
+   "note": "Click Localizable.xcstrings: the String Catalog editor (languages, keys, states). AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Localizable|Localizable.xcstrings"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "strings",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Localizable|Localizable.xcstrings"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "strings",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "strings-row",
+   "note": "Click the 'Hello, Parity!' row.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "Hello, Parity",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "strings-german",
+   "note": "Click German in the language list (if shown).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "German",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "german",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "open-testplan",
+   "note": "Click Parity.xctestplan: the test plan editor. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Parity.xctestplan"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "testplan",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Parity|Parity.xctestplan",
+        "index": 3
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "testplan",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "testplan-configurations",
+   "note": "Click the Configurations tab (if any). AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Configurations",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "configurations",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "open-storyboard",
+   "note": "Click Main.storyboard: Interface Builder (document outline, canvas, inspector). AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Main|Main.storyboard"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "storyboard",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Main|Main.storyboard"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "storyboard",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "ib-zoom-fit",
+   "note": "Editor ▸ Zoom ▸ Zoom to Fit.",
+   "do": [
+    {
+     "menu": "Editor > Zoom > Zoom to Fit"
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "ib-library",
+   "note": "View ▸ Show Library (shift+cmd+L): the object library (animation), then type 'button'. AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+l"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "text": "button"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "library",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "ib-drag-button",
+   "note": "Drag the library's Push Button onto the view controller's view (window point 700, 600 after Zoom to Fit).",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "label~": "Push Button",
+       "scope": "app",
+       "visible": true
+      },
+      "to": [
+       700,
+       600
+      ]
+     },
+     "duration": 1.2
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.2
+   },
+   "still": "both"
+  },
+  {
+   "id": "ib-attributes",
+   "note": "View ▸ Inspectors ▸ Attributes (option+cmd+5): the selected object's Attributes inspector. AX tree.",
+   "do": [
+    {
+     "key": "cmd+alt+5"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "attributes",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "ib-outline-hide",
+   "note": "Hide the document outline (its button at the canvas's bottom left).",
+   "do": [
+    {
+     "click": {
+      "description": "Hide Document Outline",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "ib-outline-show",
+   "note": "Show it again.",
+   "do": [
+    {
+     "click": {
+      "description": "Show Document Outline",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "ib-zoom-50",
+   "note": "Editor ▸ Zoom ▸ Zoom to 50%.",
+   "do": [
+    {
+     "menu": "Editor > Zoom > Zoom to 50%"
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "ib-zoom-100",
+   "note": "Editor ▸ Zoom ▸ Zoom to 100%.",
+   "do": [
+    {
+     "menu": "Editor > Zoom > Zoom to 100%"
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "ib-menubar",
+   "note": "The menu bar with Interface Builder focused.",
+   "do": [
+    {
+     "menubar": "ib"
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "ib-undo",
+   "note": "cmd+Z (undo the dropped button).",
+   "do": [
+    {
+     "key": "cmd+z"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "open-datamodel",
+   "note": "Click Model.xcdatamodeld: the Core Data model editor. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Model|Model.xcdatamodeld"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "datamodel",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Model|Model.xcdatamodeld"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "datamodel",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "datamodel-shelf",
+   "note": "Click the Shelf entity.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Shelf",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "shelf",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "open-markdown",
+   "note": "Click NOTES.md: the Markdown editor. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "NOTES|NOTES.md"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "markdown",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "NOTES|NOTES.md"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "markdown",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "open-json",
+   "note": "Click palette.json: the JSON editor. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "palette|palette.json"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "json",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "palette|palette.json"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "json",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "open-image",
+   "note": "Click Stripes.png: the image viewer. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Stripes.png"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "image",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Stripes|Stripes.png"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "image",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "open-swiftui",
+   "note": "Click ContentView.swift: the canvas (both apps have Editor ▸ Canvas checked at the start, recorded in the menu bar dump; nothing to turn on). AX tree and menu bar.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "ContentView|ContentView.swift"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "swiftui",
+       "depth": 40
+      },
+      {
+       "menubar": "canvas"
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "ContentView|ContentView.swift"
+       }
+      },
+      {
+       "wait": 3.0
+      },
+      {
+       "tree": "swiftui",
+       "depth": 40
+      },
+      {
+       "menubar": "canvas"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "canvas-resume",
+   "note": "Click the canvas's Refresh Canvas / Resume button (the canvas was paused), then wait 10 s.",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton",
+      "description": "Refresh Canvas|Resume",
+      "visible": true
+     }
+    },
+    {
+     "key": "cmd+alt+p",
+     "fallback": true
+    },
+    {
+     "wait": 10.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "canvas-25s",
+   "note": "25 s after the resume.",
+   "do": [
+    {
+     "wait": 13.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "canvas-60s",
+   "note": "60 s after the resume. AX tree.",
+   "do": [
+    {
+     "wait": 33.0
+    },
+    {
+     "tree": "canvas",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "canvas-selectable",
+   "note": "The canvas's Selectable mode button (if found).",
+   "do": [
+    {
+     "click": {
+      "description~": "Selectable",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "canvas-live",
+   "note": "The canvas's Live mode button (if found).",
+   "do": [
+    {
+     "click": {
+      "description~": "Live",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 4.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "canvas-device",
+   "note": "The canvas's device / preview settings pop-up (if found). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXPopUpButton|AXMenuButton",
+      "description~": "Device",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "device",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "canvas-device-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "canvas-click-text",
+   "note": "Click the Increment button inside the preview (canvas centre-ish, window point taken from the 60 s still is not known in advance: the text 'Increment' in the canvas, if exposed).",
+   "do": [
+    {
+     "click": {
+      "label": "Increment",
+      "scope": "app",
+      "visible": true,
+      "index": 1
+     }
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "canvas-menubar",
+   "note": "The menu bar with the SwiftUI file and canvas.",
+   "do": [
+    {
+     "menubar": "canvas-end"
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "project": {
+  "generator": "make-formats-project.py",
+  "path": "formats/Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

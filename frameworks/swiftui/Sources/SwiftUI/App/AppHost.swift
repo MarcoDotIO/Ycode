@@ -129,7 +129,9 @@ struct WindowRootView: View, PrimitiveView {
         var base: LayoutNode?
         var top: [LayoutNode] = [], bottom: [LayoutNode] = []
         var layers: [LayoutNode] = []
+        var presenting = false
         for (key, c) in zip(node.childKeys, node.children) {
+            if key == AnyHashable(2) { presenting = true }
             switch key {
             case AnyHashable(0):
                 let content = c.lower()
@@ -145,6 +147,9 @@ struct WindowRootView: View, PrimitiveView {
         if !top.isEmpty || !bottom.isEmpty {
             root = .vstack(spacing: 0, top + [root.frame(maxWidth: .infinity, maxHeight: .infinity)] + bottom)
         }
+        // P-215: presentations cover the whole window, also where the
+        // content is smaller than it (a fixed-size window grown for a sheet).
+        if presenting { root = root.frame(maxWidth: .infinity, maxHeight: .infinity) }
         for l in layers { root = root.overlay(l, alignment: .center) }
         return [root]
     }
@@ -216,6 +221,9 @@ package final class WindowHost {
     /// resizes from its edges, its active state, the on-demand menu bar's
     /// reveal timer and a pending Alt tap.
     package internal(set) var isResizable = true
+    /// P-139, L-072: the Settings window closes on ⌘W (Ctrl+W) and Escape
+    /// when nothing in it takes the key; set by the host.
+    var closeByKey: (() -> Void)?
     package internal(set) var activeState = ControlActiveState.key
     /// A driver's fixed active state (screenshots of an inactive window
     /// while it has the focus); nil follows the window system.
@@ -255,6 +263,11 @@ package final class WindowHost {
         self.presenter = presenter
         services.presentations.onChange = { [weak self] in self?.refreshRoot() }
         services.requestDisplay = { [weak self] in self?.needsDisplay = true }
+        // P-215: a window grows to show a sheet larger than it.
+        let window = platform
+        services.windowSize = { [weak window] in window?.size ?? .zero }
+        services.resizeWindow = { [weak window] s in window?.setSize(s) }
+        services.largestWindowSize = { [weak window] in window?.usableDisplaySize }
         services.focus.onTextClientChanged = { [weak self] client in
             guard let self else { return }
             if let client {
@@ -480,12 +493,32 @@ package final class WindowHost {
                 return
             }
         }
+        // P-212 (L-081): ⌃F2 moves the keyboard into the menu bar, as the
+        // macOS IDE's does (⌃ is Ctrl on Linux).
+        if k.key == .function(2), k.modifiers.contains(.control), !k.modifiers.contains(.command), !k.modifiers.contains(.shift),
+           !k.modifiers.contains(.option), let bar = services.menuBar {
+            if services.windowChrome.menuBarOnDemand { services.windowChrome.menuBarRevealed = true }
+            bar.openFirst()
+            return
+        }
         if services.shortcuts.perform(key: k.key, modifiers: k.modifiers) { return }
+        if let close = closeByKey, services.presentations.isEmpty, Self.isCloseKey(k) {
+            close()
+            return
+        }
         if k.key == .tab {
             services.focus.focusNext(in: graph.root, reverse: k.modifiers.contains(.shift))
         } else if k.key == .escape, services.focus.focusedNode != nil {
             services.focus.focus(nil)
         }
+    }
+
+    /// Escape alone, or ⌘W (Ctrl+W or Super+W, no other modifier).
+    static func isCloseKey(_ k: KeyEvent) -> Bool {
+        let m = k.modifiers
+        if k.key == .escape { return m.isEmpty }
+        guard k.key == .character("w"), !m.contains(.shift), !m.contains(.option) else { return false }
+        return m.contains(.control) != m.contains(.command)
     }
 
     func handleText(_ t: TextInputEvent) {
@@ -831,7 +864,14 @@ package final class AppHost: RunLoopClient {
             size = idealSize(of: scene.content(), environment: env, minimum: CGSize(width: 360, height: 200))
         }
         var config = WindowConfiguration(title: isSettings && scene.title.isEmpty ? "Settings" : scene.title, size: size,
-                                         resizable: isSettings ? false : scene.resizable)
+                                         resizable: scene.resizable)
+        if isSettings {
+            // P-139: the Settings window resizes from its content's size
+            // (macOS: from 710 × 452), in height and in width (B4-POLISH:
+            // the reference widens to 900 and more).
+            config.minimumSize = size
+            config.maximumSize = CGSize(width: CGFloat.infinity, height: .infinity)
+        }
         // B5-OPENVIEWS: hidden title bars and plain windows draw their own
         // chrome (no window-system title bar or frame).
         let ownChrome = scene.windowStyle == .hiddenTitleBar || scene.windowStyle == .plain
@@ -859,6 +899,13 @@ package final class AppHost: RunLoopClient {
         w.services.clipboard = backend.clipboard
         w.services.popups = WindowPopupPresenter(host: self, window: w)
         w.isResizable = config.resizable
+        if isSettings {
+            // L-072: ⌘W and Escape close it, as the window's close button does.
+            w.closeByKey = { [weak self, weak w] in
+                guard let self, let w else { return }
+                self.handle(.window(w.platform.id, .closeRequested))
+            }
+        }
         configureDecorations(w, scene: scene, onDemandMenuBar: chrome.menuBarOnDemand)
         windows.append(w)
         return w

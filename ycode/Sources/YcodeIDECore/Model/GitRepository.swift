@@ -55,8 +55,13 @@ public struct GitRepository: Sendable {
     /// conflict). Throws only when git cannot start.
     static func runStatus(_ git: String, _ args: [String]) throws -> Subprocess.Output {
         // Waits for git: debug builds check this is not the main thread.
-        try Subprocess.run(git, args, environment: environment)
+        // In a test process a git that hangs is stopped after
+        // `testTimeout`, so a test waiting on it fails instead of hanging.
+        try Subprocess.run(git, args, environment: environment, timeout: IDEProcess.isTestProcess ? testTimeout : nil)
     }
+
+    /// How long a test process lets one git command run.
+    static let testTimeout: TimeInterval = 120
 
     /// The environment every git command runs with: this process's, minus
     /// anything that points git at another repository, plus settings that

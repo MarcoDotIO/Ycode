@@ -10,7 +10,7 @@ import Testing
 /// behaviour and the motion. With `YCODE_MERGE_SHOTS=<folder>` the tests
 /// also write light and dark snapshots of each state there.
 @MainActor
-@Suite(.serialized) struct MergeSheetUITests {
+@Suite(.serialized, .appearanceReader) struct MergeSheetUITests {
     /// A package repository where `feature` and `main` both change two
     /// lines of Greeting.swift and `feature` alone changes a third.
     struct Repo {

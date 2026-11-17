@@ -1,0 +1,1084 @@
+{
+ "name": "parity-b-build",
+ "title": "Part B 4: build with a warning and an error (activity area, Issue navigator, inline annotations, fix-its), fix and build again, the Report navigator's build log, a breakpoint, run, step, data tip, Debug and Breakpoint navigators, the edit popover, debug area and console, continue, stop.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "Issues.swift open (clean). AX tree.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "break-file",
+   "note": "The file is replaced on disk with a version that has a warning (var never mutated) and an error with fix-its (call can throw, not marked with try): the editor reloads.",
+   "do": [
+    {
+     "run": [
+      "cp",
+      ".parity/issues-broken.txt",
+      "Parity/Issues.swift"
+     ]
+    },
+    {
+     "wait": 3.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "build",
+   "note": "Product ▸ Build (cmd+B): progress in the activity area (snaps at +0.8, +2.3, +5 s), 25 s.",
+   "do": [
+    {
+     "key": "cmd+b"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "wait": 2.7
+    },
+    {
+     "wait": 20.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "after-build",
+   "note": "After the build: inline issue annotations, the toolbar's issue counts. AX tree.",
+   "do": [
+    {
+     "tree": "after-build",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "issue-navigator",
+   "note": "cmd+5: the Issue navigator (the warning and the error). AX tree.",
+   "do": [
+    {
+     "key": "cmd+5"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "issues",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "issue-row",
+   "note": "Click the error row: the editor jumps to it.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "throw",
+      "index": 0
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "issue-hover",
+   "note": "Pointer onto the error's annotation at the end of its line, held 2 s.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "risky()",
+      "occurrence": 2,
+      "offset": 6,
+      "dx": 380
+     },
+     "hover": true
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "fixit-click",
+   "note": "Click the annotation (fix-it list, animation). AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "risky()",
+      "occurrence": 2,
+      "offset": 6,
+      "dx": 380
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "fixit",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "fixit-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "code-actions-error",
+   "note": "Caret in the failing call, Editor ▸ Show Code Actions (cmd+shift+A): fix-its there? AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "risky()",
+      "occurrence": 2,
+      "offset": 2
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "cmd+shift+a"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "code-actions",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "code-actions-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "fix-all",
+   "note": "Editor ▸ Fix All Issues (control+option+cmd+F).",
+   "do": [
+    {
+     "key": "ctrl+alt+cmd+f"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "fix-file",
+   "note": "The clean file is written back on disk (the editor reloads).",
+   "do": [
+    {
+     "key": "cmd+s"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "run": [
+      "cp",
+      ".parity/issues-clean.txt",
+      "Parity/Issues.swift"
+     ]
+    },
+    {
+     "wait": 3.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "rebuild",
+   "note": "cmd+B again: 20 s.",
+   "do": [
+    {
+     "key": "cmd+b"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "wait": 19.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "after-rebuild",
+   "note": "After the second build: no issues. AX tree.",
+   "do": [
+    {
+     "key": "cmd+5"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "after-rebuild",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "report-navigator",
+   "note": "cmd+9: the Report navigator (both builds listed). AX tree.",
+   "do": [
+    {
+     "key": "cmd+9"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "reports",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "report-open",
+   "note": "Click the older build (the failed one): its log in the editor. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "Build",
+      "index": 1
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "log",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "log-expand",
+   "note": "Expand the first step that has details (disclosure).",
+   "do": [
+    {
+     "click": {
+      "role": "AXDisclosureTriangle|AXButton",
+      "description~": "disclos|expand|Show details|transcript",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "log-expanded",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "log-filter",
+   "note": "The log's filter: type 'Issues'.",
+   "do": [
+    {
+     "click": {
+      "subrole": "AXSearchField",
+      "visible": true,
+      "index": 1
+     }
+    },
+    {
+     "text": "Issues"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "log-all-messages",
+   "note": "Back to the project navigator (cmd+1), open Counter.swift.",
+   "do": [
+    {
+     "key": "cmd+1"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Counter|Counter.swift"
+     }
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "breakpoint-add",
+   "note": "Caret on 'let message' (line 12), Debug ▸ Breakpoints ▸ Create Breakpoint at Current Line (cmd+\\): the breakpoint arrow in the gutter.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "let message",
+      "occurrence": 1,
+      "offset": 4
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "cmd+\\"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "breakpoint-hover",
+   "note": "Pointer onto the breakpoint arrow, held 2 s.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "let message",
+      "occurrence": 1,
+      "offset": 0,
+      "dx": -50
+     },
+     "hover": true
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "run-to-breakpoint",
+   "note": "Product ▸ Run (cmd+R): build, launch, stop at the breakpoint (debug area, Debug navigator). Snaps at +3, +8, +15 s; 30 s in all.",
+   "do": [
+    {
+     "key": "cmd+r"
+    },
+    {
+     "wait": 3.0
+    },
+    {
+     "wait": 5.0
+    },
+    {
+     "wait": 7.0
+    },
+    {
+     "wait": 15.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "paused",
+   "note": "Paused at the breakpoint: the green line, variables view, console, Debug navigator. AX tree.",
+   "do": [
+    {
+     "tree": "paused",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "step-over",
+   "note": "Debug ▸ Step Over (F6): the line moves to the print; variables update.",
+   "do": [
+    {
+     "key": "f6"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "step-over-2",
+   "note": "F6 again: the console prints the greeting.",
+   "do": [
+    {
+     "key": "f6"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "stepped",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "variables-hover",
+   "note": "Pointer onto 'message' in the editor, held 2.5 s (data tip). AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "message =",
+      "occurrence": 1,
+      "offset": 2
+     },
+     "hover": true
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "datatip",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "debug-navigator",
+   "note": "cmd+7: the Debug navigator (gauges, threads, frames). AX tree.",
+   "do": [
+    {
+     "key": "cmd+7"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "debug-nav",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "cpu-gauge",
+   "note": "Click the CPU gauge: its report in the editor. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow|AXCell|AXGroup|AXButton",
+      "text~": "CPU",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "cpu",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "back-to-source",
+   "note": "Back to Counter.swift (Navigate ▸ Jump to Program Counter, control+cmd+P, or the frame row).",
+   "do": [
+    {
+     "key": "ctrl+cmd+p"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "breakpoint-navigator",
+   "note": "cmd+8: the Breakpoint navigator. AX tree.",
+   "do": [
+    {
+     "key": "cmd+8"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "bp-nav",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "breakpoint-context",
+   "note": "Right-click the breakpoint row: its context menu. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "greeting|Counter.swift|line 12|Line 12",
+      "index": 0
+     },
+     "button": "right"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "bp-context",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "breakpoint-edit",
+   "note": "Choose Edit Breakpoint…: the edit popover (animation). AX tree.",
+   "do": [
+    {
+     "menuclick": "Edit Breakpoint…"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "bp-edit",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "breakpoint-edit-tabs",
+   "note": "Tab through the popover (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "breakpoint-edit-close",
+   "note": "Escape (or Done).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Done",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "breakpoints-deactivate",
+   "note": "Debug ▸ Deactivate Breakpoints (cmd+Y): the arrows dim, the toolbar button changes.",
+   "do": [
+    {
+     "key": "cmd+y"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "debug-area-hide",
+   "note": "View ▸ Debug Area ▸ Hide Debug Area (shift+cmd+Y).",
+   "do": [
+    {
+     "key": "cmd+shift+y"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "debug-area-show",
+   "note": "Show it again.",
+   "do": [
+    {
+     "key": "cmd+shift+y"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "console-activate",
+   "note": "View ▸ Debug Area ▸ Activate Console (shift+cmd+C).",
+   "do": [
+    {
+     "key": "cmd+shift+c"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "console-type",
+   "note": "Type 'p 1 + 2' and Return in the console (lldb).",
+   "do": [
+    {
+     "text": "p 1 + 2"
+    },
+    {
+     "key": "return"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "continue",
+   "note": "Debug ▸ Continue (control+cmd+Y): the app runs on.",
+   "do": [
+    {
+     "key": "ctrl+cmd+y"
+    },
+    {
+     "wait": 3.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "running",
+   "note": "Running (not paused): toolbar, debug bar, Debug navigator. AX tree.",
+   "do": [
+    {
+     "tree": "running",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "stop",
+   "note": "Product ▸ Stop (cmd+.).",
+   "do": [
+    {
+     "key": "cmd+."
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "breakpoints-activate",
+   "note": "cmd+Y: breakpoints active again.",
+   "do": [
+    {
+     "key": "cmd+y"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "breakpoint-remove",
+   "note": "Drag-free removal: Debug ▸ Breakpoints ▸ Delete All Breakpoints, or cmd+\\ on the line again.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "let message",
+      "occurrence": 1,
+      "offset": 4
+     }
+    },
+    {
+     "key": "cmd+\\"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  }
+ ],
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ },
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Issues|Issues.swift"
+   }
+  },
+  {
+   "wait": 2.5
+  }
+ ]
+}

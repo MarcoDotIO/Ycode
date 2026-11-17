@@ -284,3 +284,93 @@ Round 10 additions:
 - Do not record a step whose window does not change while taking snaps:
   the recorder delivers no first frame for a still window, and a still
   taken while a recording of the same window runs does not return.
+
+Parity run additions (2026-11-15, part A):
+- `scripts/parity-a-gen.py` writes `scripts/parity-a-*.json` (Welcome window, New
+  Project, every menu and sub-menu, toolbar and workspace, navigators, window
+  behaviours). Recordings use `"codec": "hevc"` and app-mode capture with a 600 pt
+  margin, so menus, popovers, panels and new windows on the built-in display are
+  all in the frame.
+- Window `"size": null` keeps a fixed-size window's own size (Welcome).
+- When the session window closes (Xcode closes Welcome when its Clone window or
+  open panel appears), stills and recordings fall back to the app's frontmost
+  window; a recording that cannot start leaves the step without a video
+  instead of ending the session.
+- Actions: `{"menubar": NAME}` writes the whole menu bar (titles, key
+  equivalents as `key`/`key_code` plus `modifiers`, `enabled: false`, `mark`)
+  without opening it; `{"submenus": NAME}` hovers every enabled sub-menu
+  parent of the open menu and stills each cascade (no video); `glide` moves
+  the pointer in a straight line between two elements (`to_dx`, `to_dy`), for
+  diagonal moves into sub-menus; `drag` accepts element matches at either end;
+  `{"menuclick": TITLE}` clicks a visible item of the menu open now (a pop-up
+  button's menu that an element search of a big window does not reach).
+  Xcode 27.1's scheme and destination choosers are popovers, not menus, so the
+  scheme sheets are also opened from the menu bar (`*-menubar` steps).
+  Matches take `"visible": true` (non-empty frame only: an open menu's items).
+- Accessibility dumps (`tree`, `menubar`, `submenus`) drop the Apple menu,
+  whose items name the logged-in user. `axdrive` now reports `enabled`,
+  `focused`, `selected`, `expanded` and menu key equivalents, has `menubar`,
+  `menuitems` and `glide` commands, and `hover` sends a second move 50 ms after
+  the first (a menu's tracking loop otherwise opened a hovered sub-menu one
+  hover late).
+- Panels and sheets that list the Mac's own folders (open and save panels)
+  and the New Project options' Team and identifier values are painted out of
+  the stills and videos after the run, outside these tools.
+
+Parity run additions (2026-11-15, part B):
+- `make-parity-project.py` writes Parity: a macOS SwiftUI app (ContentView with a
+  `#Preview`, Counter.swift for a breakpoint and stepping, Shapes.swift with doc
+  comments for completion, Quick Help and rename, about 480 lines of varied Swift in
+  Showcase.swift, Issues.swift whose broken and clean versions live in `.parity/`),
+  a host-less XCTest bundle with one passing and one deliberately failing test, a
+  shared scheme, and a git history by the fixed test identity. Both repository
+  generators now also set that identity as the repository's own `user.name` and
+  `user.email`, so an app's commit UI does not show the Mac's global identity.
+- `scripts/parity-b-gen.py` writes `scripts/parity-b-*.json` (editor, editor2,
+  inspectors, project, project-caplib, build, scheme, scm).
+- Actions: `{"textclick": {"needle": TEXT, "occurrence": K, "offset": C, "dx": .., "dy": ..},
+  "modifiers": "alt", "hover": true}` clicks (or points at) a piece of text that is
+  drawn now in a source editor, found through `AXBoundsForRange` (`axdrive
+  textpoint`); `click` takes `"modifiers"` (`axdrive click --modifiers alt,shift`), for
+  option-click Quick Help and control-shift-click insertion points.
+- `tree` dumps time out after 90 s (`"timeout"`), a still after 10 s, and a recorder
+  that does not stop is killed: an app that builds a view for every row of a big
+  table on each accessibility request (a command palette) no longer hangs a session.
+  axdrive output is split on "\n" only (a build log in an AX tree can hold U+2028).
+- Recorded steps carry no `snap`s: a still of a window that is being recorded can
+  wait for a frame forever.
+
+Parity run additions (2026-11-15, part C):
+- `make-formats-project.py` writes Parity (make-parity-project.py) plus one file for
+  each editor type in its synchronized folder, committed by the fixed test identity:
+  an asset catalog (two colour sets, an image set with a drawn PNG, an empty AppIcon),
+  `Defaults.plist`, `Parity.entitlements`, `Localizable.xcstrings` (English, German),
+  `Parity.xctestplan`, a macOS `Main.storyboard`, `Model.xcdatamodeld`, `NOTES.md`,
+  `palette.json`, `Stripes.png`. Output `OUT_DIR/formats/Parity`; the project builds.
+- `scripts/parity-c-gen.py` writes `scripts/parity-c-*.json` (probe, probe2, dhprobe,
+  settings, settings2, editors, device, light, help).
+- Action field `"if_ok": true`: the action runs only when the last real action of the
+  step (waits and skipped actions do not count) worked — Escape after a pop-up button
+  that may not exist on this pane, a snap or an items dump after a click.
+- To limit an element search to another window of the app, put `"window": TITLE` on
+  the action, not inside the match: a match's own `window` key is overridden by the
+  session window's origin.
+- Menu item dumps of pop-up and context menus need `"all_windows": true` on the
+  `submenus` action (the menu is its own window).
+- Known limits: `axdrive tree` aborts on a non-finite number in an attribute (Device
+  Hub's Info inspector); element searches in a window with a very large table (Ycode's
+  Shortcuts settings) take minutes — the part C runs killed such searches.
+
+Parity run additions (2026-11-15, part D, the mop-up):
+- `scripts/parity-d-gen.py` writes `scripts/parity-d-*.json` (menus, window, toolbar,
+  newproject, project, editor, buildlog, scm, light, formats, states, device): the steps
+  parts A to C left invalid or missing, pressed states, tab and ribbon hover, tooltips.
+  Several steps carry `per_target` window-point coordinates where an element search
+  missed or hit the wrong element (Build Phases, targets list, build log, tab bar).
+- Action `{"hoveritem": TITLE, "index": K}` points at a visible item of the menu open now
+  by its frame (found once through `axdrive menuitems`), so a sub-menu opens by hovering
+  its parent; the result carries the item's `frame`.
+- `drag` takes `"hold": S` (`axdrive drag --hold S`): the button stays down S seconds
+  before the pointer moves, for a control's pressed state; released away from the
+  control, nothing is triggered. The result's `down_wall` gives the press time, so a
+  still of the held state can be taken from the video afterwards.

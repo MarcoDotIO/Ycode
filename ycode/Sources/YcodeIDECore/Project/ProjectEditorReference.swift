@@ -88,7 +88,15 @@ extension ProjectEditorModel {
     // MARK: Signing
 
     public static let signingScopes = ["All", "Debug", "Release"]
-    public static let automaticSigningCaption = "Xcode will create and update profiles, app IDs, and certificates."
+    /// Ycode's own name, never the reference's (AGENTS rule 5, P-096).
+    /// Ycode chooses installed profiles and certificates; it does not create
+    /// them (`signing.md` §7).
+    public static let automaticSigningCaption = "Ycode will choose matching installed profiles and certificates."
+    /// The Provisioning Profile value with automatic signing.
+    public static let managedProfileTitle = "Ycode Managed Profile"
+    /// The Provisioning Profile value of a Mac box that signs to run
+    /// locally (no team): nothing is required (P-096, P-097).
+    public static let noProfileRequiredTitle = "None Required"
     public static let emptyCapabilitiesText = "Add capabilities by clicking the \u{201C}+\u{201D} button above."
     public static let capabilityLibraryTitle = "Capabilities"
 
@@ -107,12 +115,19 @@ extension ProjectEditorModel {
         let team = s["DEVELOPMENT_TEAM"]
         var sdks: [String] = []
         for d in supportedDestinations(target: target, configuration: configuration) where !sdks.contains(d.sdk) { sdks.append(d.sdk) }
+        let specifier = s["PROVISIONING_PROFILE_SPECIFIER"]
         return sdks.map { sdk in
             let cert = s["CODE_SIGN_IDENTITY"]
-            return SigningBox(platform: sdk,
-                              provisioningProfile: auto ? "Xcode Managed Profile" : (s["PROVISIONING_PROFILE_SPECIFIER"].isEmpty ? "None" : s["PROVISIONING_PROFILE_SPECIFIER"]),
-                              certificate: cert.isEmpty || cert == "-" ? (cert == "-" ? "Sign to Run Locally" : "Apple Development") : cert,
-                              status: team.isEmpty ? Self.noTeamWarning(target: target) : [])
+            // A Mac box without a team signs to run locally and needs no
+            // team (`signing.md` §6, "Automatic style on the Mac without a
+            // team"): no warning (P-096). A manual profile still needs one.
+            let runsLocally = sdk == "macOS" && team.isEmpty && (auto || specifier.isEmpty)
+            let profile = runsLocally ? Self.noProfileRequiredTitle
+                : auto ? Self.managedProfileTitle : (specifier.isEmpty ? "None" : specifier)
+            let certificate = runsLocally && (auto || cert.isEmpty || cert == "-") ? "Sign to Run Locally"
+                : cert.isEmpty || cert == "-" ? (cert == "-" ? "Sign to Run Locally" : "Apple Development") : cert
+            return SigningBox(platform: sdk, provisioningProfile: profile, certificate: certificate,
+                              status: team.isEmpty && !runsLocally ? Self.noTeamWarning(target: target) : [])
         }
     }
 

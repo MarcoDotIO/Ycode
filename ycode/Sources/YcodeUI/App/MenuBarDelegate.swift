@@ -1,5 +1,6 @@
 import AppKit
 import YcodeIDECore
+import YcodeSimFeatures
 import YcodeSubprocess
 
 /// Keeps the menu bar's state current each time a menu is shown or
@@ -38,10 +39,17 @@ public final class MenuBarDelegate: NSObject, NSMenuDelegate {
         removeSystemAdditions(menu)
         if let m = menu as? CommandMenu { DynamicMenus.fill(m, controller: wc) }
         for item in menu.items {
+            disableIfEmpty(item)
             guard let c = item as? CommandMenuItem, let spec = c.spec else { continue }
             c.title = MenuTitles.title(for: spec, in: ctx)
             c.isHidden = !MenuConditions.isShown(spec.condition, in: ctx)
             MainMenu.restoreShortcut(c)
+            gateTextSystemItem(c, action: spec.action, controller: wc)
+            // P-007: the minimap's check mark whoever performs the item.
+            if spec.action == "toggleMinimap:", let e = wc?.editor, e.fileURL != nil { c.state = e.showsMinimap ? .on : .off }
+            if c.image == nil, !spec.isAlternate, let name = MenuIcons.symbols[spec.action] {
+                c.image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
+            }
         }
         if menu.supermenu === NSApp?.mainMenu, NSApp?.mainMenu != nil { MainMenu.removeSystemConflicts(in: menu) }
         MainMenu.collapseSeparators(in: menu)
@@ -49,14 +57,55 @@ public final class MenuBarDelegate: NSObject, NSMenuDelegate {
 }
 
 extension MenuBarDelegate {
+    /// Submenus Ycode never fills are listed disabled (P-004, P-015:
+    /// Debug ▸ Induce Device Conditions): the item gets an action no one
+    /// performs, so AppKit's validation disables it.
+    static let alwaysEmptySubmenus: Set<String> = ["Induce Device Conditions"]
+
+    func disableIfEmpty(_ item: NSMenuItem) {
+        guard let sub = item.submenu, Self.alwaysEmptySubmenus.contains(item.title), sub.items.isEmpty else { return }
+        item.target = nil
+        item.action = NSSelectorFromString("ycodeUnavailableEmptySubmenu:")
+    }
+
+    /// Rich-text commands of Edit ▸ Format that do not apply to code
+    /// (P-009): disabled, unchecked, while a source editor has focus.
+    static let richTextActions: Set<String> = [
+        "underline:", "addFontTrait:", "alignLeft:", "alignCenter:", "alignJustified:", "alignRight:", "toggleGrammarChecking:",
+        "orderFrontSubstitutionsPanel:", "toggleSmartInsertDelete:", "toggleAutomaticQuoteSubstitution:", "toggleAutomaticDashSubstitution:",
+        "toggleAutomaticLinkDetection:", "toggleAutomaticDataDetection:", "toggleAutomaticTextReplacement:", "startSpeaking:", "stopSpeaking:",
+    ]
+
+    /// An object that performs nothing: an item targeting it is disabled.
+    static let disabledTarget = NSObject()
+
+    func gateTextSystemItem(_ item: NSMenuItem, action: String, controller wc: WorkspaceWindowController?) {
+        // P-008: Page Setup… needs a document.
+        if action == "runPageLayout:" {
+            item.target = wc?.editor.fileURL == nil ? Self.disabledTarget : nil
+            return
+        }
+        guard Self.richTextActions.contains(action) else { return }
+        let code = (wc?.window?.firstResponder ?? NSApp?.keyWindow?.firstResponder) is SourceTextView
+        item.target = code ? Self.disabledTarget : nil
+        if code { item.state = .off }
+    }
+
     /// System items Ycode leaves out (`reference-ui-6.md` §8 items 1–2):
     /// a second Open Recent in File, the feedback item in Help.
     func removeSystemAdditions(_ menu: NSMenu) {
         switch (menu as? CommandMenu)?.path {
         case "File": MainMenu.removeSystemRecentMenus(in: menu)
         case "Help": MainMenu.removeSystemFeedbackItem(in: menu)
+        case "Ycode": removeSystemQuitAlternates(in: menu)
         default: break
         }
+    }
+
+    /// P-002: AppKit's own "Quit and Keep Windows" / "Quit and Close All
+    /// Windows" beside the table's ⌥⌘Q alternate (so it is listed once).
+    func removeSystemQuitAlternates(in menu: NSMenu) {
+        for i in menu.items.reversed() where !(i is CommandMenuItem) && i.title.hasPrefix("Quit and ") { menu.removeItem(i) }
     }
 }
 
@@ -66,7 +115,8 @@ enum DynamicMenus {
     static func fill(_ m: CommandMenu, controller wc: WorkspaceWindowController?) {
         switch m.path {
         case "Ycode ▸ Open Developer Tool": fillDeveloperTools(m, tools: DeveloperTools.installed)
-        case "View ▸ Inspectors": fillInspectors(m, names: wc?.inspector.tabNames ?? CommandTable.inspectors)
+        // P-006: no inspectors without an editor (Show Inspector only).
+        case "View ▸ Inspectors": fillInspectors(m, names: wc.map { $0.menuContext.editorKind == .other && $0.editor.fileURL == nil ? [] : $0.inspector.tabNames } ?? [])
         case "Product ▸ Scheme": fillSchemes(m, names: wc?.session.model.schemeNames ?? [], active: wc?.session.scheme, target: wc)
         case "Product ▸ Destination":
             guard let wc else { removeDynamic(m); break }
@@ -74,9 +124,12 @@ enum DynamicMenus {
         case "Product ▸ Test Plan":
             guard let wc else { removeDynamic(m); break }
             fillTestPlans(m, rows: wc.session.testPlanRows, plans: wc.session.testPlanNames, active: wc.session.effectiveTestPlan, target: wc)
-        case "Editor": fillEditor(m, kind: wc?.menuContext.editorKind ?? .source)
-        case "Debug ▸ Simulate Location": fillSimulateLocation(m, controller: wc)
-        case "Debug ▸ Attach to Process": RunningProcesses.fill(m, target: wc, entries: RunningProcesses.recent())
+        // P-006: with no editor, the first block only ("Preview" checked).
+        case "Editor":
+            fillEditor(m, kind: wc?.menuContext.editorKind ?? .other)
+            if wc == nil { m.items.first { $0.action == NSSelectorFromString("toggleCanvas:") }?.state = .on }
+        case "Debug ▸ Simulate Location": fillMenuBarSimulateLocation(m, controller: wc)
+        case "Debug ▸ Attach to Process": RunningProcesses.fillAsync(m, target: wc)
         default: break
         }
     }
@@ -93,6 +146,38 @@ enum DynamicMenus {
         }
         m.editorKind = kind
         MainMenu.markCheckedDisabled(in: m, kind: kind)
+    }
+
+    /// Debug ▸ Simulate Location (P-015): Don’t Simulate Location, the
+    /// preset places, then Add GPS Exchange to Project…; the places are
+    /// chosen while an app runs on the Ycode simulator (the debug bar's
+    /// menu) and listed disabled otherwise.
+    static func fillMenuBarSimulateLocation(_ m: NSMenu, controller wc: WorkspaceWindowController?) {
+        fillSimulateLocation(m, controller: wc)
+        m.autoenablesItems = false
+        // The debug bar's note that a run is needed is not a menu-bar row.
+        for i in m.items.reversed() where i.action == nil && !i.isSeparatorItem { m.removeItem(i) }
+        let dont = "Don\u{2019}t Simulate Location"
+        if let first = m.items.first, first.title.hasPrefix("Don") { first.title = dont } else {
+            let i = NSMenuItem(title: dont, action: nil, keyEquivalent: "")
+            i.isEnabled = false
+            m.insertItem(i, at: 0)
+        }
+        let places = Set(SimLocation.presets.map(\.name))
+        if !m.items.contains(where: { places.contains($0.title) }) {
+            while m.items.last?.isSeparatorItem == true { m.removeItem(at: m.items.count - 1) }
+            m.addItem(.separator())
+            for p in SimLocation.presets {
+                let i = NSMenuItem(title: p.name, action: nil, keyEquivalent: "")
+                i.isEnabled = false
+                m.addItem(i)
+            }
+        }
+        while m.items.last?.isSeparatorItem == true { m.removeItem(at: m.items.count - 1) }
+        m.addItem(.separator())
+        let gpx = NSMenuItem(title: "Add GPS Exchange to Project…", action: nil, keyEquivalent: "")
+        gpx.isEnabled = false
+        m.addItem(gpx)
     }
 
     static func removeDynamic(_ m: NSMenu) {

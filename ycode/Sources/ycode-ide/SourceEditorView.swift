@@ -50,6 +50,8 @@ struct SourceEditorView: View {
         let highlights = mine ? model.languageFeatures.highlights : []
         // The instances of the symbol at the insertion point (row 227).
         let instances = mine ? model.languageFeatures.symbolInstances : []
+        let rename = model.languageFeatures.rename
+        let renameEdited = mine && model.languageFeatures.renamePreview == nil && rename?.path == c.document.path ? rename?.range.location : nil
         let colors = ShellColors(scheme)
         let palette = palette
         let preferences = preferences
@@ -63,6 +65,7 @@ struct SourceEditorView: View {
                                               matches: matches, currentMatch: currentMatch, issues: issues, debug: debugMarks,
                                               changes: changes, diamonds: diamonds, highlights: highlights)
             painter.instances = instances
+            painter.renameEdited = renameEdited
             painter.draw(&ctx, size: size)
             PaneRestore.frameDrawn(c)   // a restored pane's first line (W7.1)
         }
@@ -225,6 +228,9 @@ struct SourceEditorPainter {
     /// (`specs/ide/testing.md` §Gutter): outlined, green, red.
     var diamonds: [Int: TestOutcome.Status?] = [:]
     var highlights: [NSRange] = []
+    /// The start of the occurrence under the in-place rename box (the
+    /// others are outlined; nil: no rename box).
+    var renameEdited: Int?
     /// The instances of the symbol at the insertion point: yellow at 0.3, as
     /// the macOS editor draws them (`SymbolInstances`, row 227).
     var instances: [NSRange] = []
@@ -289,9 +295,16 @@ struct SourceEditorPainter {
             fillRange(&ctx, h.location..<(h.location + h.length), lines: lines, color: Color.yellow.opacity(0.3), textX: textX)
         }
 
-        // The occurrences of a symbol being renamed.
+        // The occurrences of a symbol being renamed: boxed, as the macOS
+        // editor boxes them while its edit box is up (P-084).
         for h in highlights where h.length > 0 {
-            fillRange(&ctx, h.location..<(h.location + h.length), lines: lines, color: colors.accent.opacity(0.22), textX: textX)
+            if let edited = renameEdited {
+                if h.location != edited {
+                    fillRange(&ctx, h.location..<(h.location + h.length), lines: lines, color: InlineRenameField.boxColor(colors), textX: textX, outline: true)
+                }
+            } else {
+                fillRange(&ctx, h.location..<(h.location + h.length), lines: lines, color: colors.accent.opacity(0.22), textX: textX)
+            }
         }
 
         // The selection.
@@ -500,7 +513,7 @@ struct SourceEditorPainter {
 
     /// Fills `range` on the visible lines (a line it runs past gets a little
     /// more, showing the newline is included).
-    private func fillRange(_ ctx: inout GraphicsContext, _ range: Range<Int>, lines: Range<Int>, color: Color, textX: CGFloat) {
+    private func fillRange(_ ctx: inout GraphicsContext, _ range: Range<Int>, lines: Range<Int>, color: Color, textX: CGFloat, outline: Bool = false) {
         let c = controller
         let b = c.buffer
         let doc = b.document
@@ -520,7 +533,13 @@ struct SourceEditorPainter {
                 if k == p1.row, range.upperBound > r.upperBound { x1 += c.layout.advance }
                 guard x1 > x0 else { continue }
                 let y = c.lineTop(n) + CGFloat(k) * c.lineHeight - c.top
-                ctx.fill(Path(CGRect(x: textX + x0, y: y, width: x1 - x0, height: c.lineHeight)), with: .color(color))
+                let rect = CGRect(x: textX + x0, y: y, width: x1 - x0, height: c.lineHeight)
+                if outline {
+                    let box = rect.insetBy(dx: -2, dy: 0).insetBy(dx: 0.5, dy: 0.5)
+                    ctx.stroke(Path(roundedRect: box, cornerRadius: 3, style: .continuous), with: .color(color), lineWidth: 1)
+                } else {
+                    ctx.fill(Path(rect), with: .color(color))
+                }
             }
         }
     }

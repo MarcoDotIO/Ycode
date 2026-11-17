@@ -23,8 +23,8 @@ struct ReportModelTests {
         nav.setReports([report("Build", at: 100), report("Build", at: 200, ok: false, errors: 1)])
         let g = try #require(nav.rows(8).first)
         #expect(g.title == "Demo" && g.children.map(\.reportIndex) == [1, 0] && g.children[0].badge == "1")
-        nav.reportScope.selectedSegment = 1
-        nav.setReports([report("Build", at: 100)])
+        // Cloud reports are not listed (owner decision 5: no Local | Cloud control).
+        nav.setReports([report("Build", at: 100, location: .cloud)])
         #expect(nav.rows(8).isEmpty)
     }
 }

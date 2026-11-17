@@ -197,7 +197,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             wc.open(path: main, line: nil)
             let e = wc.editor, tv = e.textView
             let selected = NSMenuItem(title: "", action: #selector(WorkspaceWindowController.findSelectedWordsInWorkspace(_:)), keyEquivalent: "")
-            #expect(!wc.validateMenuItem(selected))
+            #expect(wc.validateMenuItem(selected))   // enabled with a file open, as the reference (P-003)
             #expect(!wc.validateMenuItem(NSMenuItem(title: "", action: #selector(WorkspaceWindowController.findAncestorTypes(_:)), keyEquivalent: "")))
             // Find Selected Text / Words in Workspace.
             tv.setSelectedRange(NSRange(location: 4, length: 3))   // "old"

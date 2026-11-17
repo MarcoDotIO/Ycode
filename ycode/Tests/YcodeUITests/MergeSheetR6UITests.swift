@@ -9,7 +9,7 @@ import Testing
 /// current change's rules following the panes' focus, and the ruler's
 /// marks. The windows stay off every display.
 @MainActor
-@Suite(.serialized) struct MergeSheetR6UITests {
+@Suite(.serialized, .appearanceReader) struct MergeSheetR6UITests {
     let base = MergeSheetUITests()
     typealias Repo = MergeSheetUITests.Repo
 

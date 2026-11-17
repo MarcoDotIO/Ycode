@@ -66,7 +66,7 @@ public enum ShellCommand: String, CaseIterable, Sendable {
         case .closeWorkspace: ("closeWorkspace:", 0)
         case .closeDocument: ("closeDocument:", 0)
         case .save: ("saveDocument:", 0)
-        case .saveAll: ("ycodeUnavailableSaveAll:", 0)
+        case .saveAll: ("saveAllDocuments:", 0)
         case .revertToSaved: ("revertDocumentToSaved:", 0)
         case .find: ("performFindPanelAction:", 1)
         case .findAndReplace: ("performFindPanelAction:", 12)

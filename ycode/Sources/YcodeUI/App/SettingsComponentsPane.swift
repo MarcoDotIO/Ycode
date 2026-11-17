@@ -45,23 +45,41 @@ public final class ComponentsSettingsPane: SettingsPane {
             self.inventory = ComponentsInventory(sdks: sdks)
         }
         loaded = components != nil || inventory != nil
+        if !loaded, let last = Self.lastRead {
+            // P-140: the pane's first frame shows the last values read, not
+            // "Not installed"; they are read again in the background.
+            self.inventory = last
+            loaded = true
+            reread = true
+        }
         super.init("Components", prefs: prefs)
+        // The read starts with the Settings window, not when the pane is
+        // first shown, so it is done before Components is chosen (the
+        // reference's first frame, at +19…+52 ms, has the final values).
+        if !loaded || reread { startRead() }
     }
+
+    /// The values last read in this process (any Settings window's).
+    static var lastRead: ComponentsInventory?
+    /// The shown values came from `lastRead` and are being read again.
+    private var reread = false
 
     override var firstHeaderCapTop: CGFloat { SettingsComponentsLayout.firstHeaderCapTop }
 
-    public override func loadView() {
-        super.loadView()
-        guard !loaded, loading == nil else { return }
+    private func startRead() {
+        guard loading == nil else { return }
         let choices = RuntimeSetupChoices.load(prefs.defaults)
         loading = Task { [weak self] in
             let sdks = await Task.detached { Self.installedSDKs() }.value
             let inv = await ComponentsInventory.read(choices: choices, sdks: sdks)
+            Self.lastRead = inv
             guard let self else { return }
+            let changed = !self.loaded || inv != self.inventory
             self.inventory = inv
             self.loaded = true
+            self.reread = false
             self.loading = nil
-            self.rebuild()
+            if changed && self.isViewLoaded { self.rebuild() }
         }
     }
 

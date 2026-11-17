@@ -103,6 +103,14 @@ extension WorkspaceWindowController {
         return sel.length > 0 ? (editor.text as NSString).substring(with: sel) : nil
     }
 
+    /// The word around the focused editor's insertion point, if any.
+    var wordAtCaret: String? {
+        guard hasSourceFile else { return nil }
+        let ns = editor.text as NSString
+        let r = SourceEditorController.wordRange(in: ns, at: editor.textView.selectedRange().location)
+        return r.length > 0 ? ns.substring(with: r) : nil
+    }
+
     // MARK: Find menu
 
     /// Find ▸ Find and Replace in Workspace… (⌥⇧⌘F): the Find navigator in
@@ -126,7 +134,7 @@ extension WorkspaceWindowController {
     @objc public func findSelectedWordsInWorkspace(_ sender: Any?) { findSelection(match: .matchingWord) }
 
     func findSelection(match: FindQuery.Match) {
-        guard let q = selectedSourceText else { NSSound.beep(); return }
+        guard let q = selectedSourceText ?? wordAtCaret else { NSSound.beep(); return }
         showFindNavigator()
         navigator.setFindOptions(kind: .text, match: match.rawValue)
         navigator.noteRecentSearch(q)
@@ -154,10 +162,11 @@ extension WorkspaceWindowController {
     func validateFindMenuItem(_ item: NSMenuItem) -> Bool? {
         switch item.action {
         case #selector(findNextInWorkspace(_:)), #selector(findPreviousInWorkspace(_:)): return navigator.findModel.matchCount > 0
-        case #selector(findSelectedTextInWorkspace(_:)), #selector(findSelectedWordsInWorkspace(_:)): return selectedSourceText != nil
+        // Enabled with a file open; no selection: the word at the caret (P-003).
+        case #selector(findSelectedTextInWorkspace(_:)), #selector(findSelectedWordsInWorkspace(_:)): return hasSourceFile
         case #selector(findAncestorTypes(_:)), #selector(findDescendentTypes(_:)), #selector(findConformingTypes(_:)):
             return editor.fileURL != nil && editor.auxiliary == nil && session.language != nil
-        default: return nil
+        default: return validateFindBarItem(item)   // +FindBar.swift
         }
     }
 }

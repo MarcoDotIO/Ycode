@@ -530,6 +530,19 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
     }
     @objc func clearClicked() { NSApp.sendAction(Selector(("clearConsole:")), to: nil, from: self) }
     @objc public func toggleVariablesHalf() { varsHalf?.isHidden.toggle(); if varsHalf?.isHidden == true { consoleHalf?.isHidden = false } }
+    /// View ▸ Debug Area ▸ Activate Console (⇧⌘C, P-123): shows the
+    /// console half and gives it the keyboard: the lldb command line during
+    /// a debug session, else the console's output (so typing never reaches
+    /// the source editor). Returns the view that took the keyboard.
+    @discardableResult
+    public func focusConsole() -> NSView? {
+        _ = view
+        if consoleHalf?.isHidden == true { consoleHalf?.isHidden = false }
+        guard let w = view.window else { return nil }
+        let target: NSView = isConsoleInputShown ? consoleField : consoleView
+        return w.makeFirstResponder(target) ? target : nil
+    }
+
     @objc public func toggleConsoleHalf() { consoleHalf?.isHidden.toggle(); if consoleHalf?.isHidden == true { varsHalf?.isHidden = false } }
     @objc func consoleSearchChanged() { renderConsole() }
     /// The variables view and console halves are shown (tests).

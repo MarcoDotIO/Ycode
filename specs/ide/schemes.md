@@ -31,13 +31,10 @@ Schemes…", a "Shared" checkbox (moves the file as in Manage Schemes) and
 | Analyze | `AnalyzeAction` | Build Configuration |
 | Archive | `ArchiveAction` | Build Configuration, Archive Name, Reveal Archive in Organizer, Allow Archiving for Simulator |
 
-Rows and defaults follow reference-ui-2.md §7. Rows whose scheme
-attributes are not in Ycode's specs (Build Order, Override
-Architectures, Build Debugging, Debug executable, Debug Process As, LLDB
-Init File, Launch, Expand Variables Based On, the Options rows other than
-the working directory, the Diagnostics rows other than the sanitizers
-(§Diagnostics), Instrument, Archive Name and options) show their observed
-default and are disabled.
+Rows and defaults follow reference-ui-2.md §7. Rows with a scheme
+attribute (§Options) are editable; rows whose attribute is not in Ycode's
+evidence (§Options, "Still disabled") show their observed default and are
+disabled.
 
 Run ▸ Info: Build Configuration pop-up (the container's configuration names,
 read from the project's build configuration list), Executable (the
@@ -92,6 +89,65 @@ Code: `YcodeWorkspace` `SchemeDiagnostics`, `YcodeIDECore`
 `WorkspaceSession.launchOptions`; `YcodeUI` `SchemeEditorController`.
 Tests: `IDEQuickWinsTests`, `IDEQuickWinsUITests.schemeDiagnosticsReachTheBuild`.
 
+## Options (B4-WORKFLOWS, P-109)
+
+Each editable row writes one attribute of its action element (created in
+canonical order when missing); an absent attribute reads as the default
+in the table. "remove" means the attribute is deleted.
+
+| Row (action) | Attribute | On / choices | Off / default |
+|---|---|---|---|
+| Build ▸ Build Order | `BuildAction@parallelizeBuildables` | Dependency Order `YES` | Manual Order `NO` (absent: Dependency Order) |
+| Build ▸ Override Architectures | `BuildAction@buildArchitectures` | Match Run Destination `Automatic`, Universal `All` | Use Target Settings: remove |
+| Run, Test ▸ Debug executable | `selectedDebuggerIdentifier`, `selectedLauncherIdentifier` | `Xcode.DebuggerFoundation.Debugger.LLDB`, `Xcode.DebuggerFoundation.Launcher.LLDB` | `""`, `Xcode.IDEFoundation.Launcher.PosixSpawn` (absent: on) |
+| Run, Test ▸ Debug Process As | `debugAsWhichUser` | root `root` | Me: remove |
+| Run, Test ▸ LLDB Init File | `customLLDBInitFile` | the path | empty: remove |
+| Run ▸ Info ▸ Launch | `LaunchAction@launchStyle` | Wait `1` | Automatically `0` |
+| Run ▸ Info ▸ Executable | `BuildableProductRunnable` (child) / `askForAppToLaunch` | a target's reference / Ask on Launch `YES` | None: no runnable |
+| Run ▸ Arguments ▸ Expand Variables Based On | `MacroExpansion/BuildableReference` (child, after the runnable) | a target | None: remove (the runnable is used) |
+| Allow Location Simulation | `allowLocationSimulation` | `YES` | `NO` (absent: on) |
+| GPU Frame Capture | `enableGPUFrameCaptureMode` | Metal `1`, Disabled `3` | Automatically: remove |
+| Launch app without state restoration | `ignoresPersistentStateOnLaunch` | `YES` | `NO` |
+| Allow debugging when browsing versions | `debugDocumentVersioning` | `YES` | `NO` (absent: on) |
+| Show non-localized strings | `showNonLocalizedStrings` | `YES` | remove |
+| App Language / App Region | `language` / `region` | a language code (`en`, `fr`, …) / a region code (`US`, `GB`, …) | System: remove |
+| Main Thread Checker | `disableMainThreadChecker` | on: remove | `YES` |
+| Thread Performance Checker | `disablePerformanceAntipatternChecker` | on: remove | `YES` |
+| Metal ▸ API Validation | `enableGPUValidationMode` | on: remove | `1` |
+| Metal ▸ Shader Validation | `enableGPUShaderValidationMode` | `2` | remove |
+| Metal Performance HUD | `showGraphicsOverview` | `Yes` | remove |
+| Log Graphics Overview | `logGraphicsOverview` | `Yes` | remove |
+| Archive ▸ Archive Name | `ArchiveAction@customArchiveName` | the name | empty or the scheme's name: remove |
+| Archive ▸ Reveal Archive in Organizer | `revealArchiveInOrganizer` | `YES` | `NO` (absent: on) |
+| Profile ▸ Instrument | `savedToolIdentifier` | Ask on Launch (the only item) | — |
+
+**Duplicate Scheme** writes a copy named "<name> Copy" ("<name> Copy 2",
+…) next to the scheme's file and lists it.
+
+**Still disabled** (no attribute in Ycode's evidence): Task Backtraces,
+Modules Report, Default Location, App Data, Routing App Coverage File,
+GameKit and StoreKit Configuration, Background Asset Packs, Distribution,
+Simulated Apple Foundation Models Availability, XPC Services, Queue
+Debugging, Console, Hardware Memory Tagging, Guard Malloc and the Malloc,
+Zombie and memory-graph rows, the Metal sub-options, Core AI, and Allow
+Archiving for Simulator.
+
+**Escape** (P-110): the first Escape (or ⌘.) ends a text field's editing
+and discards the typed value; with nothing being edited it closes the
+sheet as Close does.
+
+## Autocreated schemes (P-108)
+
+A project with no scheme files shows one scheme per target (the toolbar
+already listed them). Edit Scheme… opens such a scheme from the model
+(`WorkspaceModel.schemeForEditing`): it builds the target, tests itself
+or the test bundles it hosts, runs an application or tool, and asks for an
+automatic test plan (the scheme `xcodebuild -list` autocreates). It has
+the current user's scheme URL but no file: Close writes it only when it
+changed, and then writes the project's other autocreated schemes too, so
+the list stays the same. Manage Schemes lists autocreated schemes with
+their container; turning Shared on writes the file first, then moves it.
+
 ## Writing
 
 Edits change the in-memory XML tree; Close writes the file if the
@@ -140,6 +196,15 @@ current user's directory. The file's bytes are unchanged by a move.
   `detect_stack_use_after_return`: LLVM's AddressSanitizer documentation
   (level 1). That ASan and TSan cannot be combined: clang's documentation
   (level 1).
+- §Options attribute names, values and defaults: the open-source XcodeProj
+  library (tuist, MIT), `XCScheme+LaunchAction.swift`,
+  `XCScheme+BuildAction.swift`, `XCScheme+TestAction.swift`,
+  `XCScheme+ProfileAction.swift`, `XCScheme+ArchiveAction.swift` and
+  `XCScheme.swift` (level 1). Ycode's readings, not in that source: the
+  PosixSpawn launcher identifier for Debug executable off, Build Order as
+  `parallelizeBuildables`, and the language and region code lists
+  (OPEN QUESTIONS for a level 2 corpus check).
+- Autocreated schemes: `specs/xcodebuild/info-commands.md` §2.1 (level 3).
 - OPEN QUESTION: whether Xcode's Test action uses its own Diagnostics or
   the Run action's when "Use the Run action's arguments and environment"
   is on; Ycode uses the test action's own attributes.

@@ -34,6 +34,14 @@ public final class HeadlessWindow: PlatformWindow {
     public let popupParent: PlatformWindowID?
     /// Where a pop-up was placed (points from its parent's origin).
     public let popupOrigin: CGPoint
+    /// Tests: the area pop-ups may cover (nil: the window) and the
+    /// display's usable size (nil: unknown).
+    public var popupArea: CGRect?
+    public var usableDisplaySize: CGSize?
+    /// What the window was created with (tests): resizable, and its limits.
+    public let isResizable: Bool
+    public let minimumSize: CGSize?
+    public let maximumSize: CGSize?
     private weak var backend: HeadlessBackend?
 
     init(id: PlatformWindowID, configuration: WindowConfiguration, scale: Double, refreshRate: Double,
@@ -46,6 +54,9 @@ public final class HeadlessWindow: PlatformWindow {
         popupParent = configuration.popupParent
         popupOrigin = configuration.popupOrigin
         isDecorated = configuration.decorated
+        isResizable = configuration.resizable
+        minimumSize = configuration.minimumSize
+        maximumSize = configuration.maximumSize
         self.backend = backend
     }
 

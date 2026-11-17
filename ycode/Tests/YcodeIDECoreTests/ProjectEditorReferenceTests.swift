@@ -56,7 +56,7 @@ import YcodeProject
     @Test func signing() throws {
         let m = try model()
         let box = try #require(m.signingBoxes(target: "App", configuration: "Debug").first)
-        #expect(box.platform == "iOS" && box.provisioningProfile == "Xcode Managed Profile")
+        #expect(box.platform == "iOS" && box.provisioningProfile == "Ycode Managed Profile")
         #expect(box.status == ["Signing for \u{201C}App\u{201D} requires a development team.",
                                "Select a development team in the Signing & Capabilities editor."])
         #expect(m.capabilityLibraryError(target: "App", configuration: "Debug")?.first == "Error Loading Capabilities")

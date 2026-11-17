@@ -1,0 +1,947 @@
+{
+ "name": "parity-d-toolbar",
+ "title": "Part D 3: the scheme chooser's rows (hover, keys, each clicked), the destination chooser's Incompatible cascade, closing the Library by clicking outside it.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "GlassScroll open, Long.swift not open. AX tree.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "scheme-open",
+   "note": "Click the scheme pop-up (Xcode: a popover; Ycode: a menu). AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "scheme",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "scheme-hover-0",
+   "note": "Pointer onto the chooser's 'GlassScroll' row, 1.2 s (hover highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "GlassScroll",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "hoveritem": "GlassScroll"
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "scheme-hover-1",
+   "note": "Pointer onto the chooser's 'Edit Scheme…' row, 1.2 s (hover highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Edit Scheme…",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "hoveritem": "Edit Scheme…"
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "scheme-hover-2",
+   "note": "Pointer onto the chooser's 'New Scheme…' row, 1.2 s (hover highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "New Scheme…",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "hoveritem": "New Scheme…"
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "scheme-hover-3",
+   "note": "Pointer onto the chooser's 'Manage Schemes…' row, 1.2 s (hover highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Manage Schemes…",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "hoveritem": "Manage Schemes…"
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "scheme-keys",
+   "note": "Down, Down, Up in the chooser (keyboard selection).",
+   "do": [
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "key": "up"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "scheme-escape",
+   "note": "Escape closes it.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "scheme-click-0",
+   "note": "Open the chooser, click 'GlassScroll' (what it does; a sheet is closed in the next step). AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "GlassScroll",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "click-0",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "label": "Active Scheme",
+        "role": "AXPopUpButton"
+       }
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "menuclick": "GlassScroll"
+      },
+      {
+       "key": "escape",
+       "fallback": true
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "click-0",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "scheme-click-1",
+   "note": "Open the chooser, click 'Edit Scheme…' (what it does; a sheet is closed in the next step). AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Edit Scheme…",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "click-1",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "label": "Active Scheme",
+        "role": "AXPopUpButton"
+       }
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "menuclick": "Edit Scheme…"
+      },
+      {
+       "key": "escape",
+       "fallback": true
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "click-1",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "scheme-click-1-close",
+   "note": "Close (button), else Escape.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Close|Done|OK|Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "scheme-click-2",
+   "note": "Open the chooser, click 'New Scheme…' (what it does; a sheet is closed in the next step). AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "New Scheme…",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "click-2",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "label": "Active Scheme",
+        "role": "AXPopUpButton"
+       }
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "menuclick": "New Scheme…"
+      },
+      {
+       "key": "escape",
+       "fallback": true
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "click-2",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "scheme-click-2-close",
+   "note": "Cancel (button), else Escape.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel|Done|OK|Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "scheme-click-3",
+   "note": "Open the chooser, click 'Manage Schemes…' (what it does; a sheet is closed in the next step). AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Manage Schemes…",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "click-3",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "label": "Active Scheme",
+        "role": "AXPopUpButton"
+       }
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "menuclick": "Manage Schemes…"
+      },
+      {
+       "key": "escape",
+       "fallback": true
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "click-3",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "scheme-click-3-close",
+   "note": "Close (button), else Escape.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Close|Done|OK|Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "destination-open",
+   "note": "Click the destination pop-up. AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Run Destination",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "destination",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "destination-incompatible",
+   "note": "Pointer onto 'Incompatible' (its cascade; the owner's devices in it are painted out). AX tree.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Incompatible",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "incompatible",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "hoveritem": "Incompatible"
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "incompatible",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "destination-build",
+   "note": "Pointer onto the 'Build' / Any Mac row (sibling: does the cascade close?).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Any Mac (arm64, x86_64)",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "hoveritem": "Any Mac"
+      },
+      {
+       "wait": 1.2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "destination-escape",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "library-open",
+   "note": "View ▸ Show Library (shift+cmd+L). AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+l"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "library",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "library-click-outside",
+   "note": "Click outside the Library (window point 150, 800: the navigator's empty area): does it close?",
+   "do": [
+    {
+     "click": [
+      150,
+      800
+     ]
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "after-outside",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "library-escape",
+   "note": "Escape (in case it stayed).",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "destination-open-2",
+   "note": "Destination chooser again.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Run Destination",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "incompatible-click",
+   "note": "Click 'Incompatible': its cascade (painted where it lists the owner's devices). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Incompatible",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "incompatible-click",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "hoveritem": "Incompatible"
+      },
+      {
+       "wait": 0.3
+      },
+      {
+       "click": {
+        "role": "AXMenuItem",
+        "title": "Incompatible",
+        "scope": "app",
+        "visible": true
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "incompatible-click",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "incompatible-click-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "destination-open-3",
+   "note": "Destination chooser again; Down until Incompatible is selected, then Right.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Run Destination",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "right"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "keys",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "destination-close-3",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ],
+ "project": {
+  "generator": "make-test-project.py",
+  "path": "GlassScroll/GlassScroll.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

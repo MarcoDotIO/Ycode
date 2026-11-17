@@ -502,6 +502,7 @@ public struct SwiftBuildMessageReader {
                          replacement: f["textToInsert"] as? String ?? "")
         }
         let notes = (m["childDiagnostics"] as? [[String: Any]] ?? []).map(diagnostic)
-        return Diagnostic(severity: severity, message: m["message"] as? String ?? "", location: location, notes: notes, fixIts: fixIts)
+        return Diagnostic(severity: severity, message: Diagnostic.displayMessage(m["message"] as? String ?? ""), location: location,
+                          notes: notes, fixIts: fixIts)
     }
 }

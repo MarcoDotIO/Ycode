@@ -69,11 +69,11 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             // Back to no workspace: generic titles again.
             MenuBarDelegate.shared.update(find, controller: nil)
             #expect(find.items.first?.title == "Find in Workspace")
-            // ⇧⌘W is hidden while ⌘W reads Close Window (one tab), with its alternate.
+            // P-008: Close Window ⇧⌘W is listed with its alternate in every state.
             let file = try #require(bar.item(withTitle: "File")?.submenu)
             MenuBarDelegate.shared.update(file, controller: wc)
             let closeWindow = try #require(file.items.first { $0.action == #selector(NSWindow.performClose(_:)) })
-            #expect(closeWindow.isHidden && file.item(withTitle: "Close Other Window Tabs")?.isHidden == true)
+            #expect(!closeWindow.isHidden && file.item(withTitle: "Close Other Window Tabs")?.isHidden == false)
             #expect(file.items.first { $0.keyEquivalent == "w" && $0.keyEquivalentModifierMask == .command }?.title == "Close Window")
             wc.newTab(nil)
             MenuBarDelegate.shared.update(file, controller: wc)

@@ -33,6 +33,11 @@ public final class LanguageService {
     public private(set) var liveIssues: [String: [Diagnostic]] = [:]
     /// The diagnostics as sent, by file path (for code-action requests).
     public private(set) var liveDiagnostics: [String: [LSPDiagnostic]] = [:]
+    /// Holds back the live issues of the line being typed (P-080).
+    public var typingHold = LiveIssueHold()
+    private var holdTasks: [String: Task<Void, Never>] = [:]
+    /// Per document, the errors and text it was last sent again for.
+    private var refreshedErrors: [URL: Int] = [:]
     /// Edits the server asks to apply (`workspace/applyEdit`).
     package var onApplyEdit: ((WorkspaceEdit) -> Void)?
     var onIssuesChanged: (() -> Void)?
@@ -49,7 +54,9 @@ public final class LanguageService {
         Task { [weak self] in
             for await n in notes {
                 if n.method == "$/progress" {
+                    let wasActive = self?.progress.isActive ?? false
                     if self?.progress.apply(n.params) == true { self?.onProgressChanged?() }
+                    if wasActive, self?.progress.isActive == false { self?.refreshDiagnosticsWithErrors() }
                     continue
                 }
                 if n.method == "workspace/applyEdit" {
@@ -79,7 +86,7 @@ public final class LanguageService {
                                      end: .init(file: file, line: t.end.line + 1, column: t.end.character + 1), replacement: t.newText)
                 }
             }
-            return Diagnostic(severity: severity, message: d.message,
+            return Diagnostic(severity: severity, message: Diagnostic.displayMessage(d.message),
                               location: .init(file: file, line: d.start.line + 1, column: d.start.character + 1), fixIts: fixIts)
         }
     }
@@ -88,9 +95,25 @@ public final class LanguageService {
         // Only sources have live issues (row 228), whatever a server sends.
         guard FileTypeRoles.usesLanguageService(url) else { return }
         let path = url.standardizedFileURL.path
-        liveIssues[path] = Self.issues(file: path, list)
         liveDiagnostics[path] = list
+        showLiveIssues(path)
+    }
+
+    /// The live issues of `path` from its last diagnostics, without those of
+    /// the line being typed while its hold lasts (P-080, `LiveIssueHold`);
+    /// the held ones appear when the hold ends.
+    private func showLiveIssues(_ path: String) {
+        let list = liveDiagnostics[path] ?? []
+        liveIssues[path] = Self.issues(file: path, typingHold.visible(list, path: path))
         onIssuesChanged?()
+        guard let end = typingHold.holdEnd(path), typingHold.visible(list, path: path).count != list.count else { return }
+        holdTasks[path]?.cancel()
+        holdTasks[path] = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, end.timeIntervalSinceNow) * 1e9) + 20_000_000)
+            guard !Task.isCancelled, let self else { return }
+            self.holdTasks[path] = nil
+            self.showLiveIssues(path)
+        }
     }
 
     /// Whether the server gets `url` at all: only Swift and C-family
@@ -114,9 +137,33 @@ public final class LanguageService {
         let v = (versions[url] ?? 0) + 1
         versions[url] = v
         client.didChange(url, text: text, version: v)
+        typingHold.noteEdit(path: url.standardizedFileURL.path, old: openTexts[url], new: text)
         openTexts[url] = text
         let h = text.hashValue
         if textHashes.updateValue(h, forKey: url) != h { onEdited?(url.standardizedFileURL.path) }
+    }
+
+    /// The server finished its work (preparing targets, indexing): the
+    /// open documents with errors are sent again, unchanged, so that it
+    /// diagnoses them once more. sourcekit-lsp diagnoses a document as soon
+    /// as it is opened, before the modules of its target's dependencies
+    /// exist, and does not by itself publish again when they do: a unit
+    /// test's `@testable import App` stays "No such module" until the next
+    /// edit (P-070).
+    /// A document is sent again once per set of errors and text, so a real
+    /// error (which the server publishes again) does not repeat this.
+    func refreshDiagnosticsWithErrors() {
+        for (url, text) in openTexts.sorted(by: { $0.key.path < $1.key.path }) {
+            guard let list = liveDiagnostics[url.standardizedFileURL.path], list.contains(where: { $0.severity == 1 }) else { continue }
+            var key = Hasher()
+            key.combine(text)
+            for d in list { key.combine(d.message); key.combine(d.start.line) }
+            let h = key.finalize()
+            guard refreshedErrors.updateValue(h, forKey: url) != h else { continue }
+            let v = (versions[url] ?? 0) + 1
+            versions[url] = v
+            client.didChange(url, text: text, version: v)
+        }
     }
 
     /// The file was written (`textDocument/didSave`).
@@ -130,6 +177,8 @@ public final class LanguageService {
         guard versions.removeValue(forKey: url) != nil else { return }
         textHashes[url] = nil
         openTexts[url] = nil
+        typingHold.forget(url.standardizedFileURL.path)
+        refreshedErrors[url] = nil
         client.didClose(url)
     }
 

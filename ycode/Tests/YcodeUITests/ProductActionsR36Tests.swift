@@ -221,8 +221,8 @@ func fakeTool(at url: URL, record: URL, output: String) throws {
     }
 
     /// Run… / Test… / Analyze… / Archive… open the scheme editor on the
-    /// action and run it when the editor closes; an autocreated scheme runs
-    /// at once.
+    /// action and run it when the editor closes; with no scheme to edit
+    /// (this package) the action runs at once.
     @Test func ellipsisVariantsOpenTheSchemeEditor() throws {
         let dir = scratch("ellipsis")
         defer { try? FileManager.default.removeItem(at: dir) }

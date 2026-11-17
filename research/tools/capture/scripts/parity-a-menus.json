@@ -1,0 +1,1928 @@
+{
+ "name": "parity-a-menus",
+ "title": "Part A 3: every top-level menu opened by mouse, every sub-menu, diagonal moves, menu-bar sliding, keyboard navigation, the Help search field.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "The workspace window at rest, Long.swift not open. The whole menu bar (titles, key equivalents, enabled state, checkmarks) through Accessibility.",
+   "do": [
+    {
+     "menubar": "workspace"
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "app-open",
+   "note": "Open the {app} menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "{app}",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "app-behaviors",
+   "note": "Hover {app} ▸ Behaviors: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Behaviors",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "app-open-developer-tool",
+   "note": "Hover {app} ▸ Open Developer Tool: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Open Developer Tool",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "app-services",
+   "note": "Hover {app} ▸ Services: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Services",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "app-diagonal",
+   "note": "Diagonal pointer move from {app} ▸ Behaviors into its sub-menu (right 220 pt, down 90 pt over 0.35 s) then onto the sibling item: does the sub-menu stay open, and how do siblings switch?",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Behaviors",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    },
+    {
+     "glide": {
+      "from": {
+       "role": "AXMenuItem",
+       "title": "Behaviors",
+       "scope": "app",
+       "visible": true
+      },
+      "to": {
+       "role": "AXMenuItem",
+       "title": "Behaviors",
+       "scope": "app",
+       "visible": true
+      },
+      "to_dx": 220,
+      "to_dy": 90
+     },
+     "duration": 0.35
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Services",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "app-walk",
+   "note": "Every enabled sub-menu of {app}, hovered one by one: a still of each cascade (no video).",
+   "do": [
+    {
+     "submenus": "sub",
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "app-close",
+   "note": "Escape closes the {app} menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "file-open",
+   "note": "Open the File menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "File",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "file-new",
+   "note": "Hover File ▸ New: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "New",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "file-open-recent",
+   "note": "Hover File ▸ Open Recent: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Open Recent",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "file-packages",
+   "note": "Hover File ▸ Packages: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Packages",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "file-diagonal",
+   "note": "Diagonal pointer move from File ▸ New into its sub-menu (right 220 pt, down 90 pt over 0.35 s) then onto the sibling item: does the sub-menu stay open, and how do siblings switch?",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "New",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    },
+    {
+     "glide": {
+      "from": {
+       "role": "AXMenuItem",
+       "title": "New",
+       "scope": "app",
+       "visible": true
+      },
+      "to": {
+       "role": "AXMenuItem",
+       "title": "New",
+       "scope": "app",
+       "visible": true
+      },
+      "to_dx": 220,
+      "to_dy": 90
+     },
+     "duration": 0.35
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Packages",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "file-walk",
+   "note": "Every enabled sub-menu of File, hovered one by one: a still of each cascade (no video).",
+   "do": [
+    {
+     "submenus": "sub",
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "file-close",
+   "note": "Escape closes the File menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "edit-open",
+   "note": "Open the Edit menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Edit",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-sort",
+   "note": "Hover Edit ▸ Sort: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Sort",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-format",
+   "note": "Hover Edit ▸ Format: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Format",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-convert",
+   "note": "Hover Edit ▸ Convert: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Convert",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-diagonal",
+   "note": "Diagonal pointer move from Edit ▸ Sort into its sub-menu (right 220 pt, down 90 pt over 0.35 s) then onto the sibling item: does the sub-menu stay open, and how do siblings switch?",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Sort",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    },
+    {
+     "glide": {
+      "from": {
+       "role": "AXMenuItem",
+       "title": "Sort",
+       "scope": "app",
+       "visible": true
+      },
+      "to": {
+       "role": "AXMenuItem",
+       "title": "Sort",
+       "scope": "app",
+       "visible": true
+      },
+      "to_dx": 220,
+      "to_dy": 90
+     },
+     "duration": 0.35
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Convert",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-walk",
+   "note": "Every enabled sub-menu of Edit, hovered one by one: a still of each cascade (no video).",
+   "do": [
+    {
+     "submenus": "sub",
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "edit-close",
+   "note": "Escape closes the Edit menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "view-open",
+   "note": "Open the View menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "View",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "view-editor",
+   "note": "Hover View ▸ Editor: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Editor",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "view-navigators",
+   "note": "Hover View ▸ Navigators: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Navigators",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "view-debug-area",
+   "note": "Hover View ▸ Debug Area: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Debug Area",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "view-inspectors",
+   "note": "Hover View ▸ Inspectors: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Inspectors",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "view-diagonal",
+   "note": "Diagonal pointer move from View ▸ Editor into its sub-menu (right 220 pt, down 90 pt over 0.35 s) then onto the sibling item: does the sub-menu stay open, and how do siblings switch?",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Editor",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    },
+    {
+     "glide": {
+      "from": {
+       "role": "AXMenuItem",
+       "title": "Editor",
+       "scope": "app",
+       "visible": true
+      },
+      "to": {
+       "role": "AXMenuItem",
+       "title": "Editor",
+       "scope": "app",
+       "visible": true
+      },
+      "to_dx": 220,
+      "to_dy": 90
+     },
+     "duration": 0.35
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Inspectors",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "view-walk",
+   "note": "Every enabled sub-menu of View, hovered one by one: a still of each cascade (no video).",
+   "do": [
+    {
+     "submenus": "sub",
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "view-close",
+   "note": "Escape closes the View menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "find-open",
+   "note": "Open the Find menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Find",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "find-close",
+   "note": "Escape closes the Find menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "navigate-open",
+   "note": "Open the Navigate menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Navigate",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "navigate-close",
+   "note": "Escape closes the Navigate menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "editor-open",
+   "note": "Open the Editor menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Editor",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-structure",
+   "note": "Hover Editor ▸ Structure: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Structure",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-code-folding",
+   "note": "Hover Editor ▸ Code Folding: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Code Folding",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-syntax-coloring",
+   "note": "Hover Editor ▸ Syntax Coloring: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Syntax Coloring",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-canvas",
+   "note": "Hover Editor ▸ Canvas: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Canvas",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-minimap",
+   "note": "Hover Editor ▸ Minimap: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Minimap",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-diagonal",
+   "note": "Diagonal pointer move from Editor ▸ Structure into its sub-menu (right 220 pt, down 90 pt over 0.35 s) then onto the sibling item: does the sub-menu stay open, and how do siblings switch?",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Structure",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    },
+    {
+     "glide": {
+      "from": {
+       "role": "AXMenuItem",
+       "title": "Structure",
+       "scope": "app",
+       "visible": true
+      },
+      "to": {
+       "role": "AXMenuItem",
+       "title": "Structure",
+       "scope": "app",
+       "visible": true
+      },
+      "to_dx": 220,
+      "to_dy": 90
+     },
+     "duration": 0.35
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Minimap",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-walk",
+   "note": "Every enabled sub-menu of Editor, hovered one by one: a still of each cascade (no video).",
+   "do": [
+    {
+     "submenus": "sub",
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "editor-close",
+   "note": "Escape closes the Editor menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "product-open",
+   "note": "Open the Product menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Product",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "product-build-for",
+   "note": "Hover Product ▸ Build For: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Build For",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "product-perform-action",
+   "note": "Hover Product ▸ Perform Action: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Perform Action",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "product-scheme",
+   "note": "Hover Product ▸ Scheme: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Scheme",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "product-destination",
+   "note": "Hover Product ▸ Destination: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Destination",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "product-test-plan",
+   "note": "Hover Product ▸ Test Plan: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Test Plan",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "product-diagonal",
+   "note": "Diagonal pointer move from Product ▸ Build For into its sub-menu (right 220 pt, down 90 pt over 0.35 s) then onto the sibling item: does the sub-menu stay open, and how do siblings switch?",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Build For",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    },
+    {
+     "glide": {
+      "from": {
+       "role": "AXMenuItem",
+       "title": "Build For",
+       "scope": "app",
+       "visible": true
+      },
+      "to": {
+       "role": "AXMenuItem",
+       "title": "Build For",
+       "scope": "app",
+       "visible": true
+      },
+      "to_dx": 220,
+      "to_dy": 90
+     },
+     "duration": 0.35
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Test Plan",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "product-walk",
+   "note": "Every enabled sub-menu of Product, hovered one by one: a still of each cascade (no video).",
+   "do": [
+    {
+     "submenus": "sub",
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "product-close",
+   "note": "Escape closes the Product menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "debug-open",
+   "note": "Open the Debug menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Debug",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "debug-breakpoints",
+   "note": "Hover Debug ▸ Breakpoints: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Breakpoints",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "debug-console",
+   "note": "Hover Debug ▸ Console: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Console",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "debug-debug-workflow",
+   "note": "Hover Debug ▸ Debug Workflow: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Debug Workflow",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "debug-simulate-location",
+   "note": "Hover Debug ▸ Simulate Location: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Simulate Location",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "debug-diagonal",
+   "note": "Diagonal pointer move from Debug ▸ Breakpoints into its sub-menu (right 220 pt, down 90 pt over 0.35 s) then onto the sibling item: does the sub-menu stay open, and how do siblings switch?",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Breakpoints",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    },
+    {
+     "glide": {
+      "from": {
+       "role": "AXMenuItem",
+       "title": "Breakpoints",
+       "scope": "app",
+       "visible": true
+      },
+      "to": {
+       "role": "AXMenuItem",
+       "title": "Breakpoints",
+       "scope": "app",
+       "visible": true
+      },
+      "to_dx": 220,
+      "to_dy": 90
+     },
+     "duration": 0.35
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Simulate Location",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "debug-walk",
+   "note": "Every enabled sub-menu of Debug, hovered one by one: a still of each cascade (no video).",
+   "do": [
+    {
+     "submenus": "sub",
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "debug-close",
+   "note": "Escape closes the Debug menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "integrate-open",
+   "note": "Open the Integrate menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Integrate",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "integrate-close",
+   "note": "Escape closes the Integrate menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "window-open",
+   "note": "Open the Window menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Window",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "window-move-resize",
+   "note": "Hover Window ▸ Move & Resize: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Move & Resize",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "window-diagonal",
+   "note": "Diagonal pointer move from Window ▸ Move & Resize into its sub-menu (right 220 pt, down 90 pt over 0.35 s) then onto the sibling item: does the sub-menu stay open, and how do siblings switch?",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Move & Resize",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    },
+    {
+     "glide": {
+      "from": {
+       "role": "AXMenuItem",
+       "title": "Move & Resize",
+       "scope": "app",
+       "visible": true
+      },
+      "to": {
+       "role": "AXMenuItem",
+       "title": "Move & Resize",
+       "scope": "app",
+       "visible": true
+      },
+      "to_dx": 220,
+      "to_dy": 90
+     },
+     "duration": 0.35
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Move & Resize",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "window-walk",
+   "note": "Every enabled sub-menu of Window, hovered one by one: a still of each cascade (no video).",
+   "do": [
+    {
+     "submenus": "sub",
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "window-close",
+   "note": "Escape closes the Window menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "help-open",
+   "note": "Open the Help menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Help",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "help-close",
+   "note": "Escape closes the Help menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "bar-slide",
+   "note": "Open File, then slide the pointer along the menu bar to Edit and View: menu switching.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "File",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "hover": {
+      "role": "AXMenuBarItem",
+      "title": "Edit",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "hover": {
+      "role": "AXMenuBarItem",
+      "title": "View",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "bar-slide-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "keys-file",
+   "note": "Keyboard in the File menu: open it, Down ×3, Right (into a sub-menu if any), Down, Left, Escape: stills after each.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "File",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "snap": "open",
+     "mode": "app"
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.25
+    },
+    {
+     "snap": "down1",
+     "mode": "app"
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.25
+    },
+    {
+     "snap": "down2",
+     "mode": "app"
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.25
+    },
+    {
+     "snap": "down3",
+     "mode": "app"
+    },
+    {
+     "key": "up"
+    },
+    {
+     "key": "up"
+    },
+    {
+     "wait": 0.2
+    },
+    {
+     "key": "right"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "snap": "right",
+     "mode": "app"
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.25
+    },
+    {
+     "snap": "sub-down",
+     "mode": "app"
+    },
+    {
+     "key": "left"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "left",
+     "mode": "app"
+    },
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "escape1",
+     "mode": "app"
+    },
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "keys-typeselect",
+   "note": "Type-select in the open Edit menu: type 'f' (moves to the first item starting with F?).",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Edit",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "text": "f"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "f",
+     "mode": "app"
+    },
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "help-search",
+   "note": "Help menu: type 'scheme' into its search field (results appear).",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Help",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "text": "scheme"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "help-search-hover",
+   "note": "Down arrow onto the first result (the menu item is pointed at in its menu).",
+   "do": [
+    {
+     "key": "down"
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "help-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "menubar-after",
+   "note": "The whole menu bar again after every menu has been opened once (Xcode fills some menus, Editor among them, only when they open).",
+   "do": [
+    {
+     "menubar": "after-tour"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ],
+ "project": {
+  "generator": "make-test-project.py",
+  "path": "GlassScroll/GlassScroll.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

@@ -226,6 +226,8 @@ public struct SourceControlPrompt: Equatable, Sendable {
     public var message: String
     public var fields: [Field]
     public var button: String
+    /// Read-only rows above the fields (New Branch's "From", P-132).
+    public var info: [Field] = []
     /// Whether the button applies: every field but the stash message filled.
     public var canConfirm: Bool {
         if case .stash = purpose { return true }

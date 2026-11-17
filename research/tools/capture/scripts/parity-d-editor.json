@@ -1,0 +1,1337 @@
+{
+ "name": "parity-d-editor",
+ "title": "Part D 6: navigator and inspector shortcuts after another one, Quick Help twice (warm), the folding ribbon and editor tabs hovered by coordinate, the breakpoint popover by double-click, the assistant's Counterparts, the scheme's argument row.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "pre-cmd5",
+   "note": "cmd+1 first (another navigator), so cmd+5 switches rather than toggles.",
+   "do": [
+    {
+     "key": "cmd+1"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "switch-cmd5",
+   "note": "cmd+5: the navigator switch. AX tree.",
+   "do": [
+    {
+     "key": "cmd+5"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "cmd5",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "pre-cmd6",
+   "note": "cmd+1 first (another navigator), so cmd+6 switches rather than toggles.",
+   "do": [
+    {
+     "key": "cmd+1"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "switch-cmd6",
+   "note": "cmd+6: the navigator switch. AX tree.",
+   "do": [
+    {
+     "key": "cmd+6"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "cmd6",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "pre-cmd7",
+   "note": "cmd+1 first (another navigator), so cmd+7 switches rather than toggles.",
+   "do": [
+    {
+     "key": "cmd+1"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "switch-cmd7",
+   "note": "cmd+7: the navigator switch. AX tree.",
+   "do": [
+    {
+     "key": "cmd+7"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "cmd7",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "pre-cmd1",
+   "note": "cmd+3 first (another navigator), so cmd+1 switches rather than toggles.",
+   "do": [
+    {
+     "key": "cmd+3"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "switch-cmd1",
+   "note": "cmd+1: the navigator switch. AX tree.",
+   "do": [
+    {
+     "key": "cmd+1"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "cmd1",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "pre-cmdalt1",
+   "note": "cmd+alt+2 first.",
+   "do": [
+    {
+     "key": "cmd+alt+2"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "switch-cmdalt1",
+   "note": "cmd+alt+1: the inspector switch. AX tree.",
+   "do": [
+    {
+     "key": "cmd+alt+1"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "cmdalt1",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "pre-cmdalt2",
+   "note": "cmd+alt+1 first.",
+   "do": [
+    {
+     "key": "cmd+alt+1"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "switch-cmdalt2",
+   "note": "cmd+alt+2: the inspector switch. AX tree.",
+   "do": [
+    {
+     "key": "cmd+alt+2"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "cmdalt2",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "pre-cmdalt3",
+   "note": "cmd+alt+1 first.",
+   "do": [
+    {
+     "key": "cmd+alt+1"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "switch-cmdalt3",
+   "note": "cmd+alt+3: the inspector switch. AX tree.",
+   "do": [
+    {
+     "key": "cmd+alt+3"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "cmdalt3",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "nav-project",
+   "note": "cmd+2 then cmd+1 (the Project navigator shown, not toggled away), cmd+alt+1.",
+   "do": [
+    {
+     "key": "cmd+2"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "key": "cmd+1"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "key": "cmd+alt+1"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "qh-own-1",
+   "note": "option+click 'scaled' in 'circle.scaled(by: 2)': Quick Help (first lookup).",
+   "do": [
+    {
+     "textclick": {
+      "needle": "scaled(by: 2)",
+      "occurrence": 1,
+      "offset": 2
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "qh1",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "qh-own-1-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "qh-own-2",
+   "note": "The same option+click again (warm lookup).",
+   "do": [
+    {
+     "textclick": {
+      "needle": "scaled(by: 2)",
+      "occurrence": 1,
+      "offset": 2
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "qh-own-2-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "qh-sdk-1",
+   "note": "option+click 'reduce' (standard library; first lookup).",
+   "do": [
+    {
+     "textclick": {
+      "needle": "reduce(",
+      "occurrence": 1,
+      "offset": 2
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "qh-sdk",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "qh-sdk-1-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "qh-sdk-2",
+   "note": "option+click 'reduce' again (warm).",
+   "do": [
+    {
+     "textclick": {
+      "needle": "reduce(",
+      "occurrence": 1,
+      "offset": 2
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "qh-sdk-2-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "ribbon-hover-1",
+   "note": "Pointer onto the gutter just left of 'struct Circle' (code folding ribbon), 2 s.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "struct Circle",
+      "occurrence": 1,
+      "offset": 0,
+      "dx": -10
+     },
+     "hover": true
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "ribbon-hover-2",
+   "note": "Then 4 pt further left, 1.5 s.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "struct Circle",
+      "occurrence": 1,
+      "offset": 0,
+      "dx": -14
+     },
+     "hover": true
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "ribbon-hover-3",
+   "note": "Then onto the ribbon beside the struct's body (two lines lower), 1.5 s.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "struct Circle",
+      "occurrence": 1,
+      "offset": 0,
+      "dx": -10,
+      "dy": 36
+     },
+     "hover": true
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "ribbon-off",
+   "note": "Pointer back into the text.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "struct Circle",
+      "occurrence": 1,
+      "offset": 3
+     },
+     "hover": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-open-1",
+   "note": "Select Counter, File ▸ Open in New Tab.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Counter|Counter.swift"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "menu": "File > Open in New Tab"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-open-2",
+   "note": "Select Showcase, Open in New Tab.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Showcase|Showcase.swift"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "menu": "File > Open in New Tab"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "tabs",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-hover-coords",
+   "note": "Pointer along the editor tab bar by coordinate (window y 65; x 440, 600, 725, 860, 1000, 1.3 s each): hover, close buttons, tooltips.",
+   "do": [
+    {
+     "hover": [
+      440,
+      65
+     ]
+    },
+    {
+     "wait": 1.3
+    },
+    {
+     "hover": [
+      600,
+      65
+     ]
+    },
+    {
+     "wait": 1.3
+    },
+    {
+     "hover": [
+      725,
+      65
+     ]
+    },
+    {
+     "wait": 1.3
+    },
+    {
+     "hover": [
+      860,
+      65
+     ]
+    },
+    {
+     "wait": 1.3
+    },
+    {
+     "hover": [
+      1000,
+      65
+     ]
+    },
+    {
+     "wait": 1.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-hover-first",
+   "note": "Still: pointer on the first tab (x 440), 1.5 s.",
+   "do": [
+    {
+     "hover": [
+      440,
+      65
+     ]
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "tab-hover-last",
+   "note": "Still: pointer on the last tab (x 1000), 1.5 s.",
+   "do": [
+    {
+     "hover": [
+      1000,
+      65
+     ]
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "tab-close-hover",
+   "note": "Pointer onto the first tab's left end (x 365, its close button), 1.2 s.",
+   "do": [
+    {
+     "hover": [
+      365,
+      65
+     ]
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "tabs-close",
+   "note": "Pointer away; cmd+W twice (the two new tabs).",
+   "do": [
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "open-counter",
+   "note": "Open Counter.swift.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Counter|Counter.swift"
+     }
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "breakpoint-add",
+   "note": "Caret on 'let message', cmd+\\: a breakpoint arrow.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "let message",
+      "occurrence": 1,
+      "offset": 4
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "cmd+\\"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "breakpoint-double-click",
+   "note": "Double-click the breakpoint arrow in the gutter (left of the line): the edit popover (animation). AX tree. (90 pt left of the text: the line-number badge.)",
+   "do": [
+    {
+     "textclick": {
+      "needle": "let message",
+      "occurrence": 1,
+      "offset": 0,
+      "dx": -90
+     },
+     "count": 2
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "bp-popover",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "breakpoint-popover-tabs",
+   "note": "Tab through whatever opened (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "breakpoint-popover-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "breakpoint-remove",
+   "note": "cmd+\\ on the line again (no breakpoint left).",
+   "do": [
+    {
+     "textclick": {
+      "needle": "let message",
+      "occurrence": 1,
+      "offset": 4
+     }
+    },
+    {
+     "key": "cmd+\\"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "assistant",
+   "note": "Editor ▸ Assistant (control+option+cmd+Return).",
+   "do": [
+    {
+     "key": "ctrl+alt+cmd+return"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "assistant",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "assistant-mode-menu",
+   "note": "The assistant pane's jump bar first segment (window point 1000, 66): its menu.",
+   "do": [
+    {
+     "click": [
+      1000,
+      66
+     ]
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "assistant-menu",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": [
+        940,
+        65
+       ]
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "assistant-menu",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": [
+        760,
+        65
+       ]
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "assistant-menu",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "assistant-counterparts",
+   "note": "Point at 'Counterparts' in that menu (its cascade).",
+   "do": [
+    {
+     "hoveritem": "Counterparts"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "counterparts",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "assistant-menu-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "navigate-menu",
+   "note": "Click Navigate in the menu bar.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Navigate",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "navigate-counterpart",
+   "note": "Point at Navigate ▸ Jump to Next Counterpart (highlight; enabled state in the tree).",
+   "do": [
+    {
+     "hoveritem": "Jump to Next Counterpart"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "navigate",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "navigate-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "next-counterpart",
+   "note": "control+cmd+Up (Jump to Next Counterpart).",
+   "do": [
+    {
+     "key": "ctrl+cmd+up"
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "assistant-off",
+   "note": "cmd+Return (standard editor).",
+   "do": [
+    {
+     "key": "cmd+return"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "scheme-editor",
+   "note": "Product ▸ Scheme ▸ Edit Scheme…, Run ▸ Arguments.",
+   "do": [
+    {
+     "menu": "Product > Scheme > Edit Scheme…"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Run",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "click": {
+      "role": "AXRadioButton|AXButton",
+      "label": "Arguments",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "arguments",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "arguments-add",
+   "note": "The '+' under Arguments Passed On Launch (Xcode: help 'Add items', the first one): a new editable row. AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXButton",
+        "description": "add",
+        "help": "Add items",
+        "scope": "app",
+        "visible": true
+       }
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "row",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXButton",
+        "description": "Add",
+        "scope": "app",
+        "visible": true
+       }
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "row",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "arguments-type",
+   "note": "Type '-ParityFlag YES'.",
+   "do": [
+    {
+     "text": "-ParityFlag YES"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "typed",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "arguments-cancel",
+   "note": "Escape (end editing), then Escape again (the sheet).",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "after",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "scheme-close",
+   "note": "Close the sheet if it is still there.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Close|Done",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ],
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ },
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Shapes|Shapes.swift"
+   }
+  },
+  {
+   "wait": 2.5
+  }
+ ]
+}

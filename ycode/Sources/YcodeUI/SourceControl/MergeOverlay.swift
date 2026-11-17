@@ -16,6 +16,8 @@ public final class MergeOverlayView: NSView {
     public private(set) var sheet: MergeSheetController?
     /// The sheet's window while the sheet is up (§14.1).
     public private(set) var sheetWindow: MergeSheetWindow?
+    /// `close` ran: the overlay only finishes its disappear animation.
+    public private(set) var isClosing = false
     /// Where the toolbar ends, from the window's top (the sheet's top).
     public var toolbarBottom: CGFloat = 52
     /// Reduce Motion: the sheet fades only (tests set it).
@@ -115,7 +117,9 @@ public final class MergeOverlayView: NSView {
     /// The overlay of `window`, installed over its frame view.
     static func install(in window: NSWindow) -> MergeOverlayView? {
         guard let frameView = window.contentView?.superview else { return nil }
-        if let existing = frameView.subviews.compactMap({ $0 as? MergeOverlayView }).first { return existing }
+        // An overlay that is closing is left to finish (P-131: reusing it
+        // left a new sheet's window behind when it was removed).
+        if let existing = frameView.subviews.compactMap({ $0 as? MergeOverlayView }).first(where: { !$0.isClosing }) { return existing }
         let o = MergeOverlayView(frame: frameView.bounds)
         frameView.addSubview(o, positioned: .above, relativeTo: nil)
         // The toolbar's bottom: the content layout rect's top.
@@ -234,6 +238,7 @@ public final class MergeOverlayView: NSView {
     /// Closes the sheet (Ycode's choice, open question 3: the appearance
     /// reversed) and the veil, then removes the overlay.
     func close(animated: Bool = true) {
+        isClosing = true
         let duration = animated ? max(MergeSheetMotion.sheetOutSlide, MergeSheetMotion.veilIn) : 0
         if animated, sheet != nil { animateSheet(in: false) }
         if let a = alert { a.removeFromSuperview(); alert = nil }

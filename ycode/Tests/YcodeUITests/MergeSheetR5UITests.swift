@@ -18,7 +18,10 @@ import Testing
 /// appears on screen, and the window is ordered out before anything could
 /// ask a question.
 @MainActor
-@Suite(.serialized) struct MergeSheetR5UITests {
+// Exclusive: its cross-process accessibility search finds Merge and Cancel
+// by title in every window of the process, so no other merge suite's
+// windows may be open (and it checks colours too).
+@Suite(.serialized, .appearanceWriter) struct MergeSheetR5UITests {
     let base = MergeSheetUITests()
     typealias Repo = MergeSheetUITests.Repo
 

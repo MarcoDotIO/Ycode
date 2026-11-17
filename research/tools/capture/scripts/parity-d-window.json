@@ -1,0 +1,647 @@
+{
+ "name": "parity-d-window",
+ "title": "Part D 2: resize from 700 pt narrower and wider, cmd+0 / cmd+option+0 from the same layout, the tab bar hovered by coordinate, a second window, the Window menu and Zoom.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "1400 × 880 at rest, the navigator and inspector both shown (View menu items used only if one is hidden). AX tree.",
+   "do": [
+    {
+     "menu": "View > Navigators > Show Navigator"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "menu": "View > Inspectors > Show Inspector"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "resize-700",
+   "note": "Set the window to 700 × 880 through Accessibility (Ycode's minimum width).",
+   "do": [
+    {
+     "resize": [
+      700,
+      880
+     ]
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "w700",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "drag-narrower",
+   "note": "Drag the right edge from 700 pt 200 pt to the left over 1.0 s (narrower than Ycode's minimum).",
+   "do": [
+    {
+     "drag": {
+      "from": [
+       699,
+       500
+      ],
+      "to": [
+       499,
+       500
+      ]
+     },
+     "duration": 1.0
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "tree": "narrow",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "resize-700-again",
+   "note": "Back to 700 × 880, window moved to x 10 (room to widen).",
+   "do": [
+    {
+     "resize": [
+      700,
+      880
+     ]
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "move": [
+      10,
+      71
+     ]
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "drag-wider",
+   "note": "Drag the right edge from 700 pt to 1490 pt over 1.2 s (live layout, toolbar items coming back).",
+   "do": [
+    {
+     "drag": {
+      "from": [
+       699,
+       500
+      ],
+      "to": [
+       1489,
+       500
+      ]
+     },
+     "duration": 1.2
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "tree": "wide",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "resize-back",
+   "note": "Back to 1400 × 880 at x 56.",
+   "do": [
+    {
+     "resize": [
+      1400,
+      880
+     ]
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "move": [
+      56,
+      71
+     ]
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "both-shown",
+   "note": "Navigator and inspector shown again (View menu items if needed). AX tree.",
+   "do": [
+    {
+     "menu": "View > Navigators > Show Navigator"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "menu": "View > Inspectors > Show Inspector"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "tree": "start",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "cmd0",
+   "note": "cmd+0 from that layout (Xcode 27.1 binds it to View ▸ Navigators ▸ Show Coding Assistant). AX tree.",
+   "do": [
+    {
+     "key": "cmd+0"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "cmd0",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "cmd0-again",
+   "note": "cmd+0 again.",
+   "do": [
+    {
+     "key": "cmd+0"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "cmd0-again",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "hide-navigator-menu",
+   "note": "View ▸ Navigators ▸ Hide Navigator (menu).",
+   "do": [
+    {
+     "menu": "View > Navigators > Hide Navigator"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "show-navigator-menu",
+   "note": "View ▸ Navigators ▸ Show Navigator (menu).",
+   "do": [
+    {
+     "menu": "View > Navigators > Show Navigator"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "cmd-alt-0",
+   "note": "cmd+option+0: hide the inspector.",
+   "do": [
+    {
+     "key": "cmd+alt+0"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "inspector-off",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "cmd-alt-0-again",
+   "note": "cmd+option+0: show it again.",
+   "do": [
+    {
+     "key": "cmd+alt+0"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "new-tab",
+   "note": "cmd+T: a new tab (editor tab in both 27.1 layouts).",
+   "do": [
+    {
+     "key": "cmd+t"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "tab",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-hover",
+   "note": "Pointer along the tab bar by coordinate (window y 65; x 200, 450, 700, 950, 1.3 s each): tab hover, close buttons, tooltips.",
+   "do": [
+    {
+     "hover": [
+      200,
+      65
+     ]
+    },
+    {
+     "wait": 1.3
+    },
+    {
+     "hover": [
+      450,
+      65
+     ]
+    },
+    {
+     "wait": 1.3
+    },
+    {
+     "hover": [
+      700,
+      65
+     ]
+    },
+    {
+     "wait": 1.3
+    },
+    {
+     "hover": [
+      950,
+      65
+     ]
+    },
+    {
+     "wait": 1.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-hover-still",
+   "note": "Still with the pointer on the last tab position (x 950).",
+   "do": [
+    {
+     "hover": [
+      950,
+      65
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "close-tab",
+   "note": "cmd+W closes the new tab.",
+   "do": [
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "new-window",
+   "note": "File ▸ New ▸ Window (menu; disabled in Ycode in part A). AX tree.",
+   "do": [
+    {
+     "menu": "File > New > Window"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "new-window",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "close-new-window",
+   "note": "Xcode: cmd+W closes that window (Ycode: nothing to close).",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "wait": 0.3
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "welcome",
+   "note": "A second window by another route in both apps: Window ▸ Welcome to {app} (shift+cmd+1).",
+   "do": [
+    {
+     "menu": "Window > Welcome to {app}"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "welcome",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "welcome-where",
+   "note": "Where the Welcome window went (both windows in the tree).",
+   "do": [
+    {
+     "tree": "where",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "refocus",
+   "note": "Click the workspace window's navigator area (window point 150, 700) to make it key again.",
+   "do": [
+    {
+     "click": [
+      150,
+      700
+     ]
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "window-menu",
+   "note": "Click Window in the menu bar: the window list with two windows.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Window",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "window-menu",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "window-menu-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "zoom",
+   "note": "Window ▸ Zoom (the workspace fills the display; animation).",
+   "do": [
+    {
+     "menu": "Window > Zoom"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "zoom-back",
+   "note": "Window ▸ Zoom again (back).",
+   "do": [
+    {
+     "menu": "Window > Zoom"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  }
+ ],
+ "project": {
+  "generator": "make-test-project.py",
+  "path": "GlassScroll/GlassScroll.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

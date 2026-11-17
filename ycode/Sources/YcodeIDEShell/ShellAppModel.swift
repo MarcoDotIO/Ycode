@@ -38,6 +38,32 @@ public final class ShellAppModel {
     @ObservationIgnored public var openWindow: (String) -> Void = { _ in }
     /// Where New Project remembers its choices (tests pass their own).
     @ObservationIgnored public var newProjectDefaults: UserDefaults = .standard
+    /// Welcome's window scene (Window ▸ Welcome to Ycode opens it, P-216).
+    nonisolated public static let welcomeWindowID = "welcome"
+    /// The workspace windows on screen (the views count them in and out).
+    public var workspaceWindowCount = 0
+    /// Counts successful opens, so Welcome can close after one even while
+    /// a workspace window stays (Welcome beside a workspace, P-216).
+    public private(set) var openCount = 0
+
+    /// The app's windows, for routing sheets and alerts.
+    public enum ShellWindow: Sendable { case welcome, workspace }
+
+    /// Whether `window` presents the app's sheets and alerts (Open, Clone,
+    /// About, notices, unsaved changes): a workspace window always; Welcome
+    /// only while no workspace window is open, so Welcome beside a
+    /// workspace never doubles them.
+    public func presents(in window: ShellWindow) -> Bool { window == .workspace || workspaceWindowCount == 0 }
+
+    /// New Project's sheet is always on a workspace window (P-177): from
+    /// Welcome, an empty workspace window opens behind it, as on macOS
+    /// (`templates.md`, the template sheet in an empty workspace window),
+    /// and Welcome closes (P-023).
+    public func presentsNewProject(in window: ShellWindow) -> Bool { window == .workspace }
+
+    /// Window ▸ Welcome to Ycode (⇧⌘1, P-216): Welcome's window beside the
+    /// workspace; the workspace stays open.
+    public func showWelcome() { openWindow(Self.welcomeWindowID) }
 
     /// What waits for an answer about unsaved changes.
     public enum PendingClose: Equatable, Sendable {
@@ -101,6 +127,7 @@ public final class ShellAppModel {
             if startsLanguageService { workspace?.startLanguageService() }
             openError = nil
             isOpenSheetShown = false
+            openCount += 1
             recentProjects.note(url)
             recent = recentProjects.urls
             return true
@@ -173,6 +200,12 @@ public final class ShellAppModel {
     /// The error was shown.
     public func clearOpenError() { openError = nil }
 
+    /// File ▸ Open Recent ▸ Clear Menu (also the Welcome list).
+    public func clearRecent() {
+        recentProjects.clear()
+        recent = recentProjects.urls
+    }
+
     public func isEnabled(_ c: ShellCommand) -> Bool {
         switch c {
         case .open, .welcome, .newProject, .about, .help, .releaseNotes, .reportBug, .swiftBook, .clone, .downloads, .organizer: true
@@ -186,7 +219,7 @@ public final class ShellAppModel {
         case .open: showOpenSheet()
         case .newProject: showNewProject()
         case .closeWorkspace: closeWorkspace()
-        case .welcome: closeWorkspace()
+        case .welcome: showWelcome()
         case .about: isAboutShown = true
         case .help: openLink(ProductIdentity.helpURL)
         case .releaseNotes: openLink(ProductIdentity.releasesURL)

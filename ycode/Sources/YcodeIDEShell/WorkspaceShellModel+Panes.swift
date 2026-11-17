@@ -12,12 +12,21 @@ public struct ShellEditorPane: Identifiable, Equatable, Sendable {
     /// declaration at its insertion point when it lost the focus, or "No
     /// Selection" (`editor-area.md` H.4; the macOS panes keep their own).
     public var symbolTitle: String?
+    /// The pane's lane: panes of one lane stack across the window's split
+    /// (Editor Pane Below beside a split stacks in that column, P-064).
+    public var lane = 0
 
     public init(id: Int, path: String?, symbolTitle: String? = nil) {
         self.id = id
         self.path = path
         self.symbolTitle = symbolTitle
     }
+}
+
+/// The panes of one lane (identified by its first pane).
+public struct ShellPaneLane: Identifiable, Sendable {
+    public var panes: [ShellEditorPane]
+    public var id: Int { panes.first?.id ?? -1 }
 }
 
 /// The editor panes of the workspace window, as the macOS IDE's editor
@@ -40,6 +49,24 @@ public final class ShellEditorPanes {
     public init() {}
 
     public var isSplit: Bool { panes.count > 1 }
+    /// The panes of each lane, in order.
+    public var laneGroups: [ShellPaneLane] {
+        var out: [ShellPaneLane] = []
+        for p in panes {
+            if p.lane < out.count { out[p.lane].panes.append(p) } else { out.append(ShellPaneLane(panes: [p])) }
+        }
+        return out
+    }
+
+    /// Renumbers the lanes 0, 1, 2… after a pane closed.
+    func compactLanes() {
+        var map: [Int: Int] = [:]
+        for i in panes.indices {
+            let l = panes[i].lane
+            if map[l] == nil { map[l] = map.count }
+            panes[i].lane = map[l]!
+        }
+    }
     public var focusedPane: ShellEditorPane { panes[min(focused, panes.count - 1)] }
     public func isFocused(_ pane: ShellEditorPane) -> Bool { focusedPane.id == pane.id }
 }
@@ -63,11 +90,23 @@ extension WorkspaceShellModel {
         let p = panes
         if p.panes.count == 1 { p.sideBySide = sideBySide }
         let path = Preferences.shared.newEditorPanesOpenWith == .sameDocument ? document?.path : nil
-        let pane = ShellEditorPane(id: p.nextID, path: path)
+        var pane = ShellEditorPane(id: p.nextID, path: path)
         p.nextID += 1
         p.panes[p.focused].symbolTitle = jumpBarLastItem
-        p.panes.insert(pane, at: p.focused + 1)
-        p.focused += 1
+        // Along the split: a lane of its own after the focused one; across
+        // it: stacked in the focused pane's lane (P-064).
+        let lane = p.panes[p.focused].lane
+        let at: Int
+        if sideBySide == p.sideBySide {
+            at = (p.panes.lastIndex { $0.lane == lane } ?? p.focused) + 1
+            for i in p.panes.indices where p.panes[i].lane > lane { p.panes[i].lane += 1 }
+            pane.lane = lane + 1
+        } else {
+            at = p.focused + 1
+            pane.lane = lane
+        }
+        p.panes.insert(pane, at: at)
+        p.focused = at
         if path == nil { showNoFile() }
         editorFocusCount += 1
     }
@@ -89,6 +128,7 @@ extension WorkspaceShellModel {
         guard p.panes.count > 1, let i = p.panes.firstIndex(where: { $0.id == id }) else { return }
         let wasFocused = i == p.focused
         p.panes.remove(at: i)
+        p.compactLanes()
         if wasFocused {
             p.focused = max(0, i - 1)
         } else if i < p.focused {

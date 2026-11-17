@@ -14,7 +14,8 @@ extension WorkspaceWindowController {
         c.workspaceName = session.model.displayName
         c.fileName = editor.fileURL?.lastPathComponent
         c.sourceEditorFocused = editor.fileURL != nil && editor.auxiliary == nil
-        c.editorKind = focusedEditorKind
+        // P-006: with no editor open, the Editor menu's first block only.
+        c.editorKind = editor.fileURL == nil && focusedEditorKind == .source ? .other : focusedEditorKind
         c.inlineIssuesShown = editor.showsInlineIssues
         c.caretLine = c.sourceEditorFocused ? editor.currentLine : nil
         c.editorTabCount = editorArea.tabs.count

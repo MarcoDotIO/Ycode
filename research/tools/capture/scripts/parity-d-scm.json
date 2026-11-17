@@ -1,0 +1,180 @@
+{
+ "name": "parity-d-scm",
+ "title": "Part D 8: the current branch's context menu in the Source Control navigator, by coordinate.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "scm-navigator",
+   "note": "cmd+2: Source Control navigator, Repositories, Merger and Branches expanded. AX tree.",
+   "do": [
+    {
+     "key": "cmd+2"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "label": "Repositories"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "set": {
+      "role": "AXRow",
+      "text": "project|Merger"
+     },
+     "attr": "AXDisclosing",
+     "value": true
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "set": {
+      "role": "AXRow",
+      "text": "Branches"
+     },
+     "attr": "AXDisclosing",
+     "value": true
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "repos",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "main-context",
+   "note": "Right-click the current branch's row 'main' by coordinate (window point 150, 193). AX tree.",
+   "do": [
+    {
+     "click": [
+      150,
+      193
+     ],
+     "button": "right"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "main-menu",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "main-context-items",
+   "note": "Its items and sub-menus as stills.",
+   "do": [
+    {
+     "submenus": "items",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "main-context-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "feature-context",
+   "note": "Right-click 'feature' (window point 150, 171) for comparison.",
+   "do": [
+    {
+     "click": [
+      150,
+      171
+     ],
+     "button": "right"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "feature-menu",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "feature-context-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ],
+ "project": {
+  "generator": "make-conflict-project.py",
+  "path": "Merger/Merger.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

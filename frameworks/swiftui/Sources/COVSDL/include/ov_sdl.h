@@ -47,6 +47,8 @@ typedef struct OVSDLAPI {
     OV_SDL_FN(GetWindowID);
     OV_SDL_FN(GetWindowSize);
     OV_SDL_FN(SetWindowSize);
+    OV_SDL_FN(SetWindowMinimumSize);
+    OV_SDL_FN(SetWindowMaximumSize);
     OV_SDL_FN(GetWindowSizeInPixels);
     OV_SDL_FN(GetWindowDisplayScale);
     OV_SDL_FN(SetWindowTitle);

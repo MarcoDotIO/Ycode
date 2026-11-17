@@ -128,6 +128,7 @@ public struct Button<Label: View>: View {
     @Environment(\._buttonStyle) private var style
     @Environment(\._inMenu) private var inMenu
     @Environment(\._keyboardShortcut) private var shortcut
+    @Environment(\._afterButtonAction) private var after
     @State private var shortcutOwner = ShortcutOwner()
 
     public init(action: @escaping @MainActor () -> Void, @ViewBuilder label: () -> Label) {
@@ -138,6 +139,14 @@ public struct Button<Label: View>: View {
         self.action = action
         self.label = label()
         self.role = role
+    }
+
+    /// What a keyboard shortcut or an accessibility press runs: the action,
+    /// then what the container asks for (an alert goes away, P-214).
+    private var keyAction: @MainActor () -> Void {
+        guard let after else { return action }
+        let action = action
+        return { action(); after() }
     }
 
     public var body: some View {
@@ -152,8 +161,8 @@ public struct Button<Label: View>: View {
                 BorderlessButtonStyle().makeBody(configuration: configuration)
             }
         }
-        .modifier(ShortcutRegistrationModifier(owner: shortcutOwner, action: action))
-        .accessibilityControl(inMenu ? .menuItem : .button, traits: .isButton, actions: ["default": action],
+        .modifier(ShortcutRegistrationModifier(owner: shortcutOwner, action: keyAction))
+        .accessibilityControl(inMenu ? .menuItem : .button, traits: .isButton, actions: ["default": keyAction],
                               isDefault: !inMenu && shortcut == .defaultAction,
                               isCancel: !inMenu && (role == .cancel || shortcut == .cancelAction))
     }
@@ -465,4 +474,19 @@ public struct ButtonRepeatBehavior: Hashable, Sendable {
 
 extension View {
     public func buttonRepeatBehavior(_ behavior: ButtonRepeatBehavior) -> some View { self }
+}
+
+extension Button: _AlertButtonRoleProviding {
+    var _alertRole: ButtonRole? { role }
+}
+
+private enum AfterButtonActionKey: EnvironmentKey { static let defaultValue: (@MainActor () -> Void)? = nil }
+
+extension EnvironmentValues {
+    /// Runs after a button's action when a keyboard shortcut or an
+    /// accessibility press chooses it (an alert's buttons dismiss it).
+    package var _afterButtonAction: (@MainActor () -> Void)? {
+        get { self[AfterButtonActionKey.self] }
+        set { self[AfterButtonActionKey.self] = newValue }
+    }
 }

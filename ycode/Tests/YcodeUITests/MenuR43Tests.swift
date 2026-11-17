@@ -187,8 +187,8 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             #expect(copy.submenu?.items.allSatisfy { !$0.isAlternate } == true)
             #expect(copy.submenu?.items.map { MainMenu.canonicalShortcut($0) } == ["⌘C", "⌃⌥⌘C", "⌃⇧⌘C", "⌃⌥⇧⌘C"])
             #expect(paste.submenu?.items.map(\.title) == ["Paste", "Move Item Here", "Paste and Preserve Formatting"])
-            // Move Item Here is hidden while there is nothing to move.
-            #expect(paste.submenu?.item(withTitle: "Move Item Here")?.isHidden == true)
+            // P-009: Move Item Here is listed while there is nothing to move.
+            #expect(paste.submenu?.item(withTitle: "Move Item Here")?.isHidden == false)
             var ctx = MenuContext()
             #expect(!MenuConditions.isShown(.itemToMove, in: ctx))
             ctx.hasItemToMove = true

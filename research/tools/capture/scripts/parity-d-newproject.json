@@ -1,0 +1,488 @@
+{
+ "name": "parity-d-newproject",
+ "title": "Part D 4: the New Project assistant with an organization identifier typed in, through to its save sheet (cancelled); where the template chooser appears.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "welcome",
+   "note": "The Welcome window (centred on the built-in display by the session). AX tree.",
+   "do": [
+    {
+     "tree": "welcome",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "chooser-appears",
+   "note": "Open the template chooser (Xcode: shift+cmd+N, then Choose Template…; Ycode: the Welcome window's New Project menu ▸ Choose Template…). Recorded where it appears; nothing moved. AX tree (window frames).",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "key": "cmd+shift+n"
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "click": {
+        "role": "AXRow",
+        "text": "Choose Template…",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 2.5
+      },
+      {
+       "tree": "chooser",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "label": "New Project",
+        "role": "AXMenuButton",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "click": {
+        "role": "AXMenuItem",
+        "title": "Choose Template…",
+        "scope": "app",
+        "visible": true
+       }
+      },
+      {
+       "wait": 2.5
+      },
+      {
+       "tree": "chooser",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "chooser-move",
+   "note": "If the chooser is not on the built-in display, move it there (56, 57) for the next steps.",
+   "do": [
+    {
+     "move": [
+      56,
+      57
+     ],
+     "window": "Untitled"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "macos-app",
+   "note": "macOS tab; App is selected by default. Next: the options page.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton",
+      "label": "macOS",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "click": {
+      "label": "macOS",
+      "scope": "app",
+      "visible": true
+     },
+     "fallback": true
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Next",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "options",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "product-name",
+   "note": "Click Product Name, type 'ParityApp'.",
+   "do": [
+    {
+     "click": {
+      "identifier": "productName",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "cmd+a"
+    },
+    {
+     "text": "ParityApp"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "organization",
+   "note": "Click Organization Identifier, select all, type 'org.example.parity' (the bundle identifier follows; Next becomes enabled). AX tree.",
+   "do": [
+    {
+     "click": {
+      "identifier": "bundleIdentifierPrefix",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "cmd+a"
+    },
+    {
+     "text": "org.example.parity"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "typed",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "save-sheet",
+   "note": "Next: the save sheet (animation; its sidebar and file list are painted out). AX tree. (Ycode: a pointer click on Next; its AX press did nothing in the first run.)",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Next",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "save",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXButton",
+        "title": "Next",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 2.5
+      },
+      {
+       "tree": "save",
+       "depth": 40
+      },
+      {
+       "key": "tab"
+      },
+      {
+       "wait": 0.5
+      },
+      {
+       "click": {
+        "role": "AXButton",
+        "title": "Next",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 2.5
+      },
+      {
+       "tree": "save-after-tab",
+       "depth": 40
+      },
+      {
+       "key": "return"
+      },
+      {
+       "wait": 2.5
+      },
+      {
+       "tree": "save-after-return",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "save-tab-order",
+   "note": "Tab through the save sheet (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "save-options",
+   "note": "The save sheet's options (Source Control checkbox, Add to, Group) if it has them: AX tree only; then Escape/Cancel.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "after-save",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "assistant-cancel",
+   "note": "Cancel the assistant.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "after-cancel",
+   "note": "What is left. AX tree.",
+   "do": [
+    {
+     "tree": "after",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "project_targets": [],
+ "window": {
+  "size": null,
+  "display": "builtin",
+  "title": "Welcome to {app}",
+  "timeout": 60
+ },
+ "per_target_setup": {
+  "ycode": [
+   {
+    "run": [
+     "defaults",
+     "write",
+     "io.github.MarcoDotIO.Ycode.capture",
+     "NSNavLastRootDirectory",
+     "/private/tmp/ycode-parity-d/panel"
+    ]
+   }
+  ]
+ }
+}

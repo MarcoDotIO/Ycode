@@ -511,7 +511,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         }
     }
 
-    private func reloadSchemes() {
+    func reloadSchemes() {
         schemePopUp.removeAllItems()
         schemePopUp.addItems(withTitles: session.model.schemeNames)
         // Each scheme with its target's app icon (or Ycode's plain app tile)
@@ -930,6 +930,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         updateUserState { $0.noteRecentFile(path) }
         editor.history.visit(path)
         display(path: path, line: line)
+        editorArea.reloadTabBar()   // the tab names the file at once (P-062)
         // The open file's row is selected, in the same pass as the editor,
         // jump bar and inspector (editor-area.md §C.6; navigators.md
         // "Council round 1" item 3).
@@ -995,7 +996,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             if let first = (assistantMode == .counterparts ? list : modeList).first {
                 if a.fileURL?.path != first { open(path: first, line: nil, in: a) }
             } else {
-                a.showText("No Editor", title: "No Editor")
+                a.showNoEditor()
             }
         }
     }
@@ -1605,6 +1606,9 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     }
 
     func display(path: String, line: Int?) {
+        // An editor that can't preview (the project editor, an asset catalog,
+        // a plist…) shows no canvas beside it (B4-POLISH).
+        defer { hideCanvasForEditorWithoutPreviews() }
         // Images open in the image viewer (editor-area.md §C.6, +ImageViewer.swift).
         if ImageViewerController.handles(URL(fileURLWithPath: path)) {
             assetEditor = nil
@@ -1738,6 +1742,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
                 }
                 activityView.status = WorkspaceChrome.activityFinishedText(s, at: Date())
             }
+            if case .paused = session.activity { activityView.isPaused = true } else { activityView.isPaused = false }
             activityView.isBusy = session.isBusy
             updateToolbarAvailability()
             if case .paused = session.activity { debugArea.setPaused(true) } else { debugArea.setPaused(false) }
@@ -2208,6 +2213,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     /// View ▸ Navigators ▸ <navigator> (⌘1–⌘9): shows the navigators in
     /// the left area (replacing the Coding Assistant pane).
     @objc public func showNavigator(_ sender: Any?) {
+        if hidesNavigatorShown(by: sender) { return }   // P-036, +NavigatorToggle.swift
         navigatorItem.isCollapsed = false
         navigator.showsCodingAssistant = false
         navigator.select((sender as? NSMenuItem)?.tag ?? (sender as? Int) ?? 0)
@@ -2219,7 +2225,12 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         inspector.select((sender as? NSMenuItem)?.tag ?? 0)
     }
 
-    @objc public func activateConsole(_ sender: Any?) { showDebugArea(true) }
+    /// Activate Console (⇧⌘C): the debug area with the keyboard in the
+    /// console (P-123).
+    @objc public func activateConsole(_ sender: Any?) {
+        showDebugArea(true)
+        debugArea.focusConsole()
+    }
 
     // MARK: Product commands
 
@@ -2404,24 +2415,16 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     }
 
     /// Product > Scheme > Edit Scheme (Command-<): the editor sheet for the
-    /// selected scheme. Returns the controller (nil when the scheme has no
-    /// file yet, e.g. an autocreated one).
+    /// selected scheme, autocreated ones included (P-108;
+    /// `Schemes/WorkspaceWindowController+SchemeEditing.swift`). Returns the
+    /// controller (nil when no scheme is selected, e.g. a package).
     @discardableResult
     @objc public func editScheme(_ sender: Any?) -> SchemeEditorController? {
-        guard let scheme = session.model.loadSchemes().first(where: { $0.name == session.scheme }) else {
+        guard let scheme = session.model.schemeForEditing(named: session.scheme) else {
             NSSound.beep()
             return nil
         }
-        let editor = SchemeEditorController(scheme: scheme, configurations: session.model.configurationNames)
-        editor.startSelection = schemeEditorState.selection
-        editor.availableTargets = SchemeEditorController.buildableTargets(projects: session.model.projects, container: session.model.url)
-        editor.onOpenFile = { [weak self] in self?.open(path: $0.path, line: nil) }
-        editor.onSelect = { [weak self] a, t in self?.schemeEditorState.selection = (a, t) }
-        editor.onManage = { [weak self, weak editor] in
-            guard let self else { return }
-            let manage = self.manageSchemesController()
-            editor?.presentAsSheet(manage)
-        }
+        let editor = configuredSchemeEditor(scheme)
         if window?.isVisible == true { contentViewController?.presentAsSheet(editor) }
         return editor
     }
@@ -2452,7 +2455,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
 
     /// The Manage Schemes list for this workspace.
     public func manageSchemesController() -> ManageSchemesController {
-        let c = ManageSchemesController(schemes: session.model.loadSchemes())
+        let c = ManageSchemesController(schemes: session.model.schemesForManaging())
         c.onClose = { [weak self] in self?.reloadSchemesFromDisk() }
         return c
     }
@@ -2658,6 +2661,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     public func validateMenuItem(_ item: NSMenuItem) -> Bool {
         // Titles in context (reference-ui-5.md §1.3; WorkspaceWindowController+MenuBar.swift).
         if let generic = Self.menuBarGenericTitle(item) { item.title = MenuTitles.title(generic: generic, in: menuContext) }
+        if let r = validateMenuParityItem(item) { return r }   // +MenuParity.swift (beta 4)
         if let r = validateAvailability(item) { return r }
         if let r = validateMenuBarItem(item) { return r }
         if let r = validateFindMenuItem(item) { return r }   // +Find.swift

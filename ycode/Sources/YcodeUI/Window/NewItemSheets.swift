@@ -203,10 +203,18 @@ public final class NewFileSheetController: TemplateChooserController {
 
     /// The icon grid that replaces the base list (reference-ui-3 §5.3).
     private(set) var grid: TemplateGridView?
+    /// P-184: five tiles a row and a 96-point Next.
+    public static let columns = 5
+    public static let nextButtonWidth: CGFloat = 96
+
+    public override func loadView() {
+        super.loadView()
+        nextButton.widthAnchor.constraint(equalToConstant: Self.nextButtonWidth).isActive = true
+    }
 
     override func initialBody() -> NSView {
         let top = NSStackView(views: [platformControl, filterField])
-        let g = TemplateGridView(top: top)
+        let g = TemplateGridView(top: top, columns: Self.columns, tileStyle: .outlined)
         g.onSelect = { [weak self] e in _ = self?.select(title: e.title) }
         g.onChoose = { [weak self] _ in self?.nextClicked() }
         grid = g
@@ -231,6 +239,8 @@ public final class NewFileSheetController: TemplateChooserController {
 @MainActor
 public final class NewProjectPickerController: NSViewController {
     public var onChoose: ((Int) -> Void)?
+    /// Cancel or Escape (a picker shown in a sheet window of its own).
+    public var onCancel: (() -> Void)?
     /// Vertical gap between the rows.
     public static let rowSpacing: CGFloat = 8
     public private(set) var rowViews: [NSView] = []
@@ -286,7 +296,10 @@ public final class NewProjectPickerController: NSViewController {
         view = root
     }
 
-    @objc func cancelPicker() { if presentingViewController != nil { dismiss(nil) } }
+    @objc public func cancelPicker() {
+        if presentingViewController != nil { dismiss(nil) }
+        onCancel?()
+    }
     @objc func rowClicked(_ b: NSButton) { choose(b.tag) }
     public func choose(_ i: Int) {
         if presentingViewController != nil { dismiss(nil) }

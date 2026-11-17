@@ -40,6 +40,11 @@ final class WindowPopupPresenter: PopupPresenting {
         return host.presentPopup(from: window, content: content, origin: origin, anchor: anchor, minWidth: minWidth, chrome: chrome,
                                  fallbackKeys: fallbackKeys, onDismiss: onDismiss)
     }
+
+    func dismissChildPopups() {
+        guard let host, let window else { return }
+        for p in host.windows where p.isPopup && p.popupOwner === window { host.closePopup(p) }
+    }
 }
 
 /// A pop-up shown inside its window.
@@ -110,17 +115,27 @@ extension AppHost {
         env._popupOwnerServices = measureMain.services
         // The content's ideal size.
         let symbols = owner.graph.layout?.symbols ?? StubSymbolProvider()
+        let began = DispatchTime.now().uptimeNanoseconds
         let measure = ViewGraph(rootView: chrome, environment: env,
                                 layout: HostLayout(.proposal(.unspecified), symbols: symbols))
         measure.update()
         var size = measure.layoutResult?.size ?? CGSize(width: 160, height: 100)
-        measure.setRootView(EmptyView())
-        measure.update()
+        // P-212 (L-003): the measuring tree is taken down after the pop-up
+        // is on screen, not before (it cost as much as building it).
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                measure.setRootView(EmptyView())
+                measure.update()
+            }
+        }
+        let measured = DispatchTime.now().uptimeNanoseconds
         size.width = max(size.width, minWidth).rounded(.up)
         size.height = size.height.rounded(.up)
         guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else { return nil }
-        // Kept inside the main window: the pop-up's owner chain gives its
-        // offset there (a submenu's owner is a pop-up).
+        // Kept inside the area the main window's pop-ups may cover (P-212:
+        // the display around it where the window system tells, else the
+        // window): the pop-up's owner chain gives its offset there (a
+        // submenu's owner is a pop-up).
         var offset = CGPoint.zero
         var main: WindowHost = owner
         while main.isPopup, let o = main.popupOwner {
@@ -128,8 +143,9 @@ extension AppHost {
             offset.y += main.popupOrigin.y
             main = o
         }
+        let area = main.platform.popupArea ?? CGRect(origin: .zero, size: main.size)
         let placed = PopupPlacement.origin(requested.offsetBy(offset), size: size, anchor: anchor.map { $0.offsetBy(dx: offset.x, dy: offset.y) },
-                                           bounds: main.size)
+                                           area: area)
         let origin = CGPoint(x: placed.x - offset.x, y: placed.y - offset.y)
 
         let config = WindowConfiguration(title: "", size: size, resizable: false, vulkan: false,
@@ -182,6 +198,8 @@ extension AppHost {
         w.setPhase(appPhase)
         w.update()
         hoverFromFirstFrame(w, owner: owner, origin: origin, size: size)
+        let shown = DispatchTime.now().uptimeNanoseconds
+        OpenViewsAutomation.lastPopupTiming = (Double(measured - began) / 1e6, Double(shown - measured) / 1e6)
         return handle
     }
 
@@ -268,26 +286,33 @@ final class WeakWindowBox {
 /// trailing edge) moves up to fit, and to the anchor's leading side when it
 /// does not fit on the trailing one. Never past the left or top edge.
 enum PopupPlacement {
-    static func origin(_ o: CGPoint, size: CGSize, anchor: CGRect?, bounds: CGSize) -> CGPoint {
+    /// The pop-up's origin: `o` moved so that a pop-up of `size` stays in
+    /// `area` (above its anchor when it does not fit below; on the anchor's
+    /// other side when a submenu does not fit beside it).
+    static func origin(_ o: CGPoint, size: CGSize, anchor: CGRect?, area: CGRect) -> CGPoint {
         var p = o
         let beside = anchor.map { o.x >= $0.maxX - 4 && o.y < $0.maxY } ?? false
-        if p.y + size.height > bounds.height {
+        if p.y + size.height > area.maxY {
             if let a = anchor, !beside {
                 let gap = max(0, o.y - a.maxY)
                 let above = a.minY - gap - size.height
-                p.y = above >= 0 ? above : max(0, bounds.height - size.height)
+                p.y = above >= area.minY ? above : max(area.minY, area.maxY - size.height)
             } else {
-                p.y = max(0, bounds.height - size.height)
+                p.y = max(area.minY, area.maxY - size.height)
             }
         }
-        if p.x + size.width > bounds.width {
-            if let a = anchor, beside, a.minX - size.width + 2 >= 0 {
+        if p.x + size.width > area.maxX {
+            if let a = anchor, beside, a.minX - size.width + 2 >= area.minX {
                 p.x = a.minX - size.width + 2
             } else {
-                p.x = max(0, bounds.width - size.width)
+                p.x = max(area.minX, area.maxX - size.width)
             }
         }
-        return CGPoint(x: max(0, p.x), y: max(0, p.y))
+        return CGPoint(x: max(area.minX, p.x), y: max(area.minY, p.y))
+    }
+
+    static func origin(_ o: CGPoint, size: CGSize, anchor: CGRect?, bounds: CGSize) -> CGPoint {
+        origin(o, size: size, anchor: anchor, area: CGRect(origin: .zero, size: bounds))
     }
 }
 

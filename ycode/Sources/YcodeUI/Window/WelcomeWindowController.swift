@@ -108,6 +108,8 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
+        // P-023: the Window menu's list leaves Welcome out.
+        window.isExcludedFromWindowsMenu = true
         // §1.4 (W5): no traffic lights; a round close button of its own.
         for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] { window.standardWindowButton(b)?.isHidden = true }
         super.init(window: window)
@@ -277,16 +279,34 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
     /// the free height below the visible frame's top, never above it.
     func placeOnScreen() {
         guard let window else { return }
-        guard let visible = visibleFrameOverride ?? window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame else { return window.center() }
+        guard let visible = visibleFrameOverride ?? Self.placementScreen(excluding: window)?.visibleFrame ?? window.screen?.visibleFrame
+            ?? NSScreen.main?.visibleFrame else { return window.center() }
         let o = WelcomePlacement.origin(width: Double(window.frame.width), height: Double(window.frame.height),
                                         visible: (Double(visible.minX), Double(visible.minY), Double(visible.width), Double(visible.height)))
         window.setFrameOrigin(NSPoint(x: o.x, y: o.y))
     }
 
     /// The visible frame to place the window in (tests set it); otherwise
-    /// the window's screen once it has one, else the screen with the key
-    /// window (the system's main screen).
+    /// the screen of the key workspace window (P-023), else the window's
+    /// screen once it has one, else the system's main screen.
     var visibleFrameOverride: NSRect?
+
+    /// The screen Welcome opens on (P-023): the key workspace window's,
+    /// else the key or main window's (not Welcome's own).
+    static func placementScreen(excluding own: NSWindow?) -> NSScreen? {
+        let ordered = NSApp.orderedWindows.filter { $0 !== own && $0.isVisible }
+        let workspace = ordered.first { $0.isKeyWindow && $0.windowController is WorkspaceWindowController }
+            ?? ordered.first { $0.windowController is WorkspaceWindowController }
+        return screen(containing: (workspace ?? [NSApp.keyWindow, NSApp.mainWindow].compactMap { $0 }.first { $0 !== own })?.frame,
+                      screens: NSScreen.screens.map { ($0.frame, $0) })
+    }
+
+    /// The screen holding most of `frame` (nil when it touches none).
+    static func screen<S>(containing frame: NSRect?, screens: [(NSRect, S)]) -> S? {
+        guard let frame else { return nil }
+        let area = { (r: NSRect) in r.width * r.height }
+        return screens.map { (area($0.0.intersection(frame)), $0.1) }.filter { $0.0 > 0 }.max { $0.0 < $1.0 }?.1
+    }
 
     /// Shows the window (centered the first time) and refreshes the list.
     public func present() {
@@ -444,19 +464,78 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
     @discardableResult
     @objc func newProjectChosen(_ sender: Any?) -> NewProjectSheetController? {
         guard let i = (sender as? NSMenuItem)?.tag else { return nil }
+        return startNewProject(row: i)
+    }
+
+    /// Where New Project remembers its choices (tests pass their own).
+    public var newProjectDefaults: UserDefaults = Preferences.shared.defaults
+
+    /// A compact-picker row from Welcome. The template sheet opens on an
+    /// empty workspace window on Welcome's screen, and Welcome closes
+    /// (P-023); Cancel there brings Welcome back when no other window is
+    /// open.
+    @discardableResult
+    public func startNewProject(row i: Int) -> NewProjectSheetController? {
         if NewProjectPicker.template(forRow: i) == .app {
             createUntitledApp()
             return nil
         }
-        return NewProjectFlow.start(row: i, defaults: Preferences.shared.defaults, location: newProjectLocation, parent: window,
-                                    interactive: window?.isVisible == true,
-                                    onCreated: { [weak self] created in
-                                        self?.open(created.openURL)
-                                        if let entry = created.entryFile { NewProjectFlow.openEntry(entry, of: created.openURL) }
-                                    },
-                                    onError: { text in
-                                        NSApp.presentError(NSError(domain: "Ycode", code: 1, userInfo: [NSLocalizedDescriptionKey: text]))
-                                    })
+        let interactive = window?.isVisible == true
+        let sheet = NewProjectFlow.start(row: i, defaults: newProjectDefaults, location: newProjectLocation, parent: window,
+                                         interactive: interactive,
+                                         onCreated: { [weak self] created in
+                                             self?.open(created.openURL)
+                                             if let entry = created.entryFile { NewProjectFlow.openEntry(entry, of: created.openURL) }
+                                         },
+                                         onError: { text in
+                                             NSApp.presentError(NSError(domain: "Ycode", code: 1, userInfo: [NSLocalizedDescriptionKey: text]))
+                                         })
+        guard interactive else { return sheet }
+        let cancel = sheet.onCancel
+        sheet.onCancel = { [weak self] in
+            cancel?()
+            let others = NSApp.windows.contains { $0.isVisible && $0.windowController is WorkspaceWindowController }
+            if !others { self?.present() }
+        }
+        close()
+        return sheet
+    }
+
+    /// File ▸ New ▸ Project… (⇧⌘N) with Welcome in front (P-179): the
+    /// compact picker as a sheet on Welcome; a row continues as Welcome's
+    /// New Project pull-down does.
+    @discardableResult
+    @objc public func newProject(_ sender: Any?) -> NewProjectPickerController {
+        let picker = NewProjectPickerController()
+        guard let window, window.isVisible else {
+            picker.onChoose = { [weak self] i in self?.startNewProject(row: i) }
+            return picker
+        }
+        // Welcome has no content view controller to present from: the
+        // picker gets a sheet window of its own.
+        let sheet = NSWindow(contentViewController: picker)
+        // Not a window of its own in the Window menu (an untitled entry).
+        sheet.isExcludedFromWindowsMenu = true
+        sheet.isReleasedWhenClosed = false
+        let end = { [weak window, weak sheet] in
+            guard let sheet else { return }
+            window?.endSheet(sheet)
+            sheet.close()
+        }
+        picker.onCancel = end
+        picker.onChoose = { [weak self] i in
+            end()
+            self?.startNewProject(row: i)
+        }
+        window.beginSheet(sheet)
+        return picker
+    }
+
+    /// File ▸ New ▸ Project… ▸ Choose Template… (⌥⇧⌘N) with Welcome in
+    /// front: the template sheet directly.
+    @discardableResult
+    @objc public func chooseProjectTemplate(_ sender: Any?) -> NewProjectSheetController? {
+        startNewProject(row: NewProjectPicker.chooseTemplateIndex)
     }
 }
 

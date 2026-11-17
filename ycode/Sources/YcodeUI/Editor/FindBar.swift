@@ -4,7 +4,7 @@ import YcodeIDECore
 /// The bar above the editor: query (and replacement) fields, option
 /// pop-ups, match count, previous/next and Done.
 @MainActor
-final class FindBarView: NSView {
+final class FindBarView: NSView, NSSearchFieldDelegate {
     let queryField = NSSearchField()
     let replaceField = NSTextField()
     let countLabel = NSTextField(labelWithString: "")
@@ -23,6 +23,10 @@ final class FindBarView: NSView {
         queryField.target = self
         queryField.action = #selector(changed)
         replaceField.placeholderString = "Replace"
+        // Escape in either field closes the bar (P-003), as Done does; the
+        // search field would otherwise only clear its text.
+        queryField.delegate = self
+        replaceField.delegate = self
         for (p, titles) in [(style, ["Text", "Regular Expression"]), (match, ["Containing", "Matching Word"]),
                             (caseMode, ["Ignoring Case", "Matching Case"])] {
             p.addItems(withTitles: titles)
@@ -76,6 +80,16 @@ final class FindBarView: NSView {
         WorkspaceSearch.Options(regularExpression: style.indexOfSelectedItem == 1, wholeWord: match.indexOfSelectedItem == 1,
                                 ignoreCase: caseMode.indexOfSelectedItem != 1)
     }
+
+    /// Escape (`cancelOperation:`) in the query or replacement field.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard selector == #selector(NSResponder.cancelOperation(_:)) else { return false }
+        onDone?()
+        return true
+    }
+
+    /// Escape with one of the bar's other controls focused.
+    override func cancelOperation(_ sender: Any?) { onDone?() }
 
     @objc func changed() { onChange?() }
     @objc func previous() { onStep?(false) }

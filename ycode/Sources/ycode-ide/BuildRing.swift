@@ -60,12 +60,14 @@ struct BuildRing: View {
 /// it.
 struct TitleMark: View {
     var isBusy: Bool
+    /// The debugger is paused: the mark, no ring (`TitleAreaIcon`, B4-POLISH).
+    var isPaused = false
     /// The activity subtitle (the ring's n/m).
     var activity = ""
 
     var body: some View {
         Group {
-            if isBusy {
+            if TitleAreaIcon.shown(busy: isBusy, paused: isPaused) == .ring {
                 BuildRing(activity: activity)
             } else {
                 YcodeSmallMark(size: CGFloat(FileGlyphs.titleMarkSide))

@@ -327,7 +327,14 @@ struct SourceControlPromptSheet: View {
         let p = scm.prompt
         VStack(alignment: .leading, spacing: 10) {
             Text(verbatim: p?.title ?? "").font(ShellFonts.rowBold)
-            Text(verbatim: p?.message ?? "").font(ShellFonts.small)
+            if !(p?.message ?? "").isEmpty { Text(verbatim: p?.message ?? "").font(ShellFonts.small) }
+            ForEach(Array((p?.info ?? []).enumerated()), id: \.offset) { pair in
+                HStack(spacing: 8) {
+                    Text(verbatim: pair.element.label + ":").font(ShellFonts.small).frame(width: 60, alignment: .trailing)
+                    Text(verbatim: pair.element.text).font(ShellFonts.small).lineLimit(1)
+                }
+                .shellTarget("scm prompt info \(pair.offset)")
+            }
             ForEach(Array((p?.fields ?? []).enumerated()), id: \.offset) { pair in
                 HStack(spacing: 8) {
                     Text(verbatim: pair.element.label + ":").font(ShellFonts.small).frame(width: 60, alignment: .trailing)

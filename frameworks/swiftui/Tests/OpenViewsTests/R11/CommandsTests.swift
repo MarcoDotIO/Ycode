@@ -49,7 +49,7 @@ struct CommandsTests {
         #expect(h.popups.count == 1)
         // New Window, Close Window (newItem), then the CommandGroup(after:).
         let items = h.openItems
-        #expect(items.starts(with: ["New Window", "Ctrl+N", "Close Window", "Ctrl+W", "New File", "Ctrl+Shift+N"]))
+        #expect(items.starts(with: ["New Window", "⌘N", "Close Window", "⌘W", "New File", "⇧⌘N"]))
         h.choose("New File", at: 1.5)
         #expect(CommandLog.shared.entries == ["new file"])
         #expect(h.popups.isEmpty)
@@ -62,7 +62,7 @@ struct CommandsTests {
     @Test func appMenuHasSettingsAndQuit() {
         let h = CommandsHarness { Editor() }
         h.openMenu("Demo", at: 1)
-        #expect(h.openItems == ["About Demo", "Settings…", "Ctrl+,", "Quit Demo", "Ctrl+Q"])
+        #expect(h.openItems == ["About Demo", "Settings…", "⌘,", "Quit Demo", "⌘Q"])
     }
 
     @Test func shortcutsRunWithoutOpeningTheMenuAndFollowFocusedValues() {
@@ -82,7 +82,7 @@ struct CommandsTests {
         #expect(CommandLog.shared.entries == ["run Main", "build Notes.txt"])
         h.openMenu("Build", at: 2)
         #expect(h.isItemEnabled("Build") == true)
-        #expect(h.openItems.contains("Ctrl+B"))
+        #expect(h.openItems.contains("⌘B"))
     }
 
     @Test func submenusOfCommandMenus() {
@@ -212,13 +212,13 @@ struct CommandsTests {
     }
 
     @Test func shortcutText() {
-        #expect(KeyboardShortcut("z", modifiers: [.command, .shift]).displayText == "Ctrl+Shift+Z")
-        #expect(KeyboardShortcut(.return, modifiers: []).displayText == "Enter")
-        #expect(KeyboardShortcut("s", modifiers: [.command, .option]).displayText == "Ctrl+Alt+S")
-        #expect(KeyboardShortcut(.leftArrow, modifiers: .control).displayText == "Ctrl+Left")
+        #expect(KeyboardShortcut("z", modifiers: [.command, .shift]).displayText == "⇧⌘Z")
+        #expect(KeyboardShortcut(.return, modifiers: []).displayText == "↩")
+        #expect(KeyboardShortcut("s", modifiers: [.command, .option]).displayText == "⌥⌘S")
+        #expect(KeyboardShortcut(.leftArrow, modifiers: .control).displayText == "⌃←")
         // Function keys as AppKit's characters (F6 is U+F709).
         #expect(KeyboardShortcut(KeyEquivalent("\u{F709}"), modifiers: []).displayText == "F6")
-        #expect(KeyboardShortcut(KeyEquivalent("\u{F70A}"), modifiers: .control).displayText == "Ctrl+F7")
+        #expect(KeyboardShortcut(KeyEquivalent("\u{F70A}"), modifiers: .control).displayText == "⌃F7")
         #expect(KeyEquivalent(platformKey: .function(8)) == KeyEquivalent("\u{F70B}"))
     }
 

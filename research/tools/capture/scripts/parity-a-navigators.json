@@ -1,0 +1,1357 @@
+{
+ "name": "parity-a-navigators",
+ "title": "Part A 5: every navigator by cmd+1…9 and by click, the filter field and its menus, bottom bar, context menus, rename, disclosure, keyboard, multi-select, New Group, New File, drag to reorder.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "The project navigator at rest. AX tree.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "cmd1-project",
+   "note": "cmd+1: the project navigator (switch animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+1"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "project",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "cmd2-source-control",
+   "note": "cmd+2: the source-control navigator (switch animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+2"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "source-control",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "cmd3-bookmarks",
+   "note": "cmd+3: the bookmarks navigator (switch animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+3"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "bookmarks",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "cmd4-find",
+   "note": "cmd+4: the find navigator (switch animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+4"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "find",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "cmd5-issues",
+   "note": "cmd+5: the issues navigator (switch animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+5"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "issues",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "cmd6-tests",
+   "note": "cmd+6: the tests navigator (switch animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+6"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "tests",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "cmd7-debug",
+   "note": "cmd+7: the debug navigator (switch animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+7"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "debug",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "cmd8-breakpoints",
+   "note": "cmd+8: the breakpoints navigator (switch animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+8"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "breakpoints",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "cmd9-reports",
+   "note": "cmd+9: the reports navigator (switch animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+9"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "reports",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "click-project",
+   "note": "Pointer onto the project navigator tab (1.6 s: hover, tooltip), then click it.",
+   "do": [
+    {
+     "hover": {
+      "help": "Show the Project navigator"
+     }
+    },
+    {
+     "wait": 1.6
+    },
+    {
+     "click": {
+      "help": "Show the Project navigator"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "click-source-control",
+   "note": "Pointer onto the source-control navigator tab (1.6 s: hover, tooltip), then click it.",
+   "do": [
+    {
+     "hover": {
+      "help": "Show the Source Control navigator"
+     }
+    },
+    {
+     "wait": 1.6
+    },
+    {
+     "click": {
+      "help": "Show the Source Control navigator"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "click-bookmarks",
+   "note": "Pointer onto the bookmarks navigator tab (1.6 s: hover, tooltip), then click it.",
+   "do": [
+    {
+     "hover": {
+      "help": "Show the Bookmark navigator"
+     }
+    },
+    {
+     "wait": 1.6
+    },
+    {
+     "click": {
+      "help": "Show the Bookmark navigator"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "click-find",
+   "note": "Pointer onto the find navigator tab (1.6 s: hover, tooltip), then click it.",
+   "do": [
+    {
+     "hover": {
+      "help": "Show the Find navigator"
+     }
+    },
+    {
+     "wait": 1.6
+    },
+    {
+     "click": {
+      "help": "Show the Find navigator"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "click-issues",
+   "note": "Pointer onto the issues navigator tab (1.6 s: hover, tooltip), then click it.",
+   "do": [
+    {
+     "hover": {
+      "help": "Show the Issue navigator"
+     }
+    },
+    {
+     "wait": 1.6
+    },
+    {
+     "click": {
+      "help": "Show the Issue navigator"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "click-tests",
+   "note": "Pointer onto the tests navigator tab (1.6 s: hover, tooltip), then click it.",
+   "do": [
+    {
+     "hover": {
+      "help": "Show the Test navigator"
+     }
+    },
+    {
+     "wait": 1.6
+    },
+    {
+     "click": {
+      "help": "Show the Test navigator"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "click-debug",
+   "note": "Pointer onto the debug navigator tab (1.6 s: hover, tooltip), then click it.",
+   "do": [
+    {
+     "hover": {
+      "help": "Show the Debug Navigator"
+     }
+    },
+    {
+     "wait": 1.6
+    },
+    {
+     "click": {
+      "help": "Show the Debug Navigator"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "click-breakpoints",
+   "note": "Pointer onto the breakpoints navigator tab (1.6 s: hover, tooltip), then click it.",
+   "do": [
+    {
+     "hover": {
+      "help": "Show the Breakpoints Navigator"
+     }
+    },
+    {
+     "wait": 1.6
+    },
+    {
+     "click": {
+      "help": "Show the Breakpoints Navigator"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "click-reports",
+   "note": "Pointer onto the reports navigator tab (1.6 s: hover, tooltip), then click it.",
+   "do": [
+    {
+     "hover": {
+      "help": "Show the Report navigator"
+     }
+    },
+    {
+     "wait": 1.6
+    },
+    {
+     "click": {
+      "help": "Show the Report navigator"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "click-project-again",
+   "note": "Back to the project navigator by clicking its tab.",
+   "do": [
+    {
+     "click": {
+      "help": "Show the Project navigator"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "filter-type",
+   "note": "Click the navigator's filter field and type 'Model1' (rows filter).",
+   "do": [
+    {
+     "click": {
+      "subrole": "AXSearchField",
+      "index": 0
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "text": "Model1"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "description": "Project navigator filter"
+       }
+      },
+      {
+       "wait": 0.3
+      },
+      {
+       "text": "Model1"
+      },
+      {
+       "wait": 0.8
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "filter-empty",
+   "note": "Replace the filter text with 'zzzz': the empty state.",
+   "do": [
+    {
+     "key": "cmd+a"
+    },
+    {
+     "text": "zzzz"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "filter-empty",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "filter-clear",
+   "note": "Clear the filter (cmd+A, Delete), then Escape.",
+   "do": [
+    {
+     "key": "cmd+a delete"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "key": "escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "filter-options",
+   "note": "The filter field's options menu (the control at the field's left end).",
+   "do": [
+    {
+     "click": {
+      "description": "Filter options"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "filter-options",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "description": "Icon View Drop Down"
+       }
+      },
+      {
+       "wait": 0.8
+      },
+      {
+       "tree": "filter-options",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "filter-options-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "bottom-action-menu",
+   "note": "The bottom bar's leftmost button (+ / options menu).",
+   "do": [
+    {
+     "click": {
+      "description": "Options"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "action-menu",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": {
+        "identifier": "filterControlBarActionMenuButton"
+       }
+      },
+      {
+       "wait": 0.8
+      },
+      {
+       "tree": "action-menu",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "bottom-action-walk",
+   "note": "Its sub-menus, if any.",
+   "do": [
+    {
+     "submenus": "sub",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "bottom-action-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "recent-files-on",
+   "note": "Bottom bar: the Recent files toggle on (hover 1.6 s first).",
+   "do": [
+    {
+     "hover": {
+      "label": "Recent files"
+     }
+    },
+    {
+     "wait": 1.6
+    },
+    {
+     "click": {
+      "label": "Recent files"
+     }
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "recent-files-off",
+   "note": "Recent files toggle off.",
+   "do": [
+    {
+     "click": {
+      "label": "Recent files"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "scm-status-on",
+   "note": "Bottom bar: the source-control status toggle on (hover 1.6 s first).",
+   "do": [
+    {
+     "hover": {
+      "label": "Files with source-control status"
+     }
+    },
+    {
+     "wait": 1.6
+    },
+    {
+     "click": {
+      "label": "Files with source-control status"
+     }
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "scm-status-off",
+   "note": "Source-control status toggle off.",
+   "do": [
+    {
+     "click": {
+      "label": "Files with source-control status"
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "ctx-file",
+   "note": "Right-click Long.swift: the file's context menu (animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Long|Long.swift"
+     },
+     "button": "right"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "ctx-file",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "ctx-file-walk",
+   "note": "Every sub-menu of that context menu, hovered: a still of each.",
+   "do": [
+    {
+     "submenus": "sub",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "ctx-file-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "ctx-group",
+   "note": "Right-click the Models group: its context menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Models"
+     },
+     "button": "right"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "ctx-group",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "ctx-group-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "ctx-project",
+   "note": "Right-click the project row (GlassScroll, the first row): its context menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "GlassScroll",
+      "index": 0
+     },
+     "button": "right"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "ctx-project",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "ctx-project-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "rename",
+   "note": "Select Bands.swift, press Return: inline rename (field, selection of the name).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Bands|Bands.swift"
+     }
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "key": "return"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "rename",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "rename-cancel",
+   "note": "Escape cancels the rename.",
+   "do": [
+    {
+     "key": "escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "collapse-plain",
+   "note": "Select the Plain group and press Left: it collapses (disclosure animation).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Plain|Plain.swift"
+     }
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "key": "left"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "expand-plain",
+   "note": "Right: it expands again.",
+   "do": [
+    {
+     "key": "right"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "disclose-click",
+   "note": "Click the Models group's disclosure triangle (expand, animation).",
+   "do": [
+    {
+     "click": {
+      "role": "AXDisclosureTriangle",
+      "index": 2
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "disclose-click-back",
+   "note": "Click it again (collapse).",
+   "do": [
+    {
+     "click": {
+      "role": "AXDisclosureTriangle",
+      "index": 2
+     }
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "keys-outline",
+   "note": "Keyboard in the outline: select Bands.swift, Down ×3, Up, then type-select 'lo' (Long.swift): stills after each.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Bands|Bands.swift"
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "snap": "down1",
+     "mode": "app"
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "snap": "down2",
+     "mode": "app"
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "snap": "down3",
+     "mode": "app"
+    },
+    {
+     "key": "up"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "snap": "up",
+     "mode": "app"
+    },
+    {
+     "text": "lo"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "snap": "typeselect",
+     "mode": "app"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "multi-select",
+   "note": "Select Bands.swift, then shift+Down twice: three rows selected.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Bands|Bands.swift"
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "shift+down"
+    },
+    {
+     "wait": 0.2
+    },
+    {
+     "key": "shift+down"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "tree": "multi",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "new-group",
+   "note": "Select Zeta.swift (in the plain group Plain), then File ▸ New ▸ Group (cmd+option+N): the new group and its inline name field.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Zeta|Zeta.swift"
+     }
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "key": "cmd+alt+n"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "new-group",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "new-group-undo",
+   "note": "Escape, then Undo (cmd+Z) removes the group.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "key": "cmd+z"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "new-file",
+   "note": "File ▸ New ▸ File (cmd+N) with Zeta.swift selected: what opens (animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Zeta|Zeta.swift"
+     }
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "key": "cmd+n"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "new-file",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "new-file-tabs",
+   "note": "Tab through it (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "new-file-cancel",
+   "note": "Cancel it (Cancel, else Escape).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "drag-reorder",
+   "note": "Drag Zeta.swift below Beta.swift inside the plain group Plain (drop indicator, row animation).",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXRow",
+       "text": "Zeta|Zeta.swift"
+      },
+      "to": {
+       "role": "AXRow",
+       "text": "Beta|Beta.swift"
+      },
+      "to_dy": 8
+     },
+     "duration": 1.0
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "drag-undo",
+   "note": "Undo (cmd+Z): the order comes back.",
+   "do": [
+    {
+     "key": "cmd+z"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  }
+ ],
+ "project": {
+  "generator": "make-test-project.py",
+  "path": "GlassScroll/GlassScroll.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

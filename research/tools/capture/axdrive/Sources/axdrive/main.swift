@@ -21,7 +21,10 @@
 //   axdrive set    --pid N MATCH... --attr AXSelected --value true|false|TEXT|NUMBER
 //   axdrive menu   --pid N --path "View>Navigators>Show Navigator"
 //   axdrive key    --pid N --keys cmd+shift+o [--text "abc"]
-//   axdrive click  --pid N (MATCH... | --at X,Y) [--button left|right] [--count 2]
+//   axdrive click  --pid N (MATCH... | --at X,Y) [--button left|right] [--count 2] [--modifiers alt,shift]
+//   axdrive textpoint --pid N --needle TEXT [--occurrence K] [--char-offset C]
+//                  (global point of a text in the focused text area, or the first
+//                  AXTextArea holding it: the middle of that character, AXBoundsForRange)
 //   axdrive hover  --pid N (MATCH... | --at X,Y)
 //   axdrive scroll --pid N (MATCH... | --at X,Y) --dy PT [--dx PT] [--steps N] [--interval S]
 //                  [--phases] [--momentum [--momentum-tau S]] [--ax]
@@ -67,6 +70,7 @@ struct Options {
     var from: CGPoint?
     var to: CGPoint?
     var global = false
+    var visible = false
     var button = "left"
     var count = 1
     var dx: Double = 0
@@ -74,6 +78,7 @@ struct Options {
     var steps = 20
     var interval = 1.0 / 60
     var duration = 0.4
+    var hold = 0.0          // drag: seconds the button stays down before the pointer moves
     var momentum = false
     var momentumTau = 0.33
     var phases = false
@@ -87,6 +92,10 @@ struct Options {
     var route = "pid"
     var attr: String?
     var value: String?
+    var modifiers = ""
+    var needle: String?
+    var occurrence = 1
+    var charOffset = 0
 }
 
 /// Wall-clock time just before the first event or AX action was sent.
@@ -154,6 +163,7 @@ func parse(_ args: [String]) -> Options {
         case "--from": let p = pair(value(), a); o.from = CGPoint(x: p.0, y: p.1)
         case "--to": let p = pair(value(), a); o.to = CGPoint(x: p.0, y: p.1)
         case "--global": o.global = true
+        case "--visible": o.visible = true
         case "--button": o.button = value()
         case "--count": o.count = number(value(), a)
         case "--dx": o.dx = number(value(), a)
@@ -161,6 +171,7 @@ func parse(_ args: [String]) -> Options {
         case "--steps": o.steps = max(1, number(value(), a))
         case "--interval": o.interval = number(value(), a)
         case "--duration": o.duration = number(value(), a)
+        case "--hold": o.hold = number(value(), a)
         case "--momentum": o.momentum = true
         case "--momentum-tau": o.momentumTau = number(value(), a)
         case "--phases": o.phases = true
@@ -174,6 +185,10 @@ func parse(_ args: [String]) -> Options {
         case "--action": o.action = value()
         case "--attr": o.attr = value()
         case "--value": o.value = value()
+        case "--modifiers": o.modifiers = value()
+        case "--needle": o.needle = value()
+        case "--occurrence": o.occurrence = number(value(), a)
+        case "--char-offset": o.charOffset = number(value(), a)
         default: fail("unknown option \(a)")
         }
         i += 1
@@ -216,6 +231,21 @@ func describe(_ e: AXUIElement) -> [String: Any] {
         if let s = string(e, name), !s.isEmpty { d[key] = s.count > 120 ? String(s.prefix(120)) + "…" : s }
     }
     if let f = frame(e) { d["frame"] = [f.origin.x, f.origin.y, f.width, f.height] }
+    // States (parity run): only the notable value of each, to keep trees small.
+    if let v = attribute(e, kAXEnabledAttribute) as? Bool, !v { d["enabled"] = false }
+    if let v = attribute(e, kAXFocusedAttribute) as? Bool, v { d["focused"] = true }
+    if let v = attribute(e, kAXSelectedAttribute) as? Bool, v { d["selected"] = true }
+    if let v = attribute(e, "AXExpanded") as? Bool, v { d["expanded"] = true }
+    if let v = attribute(e, "AXDisclosing") as? Bool, v { d["disclosing"] = true }
+    if string(e, kAXRoleAttribute) == kAXMenuItemRole {
+        // Key equivalent: the character (or virtual key) and the modifier mask
+        // (AXMenuItemModifiers: 0 = cmd, +1 shift, +2 option, +4 control, +8 no cmd).
+        if let c = string(e, kAXMenuItemCmdCharAttribute), !c.isEmpty { d["key"] = c }
+        if let k = attribute(e, kAXMenuItemCmdVirtualKeyAttribute) as? NSNumber, d["key"] == nil { d["key_code"] = k.intValue }
+        if d["key"] != nil || d["key_code"] != nil,
+           let m = attribute(e, kAXMenuItemCmdModifiersAttribute) as? NSNumber { d["modifiers"] = m.intValue }
+        if let mark = string(e, kAXMenuItemMarkCharAttribute), !mark.isEmpty { d["mark"] = mark }
+    }
     var names: CFArray?
     if AXUIElementCopyActionNames(e, &names) == .success, let list = names as? [String], !list.isEmpty {
         d["actions"] = list.filter { $0 != "AXScrollToVisible" && $0 != "AXShowDefaultUI" && $0 != "AXShowAlternateUI" }
@@ -244,7 +274,10 @@ func descendantText(_ e: AXUIElement, depth: Int) -> [String] {
 }
 
 func elementMatches(_ e: AXUIElement, _ o: Options) -> Bool {
-    o.matches.allSatisfy { m in
+    // --visible: only elements with a non-empty frame (an open menu's items,
+    // not those of the closed menus, whose frames are empty).
+    if o.visible, let f = frame(e), f.width < 1 || f.height < 1 { return false }
+    return o.matches.allSatisfy { m in
         let names: [String]
         switch m.key {
         case "role": names = [kAXRoleAttribute]
@@ -481,10 +514,14 @@ func click(at p: CGPoint, _ o: Options) {
     let (downType, upType): (CGEventType, CGEventType) = right ? (.rightMouseDown, .rightMouseUp) : (.leftMouseDown, .leftMouseUp)
     let button: CGMouseButton = right ? .right : .left
     post(CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: button), o.pid, window: window)
+    // Parity run: modifier clicks (option-click for Quick Help, control-shift-click
+    // for another insertion point) carry the modifiers in every event's flags.
+    let mods = o.modifiers.isEmpty ? [] : flags(o.modifiers.split(separator: ","))
     for n in 1...max(1, o.count) {
         for type in [downType, upType] {
             let e = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: p, mouseButton: button)
             e?.setIntegerValueField(.mouseEventClickState, value: Int64(n))
+            if !mods.isEmpty { e?.flags = mods }
             post(e, o.pid, window: window)
             pause(0.03)
         }
@@ -631,6 +668,10 @@ func drag(from a: CGPoint, to b: CGPoint, _ o: Options) -> [String: Any] {
     let window = windowNumber(at: a, pid: o.pid)
     post(CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: a, mouseButton: .left), o.pid, window: window)
     post(CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: a, mouseButton: .left), o.pid, window: window)
+    // Parity run: a press held still (the control's pressed state) before the
+    // pointer leaves it; released away from the control, nothing is triggered.
+    let held = Date().timeIntervalSince1970
+    pause(o.hold)
     let n = max(2, Int(o.duration / o.interval))
     let run = onSchedule(n, interval: o.interval) { i in
         let t = Double(i + 1) / Double(n)
@@ -638,7 +679,8 @@ func drag(from a: CGPoint, to b: CGPoint, _ o: Options) -> [String: Any] {
         post(CGEvent(mouseEventSource: source, mouseType: .leftMouseDragged, mouseCursorPosition: p, mouseButton: .left), o.pid, window: window)
     }
     post(CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: b, mouseButton: .left), o.pid, window: window)
-    return ["ok": true, "from": [a.x, a.y], "to": [b.x, b.y], "duration_s": run.end - run.start]
+    return ["ok": true, "from": [a.x, a.y], "to": [b.x, b.y], "duration_s": run.end - run.start,
+            "hold_s": o.hold, "down_wall": held]
 }
 
 /// Selects a row of an outline or table through its AXSelectedRows, the way
@@ -787,6 +829,13 @@ case "set":
     emit(["ok": true, "element": describe(e)])
 case "menu":
     emit(pressMenu(o))
+case "menubar":
+    // The whole menu bar (every menu and sub-menu with titles, key
+    // equivalents, enabled state and checkmarks), read without opening menus.
+    guard let bar = attribute(appElement(o), kAXMenuBarAttribute), CFGetTypeID(bar) == AXUIElementGetTypeID() else {
+        fail("the app has no menu bar", code: 4)
+    }
+    emit(["ok": true, "menubar": tree(bar as! AXUIElement, depth: max(o.depth, 12))])
 case "key":
     if let k = o.keys { sendKeys(k, pid: o.pid) }
     if let t = o.text { sendText(t, pid: o.pid) }
@@ -795,11 +844,92 @@ case "click":
     let p = targetPoint(o)
     routed(p, o) { click(at: p, o) }
     emit(["ok": true, "at": [p.x, p.y], "route": o.route])
+case "textpoint":
+    // Parity run: where a piece of text is drawn, so a modifier click can land on
+    // a symbol in a source editor whose layout differs between apps.
+    guard let needle = o.needle else { fail("textpoint needs --needle") }
+    var areas: [AXUIElement] = []
+    var focused: AnyObject?
+    if AXUIElementCopyAttributeValue(appElement(o), kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+       let f = focused, string(f as! AXUIElement, kAXRoleAttribute) == "AXTextArea" { areas.append(f as! AXUIElement) }
+    var q = Options(); q.pid = o.pid; q.scope = o.scope; q.window = o.window; q.windowOrigin = o.windowOrigin
+    q.matches = [(key: "role", value: "AXTextArea", contains: false)]
+    areas += findAll(q, limit: 30000)
+    for area in areas {
+        guard let text = string(area, kAXValueAttribute) as NSString? else { continue }
+        var from = 0, found = NSNotFound
+        for _ in 0..<max(1, o.occurrence) {
+            let r = text.range(of: needle, options: [], range: NSRange(location: from, length: text.length - from))
+            if r.location == NSNotFound { found = NSNotFound; break }
+            found = r.location; from = r.location + max(1, r.length)
+        }
+        if found == NSNotFound { continue }
+        var range = CFRange(location: found + o.charOffset, length: 1)
+        guard let axRange = AXValueCreate(.cfRange, &range) else { continue }
+        var bounds: AnyObject?
+        guard AXUIElementCopyParameterizedAttributeValue(area, kAXBoundsForRangeParameterizedAttribute as CFString,
+                                                         axRange, &bounds) == .success, let b = bounds else { continue }
+        var rect = CGRect.zero
+        AXValueGetValue(b as! AXValue, .cgRect, &rect)
+        if rect.width <= 0 && rect.height <= 0 { continue }
+        // Only text that is drawn now: inside the visible part of its scroll area.
+        var parent: AnyObject?
+        if AXUIElementCopyAttributeValue(area, kAXParentAttribute as CFString, &parent) == .success, let par = parent,
+           let visible = frame(par as! AXUIElement), !visible.insetBy(dx: -1, dy: -1).contains(CGPoint(x: rect.midX, y: rect.midY)) {
+            continue
+        }
+        emit(["ok": true, "point": [rect.midX, rect.midY], "rect": [rect.minX, rect.minY, rect.width, rect.height],
+              "location": found])
+        exit(0)
+    }
+    fail("text not found or not on screen: \(needle)", code: 4)
+case "menuitems":
+    // The items of the menus open right now (non-empty frames): titles,
+    // frames and whether each opens a sub-menu, in screen order.
+    var found: [[String: Any]] = []
+    var queue: [(AXUIElement, Int)] = [(appElement(o), 0)]
+    var visited = 0
+    while !queue.isEmpty, visited < 60000 {
+        let (e, depth) = queue.removeFirst()
+        visited += 1
+        let role = string(e, kAXRoleAttribute)
+        if role == kAXMenuItemRole, let f = frame(e), f.width >= 1, f.height >= 1 {
+            var d = describe(e)
+            d["submenu"] = children(e).contains { string($0, kAXRoleAttribute) == kAXMenuRole }
+            d["depth"] = depth
+            found.append(d)
+        }
+        // Closed menus have empty frames: do not descend into them.
+        if role == kAXMenuRole, let f = frame(e), f.width < 1 || f.height < 1 { continue }
+        if role == kAXWindowRole && o.scope != "all" { continue }
+        if depth < 30 { queue += children(e).map { ($0, depth + 1) } }
+    }
+    emit(["ok": true, "items": found])
+case "glide":
+    // Moves the pointer in a straight line from --from to --to (global
+    // points) over --duration in 60 Hz steps: a diagonal move into a sub-menu.
+    guard let a = o.from, let b = o.to else { fail("glide needs --from and --to") }
+    if routeTap { checkRoutable(a, o) }
+    let n = max(2, Int((o.duration * 60).rounded()))
+    let span = onSchedule(n + 1, interval: o.duration / Double(n)) { i in
+        let t = Double(i) / Double(n)
+        let p = CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+        post(CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left),
+             o.pid, window: windowNumber(at: p, pid: o.pid))
+    }
+    emit(["ok": true, "from": [a.x, a.y], "to": [b.x, b.y], "events": n + 1, "schedule": [span.start, span.end]])
 case "hover":
     let p = targetPoint(o)
     if routeTap { checkRoutable(p, o) }   // the pointer stays there: that is the hover
     post(CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left),
          o.pid, window: windowNumber(at: p, pid: o.pid))
+    // Parity run: a menu's tracking loop acts on a lone posted move only when
+    // the next event arrives (a hovered sub-menu opened one hover late), so a
+    // second move half a point away follows 50 ms later.
+    pause(0.05)
+    let q = CGPoint(x: p.x + 0.5, y: p.y)
+    post(CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: q, mouseButton: .left),
+         o.pid, window: windowNumber(at: q, pid: o.pid))
     emit(["ok": true, "at": [p.x, p.y]])
 case "scroll" where o.viaAX:
     guard let area = scrollArea(o) else { fail("no scroll area there", code: 4) }

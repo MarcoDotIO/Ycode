@@ -77,18 +77,16 @@ extension SourceControlShellModel {
         }
     }
 
-    /// The sheet's Cancel: while an operation is stopped it asks "Abort the
-    /// <operation>?" and Abort aborts it (Ycode's choice, open question 3);
-    /// otherwise it only closes the sheet.
+    /// The sheet's Cancel closes the sheet at once (§9; P-131, as the
+    /// AppKit sheet): an operation Ycode started is aborted, leaving the
+    /// repository unmerged; one started elsewhere stays stopped for
+    /// Integrate ▸ Continue or Abort.
     public func cancelMerge() {
-        let integration = conflictEditor?.state.integration ?? snapshot.integration
-        guard snapshot.integration.isInProgress || integration.isInProgress else {
-            closeConflictEditor()
-            return
-        }
-        let verb = integration.isInProgress ? integration.verb : snapshot.integration.verb
-        confirmation = SourceControlConfirmation(title: MergeSheetText.cancelTitle(verb: verb), message: MergeSheetText.cancelMessage(verb: verb),
-                                                 choices: [.init(title: "Abort", isDestructive: true, action: .abortIntegration)])
+        let editor = conflictEditor
+        let stopped = snapshot.integration.isInProgress || editor?.state.integration.isInProgress == true
+        closeConflictEditor()
+        guard stopped, editor?.abortsOnCancel == true else { return }
+        perform(.abortIntegration)
     }
 
     /// After an operation: conflicts open the merge sheet (read anew); an
@@ -96,7 +94,7 @@ extension SourceControlShellModel {
     func integrated(_ op: Operation, _ result: GitRepository.IntegrationResult?, succeeded: Bool) {
         isMerging = false
         if case .conflicts(let files)? = result {
-            showConflictEditor(path: files.first, fresh: true)
+            showConflictEditor(path: files.first, fresh: true)?.abortsOnCancel = true
         } else if result != nil || (op == .abortIntegration && succeeded) {
             closeConflictEditor()
         }

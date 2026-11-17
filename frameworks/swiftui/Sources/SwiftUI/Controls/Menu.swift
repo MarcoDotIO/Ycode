@@ -12,9 +12,13 @@ import SwiftUICore
 // X11 and Wayland; the headless back end keeps it in memory); when the window
 // system refuses one, the content is shown as an overlay inside the window
 // (AppHost.swift). Inside a pop-up, buttons and toggles are menu items, a
-// nested `Menu` opens a submenu at its row's trailing edge, and choosing an
-// item closes the whole chain. Escape closes the pop-up, the arrow keys move
-// between items, Space and Return choose; a press outside closes it.
+// nested `Menu` opens a submenu at its row's trailing edge — on a click, on
+// Right, or when the pointer rests on its row for 0.2 s (P-212, as the
+// macOS IDE's menus: measured ≈ 0.2 s) — and choosing an item closes the
+// whole chain. Resting on another row of the menu closes its open submenu.
+// Escape closes the pop-up, the arrow keys move between items, Space and
+// Return choose; a press outside closes it. The rows that open a submenu
+// stay highlighted while it is open.
 //
 // Look (Ycode, 09 §4.2): a rectangle in the menu background colour with a
 // hairline outline, 5 points above and below the rows; rows 26 points high
@@ -73,6 +77,25 @@ enum MenuMetrics {
     static let rowHeight: CGFloat = 26
     static let checkSlot: CGFloat = 18
     static let horizontalPadding: CGFloat = 10
+    /// How long the pointer rests on a row before its submenu opens (or a
+    /// sibling's open submenu closes); P-212.
+    static let submenuDelay: TimeInterval = 0.2
+}
+
+/// The rest timer of a menu row (P-212).
+@MainActor
+final class MenuRowRest {
+    weak var services: WindowServices?
+
+    func start(_ services: WindowServices?, fire: @escaping @MainActor () -> Void) {
+        guard let services else { return }
+        self.services = services
+        services.setTimer(self, at: services.lastEventTime + MenuMetrics.submenuDelay) { _ in
+            MainActor.assumeIsolated { fire() }
+        }
+    }
+
+    func cancel() { services?.setTimer(self, at: nil) { _ in } }
 }
 
 /// The frame of a pop-up menu around its rows.
@@ -110,16 +133,23 @@ struct MenuRow<Label: View>: View {
     let action: @MainActor () -> Void
     /// Choosing the row closes the pop-up (false for submenu rows).
     var closes = true
+    /// A submenu row: what the pointer resting on it does (opens the
+    /// submenu), and whether its submenu is open (the row stays
+    /// highlighted). Other rows close the menu's open submenu on a rest.
+    var onRest: (@MainActor () -> Void)?
+    var isExpanded = false
     @Environment(\._dismissPopup) private var dismiss
     @Environment(\.colorScheme) private var scheme
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\._windowServices) private var services
     @State private var hovered = false
     @State private var isFocused = false
     @State private var isPressed = false
+    @State private var rest = MenuRowRest()
 
     var body: some View {
         let palette = ControlPalette(scheme)
-        let highlighted = (hovered || isFocused || isPressed) && isEnabled
+        let highlighted = (hovered || isFocused || isPressed || isExpanded) && isEnabled
         let run: @MainActor () -> Void = { [dismiss, closes, action] in
             if closes { dismiss?() }
             action()
@@ -141,12 +171,34 @@ struct MenuRow<Label: View>: View {
             if highlighted { RoundedRectangle(cornerRadius: 4).fill(palette.menuHighlight).padding(.horizontal, 4) }
         }
         .contentShape(Rectangle())
-        .onHover { h in hovered = h }
+        .onHover { h in
+            hovered = h
+            hoverChanged(h)
+        }
         .gesture(ControlPressGesture(onPressed: { p in isPressed = p }, onAction: { run() }))
         .controlFocus($isFocused) { k in
             guard isActivationKey(k) || (k.isDown && k.key == .rightArrow && !closes) else { return false }
             run()
             return true
+        }
+    }
+}
+
+extension MenuRow {
+    /// P-212: the pointer resting on the row opens its submenu, or closes
+    /// the submenu another row of this menu opened.
+    private func hoverChanged(_ inside: Bool) {
+        guard inside else {
+            rest.cancel()
+            return
+        }
+        let services = services, onRest = onRest, enabled = isEnabled
+        rest.start(services) {
+            if let onRest {
+                if enabled { onRest() }
+            } else {
+                services?.popups?.dismissChildPopups()
+            }
         }
     }
 }
@@ -186,6 +238,8 @@ public struct Menu<Label: View, Content: View>: View {
     @Environment(\._inCommandHost) private var inCommandHost
     @State private var ref = NodeRef()
     @State private var box = PopupBox()
+    /// A submenu row's submenu is open (P-212: its row stays highlighted).
+    @State private var isExpanded = false
 
     public init(@ViewBuilder content: () -> Content, @ViewBuilder label: () -> Label) {
         self.content = content()
@@ -216,12 +270,16 @@ public struct Menu<Label: View, Content: View>: View {
     private var control: some View {
         let services = services, ref = ref, box = box
         let popup = AnyView(content)
+        let expanded = $isExpanded
         let open: @MainActor () -> Void = {
-            openPopup(services: services, ref: ref, box: box, submenu: inMenu, content: popup)
+            openPopup(services: services, ref: ref, box: box, submenu: inMenu,
+                      onDismiss: { if expanded.wrappedValue { expanded.wrappedValue = false } }, content: popup)
+            if box.isOpen && inMenu { expanded.wrappedValue = true }
         }
         if inMenu {
             MenuRow(label: label, checked: false, trailing: AnyView(Image(systemName: "chevron.right").imageScale(.small)),
-                    isDestructive: false, action: open, closes: false)
+                    isDestructive: false, action: open, closes: false,
+                    onRest: { if !box.isOpen { open() } }, isExpanded: isExpanded)
                 .modifier(NodeCaptureModifier(ref: ref))
         } else {
             let action = primaryAction ?? open

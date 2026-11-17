@@ -7,8 +7,8 @@ import YcodeSyntax
 /// dark in round 4, rows 85 and 86): light from `editor-area.md` §C.4, dark
 /// from F.3. Doc comments, preprocessor statements and attributes take the
 /// values the Linux IDE draws them with (`WorkspaceChrome.defaultThemeColors`,
-/// one table for both IDEs; dark doc comments in the Comments colour, as the
-/// reference); the selection keeps its system colour; a property referenced
+/// one table for both IDEs; doc comments in the Comments colour in both
+/// appearances, as the reference, P-054); the selection keeps its system colour; a property referenced
 /// in an interpolation was measured in dark only, so light draws it as
 /// plain text.
 @MainActor
@@ -34,7 +34,7 @@ enum DefaultTheme {
     }
 
     static let light = Palette(
-        roles: [.keyword: "#C4246E", .comment: "#6A7084", .docComment: "#67C468", .string: "#CA2B1C", .number: "#0178B8",
+        roles: [.keyword: "#C4246E", .comment: "#6A7084", .docComment: "#6A7084", .string: "#CA2B1C", .number: "#0178B8",
                 .preprocessor: "#FF9500", .attribute: "#A2845E", .typeName: "#9D31CF", .typeDeclaration: "#007D9E", .otherDeclaration: "#006178"],
         plain: "#322529", lineNumber: "#B8B3B4", background: nil, band: "#EEEEEE", unfocusedBand: "#EEEEEE")
 

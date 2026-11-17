@@ -280,4 +280,25 @@ public enum RunningProcesses {
             menu.addItem(i)
         }
     }
+
+    /// Fills Attach to Process without blocking the menu (P-015): a list
+    /// read in the last two seconds at once, else "Getting Process List…"
+    /// while the list is read off the main thread, then the rows.
+    @MainActor
+    static func fillAsync(_ menu: NSMenu, target: AnyObject?, now: Date = Date()) {
+        if let c = cache, now.timeIntervalSince(c.date) < 2 {
+            fill(menu, target: target, entries: c.list)
+            return
+        }
+        fill(menu, target: target, entries: nil)
+        guard !isLoading else { return }
+        isLoading = true
+        Task { @MainActor [weak menu, weak target] in
+            let list = await Task.detached { RunningProcesses.list() }.value
+            cache = (Date(), list)
+            isLoading = false
+            if let menu { fill(menu, target: target, entries: list) }
+        }
+    }
+    @MainActor static var isLoading = false
 }

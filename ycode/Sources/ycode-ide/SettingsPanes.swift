@@ -216,7 +216,7 @@ struct BehaviorsSettingsPane: View {
     var body: some View {
         let _ = ShellPreferences.shared.revision
         if let e = model.behaviorEvent {
-            BehaviorEventPage(event: e) { model.behaviorEvent = nil }
+            BehaviorEventPage(event: e)
         } else {
             SettingsForm {
                 ForEach(Self.categories, id: \.self) { c in
@@ -250,7 +250,6 @@ struct BehaviorsSettingsPane: View {
 /// One event's actions.
 struct BehaviorEventPage: View {
     var event: Preferences.Event
-    var back: () -> Void
 
     /// The debug area choices: no change, show, hide, hide if the run
     /// printed nothing.
@@ -260,7 +259,6 @@ struct BehaviorEventPage: View {
         let _ = ShellPreferences.shared.revision
         let b = Preferences.shared.behavior(event)
         SettingsForm {
-            BackRow(title: "Behaviors", target: "settings behaviors back", action: back)
             SettingsSection(event.category) {
                 ValueRow(title: "Event", value: event.rawValue)
                 PickerRow(title: "Show navigator", selection: binding(\.showNavigator, b),

@@ -34,6 +34,10 @@ extension SourceEditorController {
                 scrollView.contentView.scroll(to: NSPoint(x: scrollView.contentView.bounds.minX, y: -insets.top))
                 scrollView.reflectScrolledClipView(scrollView.contentView)
             }
+            // The text moved under the find bar's edge: the gutter's numbers
+            // move with it in the same frame (P-003: they stayed one to two
+            // lines off while the bar was open).
+            gutter.needsDisplay = true
         }
         let lane = scrollerLaneWidth
         // The minimap covers the scroller's first 3 points and meets its

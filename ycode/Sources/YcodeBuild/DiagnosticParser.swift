@@ -55,12 +55,13 @@ public struct DiagnosticParser: Sendable {
     // MARK: Line grammar
 
     /// `[prefix: ]severity: message`, where prefix is
-    /// `file:line[:column]`, a bare file, or a tool name such as `ld`.
+    /// `file:line[:column]`, a bare file, or a tool name such as `ld`. The
+    /// message is kept in display form (`Diagnostic.displayMessage`, P-121).
     public static func parseLine(_ line: String) -> Diagnostic? {
         for severity in Diagnostic.Severity.allCases {
             let tag = "\(severity.rawValue): "
             if line.hasPrefix(tag) {
-                return Diagnostic(severity: severity, message: String(line.dropFirst(tag.count)))
+                return Diagnostic(severity: severity, message: Diagnostic.displayMessage(String(line.dropFirst(tag.count))))
             }
         }
         // The earliest `: severity: ` marker wins, so messages may contain one.
@@ -74,7 +75,7 @@ public struct DiagnosticParser: Sendable {
         let prefix = String(line[..<range.lowerBound])
         let message = String(line[range.upperBound...])
         guard !prefix.isEmpty, !prefix.hasPrefix(" ") else { return nil }
-        return Diagnostic(severity: severity, message: message, location: location(prefix))
+        return Diagnostic(severity: severity, message: Diagnostic.displayMessage(message), location: location(prefix))
     }
 
     /// `file:line:col`, `file:line`, `file`, or a tool name (no location).

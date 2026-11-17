@@ -131,9 +131,30 @@ final class NavigatorFlatIconView: NSImageView {
     override var contentTintColor: NSColor? { didSet { needsDisplay = true } }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard let g = glyph, let d = FileGlyphs.navigatorDrawing(g) else { return super.draw(dirtyRect) }
+        guard let g = glyph, let d = FileGlyphs.navigatorDrawing(g) else { return drawImage(dirtyRect) }
         let r = NSRect(x: (bounds.width - CGFloat(d.width)) / 2, y: (bounds.height - CGFloat(d.height)) / 2,
                        width: CGFloat(d.width), height: CGFloat(d.height))
         GlyphPixelGrid.draw(d, in: r, color: contentTintColor ?? .labelColor, flipped: isFlipped)
+    }
+
+    /// A template image (a system symbol: the Repositories view's grey
+    /// group glyphs) filled with the tint. The image view's own drawing,
+    /// reached from an overridden `draw(_:)`, left a template image in its
+    /// black ink (P-047: #000000 on the dark sidebar).
+    private func drawImage(_ dirtyRect: NSRect) {
+        guard let image, image.isTemplate, let tint = contentTintColor, let ctx = NSGraphicsContext.current?.cgContext else {
+            return super.draw(dirtyRect)
+        }
+        let size = image.size
+        let scale = min(1, bounds.width / max(size.width, 1), bounds.height / max(size.height, 1))
+        let w = size.width * scale, h = size.height * scale
+        let r = NSRect(x: (bounds.width - w) / 2, y: (bounds.height - h) / 2, width: w, height: h)
+        ctx.saveGState()
+        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+        image.draw(in: r, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        tint.setFill()
+        r.fill(using: .sourceAtop)
+        ctx.endTransparencyLayer()
+        ctx.restoreGState()
     }
 }

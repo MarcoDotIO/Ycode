@@ -6,6 +6,73 @@ Notable changes to Ycode are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0-beta.4] - 2026-11-17
+
+Beta 4 fixes the quick wins and broken workflows found in a full video comparison of both IDEs with Xcode 27.1
+([docs/ROADMAP-1.0.md](docs/ROADMAP-1.0.md), [specs/ide/parity-inventory.md](specs/ide/parity-inventory.md)): menus and
+their shortcuts, New Project, find, schemes, source control and the panes. It is the first of six betas planned before
+1.0.0.
+
+### Added
+
+- **A plan to 1.0.0:** the parity inventory lists 220 differences from Xcode 27.1, each with what Xcode does and what each
+  IDE does. The roadmap schedules them over betas 4–9 and a release candidate.
+- **The Linux IDE, menus (#97):** submenus open when the pointer rests on a row for 0.2 s, menus may extend past the window,
+  and shortcuts show ⌃ ⌥ ⇧ ⌘ glyphs as on macOS. Alerts take Return and Escape, and a window grows to show a larger sheet.
+- **Option-key alternates and Quit and Keep Windows (#91):** the menus list their ⌥ and ⌃ alternates (Save As…, Clean Build
+  Folder Immediately, the instruction steps, and others), and Quit and Keep Windows works.
+
+### Changed
+
+- **Menus (#91):** both IDEs' menu bars come from one table. A test compares the Linux menu model with the macOS menu bar item
+  by item. Items are enabled when there is something to act on, with only Welcome open, with no editor, and with a file open.
+  Integrate has no Cloud section; Ycode has no cloud service.
+- **New Project (#94)** creates and opens a project end to end on both IDEs. The options step remembers the Organization
+  Identifier, starts in Product Name and has help tags. ⇧⌘N works at Welcome, and Welcome opens on the screen of the window
+  you were using. On macOS, File ▸ New ▸ Window opens a second window, and window tabs work.
+- **Editor (#92):** the Find menu and find bar work with a file open; Quick Help shows formatted documentation; renaming
+  edits in place; Editor Pane Below adds lanes; Add Editor and Editor Options have Xcode's items; files changed on disk
+  reload; tabs are named with the extension; the fold ribbon is its own column.
+- **Language service (#93):** completion opens while you type; issues on the line you are typing wait until you pause; issue
+  messages read as Xcode shows them; files with errors are checked again once the language server finishes preparing.
+- **Panes (#96):** the navigator keeps its selection after a file opens; ⌘1–⌘9 hide a navigator that is already shown;
+  Settings drill-in pages have Back, and the Settings window resizes; editors' bottom bars sit above the status bar; a
+  selected folder shows its File inspector; the Reports navigator has no Local/Cloud control.
+- **Workflows (#95):** the Signing section names Ycode; the capability library closes on Escape or a click outside; Build
+  Settings no longer widens the window; schemes Xcode creates automatically can be edited (also from Product ▸ Run… and
+  the other "…" items); Escape in the scheme editor ends a field's editing first; Activate Console (⇧⌘C) gives the console
+  the keyboard; the merge sheet's Cancel closes it at once; New Branch is a sheet with From and To.
+- **Fix round after the review (#91–#96):** Escape closes the find bar and the line numbers move with the text when it
+  opens; showing the coding assistant (⌘0) keeps the left area's width; the open file's row keeps its selection when you
+  switch navigators and back; the Settings window widens as well as grows; the preview canvas hides beside editors that
+  cannot preview (the project editor, property lists, asset catalogs) and returns with the next previewable file; while the
+  debugger is paused the title area shows the app's mark instead of a spinner.
+- **UI fidelity:** council round 11 scored the IDEs 7.9, 8.7 and 8.9 against Xcode 27.1 (mean 8.50; round 10: 8.73). The
+  round added 15 checks of beta 4's own workflows (mean 7.73), which brought the mean down; the earlier areas held or rose
+  (Welcome 8.10 → 8.97, the title icon and build ring 7.97 → 8.63, the coding assistant button 7.33 → 8.50, the watch at
+  Physical Size 7.93 → 8.93). The fix round above came after the round and was checked by tests and screenshots, not
+  scored again.
+
+### Fixed
+
+- A Linux simulator host restarted while a viewer was still connected no longer reports its control port as in use for a
+  minute (`ycode-simhost check`). [docs/THOR-HOST.md](docs/THOR-HOST.md) describes setting up an arm64 Linux simulator host
+  from an empty disk, including device templates that boot in about half the time of a first boot.
+- Tests that wait on git end after 120 seconds instead of hanging; UI tests that change the app's appearance no longer run
+  beside tests that check colours.
+
+### Known limitations
+
+- The Linux IDE has no project editor or scheme editor yet (beta 7), so the Signing, capability, Build Settings and scheme
+  fixes are macOS only. About 150 menu items that work on macOS are still disabled on Linux because the feature behind them
+  is not there yet; `ParityMenuCompareTests` lists them.
+- The find bar is taller than Xcode's and keeps three pop-ups; scrolling's edge stretch and frame rate still differ from
+  Xcode's at 120 Hz; 161 menu items differ from Xcode in when they are enabled.
+- Moved to beta 5: the Stop button's disabled state (P-204), second windows on Linux (P-022), the rest of Editor Options on
+  Linux (P-065), the remaining false live diagnostics (P-070) and a preview focus issue we could not reproduce (P-167).
+- Physical devices are listed only, and signing and distribution are partial (on Linux, not there yet).
+- Simulators are slower than Apple's on a Mac, and parts are missing: see [docs/SIMULATOR.md](docs/SIMULATOR.md).
+
 ## [1.0.0-beta.3] - 2026-11-14
 
 The Linux IDE gains the Organizer, Interface Builder documents, SwiftUI previews and debugging on a simulator, and both IDEs
@@ -224,7 +291,8 @@ no earlier releases. [The README](https://github.com/MarcoDotIO/Ycode#what-works
 - Physical devices are listed only, and signing and distribution are partial.
 - Simulators are slower than Apple's on a Mac, and parts are missing: see [docs/SIMULATOR.md](docs/SIMULATOR.md).
 
-[Unreleased]: https://github.com/MarcoDotIO/Ycode/compare/v1.0.0-beta.3...HEAD
+[Unreleased]: https://github.com/MarcoDotIO/Ycode/compare/v1.0.0-beta.4...HEAD
+[1.0.0-beta.4]: https://github.com/MarcoDotIO/Ycode/releases/tag/v1.0.0-beta.4
 [1.0.0-beta.3]: https://github.com/MarcoDotIO/Ycode/releases/tag/v1.0.0-beta.3
 [1.0.0-beta.2]: https://github.com/MarcoDotIO/Ycode/releases/tag/v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/MarcoDotIO/Ycode/releases/tag/v1.0.0-beta.1

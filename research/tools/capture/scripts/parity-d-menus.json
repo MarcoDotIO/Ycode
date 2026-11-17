@@ -1,0 +1,330 @@
+{
+ "name": "parity-d-menus",
+ "title": "Part D 1: the Edit menu's sub-menus (Format ▸ Font / Text, Convert, …) and the Editor menu with no file, pointed at by their frames.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "GlassScroll open, no file in the editor. Menu bar.",
+   "do": [
+    {
+     "menubar": "rest"
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "edit-open",
+   "note": "Click Edit in the menu bar (the first menu opened in this app's life).",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Edit",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "edit",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-format",
+   "note": "Point at Edit ▸ Format by its frame (hovering the parent opens the cascade).",
+   "do": [
+    {
+     "hoveritem": "Format"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "format",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-format-font",
+   "note": "Move right onto Format ▸ Font (its own cascade).",
+   "do": [
+    {
+     "hoveritem": "Font"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "font",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-format-text",
+   "note": "Move onto Format ▸ Text.",
+   "do": [
+    {
+     "hoveritem": "Text"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "text",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-convert",
+   "note": "Back up to Edit ▸ Convert (sibling sub-menu of Format).",
+   "do": [
+    {
+     "hoveritem": "Convert"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "convert",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-sort",
+   "note": "Edit ▸ Sort (if there).",
+   "do": [
+    {
+     "hoveritem": "Sort"
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-autofill",
+   "note": "Edit ▸ AutoFill.",
+   "do": [
+    {
+     "hoveritem": "AutoFill"
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-speech",
+   "note": "Edit ▸ Speech.",
+   "do": [
+    {
+     "hoveritem": "Speech"
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "editor-open",
+   "note": "Click Editor in the menu bar with no file open.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Editor",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "editor",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-walk",
+   "note": "Every sub-menu parent of the open Editor menu hovered by its frame (frames read once, before any cascade opens): a still of each, and the open menu's items.",
+   "do": [
+    {
+     "submenus": "sub"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "editor-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "edit-open-2",
+   "note": "Edit again (a second time in this app's life).",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Edit",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "edit-walk",
+   "note": "Every sub-menu parent of the open Edit menu hovered by its frame: a still of each.",
+   "do": [
+    {
+     "submenus": "sub"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "edit-close-2",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ],
+ "project": {
+  "generator": "make-test-project.py",
+  "path": "GlassScroll/GlassScroll.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

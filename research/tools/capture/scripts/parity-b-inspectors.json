@@ -1,0 +1,660 @@
+{
+ "name": "parity-b-inspectors",
+ "title": "Part B 2: the File, History and Quick Help inspectors by keyboard and by click, Quick Help for our own and SDK symbols, history entries, folder/project/test file/multiple selection, hide and show.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "Shapes.swift open, File inspector. AX tree.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "key-file",
+   "note": "cmd+alt+1: the file inspector (switch animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+alt+1"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "file",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "key-history",
+   "note": "cmd+alt+2: the history inspector (switch animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+alt+2"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "history",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "key-quick-help",
+   "note": "cmd+alt+3: the quick-help inspector (switch animation). AX tree.",
+   "do": [
+    {
+     "key": "cmd+alt+3"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "quick-help",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "click-file",
+   "note": "Pointer onto the file inspector tab (1.6 s: hover, tooltip), then click it.",
+   "do": [
+    {
+     "hover": {
+      "help": "Show the File inspector"
+     }
+    },
+    {
+     "wait": 1.6
+    },
+    {
+     "click": {
+      "help": "Show the File inspector"
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "click-history",
+   "note": "Pointer onto the history inspector tab (1.6 s: hover, tooltip), then click it.",
+   "do": [
+    {
+     "hover": {
+      "help": "Show the History inspector"
+     }
+    },
+    {
+     "wait": 1.6
+    },
+    {
+     "click": {
+      "help": "Show the History inspector"
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "click-quick-help",
+   "note": "Pointer onto the quick-help inspector tab (1.6 s: hover, tooltip), then click it.",
+   "do": [
+    {
+     "hover": {
+      "help": "Show Quick Help inspector"
+     }
+    },
+    {
+     "wait": 1.6
+    },
+    {
+     "click": {
+      "help": "Show Quick Help inspector"
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "quick-help-symbol",
+   "note": "Quick Help inspector, caret in 'scaled' (our documented method): the inspector shows its documentation. AX tree. (Its tab is clicked: option+cmd+3 hides the reference's inspector when Quick Help is already showing.)",
+   "do": [
+    {
+     "click": {
+      "help": "Show Quick Help inspector"
+     }
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "textclick": {
+      "needle": "scaled(by: 2)",
+      "occurrence": 1,
+      "offset": 2
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "qh-symbol",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "quick-help-sdk",
+   "note": "Caret in 'reduce': standard library documentation.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "reduce(",
+      "occurrence": 1,
+      "offset": 2
+     }
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "qh-sdk",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "quick-help-none",
+   "note": "Caret on a blank line: the no-symbol state.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "// Shapes.swift",
+      "occurrence": 1,
+      "offset": 1
+     }
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "history-file",
+   "note": "History inspector with Shapes.swift: the commit list (Capture Test). AX tree.",
+   "do": [
+    {
+     "key": "cmd+alt+2"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "history-file",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "history-showcase",
+   "note": "Select Showcase.swift: two commits in its history.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Showcase|Showcase.swift"
+     }
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "history-showcase",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "history-hover",
+   "note": "Pointer onto the first history entry, held 2 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow|AXCell|AXGroup",
+      "text~": "Revise",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "history-click",
+   "note": "Click it (the commit's popover or detail). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow|AXCell|AXGroup",
+      "text~": "Revise",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "history-click",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "history-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "file-inspector-folder",
+   "note": "File inspector with the Parity folder (a synchronized group) selected.",
+   "do": [
+    {
+     "key": "cmd+alt+1"
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Parity",
+      "index": 1
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "folder",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "file-inspector-project",
+   "note": "File inspector with the project (first row) selected: the project document's inspector.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Parity",
+      "index": 0
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "project",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "file-inspector-test",
+   "note": "File inspector with ParityTests.swift (target membership: the test bundle).",
+   "do": [
+    {
+     "set": {
+      "role": "AXRow",
+      "text": "ParityTests",
+      "index": 0
+     },
+     "attr": "AXDisclosing",
+     "value": true
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "ParityTests|ParityTests.swift",
+      "index": 1
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "test-file",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "multi-select",
+   "note": "Shapes and Showcase both selected (cmd+click): the inspector for several files.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Shapes|Shapes.swift"
+     }
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Showcase|Showcase.swift"
+     },
+     "modifiers": "cmd"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "multi",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "hide-inspector",
+   "note": "View ▸ Inspectors ▸ Hide Inspector (option+cmd+0).",
+   "do": [
+    {
+     "key": "cmd+alt+0"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "show-inspector-history",
+   "note": "option+cmd+2 while hidden: shows the inspector on History.",
+   "do": [
+    {
+     "key": "cmd+alt+2"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-order",
+   "note": "Tab through the inspector area (key-view order), starting from the editor.",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ],
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ },
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Shapes|Shapes.swift"
+   }
+  },
+  {
+   "wait": 2.5
+  }
+ ]
+}

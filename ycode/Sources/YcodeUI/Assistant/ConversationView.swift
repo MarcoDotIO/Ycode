@@ -61,6 +61,9 @@ public final class ConversationView: NSView {
         statusLabel.font = .systemFont(ofSize: 11)
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.isSelectable = true
+        // Wrapping text never widens the left area (P-026: the hint's one
+        // line, 464 points, pushed the pane from 289.5 to 425.5).
+        statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         statusButtons.orientation = .horizontal
         statusButtons.spacing = 6
         statusBox.orientation = .vertical
@@ -262,6 +265,7 @@ public final class ConversationView: NSView {
                 let hint = NSTextField(wrappingLabelWithString: text)
                 hint.textColor = .secondaryLabelColor
                 hint.font = .systemFont(ofSize: 11)
+                hint.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)   // P-026
                 transcript.addArrangedSubview(hint)
             }
             for m in messages { addMessageView(m, conversation: conv!.id) }
@@ -561,6 +565,12 @@ public final class MessageView: NSStackView {
             v.translatesAutoresizingMaskIntoConstraints = false
             if v is NSTextField || v is NSStackView {
                 v.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+            }
+            // A line of text wraps or truncates at the transcript's width; it
+            // never widens the left area (P-026: a long line pushed the pane
+            // from 289.5 to 425.5 points).
+            for t in [v] + ((v as? NSStackView)?.arrangedSubviews ?? []) where t is NSTextField {
+                t.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             }
         }
     }

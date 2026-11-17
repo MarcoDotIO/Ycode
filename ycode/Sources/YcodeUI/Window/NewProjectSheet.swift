@@ -100,6 +100,11 @@ public final class NewProjectSheetController: TemplateChooserController {
         nextButton.isEnabled = flow.isNextEnabled
     }
 
+    public override func viewDidAppear() {
+        super.viewDidAppear()
+        if flow.step == .options { focusFirstField() }
+    }
+
     override func initialBody() -> NSView {
         let body = templateBody()
         return flow.step == .template ? body : optionsView()
@@ -134,7 +139,7 @@ public final class NewProjectSheetController: TemplateChooserController {
         let wasTemplate = flow.step == .template
         let save = flow.next()
         if wasTemplate, flow.step == .options {
-            if isViewLoaded { show(optionsView()) }
+            if isViewLoaded { showOptions() }
             updateButtons()
             return
         }
@@ -157,7 +162,7 @@ public final class NewProjectSheetController: TemplateChooserController {
         flow.jump(to: templateID)
         if flow.platform != platform { super.setPlatform(flow.platform) }
         if let s = flow.selected { _ = super.select(title: s.title) }
-        if isViewLoaded { show(flow.step == .options ? optionsView() : chooserView) }
+        if isViewLoaded { if flow.step == .options { showOptions() } else { show(chooserView) } }
         updateButtons()
     }
 
@@ -220,6 +225,8 @@ public final class NewProjectSheetController: TemplateChooserController {
                 control = l
             }
             control.identifier = NSUserInterfaceItemIdentifier(f.id)
+            control.toolTip = f.help   // P-178: every control has a help tag
+            label.toolTip = f.help
             fieldControls[f.id] = control
             rows.append([label, control])
         }
@@ -244,7 +251,30 @@ public final class NewProjectSheetController: TemplateChooserController {
         ])
         loadFieldValues()
         refreshOptions()
+        linkKeyViews()
         return wrap
+    }
+
+    /// P-178: Tab goes from Product Name to Organization Identifier and
+    /// back (the text fields, in order, form the loop).
+    func linkKeyViews() {
+        let fields = shownFields.compactMap { fieldControls[$0] as? NSTextField }.filter(\.isEditable)
+        for (i, f) in fields.enumerated() { f.nextKeyView = fields[(i + 1) % fields.count] }
+    }
+
+    /// P-178: the options step opens with Product Name focused (the first
+    /// text field).
+    @discardableResult
+    public func focusFirstField() -> Bool {
+        guard let first = shownFields.lazy.compactMap({ self.fieldControls[$0] as? NSTextField }).first(where: \.isEditable),
+              let w = view.window else { return false }
+        w.initialFirstResponder = first
+        return w.makeFirstResponder(first)
+    }
+
+    func showOptions() {
+        show(optionsView())
+        focusFirstField()
     }
 
     /// Copies the controls' values into the form.
@@ -287,7 +317,12 @@ public final class NewProjectSheetController: TemplateChooserController {
             let enabled = id == TemplateOptionID.team || flow.form.isEnabled(id)
             (v as? NSControl)?.isEnabled = enabled
             if let p = v as? NSPopUpButton {
-                for item in p.itemArray { item.isEnabled = (item.representedObject as? String).map { flow.form.isAllowed(id, $0) } ?? true }
+                let hides = flow.form.field(id)?.hidesDisallowedValues == true
+                for item in p.itemArray {
+                    let allowed = (item.representedObject as? String).map { flow.form.isAllowed(id, $0) } ?? true
+                    item.isEnabled = allowed
+                    item.isHidden = hides && !allowed
+                }
             }
             fieldLabels[id]?.textColor = enabled ? .labelColor : .disabledControlTextColor
         }
@@ -396,6 +431,29 @@ public final class NewProjectSaveAccessory: NSObject {
 /// Project… and the Welcome window's pull-down.
 @MainActor
 enum NewProjectFlow {
+    /// Runs the save step's panel attached to `window` (the template
+    /// sheet's own window, `templates.md` § Save step) and hands back the
+    /// chosen URL, or nil for Cancel. Tests replace it: their offscreen
+    /// guard answers every panel with Cancel.
+    static var runSavePanel: (NSSavePanel, NSWindow, @escaping (URL?) -> Void) -> Void = { panel, window, done in
+        panel.beginSheetModal(for: window) { r in done(r == .OK ? panel.url : nil) }
+    }
+
+    /// Opens a created project as a document; the completion gets its
+    /// window controllers. Tests replace it.
+    static var openDocument: (URL, @escaping @MainActor ([NSWindowController]) -> Void) -> Void = { url, done in
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { doc, _, _ in
+            MainActor.assumeIsolated { done(doc?.windowControllers ?? []) }
+        }
+    }
+
+    /// The screen New Project's windows open on (P-023): the screen of the
+    /// window it was started from, else of the key window, else the main
+    /// screen.
+    static func screen(for parent: NSWindow?) -> NSScreen? {
+        parent?.screen ?? NSApp.keyWindow?.screen ?? NSApp.mainWindow?.screen ?? NSScreen.main
+    }
+
     /// The open projects and workspaces, for the save step's Add to.
     static func openContainers() -> [URL] {
         NSApp.windows.compactMap { ($0.windowController as? WorkspaceWindowController)?.session.model }
@@ -434,7 +492,7 @@ enum NewProjectFlow {
                 onCreated(created)
                 if let frame, created.addedTo == nil { open(created, frame: frame) }
             }
-            guard interactive, let w = host ?? parent, w.isVisible else {
+            guard interactive, let w = sheet?.view.window ?? host ?? parent, w.isVisible else {
                 var save = headlessSave ?? NewProjectSaveOptions(location: location, createGitRepository: false)
                 save.location = location
                 save.team = team
@@ -450,9 +508,12 @@ enum NewProjectFlow {
             let git = defaults.object(forKey: NewProjectFlowModel.gitKey) as? Bool ?? true
             let accessory = NewProjectSaveAccessory(containers: openContainers(), createGitRepository: git, defaultContainer: host == nil ? workspace : nil)
             panel.accessoryView = accessory.view
-            panel.beginSheetModal(for: w) { r in
+            // P-177: on the template sheet's own window. A save panel begun
+            // on the window that already shows the template sheet waits
+            // until that sheet ends, so Next seemed to do nothing.
+            runSavePanel(panel, w) { url in
                 // Cancel returns to the options step.
-                guard r == .OK, let url = panel.url else { return }
+                guard let url else { return }
                 let o = accessory.save
                 var save = NewProjectSaveOptions(location: url.deletingLastPathComponent(), saveAs: url.lastPathComponent,
                                                  createGitRepository: o.createGitRepository, addTo: o.addTo, group: o.group)
@@ -471,8 +532,9 @@ enum NewProjectFlow {
             }
         }
         if interactive {
-            // A real, empty workspace window behind the sheet (§11.3).
-            let wc = emptyWorkspaceWindow()
+            // A real, empty workspace window behind the sheet (§11.3), on
+            // the screen New Project was started from (P-023).
+            let wc = emptyWorkspaceWindow(on: screen(for: parent))
             hostController = wc
             wc.showWindow(nil)
             host = wc.window
@@ -484,12 +546,10 @@ enum NewProjectFlow {
     /// Opens a created project on its initial file, in a window where the
     /// sheet's window was.
     static func open(_ created: NewProjectCreator.Created, frame: NSRect? = nil) {
-        NSDocumentController.shared.openDocument(withContentsOf: created.openURL, display: true) { doc, _, _ in
-            MainActor.assumeIsolated {
-                for wc in doc?.windowControllers ?? [] {
-                    if let frame { wc.window?.setFrame(frame, display: true) }
-                    if let entry = created.entryFile { (wc as? WorkspaceWindowController)?.open(path: entry.path, line: nil) }
-                }
+        openDocument(created.openURL) { controllers in
+            for wc in controllers {
+                if let frame { wc.window?.setFrame(frame, display: true) }
+                if let entry = created.entryFile { (wc as? WorkspaceWindowController)?.open(path: entry.path, line: nil) }
             }
         }
     }

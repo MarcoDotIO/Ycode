@@ -361,7 +361,20 @@ package final class WindowServices {
 
     private var timers: [ObjectIdentifier: (deadline: TimeInterval, fire: (TimeInterval) -> Void)] = [:]
 
-    package init(clipboard: (any PlatformClipboard)? = nil) { self.clipboard = clipboard }
+    /// Resizes the window (P-215: a desktop window grows to show a sheet
+    /// larger than it); set by the host.
+    package var resizeWindow: ((CGSize) -> Void)?
+    /// The window's size in points; set by the host.
+    package var windowSize: () -> CGSize = { .zero }
+    /// The largest size the window can take on its display (points), when
+    /// the window system tells; set by the host.
+    package var largestWindowSize: () -> CGSize? = { nil }
+
+    package init(clipboard: (any PlatformClipboard)? = nil) {
+        self.clipboard = clipboard
+        let presentations = presentations
+        shortcuts.modalRoot = { [weak presentations] in presentations?.modalCard }
+    }
 
     /// Schedules (or with nil cancels) `owner`'s timer: `fire` runs once at
     /// `deadline` (back-end time). Controls use it for the caret blink.
@@ -413,6 +426,9 @@ package protocol PopupPresenting: AnyObject {
     /// Returns a handle that dismisses it.
     func presentPopup(content: AnyView, origin: CGPoint, anchor: CGRect?, minWidth: CGFloat, chrome: PopupChrome,
                       fallbackKeys: ((KeyEvent) -> Bool)?, onDismiss: @escaping () -> Void) -> PopupHandle?
+    /// Closes the pop-ups this window presented (P-212: a submenu, when the
+    /// pointer rests on another row of its menu).
+    func dismissChildPopups()
 }
 
 /// The frame a pop-up's content gets: a menu's, or none (popovers bring
@@ -420,6 +436,8 @@ package protocol PopupPresenting: AnyObject {
 package enum PopupChrome { case menu, plain }
 
 extension PopupPresenting {
+    package func dismissChildPopups() {}
+
     func presentPopup(content: AnyView, origin: CGPoint, minWidth: CGFloat, chrome: PopupChrome,
                       fallbackKeys: ((KeyEvent) -> Bool)?, onDismiss: @escaping () -> Void) -> PopupHandle? {
         presentPopup(content: content, origin: origin, anchor: nil, minWidth: minWidth, chrome: chrome, fallbackKeys: fallbackKeys,

@@ -284,7 +284,11 @@ public final class SourceControlShellModel {
         case .history?: if before.head != read.head || before.branches != read.branches || before.tags != read.tags { loadHistory() }
         case .conflicts?, nil: break
         }
-        conflictEditor?.update(integration: read.integration, conflicted: read.changes.filter { $0.status == .conflicted }.map(\.path))
+        let conflicted = read.changes.filter { $0.status == .conflicted }.map(\.path)
+        // Nothing left (aborted or resolved elsewhere): the sheet closes
+        // rather than staying empty (P-131).
+        if conflictEditor != nil, !read.integration.isInProgress, conflicted.isEmpty { closeConflictEditor() }
+        conflictEditor?.update(integration: read.integration, conflicted: conflicted)
         if let p = fileHistoryPath, before.head != read.head { loadFileHistory(p) }
     }
 
@@ -354,9 +358,12 @@ public final class SourceControlShellModel {
                                     .init(title: "Check Out", isDestructive: false, action: .checkout(b, .carry))]
                     : [.init(title: "Check Out", isDestructive: false, action: .checkout(b, .carry))])
         case .newBranch(let from):
-            prompt = SourceControlPrompt(purpose: .newBranch(from: from), title: "New Branch",
-                                         message: "Create a branch from \(q(from ?? current)) and check it out.",
-                                         fields: [.init(label: "Name", placeholder: "Branch name", text: "")], button: "Create")
+            // P-132: as the AppKit sheet, "Create new branch in “repo”:"
+            // From … To [ ], Create disabled until a name is typed.
+            let repo = repositoryName
+            prompt = SourceControlPrompt(purpose: .newBranch(from: from), title: "Create new branch in \(q(repo)):", message: "",
+                                         fields: [.init(label: "To", placeholder: "Branch name", text: "")], button: "Create",
+                                         info: [.init(label: "From", placeholder: "", text: from ?? current)])
         case .newTag(let at):
             prompt = SourceControlPrompt(purpose: .newTag(at: at), title: "New Tag", message: "Tag \(q(at ?? current)).",
                                          fields: [.init(label: "Name", placeholder: "Tag name", text: ""),

@@ -382,7 +382,8 @@ struct GitPackage {
         m.perform(.scmNewRepository)
         await m.sourceControl.idle()
         #expect(m.sourceControl.repository != nil)
-        #expect(!m.isEnabled(.scmNewRepository))
+        // P-016: New Git Repository… stays enabled, as in the reference.
+        #expect(m.isEnabled(.scmNewRepository))
         #expect(m.isEnabled(.scmCommit))
     }
 }

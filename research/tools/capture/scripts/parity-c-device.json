@@ -1,0 +1,1157 @@
+{
+ "name": "parity-c-device",
+ "title": "Part C 3: Device Hub (Ycode: its Device Hub) with three booted simulators (iPhone, iPad, watch): sidebar selection, the add-device control, zoom modes, Home, rotation, More Actions, the inspector's Settings/Reports/Info, sizes.",
+ "targets": [
+  "devicehub",
+  "ycode"
+ ],
+ "compare_order": [
+  "devicehub",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 1.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "Device Hub (Ycode: its Device Hub) with the sidebar shown and ycode-test-parity-iphone selected (the sidebar lists every device on this Mac: other rows are painted out). AX tree, menu bar.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    },
+    {
+     "menubar": "device"
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "select-ipad",
+   "note": "Select ycode-test-parity-ipad in the sidebar. AX tree.",
+   "do": [
+    {
+     "select": {
+      "role": "AXRow",
+      "text~": "ycode-test-parity-ipad",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 3.0
+    },
+    {
+     "tree": "ipad",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "select-watch",
+   "note": "Select ycode-test-parity-watch.",
+   "do": [
+    {
+     "select": {
+      "role": "AXRow",
+      "text~": "ycode-test-parity-watch",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 3.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "select-iphone",
+   "note": "Select ycode-test-parity-iphone.",
+   "do": [
+    {
+     "select": {
+      "role": "AXRow",
+      "text~": "ycode-test-parity-iphone",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 3.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "add-device",
+   "note": "The sidebar's add (+) control, or File ▸ New…: the add-device sheet/menu. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton|AXMenuButton",
+      "description~": "Add",
+      "visible": true
+     }
+    },
+    {
+     "menu": "File > New Simulator…|New Device…|Add Device…|New Simulator...",
+     "fallback": true
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "add",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "add-device-walk",
+   "note": "Sub-menus of an add menu (if it is a menu): a still of each.",
+   "do": [
+    {
+     "submenus": "sub",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "add-device-cancel",
+   "note": "Cancel (or Escape).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-order",
+   "note": "Tab through the window (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "sidebar-hide",
+   "note": "View ▸ Hide Sidebar.",
+   "do": [
+    {
+     "menu": "View > Hide Sidebar"
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Sidebar|Hide Sidebar",
+      "scope": "app"
+     },
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "zoom-fit",
+   "note": "Zoom to Fit (the zoom control's segment).",
+   "do": [
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "help": "Zoom to Fit",
+      "scope": "app"
+     }
+    },
+    {
+     "menu": "View > Zoom to Fit",
+     "fallback": true
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "zoom-physical",
+   "note": "Physical Size.",
+   "do": [
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "help": "Physical Size|Zoom To Actual Size",
+      "scope": "app"
+     }
+    },
+    {
+     "menu": "View > Physical Size",
+     "fallback": true
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "zoom-in",
+   "note": "Zoom In.",
+   "do": [
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "help": "Zoom In",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "zoom-out",
+   "note": "Zoom Out.",
+   "do": [
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "help": "Zoom Out",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "zoom-fit-2",
+   "note": "Zoom to Fit again. AX tree (control states).",
+   "do": [
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "help": "Zoom to Fit",
+      "scope": "app"
+     }
+    },
+    {
+     "menu": "View > Zoom to Fit",
+     "fallback": true
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "fit",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "controls-hover",
+   "note": "Pointer on the Home control, held 2.5 s (hover, tooltip).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Home",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "home",
+   "note": "Press Home.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Home",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "rotate",
+   "note": "Press Rotate (Device Hub: Rotate Right; Ycode: Rotate, left): the rotation animation.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Rotate Left|Rotate Right|Rotate (Option-click to rotate right)",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "rotate-back",
+   "note": "Press it three more times (back to portrait).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Rotate Left|Rotate Right|Rotate (Option-click to rotate right)",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Rotate Left|Rotate Right|Rotate (Option-click to rotate right)",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Rotate Left|Rotate Right|Rotate (Option-click to rotate right)",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "more-actions",
+   "note": "Click More Actions: its menu. Items in -items.json.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuButton",
+      "description": "More Actions",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "more-actions-walk",
+   "note": "Its sub-menus hovered: a still of each; items.",
+   "do": [
+    {
+     "submenus": "sub",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "more-actions-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "inspector-reports",
+   "note": "Inspector ▸ Reports.",
+   "do": [
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "help": "Reports",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "reports",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "inspector-info",
+   "note": "Inspector ▸ Info.",
+   "do": [
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "help": "Info",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "info",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "inspector-settings",
+   "note": "Inspector ▸ Settings. AX tree.",
+   "do": [
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "help": "Settings",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "settings",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "settings-popup-0",
+   "note": "Settings inspector pop-up 0: opened (snap), items, Escape.",
+   "do": [
+    {
+     "click": {
+      "role": "AXPopUpButton",
+      "index": 0,
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "snap": "menu",
+     "mode": "app",
+     "if_ok": true
+    },
+    {
+     "submenus": "items",
+     "all_windows": true,
+     "if_ok": true
+    },
+    {
+     "key": "escape",
+     "if_ok": true
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none"
+  },
+  {
+   "id": "settings-popup-1",
+   "note": "Settings inspector pop-up 1: opened (snap), items, Escape.",
+   "do": [
+    {
+     "click": {
+      "role": "AXPopUpButton",
+      "index": 1,
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "snap": "menu",
+     "mode": "app",
+     "if_ok": true
+    },
+    {
+     "submenus": "items",
+     "all_windows": true,
+     "if_ok": true
+    },
+    {
+     "key": "escape",
+     "if_ok": true
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none"
+  },
+  {
+   "id": "settings-popup-2",
+   "note": "Settings inspector pop-up 2: opened (snap), items, Escape.",
+   "do": [
+    {
+     "click": {
+      "role": "AXPopUpButton",
+      "index": 2,
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "snap": "menu",
+     "mode": "app",
+     "if_ok": true
+    },
+    {
+     "submenus": "items",
+     "all_windows": true,
+     "if_ok": true
+    },
+    {
+     "key": "escape",
+     "if_ok": true
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none"
+  },
+  {
+   "id": "settings-popup-3",
+   "note": "Settings inspector pop-up 3: opened (snap), items, Escape.",
+   "do": [
+    {
+     "click": {
+      "role": "AXPopUpButton",
+      "index": 3,
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "snap": "menu",
+     "mode": "app",
+     "if_ok": true
+    },
+    {
+     "submenus": "items",
+     "all_windows": true,
+     "if_ok": true
+    },
+    {
+     "key": "escape",
+     "if_ok": true
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "none"
+  },
+  {
+   "id": "inspector-hide",
+   "note": "View ▸ Inspectors ▸ Hide Inspector.",
+   "do": [
+    {
+     "menu": "View > Inspectors > Hide Inspector"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "inspector-show",
+   "note": "View ▸ Inspectors ▸ Show Inspector.",
+   "do": [
+    {
+     "menu": "View > Inspectors > Show Inspector"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "ipad-fit",
+   "note": "Sidebar shown, the iPad selected, sidebar hidden, Zoom to Fit.",
+   "do": [
+    {
+     "menu": "View > Show Sidebar"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text~": "ycode-test-parity-ipad",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 3.0
+    },
+    {
+     "menu": "View > Hide Sidebar"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "help": "Zoom to Fit",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "ipad-rotate",
+   "note": "Rotate the iPad.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Rotate Left|Rotate Right|Rotate (Option-click to rotate right)",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "ipad-rotate-back",
+   "note": "Rotate it three more times.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Rotate Left|Rotate Right|Rotate (Option-click to rotate right)",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Rotate Left|Rotate Right|Rotate (Option-click to rotate right)",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Rotate Left|Rotate Right|Rotate (Option-click to rotate right)",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "watch-fit",
+   "note": "The watch selected, Zoom to Fit. AX tree.",
+   "do": [
+    {
+     "menu": "View > Show Sidebar"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text~": "ycode-test-parity-watch",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 3.0
+    },
+    {
+     "menu": "View > Hide Sidebar"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "press": {
+      "role": "AXRadioButton",
+      "help": "Zoom to Fit",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "watch",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "watch-home",
+   "note": "Press the watch's first hardware control (Home / crown).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "Home|Digital Crown|Crown",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "narrow",
+   "note": "Window 700 x 600: the narrow layout.",
+   "do": [
+    {
+     "resize": [
+      700,
+      600
+     ]
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "wide",
+   "note": "Window 1450 x 900: the wide layout.",
+   "do": [
+    {
+     "move": [
+      30,
+      40
+     ]
+    },
+    {
+     "resize": [
+      1450,
+      900
+     ]
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "back-iphone",
+   "note": "Back to 1100 x 800, the iPhone selected.",
+   "do": [
+    {
+     "resize": [
+      1100,
+      800
+     ]
+    },
+    {
+     "menu": "View > Show Sidebar"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text~": "ycode-test-parity-iphone",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 3.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "menubar-end",
+   "note": "Menu bar at the end.",
+   "do": [
+    {
+     "menubar": "end"
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "project": {
+  "generator": "make-test-project.py",
+  "path": "GlassScroll/GlassScroll.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1100,
+   800
+  ],
+  "display": "builtin",
+  "title": "ycode-test-parity-iphone",
+  "wait_title": null,
+  "first_window_wait": 6.0,
+  "timeout": 90
+ },
+ "per_target_setup": {
+  "devicehub": [
+   {
+    "menu": "View > Show Sidebar"
+   },
+   {
+    "wait": 1.0
+   },
+   {
+    "select": {
+     "role": "AXRow",
+     "text~": "ycode-test-parity-iphone",
+     "scope": "app"
+    }
+   },
+   {
+    "wait": 2.0
+   }
+  ],
+  "ycode": [
+   {
+    "menu": "Ycode > Open Developer Tool > Device Hub"
+   },
+   {
+    "wait": 3.0
+   },
+   {
+    "select": {
+     "role": "AXRow",
+     "text~": "ycode-test-parity-iphone",
+     "scope": "app"
+    }
+   },
+   {
+    "wait": 2.0
+   }
+  ]
+ },
+ "project_targets": [
+  "ycode"
+ ],
+ "setup_settle": 2.0
+}

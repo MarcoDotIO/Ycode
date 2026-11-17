@@ -79,7 +79,12 @@ extension WorkspaceShellModel {
         guard let saved = state.editorLayout else { return }
         let layout = saved.restorable()
         let p = panes
-        p.panes = layout.panes.indices.map { ShellEditorPane(id: $0, path: nil) }
+        // One lane each: the saved layout is one row or one column.
+        p.panes = layout.panes.indices.map { i in
+            var pane = ShellEditorPane(id: i, path: nil)
+            pane.lane = i
+            return pane
+        }
         p.nextID = layout.panes.count
         p.sideBySide = layout.sideBySide
         // Each pane's file opens in turn (so every pane's document is

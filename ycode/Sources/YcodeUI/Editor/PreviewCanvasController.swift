@@ -25,9 +25,18 @@ public final class PreviewCanvasController: NSViewController {
     public enum Layout: Int { case grid, single }
 
     public private(set) var state: State = .empty("No Previews")
+    /// The building spinner's side (P-166: the reference's 18 points).
+    public static let buildingSpinnerSide: CGFloat = 18
     public private(set) var selectedIndex = 0
     public private(set) var layout: Layout = .single
-    public private(set) var colorScheme: PreviewRenderer.ColorScheme = .light
+    /// The scheme of the pictures shown: the one chosen (Canvas Settings ▸
+    /// Color Scheme, `setColorScheme`), else the canvas's own appearance
+    /// (P-166: a dark IDE showed the light picture's dark text on the dark
+    /// canvas; the reference draws the preview in the IDE's appearance).
+    public var colorScheme: PreviewRenderer.ColorScheme {
+        chosenScheme ?? (isViewLoaded && view.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .dark : .light)
+    }
+    private var chosenScheme: PreviewRenderer.ColorScheme?
     /// Until resumed, the canvas shows the paused capsule and does not build.
     public private(set) var isPaused = true
     /// Live (the default) or Selectable; Variants and Grid are toggles.
@@ -160,7 +169,8 @@ public final class PreviewCanvasController: NSViewController {
             sep2.leadingAnchor.constraint(equalTo: root.leadingAnchor), sep2.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             sep2.bottomAnchor.constraint(equalTo: bar.topAnchor),
             bar.leadingAnchor.constraint(equalTo: root.leadingAnchor), bar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            bar.bottomAnchor.constraint(equalTo: root.bottomAnchor), bar.heightAnchor.constraint(equalToConstant: 28),
+            // P-156: above the window's status bar (the editor area's safe area).
+            bar.bottomAnchor.constraint(equalTo: root.safeAreaLayoutGuide.bottomAnchor), bar.heightAnchor.constraint(equalToConstant: 28),
         ])
         view = root
         show()
@@ -218,8 +228,8 @@ public final class PreviewCanvasController: NSViewController {
         if isViewLoaded { show() }
     }
 
-    public func setColorScheme(_ s: PreviewRenderer.ColorScheme) {
-        colorScheme = s
+    public func setColorScheme(_ s: PreviewRenderer.ColorScheme?) {
+        chosenScheme = s
         if isViewLoaded { show() }
     }
 
@@ -366,7 +376,7 @@ public final class PreviewCanvasController: NSViewController {
     /// Canvas settings (§17 item 4): a popover of switches, all off.
     public func setSetting(_ name: String, _ on: Bool) {
         if on { settings.on.insert(name) } else { settings.on.remove(name) }
-        if name == "Color Scheme" { setColorScheme(on ? .dark : .light) } else if isViewLoaded { show() }
+        if name == "Color Scheme" { setColorScheme(on ? .dark : nil) } else if isViewLoaded { show() }
         if ["Color Scheme", "Orientation", "Dynamic Type"].contains(name) { onLayoutChange?() }
     }
 
@@ -457,8 +467,13 @@ public final class PreviewCanvasController: NSViewController {
             content = centered(NSTextField(labelWithString: message))
         case .building:
             statusLabel.stringValue = "Building…"
+            // P-166: an 18-point spinner, as the reference's.
             let spinner = NSProgressIndicator()
             spinner.style = .spinning
+            spinner.controlSize = .small
+            spinner.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([spinner.widthAnchor.constraint(equalToConstant: Self.buildingSpinnerSide),
+                                         spinner.heightAnchor.constraint(equalToConstant: Self.buildingSpinnerSide)])
             spinner.startAnimation(nil)
             content = centered(spinner)
         case .failed(let message):
@@ -512,8 +527,11 @@ public final class PreviewCanvasController: NSViewController {
         iv.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         framedCount += 1
         cardTitles.append(r.name)
-        return PreviewDeviceFrameView(content: iv)
+        return previewsMac ? PreviewWindowFrameView(content: iv) : PreviewDeviceFrameView(content: iv)
     }
+
+    /// The previews run on this Mac (a window frame, not a device's).
+    public var previewsMac: Bool { (devices.chosen ?? devices.automatic).hasPrefix("My Mac") }
 
     /// Header tabs: one per preview, spinner while building, eye when rendered.
     func reloadTabs() {
@@ -722,6 +740,17 @@ extension WorkspaceWindowController {
         case .hide: setCanvasShown(false)
         case .keep: if canvas != nil { refreshPreviews() }
         }
+    }
+
+    /// The focused editor shows something other than source text (the
+    /// project editor, an asset catalog, an Interface Builder document, a
+    /// property list, a string catalog, an image): the canvas belongs to
+    /// source editors that can preview, so it goes (canvas mode stays on)
+    /// and comes back with the next file that has previews (B4-POLISH:
+    /// the project editor was squeezed beside the canvas).
+    func hideCanvasForEditorWithoutPreviews() {
+        guard canvas != nil, editor.auxiliary != nil, editor !== editorArea.tab.assistant else { return }
+        updateCanvasForOpenedFile()
     }
 
     /// A canvas is drawn; in canvas mode it comes and goes with the

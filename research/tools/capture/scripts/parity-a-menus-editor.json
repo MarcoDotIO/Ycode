@@ -1,0 +1,359 @@
+{
+ "name": "parity-a-menus-editor",
+ "title": "Part A 3b: the Editor, Find and Navigate menus again with Long.swift open in the editor.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "Long.swift open (selected in the navigator). The whole menu bar.",
+   "do": [
+    {
+     "menubar": "long-open"
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "find-open",
+   "note": "Open the Find menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Find",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "find-close",
+   "note": "Escape closes the Find menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "navigate-open",
+   "note": "Open the Navigate menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Navigate",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "navigate-close",
+   "note": "Escape closes the Navigate menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "editor-open",
+   "note": "Open the Editor menu by clicking its menu bar title (animation); the after still is the whole menu.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Editor",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-structure",
+   "note": "Hover Editor ▸ Structure: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Structure",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-code-folding",
+   "note": "Hover Editor ▸ Code Folding: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Code Folding",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-syntax-coloring",
+   "note": "Hover Editor ▸ Syntax Coloring: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Syntax Coloring",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-canvas",
+   "note": "Hover Editor ▸ Canvas: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Canvas",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-minimap",
+   "note": "Hover Editor ▸ Minimap: its sub-menu cascades open (or, if it is a plain item, its highlight).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Minimap",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.9
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-diagonal",
+   "note": "Diagonal pointer move from Editor ▸ Structure into its sub-menu (right 220 pt, down 90 pt over 0.35 s) then onto the sibling item: does the sub-menu stay open, and how do siblings switch?",
+   "do": [
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Structure",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    },
+    {
+     "glide": {
+      "from": {
+       "role": "AXMenuItem",
+       "title": "Structure",
+       "scope": "app",
+       "visible": true
+      },
+      "to": {
+       "role": "AXMenuItem",
+       "title": "Structure",
+       "scope": "app",
+       "visible": true
+      },
+      "to_dx": 220,
+      "to_dy": 90
+     },
+     "duration": 0.35
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "hover": {
+      "role": "AXMenuItem",
+      "title": "Minimap",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.7
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "editor-walk",
+   "note": "Every enabled sub-menu of Editor, hovered one by one: a still of each cascade (no video).",
+   "do": [
+    {
+     "submenus": "sub",
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "editor-close",
+   "note": "Escape closes the Editor menu.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "after"
+  },
+  {
+   "id": "menubar-after",
+   "note": "The whole menu bar after these menus were opened.",
+   "do": [
+    {
+     "menubar": "after-tour"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ],
+ "project": {
+  "generator": "make-test-project.py",
+  "path": "GlassScroll/GlassScroll.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ },
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Long|Long.swift"
+   }
+  },
+  {
+   "wait": 2.0
+  }
+ ]
+}

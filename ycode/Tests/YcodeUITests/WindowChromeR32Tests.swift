@@ -314,8 +314,10 @@ import YcodeProject
             #expect(nav.filter.placeholderString == "Filter")
         }
         // Headers.
+        // The Report navigator has no header (owner decision 5 removed its
+        // Local | Cloud control).
         nav.select(8)
-        #expect((0..<2).map { nav.reportScope.toolTip(forSegment: $0) } == ["Show Local Reports", "Show Cloud Reports"] && !nav.reportScope.isHidden)
+        #expect(nav.reportScope.isHidden)
         nav.select(5)
         #expect(!nav.testHeader.isHidden && nav.testPlanPopUp.titleOfSelectedItem == nav.testPlanName)
         #expect((0..<2).map { nav.testModeControl.toolTip(forSegment: $0) } == ["Group by Test Hierarchy", "Group by Tags"])

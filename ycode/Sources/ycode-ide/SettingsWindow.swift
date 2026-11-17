@@ -40,10 +40,11 @@ final class ShellPreferences {
     /// lose the change.
     static func persist() { UserDefaults.standard.synchronize() }
 
-    /// Completions open by themselves after a "." (off by default for the
-    /// beta; Ctrl+Space and Escape always ask).
+    /// Completions open by themselves while typing: at the start of a
+    /// word and after a "." (on by default, as the macOS editor, P-080;
+    /// Ctrl+Space and Escape always ask).
     static var completionWhileTyping: Bool {
-        UserDefaults.standard.object(forKey: completionKey) as? Bool ?? false
+        UserDefaults.standard.object(forKey: completionKey) as? Bool ?? true
     }
     static let completionKey = "Ycode.linuxCompletionWhileTyping"
 
@@ -101,17 +102,34 @@ enum ShellSettingsPane: String, CaseIterable, Identifiable {
 final class ShellSettingsModel {
     static let shared = ShellSettingsModel()
 
+    /// A step of the back/forward history: a pane and its sub-page (P-138:
+    /// Editing ▸ Display, a Behaviors event and the simulator-host page are
+    /// steps of their own, as the macOS IDE's).
+    struct Step: Equatable {
+        var pane: ShellSettingsPane
+        var subPage: String?
+    }
+
     private(set) var pane: ShellSettingsPane = .general
-    private(set) var back: [ShellSettingsPane] = []
-    private(set) var forward: [ShellSettingsPane] = []
-    /// Editing's sub-page.
-    var editingPage: EditingSettingsPane.Page = .main
+    private(set) var back: [Step] = []
+    private(set) var forward: [Step] = []
+    /// While a step is restored, the sub-page changes record nothing.
+    @ObservationIgnored private var restoring = false
+    /// Editing's sub-page (a drill-in row's push records a step).
+    var editingPage: EditingSettingsPane.Page = .main {
+        didSet { if pane == .editing { pushed(from: oldValue == .main ? nil : oldValue.rawValue, changed: oldValue != editingPage) } }
+    }
     /// Behaviors' open event (nil: the event list).
-    var behaviorEvent: Preferences.Event?
+    var behaviorEvent: Preferences.Event? {
+        didSet { if pane == .behaviors { pushed(from: oldValue?.rawValue, changed: oldValue != behaviorEvent) } }
+    }
     /// Accounts' sheet (+ shows it).
     var isAccountsSheetShown = false
     /// Components shows the simulator-host page (R5.5).
-    private(set) var isHostPageShown = false
+    private(set) var isHostPageShown = false {
+        didSet { if pane == .components { pushed(from: oldValue ? Self.hostPage : nil, changed: oldValue != isHostPageShown) } }
+    }
+    static let hostPage = "Simulator Host"
 
     /// Components ▸ Simulator Host (its row's info button).
     func showHostPage() {
@@ -121,27 +139,86 @@ final class ShellSettingsModel {
 
     func hideHostPage() { isHostPageShown = false }
 
-    /// Shows a pane (recorded for back/forward).
+    /// Editing at one of its pages (Components' predictive-completion info
+    /// button): one step, as the macOS IDE's.
+    func showEditing(_ page: EditingSettingsPane.Page) {
+        select(.editing)
+        restoring = true
+        editingPage = page
+        restoring = false
+    }
+
+    /// Components' values, read in the background when the window opens so
+    /// the pane's first frame has them (P-140; kept for the process).
+    private(set) var componentsInventory: ComponentsInventory?
+    @ObservationIgnored private var readingComponents = false
+
+    /// Starts reading Components' values (once; the walk's fixed values
+    /// replace them).
+    func prefetchComponents() {
+        guard componentsInventory == nil, !readingComponents, ComponentsSettingsPane.inventoryOverride == nil else { return }
+        readingComponents = true
+        Task { @MainActor in
+            componentsInventory = await ComponentsInventory.read(choices: RuntimeSetupChoices.load(ShellApp.model.runtimeDefaults))
+            readingComponents = false
+        }
+    }
+
+    /// The shown pane's sub-page, by title (nil: the pane's own page).
+    var subPage: String? {
+        switch pane {
+        case .editing: editingPage == .main ? nil : editingPage.rawValue
+        case .behaviors: behaviorEvent?.rawValue
+        case .components: isHostPageShown ? Self.hostPage : nil
+        default: nil
+        }
+    }
+
+    /// The title area's text: a sub-page's title (the window takes the
+    /// page's name, P-138), else the pane's; the simulator-host page, a page
+    /// of Components, keeps the pane's (as the macOS IDE's Simulators page).
+    var title: String {
+        guard let sub = subPage, pane != .components else { return pane.title }
+        return sub
+    }
+
+    private var current: Step { Step(pane: pane, subPage: subPage) }
+
+    /// A sub-page change by a drill-in row (not a restore): the page before
+    /// it is a step to go back to.
+    private func pushed(from old: String?, changed: Bool) {
+        guard changed, !restoring else { return }
+        back.append(Step(pane: pane, subPage: old))
+        forward = []
+    }
+
+    /// Shows a pane at its own page (recorded for back/forward).
     func select(_ p: ShellSettingsPane) {
         guard p != pane else { return }
-        back.append(pane)
+        back.append(current)
         forward = []
-        pane = p
-        isHostPageShown = false
+        restore(Step(pane: p, subPage: nil))
     }
 
     func goBack() {
-        guard let p = back.popLast() else { return }
-        forward.append(pane)
-        pane = p
-        isHostPageShown = false
+        guard let s = back.popLast() else { return }
+        forward.append(current)
+        restore(s)
     }
 
     func goForward() {
-        guard let p = forward.popLast() else { return }
-        back.append(pane)
-        pane = p
-        isHostPageShown = false
+        guard let s = forward.popLast() else { return }
+        back.append(current)
+        restore(s)
+    }
+
+    private func restore(_ s: Step) {
+        restoring = true
+        defer { restoring = false }
+        pane = s.pane
+        editingPage = s.pane == .editing ? s.subPage.flatMap(EditingSettingsPane.Page.init(rawValue:)) ?? .main : .main
+        behaviorEvent = s.pane == .behaviors ? Preferences.Event.allCases.first { $0.rawValue == s.subPage } : nil
+        isHostPageShown = s.pane == .components && s.subPage == Self.hostPage
     }
 }
 
@@ -177,7 +254,11 @@ struct ShellSettingsView: View {
             }
             .background(p.detail)
         }
-        .frame(width: Self.size.width, height: Self.size.height)
+        // Opens at 710 × 452 and grows in both directions (P-139), the
+        // panes laid out to the width.
+        .frame(minWidth: Self.size.width, idealWidth: Self.size.width, maxWidth: .infinity)
+        .frame(minHeight: Self.size.height, idealHeight: Self.size.height, maxHeight: .infinity)
+        .task { model.prefetchComponents() }
         .shellTarget("settings")
     }
 
@@ -228,7 +309,7 @@ struct ShellSettingsView: View {
             SettingsNavigationCapsule(model: model)
                 .frame(width: cap.width, height: cap.height)
                 .padding(.leading, cap.minX - SettingsLayout.detailX)
-            Text(verbatim: model.pane.title)
+            Text(verbatim: model.title)
                 .font(SettingsFonts.title)
                 .foregroundStyle(p.title)
                 .lineLimit(1)

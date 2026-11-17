@@ -281,7 +281,8 @@ extension WorkspaceChrome {
         return DefaultThemeColors(
             background: c("#FFFFFF"), foreground: c("#322529"), currentLine: c("#EEEEEE"), lineNumber: c("#B8B3B4"),
             selection: c("#B3D7FF"),
-            tokens: ["keyword": c("#C4246E"), "comment": c("#6A7084"), "docComment": c("#67C468"), "string": c("#CA2B1C"),
+            // Documentation comments in the comment grey, as in dark (P-054).
+            tokens: ["keyword": c("#C4246E"), "comment": c("#6A7084"), "docComment": c("#6A7084"), "string": c("#CA2B1C"),
                      "number": c("#0178B8"), "preprocessor": c("#FF9500"), "attribute": c("#A2845E"), "typeName": c("#9D31CF"),
                      "typeDeclaration": c("#007D9E"), "otherDeclaration": c("#006178")])
     }

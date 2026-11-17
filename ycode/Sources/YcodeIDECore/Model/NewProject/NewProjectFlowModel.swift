@@ -85,9 +85,15 @@ public struct NewProjectFlowModel: Equatable, Sendable {
             tab = d.platform
             template = d.id
         }
-        let shared = (defaults.dictionary(forKey: Keys.options) as? [String: String]) ?? [:]
+        var shared = (defaults.dictionary(forKey: Keys.options) as? [String: String]) ?? [:]
+        // P-178: with nothing stored, Testing System starts at Swift Testing
+        // (the reference's options step); a stored choice wins.
+        if shared[TemplateOptionID.testingSystem] == nil { shared[TemplateOptionID.testingSystem] = Self.defaultTestingSystem }
         self.init(chooser: chooser, platform: tab, template: template, sharedValues: shared, perTab: perTab)
     }
+
+    /// Testing System's value for a first New Project.
+    public static let defaultTestingSystem = "Swift Testing"
 
     /// Stores the tab, the tab's template and the shared option values.
     public func remember(in defaults: UserDefaults) {

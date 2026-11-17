@@ -132,13 +132,23 @@ public final class QuickActionsController: NSViewController, NSTableViewDataSour
 
     public func numberOfRows(in tableView: NSTableView) -> Int { shown.count }
 
+    /// A row's cell, reused from the table's queue: an accessibility client
+    /// reading the list asks for every row's cell, and a new view for each
+    /// (hundreds of commands, three columns) on every query hung the app
+    /// (P-202).
     public func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let a = shown[row]
         let id = tableColumn?.identifier.rawValue ?? "title"
         let text = id == "title" ? a.title : id == "menu" ? a.path : a.shortcut
-        let l = NSTextField(labelWithString: text)
-        l.lineBreakMode = .byTruncatingTail
-        if id != "title" { l.textColor = .secondaryLabelColor }
+        let reuse = NSUserInterfaceItemIdentifier("quick-actions-" + id)
+        let l = tableView.makeView(withIdentifier: reuse, owner: nil) as? NSTextField ?? {
+            let f = NSTextField(labelWithString: "")
+            f.identifier = reuse
+            f.lineBreakMode = .byTruncatingTail
+            if id != "title" { f.textColor = .secondaryLabelColor }
+            return f
+        }()
+        l.stringValue = text
         return l
     }
 

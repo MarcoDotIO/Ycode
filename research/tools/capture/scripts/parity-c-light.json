@@ -1,0 +1,625 @@
+{
+ "name": "parity-c-light",
+ "title": "Part C 4: each app's own Appearance set to Light (the system stays Dark): the switch, Settings, the main window, a menu, a sheet, the navigator selection, the editor theme, completion and a popover; then back to System.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "open-shapes",
+   "note": "Open Shapes.swift.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Shapes|Shapes.swift"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "dark-rest",
+   "note": "Before: the workspace with the app's Appearance at System (the system is Dark).",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "appearance-light",
+   "note": "Settings ▸ Appearance, then the app's own Appearance set to Light (the workspace window behind changes too: the switch animation). AX tree.",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "AppearanceLight",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "tree": "appearance",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "press": {
+        "title": "Light",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "tree": "appearance",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "settings-appearance-light",
+   "note": "Settings ▸ Appearance in light.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "settings-general-light",
+   "note": "Settings ▸ General in light.",
+   "do": [
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "General",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "move": [
+      401,
+      40
+     ],
+     "window": "General"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "settings-editing-light",
+   "note": "Settings ▸ Editing in light.",
+   "do": [
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Editing",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "move": [
+      401,
+      40
+     ],
+     "window": "Editing"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "settings-close",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "main-light",
+   "note": "The workspace window in light: toolbar, navigator, editor theme, inspector. AX tree.",
+   "do": [
+    {
+     "tree": "main",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "menu-light",
+   "note": "Click Editor in the menu bar: the menu in light (animation).",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Editor",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "menu-light-walk",
+   "note": "Every sub-menu of Editor hovered: a still of each.",
+   "do": [
+    {
+     "submenus": "sub"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "menu-light-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "sheet-light",
+   "note": "File ▸ New ▸ File from Template (cmd+N): the template sheet in light. AX tree.",
+   "do": [
+    {
+     "key": "cmd+n"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "sheet",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "sheet-light-cancel",
+   "note": "Cancel (Escape).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "navigator-select-light",
+   "note": "Click Counter in the navigator: the focused selection in light.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Counter|Counter.swift"
+     }
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "navigator-unfocused-light",
+   "note": "Click into the editor: the navigator's selection unfocused, in light.",
+   "do": [
+    {
+     "click": [
+      800,
+      400
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "completion-light",
+   "note": "Type 'Co' at the end of line 1 after a Return: the completion list in light; then Escape and undo.",
+   "do": [
+    {
+     "key": "cmd+up"
+    },
+    {
+     "key": "cmd+right"
+    },
+    {
+     "key": "return"
+    },
+    {
+     "text": "Co"
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "completion-light-undo",
+   "note": "Escape, undo.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "key": "cmd+z cmd+z cmd+z"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "popover-light",
+   "note": "Option-click 'Circle' on its declaration: Quick Help popover in light.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "struct Circle",
+      "offset": 9
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "popover-light-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "menubar-light",
+   "note": "The whole menu bar (light run, Shapes.swift open).",
+   "do": [
+    {
+     "menubar": "light"
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "appearance-system",
+   "note": "Settings ▸ Appearance back to System (its value before the session; the workspace window turns dark again).",
+   "do": [],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "press": {
+        "role": "AXButton",
+        "description": "AppearanceAuto",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "tree": "appearance",
+       "depth": 40
+      }
+     ]
+    },
+    "ycode": {
+     "do": [
+      {
+       "key": "cmd+,"
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "select": {
+        "role": "AXRow",
+        "text": "Appearance",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "move": [
+        401,
+        40
+       ],
+       "window": "Appearance"
+      },
+      {
+       "wait": 0.4
+      },
+      {
+       "press": {
+        "title": "System",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "tree": "appearance",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "settings-close-2",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "dark-after",
+   "note": "After: back to dark.",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "project": {
+  "generator": "make-formats-project.py",
+  "path": "formats/Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

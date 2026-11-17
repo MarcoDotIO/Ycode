@@ -12,6 +12,8 @@ struct NewProjectSheet: View {
     @Bindable var model: NewProjectShellModel
     var app: ShellAppModel
     @Environment(\.colorScheme) private var scheme
+    /// The focused text field's option (P-178: Product Name on arrival).
+    @FocusState private var focusedOption: String?
 
     var body: some View {
         let c = ShellColors(scheme)
@@ -120,10 +122,20 @@ struct NewProjectSheet: View {
                         .frame(width: 170, alignment: .trailing)
                     field(f, c)
                 }
+                .help(f.help)   // P-178: every control has a help tag
             }
         }
         .padding(.top, 24)
         .frame(maxWidth: .infinity)
+        .onAppear { focusedOption = model.flow.form.visibleFields.first { $0.kind == .text }?.id }
+        // P-178: Tab moves between the text fields only (Product Name ↔
+        // Organization Identifier), as the AppKit sheet's key-view loop.
+        .onKeyPress(keys: [.tab]) { press in
+            let ids = model.flow.form.visibleFields.filter { $0.kind == .text && model.flow.form.isEnabled($0.id) }.map(\.id)
+            guard ids.count > 1, let current = focusedOption, let i = ids.firstIndex(of: current) else { return .ignored }
+            focusedOption = ids[(i + (press.modifiers.contains(.shift) ? ids.count - 1 : 1)) % ids.count]
+            return .handled
+        }
     }
 
     @ViewBuilder func field(_ f: TemplateOptionField, _ c: ShellColors) -> some View {
@@ -134,6 +146,7 @@ struct NewProjectSheet: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 300)
                 .disabled(!enabled)
+                .focused($focusedOption, equals: f.id)
                 .shellTarget("option \(f.id)")
         case .popUp(let choices):
             Picker("", selection: Binding(get: { f.id == TemplateOptionID.team ? model.flow.team : model.flow.form.value(f.id) },
@@ -142,7 +155,10 @@ struct NewProjectSheet: View {
                     Text(verbatim: $0.title).tag($0.value)
                 }
             }
-            .frame(width: 300)
+            // Sized to its value at the column's start, as the AppKit
+            // pop-ups (L-233 drew it centred in the column).
+            .fixedSize()
+            .frame(width: 300, alignment: .leading)
             .disabled(!enabled)
             .shellTarget("option \(f.id)")
         case .checkbox:

@@ -13,7 +13,7 @@ body:
     attributes:
       label: Ycode version
       description: From the About window, or `ycode --version`.
-      placeholder: 1.0.0-beta.3
+      placeholder: 1.0.0-beta.4
     validations:
       required: true
   - type: dropdown

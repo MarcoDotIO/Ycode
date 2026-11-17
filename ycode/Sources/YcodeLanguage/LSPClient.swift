@@ -222,9 +222,28 @@ public final class LSPClient: @unchecked Sendable {
          "position": ["line": .number(Double(p.line)), "character": .number(Double(p.character))]]
     }
 
+    /// `textDocument/completion`, in the server's order (`sortText`
+    /// ascending, else the label; P-080: sourcekit-lsp sends its best
+    /// matches in no particular order and caps the list). Items of an
+    /// incomplete list (`isIncomplete`) say so: the editor asks again as
+    /// the word grows.
     public func completion(_ url: URL, at p: Position) async throws -> [CompletionItem] {
         let r = try await request("textDocument/completion", Self.position(url, p))
-        return (r.array ?? r["items"]?.array ?? []).map(CompletionItem.init)
+        return Self.completionItems(r)
+    }
+
+    /// The items of a completion result (a list or a `CompletionList`), sorted.
+    public static func completionItems(_ r: JSON) -> [CompletionItem] {
+        let incomplete = r["isIncomplete"]?.bool ?? false
+        let items = (r.array ?? r["items"]?.array ?? []).map { j -> CompletionItem in
+            var item = CompletionItem(j)
+            item.fromIncompleteList = incomplete
+            return item
+        }
+        return items.enumerated().sorted { a, b in
+            let ka = a.element.sortText ?? a.element.label, kb = b.element.sortText ?? b.element.label
+            return ka != kb ? ka < kb : a.offset < b.offset
+        }.map(\.element)
     }
 
     /// `textDocument/hover`: the documentation and declaration at a
@@ -294,7 +313,13 @@ public struct CompletionItem: Equatable, Sendable {
     public var replaceStart: Position?
     /// `insertTextFormat` 2: `insertText` is an LSP snippet (`${1:x}` stops).
     public var isSnippet = false
+    /// The server's sort key (`sortText`).
+    public var sortText: String?
+    /// The item came in a list the server marked incomplete: a longer
+    /// prefix may bring other items.
+    public var fromIncompleteList = false
     init(_ j: JSON) {
+        sortText = j["sortText"]?.string
         isSnippet = j["insertTextFormat"]?.int == 2
         label = j["label"]?.string ?? ""
         let edit = j["textEdit"]

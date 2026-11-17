@@ -1,0 +1,90 @@
+{
+ "name": "parity-c-probe",
+ "title": "Part C probe (not judged): AX names of the Settings window, the navigator rows of the formats project and the menu bar.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "At rest. AX tree and menu bar.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    },
+    {
+     "menubar": "rest"
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "settings",
+   "note": "cmd+comma: Settings. AX tree.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "settings",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "settings-close",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ],
+ "project": {
+  "generator": "make-formats-project.py",
+  "path": "formats/Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

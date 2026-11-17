@@ -90,7 +90,10 @@ import YcodeBuild
         let decl = ids.firstIndex(of: "quickhelp.declaration")!, file = ids.firstIndex(of: "quickhelp.file")!
         let callout = ids.firstIndex(of: "quickhelp.callout")!
         #expect(decl < file && file < callout)
-        #expect((v.arrangedSubviews.last as? NSButton)?.title == "Open in Developer Documentation")
+        // A project symbol: no documentation link (P-083); an SDK symbol has it.
+        #expect((v.arrangedSubviews.last as? NSButton)?.title != "Open in Developer Documentation")
+        let sdk = QuickHelpView.make(QuickHelpDocument(hover: Self.hover, file: "/sdk/Geometry.swiftinterface"))
+        #expect((sdk.arrangedSubviews.last as? NSButton)?.title == "Open in Developer Documentation")
         let sections = v.arrangedSubviews.compactMap { $0 as? NSTextField }.filter { $0.accessibilityIdentifier() == "quickhelp.section" }.map(\.stringValue)
         #expect(sections == ["Parameters", "Return Value", "Throws", "Discussion"])
         let box = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 520))

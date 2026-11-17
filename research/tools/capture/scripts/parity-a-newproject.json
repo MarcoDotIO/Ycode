@@ -1,0 +1,650 @@
+{
+ "name": "parity-a-newproject",
+ "title": "Part A 2: the New Project assistant up to its options page.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "quick-open",
+   "note": "File ▸ New ▸ Project… by its shortcut (cmd+shift+N) from the Welcome window: what opens (Xcode 27.1: a quick New Project panel). AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+n"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "quick",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "key": "cmd+shift+n"
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "tree": "quick",
+       "depth": 40
+      },
+      {
+       "click": {
+        "label": "New Project",
+        "role": "AXMenuButton",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.0
+      }
+     ],
+     "note": "File ▸ New ▸ Project… by its shortcut (cmd+shift+N) from the Welcome window: what opens (Xcode 27.1: a quick New Project panel). AX tree. Ycode: cmd+shift+N first (nothing happens), then the Welcome window's New Project menu."
+    }
+   }
+  },
+  {
+   "id": "quick-keys",
+   "note": "Keyboard in that panel: Down twice (selection), then type 'Play' (filter).",
+   "do": [
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "snap": "down1",
+     "mode": "app"
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "snap": "down2",
+     "mode": "app"
+    },
+    {
+     "text": "Play"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "snap": "typed",
+     "mode": "app"
+    },
+    {
+     "tree": "typed",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "quick-escape",
+   "note": "Escape closes it.",
+   "do": [
+    {
+     "key": "escape"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "key": "escape"
+      }
+     ],
+     "note": "Escape closes it. Ycode: cmd+shift+N first (nothing happens), then the Welcome window's New Project menu."
+    }
+   }
+  },
+  {
+   "id": "quick-reopen",
+   "note": "cmd+shift+N again.",
+   "do": [
+    {
+     "key": "cmd+shift+n"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "label": "New Project",
+        "role": "AXMenuButton",
+        "scope": "app"
+       }
+      },
+      {
+       "wait": 1.0
+      }
+     ],
+     "note": "cmd+shift+N again. Ycode: cmd+shift+N first (nothing happens), then the Welcome window's New Project menu."
+    }
+   }
+  },
+  {
+   "id": "choose-template",
+   "note": "Choose Template… (the full template chooser; animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Choose Template…",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "chooser",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "click": {
+        "role": "AXMenuItem",
+        "title": "Choose Template…",
+        "scope": "app",
+        "visible": true
+       }
+      },
+      {
+       "wait": 2.0
+      },
+      {
+       "move": [
+        56,
+        57
+       ],
+       "window": "Untitled"
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "chooser",
+       "depth": 40
+      }
+     ],
+     "note": "Choose Template… (the full template chooser; animation). AX tree. Ycode: cmd+shift+N first (nothing happens), then the Welcome window's New Project menu."
+    }
+   }
+  },
+  {
+   "id": "tab-ios",
+   "note": "Click the iOS platform tab in the template chooser.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton",
+      "label": "iOS",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "click": {
+      "label": "iOS",
+      "scope": "app",
+      "visible": true
+     },
+     "fallback": true
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-macos",
+   "note": "Click the macOS platform tab in the template chooser.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton",
+      "label": "macOS",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "click": {
+      "label": "macOS",
+      "scope": "app",
+      "visible": true
+     },
+     "fallback": true
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-watchos",
+   "note": "Click the watchOS platform tab in the template chooser.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton",
+      "label": "watchOS",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "click": {
+      "label": "watchOS",
+      "scope": "app",
+      "visible": true
+     },
+     "fallback": true
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-tvos",
+   "note": "Click the tvOS platform tab in the template chooser.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton",
+      "label": "tvOS",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "click": {
+      "label": "tvOS",
+      "scope": "app",
+      "visible": true
+     },
+     "fallback": true
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-visionos",
+   "note": "Click the visionOS platform tab in the template chooser.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton",
+      "label": "visionOS",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "click": {
+      "label": "visionOS",
+      "scope": "app",
+      "visible": true
+     },
+     "fallback": true
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-multiplatform",
+   "note": "Click the Multiplatform platform tab in the template chooser.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton",
+      "label": "Multiplatform",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "click": {
+      "label": "Multiplatform",
+      "scope": "app",
+      "visible": true
+     },
+     "fallback": true
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-macos-again",
+   "note": "Back to macOS.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRadioButton",
+      "label": "macOS",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "click": {
+      "label": "macOS",
+      "scope": "app",
+      "visible": true
+     },
+     "fallback": true
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "macos",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "select-app",
+   "note": "Select the App template (click).",
+   "do": [
+    {
+     "click": {
+      "role": "AXCell",
+      "text": "App",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "click": {
+      "text": "App",
+      "scope": "app",
+      "visible": true
+     },
+     "fallback": true
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "template-keys",
+   "note": "Arrow keys in the template grid: Right, Right, Left (stills).",
+   "do": [
+    {
+     "key": "right"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "snap": "r1",
+     "mode": "app"
+    },
+    {
+     "key": "right"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "snap": "r2",
+     "mode": "app"
+    },
+    {
+     "key": "left"
+    },
+    {
+     "key": "left"
+    },
+    {
+     "wait": 0.3
+    },
+    {
+     "snap": "back",
+     "mode": "app"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "chooser-tab-order",
+   "note": "Tab through the template chooser (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "next",
+   "note": "Next: the options page (transition). AX tree (names in it are scrubbed afterwards).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Next",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "options",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  }
+ ],
+ "project_targets": [],
+ "window": {
+  "size": null,
+  "display": "builtin",
+  "title": "Welcome to {app}",
+  "timeout": 60
+ }
+}

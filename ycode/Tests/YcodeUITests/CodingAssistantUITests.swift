@@ -246,7 +246,8 @@ final class FakeProvider: AssistantProvider, @unchecked Sendable {
         wc.open(path: env.modelURL.path, line: nil)
         #expect(wc.validateMenuItem(item("codingToolExplain:")) && wc.validateMenuItem(item("codingToolDocument:")))
         #expect(wc.validateMenuItem(item("codingToolGeneratePlayground:")))
-        #expect(!wc.validateMenuItem(item("codingToolGeneratePreview:")))
+        // Generate a Preview is enabled with any source file open (P-007).
+        #expect(wc.validateMenuItem(item("codingToolGeneratePreview:")))
         wc.open(path: env.dir.appendingPathComponent("Sources/Demo/V.swift").path, line: nil)
         #expect(wc.validateMenuItem(item("codingToolGeneratePreview:")))
         // The menu bar entries send these actions.

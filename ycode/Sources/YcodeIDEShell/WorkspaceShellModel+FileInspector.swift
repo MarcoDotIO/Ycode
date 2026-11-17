@@ -12,16 +12,23 @@ import YcodeIDECore
 /// Type and Text Settings (reference-ui-6.md §6, I1).
 extension WorkspaceShellModel {
     public var fileInspector: [InspectorSection] {
-        guard let d = document else { return [] }
-        let url = URL(fileURLWithPath: d.path)
+        // A folder or group selected in the navigator shows its own File
+        // inspector (P-089), else the open file's.
+        guard let path = inspectedFolder ?? document?.path else { return [] }
+        let url = URL(fileURLWithPath: path)
+        let isFolder = inspectedFolder != nil
         let root = sourceControl.repository?.root
         let info = FileInspectorInfo.make(for: url, in: session.model, repositoryRoot: Preferences.shared.sourceControlEnabled ? root : nil)
         let isProject = url.pathExtension == "xcodeproj"
-        let isImage = ImageHeaderInfo.isImage(url)
-        let isResource = isImage || FileTypeRoles.isResource(url, recorded: info.recordedType)
-        var identity = [
-            InspectorRow(key: "Name", value: .field(url.lastPathComponent)),
-            InspectorRow(key: "Type", value: .popUp("Default - " + WorkspaceChrome.fileTypeName(for: url, recordedType: info.recordedType)), ruleAfter: true),
+        let isImage = !isFolder && ImageHeaderInfo.isImage(url)
+        let isResource = !isFolder && (isImage || FileTypeRoles.isResource(url, recorded: info.recordedType))
+        var identity = [InspectorRow(key: "Name", value: .field(url.lastPathComponent))]
+        // A folder has no Type (the macOS IDE's `isPlainFolder`).
+        if !isFolder {
+            identity.append(InspectorRow(key: "Type", value: .popUp("Default - " + WorkspaceChrome.fileTypeName(for: url, recordedType: info.recordedType)),
+                                         ruleAfter: true))
+        }
+        identity += [
             // metrics.md §12.4: "Relative to Group", also in a synchronized
             // folder (where the pop-up is disabled and the button hidden).
             InspectorRow(key: "Location", value: .popUp(isProject ? "Absolute" : "Relative to Group",
@@ -38,9 +45,11 @@ extension WorkspaceShellModel {
         if !isProject && !info.isPackageFile {
             // A resource (an image, Markdown, JSON) has a "Tags" field
             // (editor-area.md §D.8, row 230).
-            sections.append(InspectorSection(title: "On Demand Resource Tags",
-                                             rows: [InspectorRow(key: "", value: .tags(placeholder: isResource ? "Tags" : "Only resources are taggable",
-                                                                                       enabled: isResource))]))
+            if !isFolder {
+                sections.append(InspectorSection(title: "On Demand Resource Tags",
+                                                 rows: [InspectorRow(key: "", value: .tags(placeholder: isResource ? "Tags" : "Only resources are taggable",
+                                                                                           enabled: isResource))]))
+            }
             if isImage {
                 // "--" in all four, as the reference shows for an image
                 // selected in the navigator (`editor-area.md` H.7, row 162).
@@ -113,4 +122,15 @@ public struct InspectorRow: Equatable, Sendable {
     public var key: String
     public var value: Value
     public var ruleAfter = false
+}
+
+extension WorkspaceShellModel {
+    /// The folder or group row selected in the project navigator (its path),
+    /// shown by the File inspector instead of the open file (P-089); nil
+    /// when a file, a project or nothing is selected.
+    public var inspectedFolder: String? {
+        guard let id = selection, let item = root.find(id: id), !item.isFile, let path = item.path,
+              URL(fileURLWithPath: path).pathExtension.isEmpty else { return nil }
+        return path
+    }
 }

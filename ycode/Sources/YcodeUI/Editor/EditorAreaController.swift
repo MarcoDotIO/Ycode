@@ -17,10 +17,36 @@ public final class EditorAreaController: NSViewController {
         /// Pinned tabs are not replaced: opening a file adds a tab
         /// (reference-ui-2.md §8).
         public internal(set) var isPinned = false
+        /// Each editor's lane, in `editors` order (non-decreasing from 0).
+        /// The tab's split holds one item per lane; a lane of several
+        /// editors stacks them across the other axis, so Editor Pane Below
+        /// beside a split stacks two panes in its column (P-064).
+        public internal(set) var lanes: [Int] = [0]
         let controller = NSSplitViewController()
+        /// The nested splits of lanes with more than one editor.
+        var laneControllers: [NSSplitViewController] = []
         var split: NSSplitView { controller.splitView }
 
         init(editor: SourceEditorController) { editors = [editor] }
+
+        /// The editors of each lane, in order.
+        public var laneGroups: [[SourceEditorController]] {
+            var out: [[SourceEditorController]] = []
+            for (e, l) in zip(editors, lanes) {
+                if l < out.count { out[l].append(e) } else { out.append([e]) }
+            }
+            return out
+        }
+
+        /// Renumbers the lanes 0, 1, 2… after an editor left.
+        func compactLanes() {
+            var map: [Int: Int] = [:]
+            lanes = lanes.map { l in
+                if let m = map[l] { return m }
+                map[l] = map.count
+                return map[l]!
+            }
+        }
         public var focusedEditor: SourceEditorController { editors[min(focused, editors.count - 1)] }
     }
 
@@ -93,6 +119,23 @@ public final class EditorAreaController: NSViewController {
         view = root
         for e in tabs[0].editors { prepare(e, in: tabs[0]) }
         showSelected()
+        startFollowingDisk()
+    }
+
+    /// Once a second, every editor of a shown window looks at its file on
+    /// disk (P-068; SourceEditorController+DiskChanges.swift).
+    private func startFollowingDisk() {
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] timer in
+            guard let self else { return timer.invalidate() }
+            MainActor.assumeIsolated { self.followDisk() }
+        }
+        RunLoop.main.add(t, forMode: .common)
+    }
+
+    /// Reloads the unedited editors whose files changed on disk.
+    public func followDisk() {
+        guard view.window != nil else { return }
+        for e in allEditors { e.followDiskIfUnedited() }
     }
 
     private func prepare(_ e: SourceEditorController, in tab: Tab) {
@@ -124,8 +167,28 @@ public final class EditorAreaController: NSViewController {
         t.split.isVertical = canvas != nil && t.editors.count == 1 && t === tab ? canvasPlacement == .beside : t.sideBySide
         t.split.dividerStyle = .thin
         for item in t.controller.splitViewItems { t.controller.removeSplitViewItem(item) }
-        for e in t.editors {
-            let item = NSSplitViewItem(viewController: e)
+        for inner in t.laneControllers {
+            for item in inner.splitViewItems { inner.removeSplitViewItem(item) }
+        }
+        t.laneControllers = []
+        for group in t.laneGroups {
+            let vc: NSViewController
+            if group.count == 1 {
+                vc = group[0]
+            } else {
+                // A lane of several panes: they stack across the other axis.
+                let inner = NSSplitViewController()
+                inner.splitView.isVertical = !t.sideBySide
+                inner.splitView.dividerStyle = .thin
+                for e in group {
+                    let item = NSSplitViewItem(viewController: e)
+                    item.holdingPriority = NSLayoutConstraint.Priority(250)
+                    inner.addSplitViewItem(item)
+                }
+                t.laneControllers.append(inner)
+                vc = inner
+            }
+            let item = NSSplitViewItem(viewController: vc)
             item.holdingPriority = NSLayoutConstraint.Priority(250)
             t.controller.addSplitViewItem(item)
         }
@@ -173,19 +236,25 @@ public final class EditorAreaController: NSViewController {
 
     /// Gives every split the same share.
     func equalize(_ t: Tab) {
-        let n = t.editors.count + (canvas == nil ? 0 : 1)
-        guard n > 1 else { return }
-        let total = t.split.isVertical ? t.split.bounds.width : t.split.bounds.height
-        for i in 0..<(n - 1) { t.split.setPosition(total * CGFloat(i + 1) / CGFloat(n), ofDividerAt: i) }
-        t.split.layoutSubtreeIfNeeded()
+        func even(_ split: NSSplitView, _ n: Int) {
+            guard n > 1 else { return }
+            let total = split.isVertical ? split.bounds.width : split.bounds.height
+            for i in 0..<(n - 1) { split.setPosition(total * CGFloat(i + 1) / CGFloat(n), ofDividerAt: i) }
+            split.layoutSubtreeIfNeeded()
+        }
+        even(t.split, t.laneGroups.count + (canvas == nil ? 0 : 1))
+        for inner in t.laneControllers { even(inner.splitView, inner.splitViewItems.count) }
     }
 
-    /// Tab titles: the focused editor's file name, without its extension
-    /// (reference-ui-2.md §8).
+    /// Tab titles: the focused editor's file name with its extension, as
+    /// the reference's tabs read ("Shapes.swift", P-062); an editor
+    /// showing another editor's file (project, asset catalog) takes that
+    /// file's name.
     public var tabTitles: [String] {
         tabs.map { t in
-            if let u = t.focusedEditor.fileURL { return EditorTabPolicy.title(for: u) }
-            return t.focusedEditor.pathComponents.last?.0 ?? "Untitled"
+            let e = t.focusedEditor
+            if let u = e.fileURL ?? e.auxiliaryFile { return u.lastPathComponent }
+            return e.pathComponents.last?.0 ?? "Untitled"
         }
     }
 
@@ -307,8 +376,23 @@ public final class EditorAreaController: NSViewController {
         configure?(e)
         prepare(e, in: t)
         if t.editors.count == 1 { t.sideBySide = sideBySide }
-        let at = t.assistant != nil && t.focused == t.editors.count - 1 ? t.editors.count - 1 : t.focused + 1
+        // The pane the split starts from (the assistant's neighbour when the
+        // assistant has the focus: the assistant stays last, on its own).
+        let anchor = t.assistant != nil && t.focused == t.editors.count - 1 ? max(0, t.focused - 1) : t.focused
+        let lane = t.lanes[anchor]
+        let at: Int, newLane: Int
+        if sideBySide == t.sideBySide || t.assistant === t.editors[anchor] {
+            // Along the split: a lane of its own after the anchor's lane.
+            at = (t.lanes.lastIndex(of: lane) ?? anchor) + 1
+            newLane = lane + 1
+            t.lanes = t.lanes.map { $0 > lane ? $0 + 1 : $0 }
+        } else {
+            // Across it: stacked in the anchor's lane, after the anchor.
+            at = anchor + 1
+            newLane = lane
+        }
         t.editors.insert(e, at: min(at, t.editors.count))
+        t.lanes.insert(newLane, at: min(at, t.lanes.count))
         t.focused = t.editors.firstIndex { $0 === e }!
         showSelected()
         onFocusChange?(e)
@@ -324,6 +408,8 @@ public final class EditorAreaController: NSViewController {
         try? e.save()
         if t.assistant === e { t.assistant = nil }
         t.editors.remove(at: t.focused)
+        t.lanes.remove(at: t.focused)
+        t.compactLanes()
         t.focused = max(0, t.focused - 1)
         showSelected()
         onFocusChange?(focusedEditor)
@@ -340,6 +426,7 @@ public final class EditorAreaController: NSViewController {
         prepare(e, in: t)
         if t.editors.count == 1 { t.sideBySide = true }
         e.showsCloseButton = true   // reference-ui-5.md §6.1.4
+        t.lanes.append((t.lanes.last ?? -1) + 1)
         t.editors.append(e)
         t.assistant = e
         showSelected()
@@ -351,6 +438,8 @@ public final class EditorAreaController: NSViewController {
         guard let a = t.assistant, let i = t.editors.firstIndex(where: { $0 === a }) else { return }
         try? a.save()
         t.editors.remove(at: i)
+        t.lanes.remove(at: i)
+        t.compactLanes()
         t.assistant = nil
         t.focused = min(t.focused, t.editors.count - 1)
         showSelected()

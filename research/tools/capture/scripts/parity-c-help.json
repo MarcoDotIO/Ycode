@@ -1,0 +1,646 @@
+{
+ "name": "parity-c-help",
+ "title": "Part C 5: the Help menu's search field and results, the About window, the Developer Documentation window with a search, and the Organizer (each sidebar row).",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "open-shapes",
+   "note": "Open Shapes.swift.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Shapes|Shapes.swift"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "help-menu",
+   "note": "Click Help in the menu bar: the menu with its search field (animation). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Help",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "help",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "help-search",
+   "note": "Type 'zoom' into the Help search field: the results (menu items and help topics). AX tree.",
+   "do": [
+    {
+     "text": "zoom"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "results",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "help-search-arrow",
+   "note": "Down arrow onto the first menu-item result: the pointer arrow shows the item in its menu (animation).",
+   "do": [
+    {
+     "key": "down"
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "help-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "help-search-empty",
+   "note": "Help, then 'qqqzz' (no results).",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Help",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "text": "qqqzz"
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "help-close-2",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "about",
+   "note": "{app} ▸ About {app}: the About window (animation). AX tree.",
+   "do": [
+    {
+     "menu": "{app} > About {app}"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "about",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "about-close",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "docs-open",
+   "note": "Window ▸ Developer Documentation (shift+cmd+0): the documentation window, moved onto the built-in display. AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+0"
+    },
+    {
+     "wait": 6.0
+    },
+    {
+     "move": [
+      56,
+      40
+     ],
+     "window": "Documentation"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "docs",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "docs-search",
+   "note": "Type 'VStack' into its search field and Return; wait 6 s. AX tree.",
+   "do": [
+    {
+     "text": "VStack"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "key": "return"
+    },
+    {
+     "wait": 6.0
+    },
+    {
+     "tree": "docs-result",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "docs-close",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "organizer-open",
+   "note": "Window ▸ Organizer (option+shift+cmd+O). AX tree. (The Organizer can list the Mac's own archives and apps: painted out afterwards where it does.)",
+   "do": [
+    {
+     "key": "cmd+alt+shift+o"
+    },
+    {
+     "wait": 4.0
+    },
+    {
+     "move": [
+      56,
+      40
+     ],
+     "window": "Overview"
+    },
+    {
+     "move": [
+      56,
+      40
+     ],
+     "window": "Archives",
+     "fallback": true
+    },
+    {
+     "move": [
+      56,
+      40
+     ],
+     "window": "Organizer",
+     "fallback": true
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "organizer",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "organizer-row-0",
+   "note": "Organizer sidebar row 0 (if any): clicked (rows of the frontmost window come first in the app's AX order).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "index": 0,
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "organizer-row-1",
+   "note": "Organizer sidebar row 1 (if any): clicked (rows of the frontmost window come first in the app's AX order).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "index": 1,
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "organizer-row-2",
+   "note": "Organizer sidebar row 2 (if any): clicked (rows of the frontmost window come first in the app's AX order).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "index": 2,
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "organizer-row-3",
+   "note": "Organizer sidebar row 3 (if any): clicked (rows of the frontmost window come first in the app's AX order).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "index": 3,
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "organizer-row-4",
+   "note": "Organizer sidebar row 4 (if any): clicked (rows of the frontmost window come first in the app's AX order).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "index": 4,
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "organizer-row-5",
+   "note": "Organizer sidebar row 5 (if any): clicked (rows of the frontmost window come first in the app's AX order).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "index": 5,
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "organizer-row-6",
+   "note": "Organizer sidebar row 6 (if any): clicked (rows of the frontmost window come first in the app's AX order).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "index": 6,
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "organizer-row-7",
+   "note": "Organizer sidebar row 7 (if any): clicked (rows of the frontmost window come first in the app's AX order).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "index": 7,
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "organizer-row-8",
+   "note": "Organizer sidebar row 8 (if any): clicked (rows of the frontmost window come first in the app's AX order).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "index": 8,
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "organizer-row-9",
+   "note": "Organizer sidebar row 9 (if any): clicked (rows of the frontmost window come first in the app's AX order).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "index": 9,
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "organizer-row-10",
+   "note": "Organizer sidebar row 10 (if any): clicked (rows of the frontmost window come first in the app's AX order).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "index": 10,
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "organizer-row-11",
+   "note": "Organizer sidebar row 11 (if any): clicked (rows of the frontmost window come first in the app's AX order).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "index": 11,
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "organizer-tree",
+   "note": "AX tree of the Organizer at the end.",
+   "do": [
+    {
+     "tree": "organizer-end",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "organizer-close",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ],
+ "project": {
+  "generator": "make-formats-project.py",
+  "path": "formats/Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ }
+}

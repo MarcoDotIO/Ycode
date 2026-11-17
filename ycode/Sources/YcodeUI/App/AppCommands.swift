@@ -6,15 +6,18 @@ import YcodeIDECore
 /// The menu builder targets these items here directly.
 @MainActor
 public final class AppCommands: NSObject {
-    public static let shared = AppCommands()
+    public static let shared: AppCommands = {
+        restoreQuitPreference()
+        return AppCommands()
+    }()
 
     /// Public web pages the Help and Window menus open (Ycode has no
     /// documentation viewer of its own).
     public enum Links {
-        public static let developerDocumentation = URL(string: "https://developer.apple.com/documentation/")!
-        public static let humanInterfaceGuidelines = URL(string: "https://developer.apple.com/design/human-interface-guidelines/")!
-        public static let swiftBook = URL(string: "https://docs.swift.org/swift-book/")!
-        public static let moreDeveloperTools = URL(string: "https://developer.apple.com/download/all/")!
+        public static let developerDocumentation = HelpLinks.developerDocumentation
+        public static let humanInterfaceGuidelines = HelpLinks.humanInterfaceGuidelines
+        public static let swiftBook = HelpLinks.swiftBook
+        public static let moreDeveloperTools = HelpLinks.moreDeveloperTools
         /// The documentation search for a phrase.
         public static func documentationSearch(_ q: String) -> URL? {
             var c = URLComponents(string: "https://developer.apple.com/search/")!
@@ -29,6 +32,7 @@ public final class AppCommands: NSObject {
     static let actions: Set<String> = [
         "showDeveloperDocumentation:", "showHumanInterfaceGuidelines:", "showSwiftBook:", "openMoreDeveloperTools:",
         "openDeveloperTool:", "showDownloads:", "compareFiles:", "showAboutWindow:", "showYcodeHelp:", "showReleaseNotes:", "reportBug:",
+        "terminateKeepingWindows:",
     ]
 
     public static func handles(_ action: String) -> Bool { actions.contains(action) }
@@ -54,6 +58,30 @@ public final class AppCommands: NSObject {
     @objc public func openDeveloperTool(_ sender: Any?) {
         guard let url = (sender as? NSMenuItem)?.representedObject as? URL else { return }
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    /// The system preference that keeps windows open across a quit.
+    static let keepWindowsKey = "NSQuitAlwaysKeepsWindows"
+    /// Set while Quit and Keep Windows changed that preference for one quit.
+    static let keepWindowsOnceKey = "YcodeQuitKeepsWindowsOnce"
+
+    /// Ycode ▸ Quit and Keep Windows (⌥⌘Q, the ⌥ alternate of Quit, P-002):
+    /// quits as Quit does, keeping the open windows for the next launch.
+    @objc public func terminateKeepingWindows(_ sender: Any?) {
+        let d = UserDefaults.standard
+        if d.object(forKey: Self.keepWindowsKey) == nil { d.set(true, forKey: Self.keepWindowsOnceKey) }
+        d.set(true, forKey: Self.keepWindowsKey)
+        NSApp.terminate(sender)
+        // Still running: the quit was cancelled (unsaved changes).
+        Self.restoreQuitPreference()
+    }
+
+    /// Puts back the preference one Quit and Keep Windows changed (after a
+    /// cancelled quit, or at the next launch).
+    static func restoreQuitPreference(_ d: UserDefaults = .standard) {
+        guard d.bool(forKey: keepWindowsOnceKey) else { return }
+        d.removeObject(forKey: keepWindowsKey)
+        d.removeObject(forKey: keepWindowsOnceKey)
     }
 
     /// Window ▸ Downloads (⇧⌘9): Settings ▸ Components.

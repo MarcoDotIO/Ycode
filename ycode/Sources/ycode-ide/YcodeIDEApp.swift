@@ -99,11 +99,13 @@ struct YcodeIDEApp: App {
 /// The windows' identifiers.
 enum ShellWindowID {
     static let workspace = "workspace"
-    static let welcome = "welcome"
+    static let welcome = ShellAppModel.welcomeWindowID
 }
 
 /// The workspace window's content. When the workspace closes, Welcome's
 /// window opens and this one closes (closing the last window would quit).
+/// Without a workspace it is the empty window New Project's sheet sits on
+/// (P-177); Cancel there goes back to Welcome.
 struct ShellRootView: View {
     @Bindable var app: ShellAppModel
     @Environment(\.openWindow) private var openWindow
@@ -117,18 +119,26 @@ struct ShellRootView: View {
                 Color.clear
             }
         }
-        .modifier(ShellPresentations(app: app))
+        .modifier(ShellPresentations(app: app, window: .workspace))
+        .onAppear { app.workspaceWindowCount += 1 }
+        .onDisappear { app.workspaceWindowCount = max(0, app.workspaceWindowCount - 1) }
         .onChange(of: app.workspace == nil) { _, closed in
-            if closed {
-                openWindow(id: ShellWindowID.welcome)
-                dismissWindow()
-            }
+            if closed, app.newProject == nil { backToWelcome() }
         }
+        .onChange(of: app.newProject == nil) { _, gone in
+            if gone, app.workspace == nil { backToWelcome() }
+        }
+    }
+
+    func backToWelcome() {
+        openWindow(id: ShellWindowID.welcome)
+        dismissWindow()
     }
 }
 
-/// Welcome's window. Opening a project opens the workspace window first,
-/// then closes this one.
+/// Welcome's window. Opening a project, or New Project, opens the
+/// workspace window first (unless one is open beside Welcome), then
+/// closes this one.
 struct WelcomeWindowRoot: View {
     @Bindable var app: ShellAppModel
     @Environment(\.openWindow) private var openWindow
@@ -136,13 +146,16 @@ struct WelcomeWindowRoot: View {
 
     var body: some View {
         WelcomeView(app: app)
-            .modifier(ShellPresentations(app: app))
-            .onChange(of: app.workspace != nil) { _, opened in
-                if opened {
-                    openWindow(id: ShellWindowID.workspace)
-                    dismissWindow()
-                }
+            .modifier(ShellPresentations(app: app, window: .welcome))
+            .onChange(of: app.openCount) { _, _ in makeWay() }
+            .onChange(of: app.newProject != nil) { _, up in
+                if up { makeWay() }
             }
+    }
+
+    func makeWay() {
+        if app.workspaceWindowCount == 0 { openWindow(id: ShellWindowID.workspace) }
+        dismissWindow()
     }
 }
 
@@ -151,44 +164,53 @@ struct WelcomeWindowRoot: View {
 /// question; and the app's hooks into the window environment.
 struct ShellPresentations: ViewModifier {
     @Bindable var app: ShellAppModel
+    /// The window this is on: Welcome beside a workspace window leaves the
+    /// app's sheets and alerts to the workspace window.
+    var window: ShellAppModel.ShellWindow
     @Environment(\.openURL) private var openURL
     @Environment(\.openWindow) private var openWindow
 
     func body(content: Content) -> some View {
-        content
+        let here = app.presents(in: window)
+        return content
         // File ▸ Open…: the toolkit's file dialog (OpenViews draws its own
         // on Linux).
-        .fileImporter(isPresented: $app.isOpenSheetShown, allowedContentTypes: ShellOpenTypes.all) { result in
+        .fileImporter(isPresented: Binding(get: { here && app.isOpenSheetShown }, set: { app.isOpenSheetShown = $0 }),
+                      allowedContentTypes: ShellOpenTypes.all) { result in
             if case .success(let url) = result { app.open(path: url.path) }
         }
         .fileDialogDefaultDirectory(app.recent.first?.deletingLastPathComponent())
-        // File ▸ New ▸ Project…: the core's New Project flow.
-        .sheet(isPresented: Binding(get: { app.newProject != nil }, set: { if !$0 { app.cancelNewProject() } })) {
+        // File ▸ New ▸ Project…: the core's New Project flow, on a
+        // workspace window (P-177).
+        .sheet(isPresented: Binding(get: { app.presentsNewProject(in: window) && app.newProject != nil },
+                                    set: { if !$0 { app.cancelNewProject() } })) {
             if let m = app.newProject { NewProjectSheet(model: m, app: app) }
         }
-        .sheet(isPresented: Binding(get: { app.clone != nil }, set: { if !$0 { app.cancelClone() } })) {
+        .sheet(isPresented: Binding(get: { here && app.clone != nil }, set: { if !$0 { app.cancelClone() } })) {
             if let m = app.clone { CloneSheet(model: m, app: app) }
         }
-        .sheet(isPresented: $app.isAboutShown) { AboutSheet(app: app) }
-        .alert(app.notice?.title ?? "", isPresented: Binding(get: { app.notice != nil }, set: { if !$0 { app.notice = nil } })) {
+        .sheet(isPresented: Binding(get: { here && app.isAboutShown }, set: { app.isAboutShown = $0 })) { AboutSheet(app: app) }
+        .alert(app.notice?.title ?? "", isPresented: Binding(get: { here && app.notice != nil }, set: { if !$0 { app.notice = nil } })) {
             Button("OK") { app.notice = nil }
         } message: {
             Text(verbatim: app.notice?.message ?? "")
         }
-        .alert("Cannot Open", isPresented: Binding(get: { app.openError != nil && !app.isOpenSheetShown },
+        .alert("Cannot Open", isPresented: Binding(get: { here && app.openError != nil && !app.isOpenSheetShown },
                                                    set: { if !$0 { app.clearOpenError() } })) {
             Button("OK") { app.clearOpenError() }
         } message: {
             Text(verbatim: app.openError ?? "")
         }
         // Closing the workspace or quitting with unsaved changes.
-        .alert(unsavedTitle, isPresented: Binding(get: { app.pendingClose != nil }, set: { if !$0 { app.answerClose(.cancel) } })) {
+        .alert(unsavedTitle, isPresented: Binding(get: { here && app.pendingClose != nil }, set: { if !$0 { app.answerClose(.cancel) } })) {
             Button((app.workspace?.editedPaths.count ?? 0) > 1 ? "Save All" : "Save") { app.answerClose(.saveAll) }.keyboardShortcut(.defaultAction)
             Button("Don't Save", role: .destructive) { app.answerClose(.discard) }
             Button("Cancel", role: .cancel) { app.answerClose(.cancel) }
         } message: {
             Text(verbatim: "Your changes will be lost if you don't save them.")
         }
+        // Alerts show Ycode's icon, as macOS alerts show the app's.
+        .shellAlertIcon()
         .onAppear {
             let app = app, openURL = openURL, openWindow = openWindow
             app.openWindow = { id in openWindow(id: id) }
@@ -286,4 +308,16 @@ extension View {
 /// An image by symbol name (OpenViews draws every name the shell uses).
 func symbol(_ name: String) -> Image {
     Image(systemName: name)
+}
+
+extension View {
+    /// The icon desktop alerts show (OpenViews; Apple's SwiftUI uses the
+    /// app's own).
+    @ViewBuilder func shellAlertIcon() -> some View {
+        #if os(Linux)
+        _alertIcon(YcodeMark(size: 64))
+        #else
+        self
+        #endif
+    }
 }

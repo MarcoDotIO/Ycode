@@ -103,6 +103,14 @@ fixit    := 'fix-it:"' file '":{' l1 ':' c1 '-' l2 ':' c2 '}:"' text '"'
 
 - The earliest `": <severity>: "` marker splits prefix from message, so a
   message may itself contain such text.
+- The message is kept in display form, as the issue navigator, the editor's
+  annotations and the toolbar show it (parity inventory P-121): a trailing
+  diagnostic-group suffix (" [#VariableNeverMutated]") is dropped, and a
+  first word made of lower-case letters and followed by a space is
+  capitalized ("Variable 'neverMutated' was never mutated…"). Tool prefixes
+  ("ld: …"), quoted names and clang's "[-W…]" flags stay. swift-build's
+  structured issues and the language server's live issues get the same
+  form.
 - Numbers are taken from the end of the prefix (at most two), so file paths
   may contain colons. A prefix with no numbers is a file (line 0) when it
   contains `/` or `.`, else a tool name (no location), e.g. `ld: warning:`.

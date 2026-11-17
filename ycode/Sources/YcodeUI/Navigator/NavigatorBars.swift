@@ -200,6 +200,24 @@ final class NavigatorFilterFieldCell: NSSearchFieldCell {
         guard let f = field else { return r }
         return NSRect(x: f.cancelRect(rect).minX, y: r.minY, width: r.width, height: r.height)
     }
+
+    /// The field editor's frame: the text's rectangle, after the options
+    /// glyph and before the toggles (P-038: the editor took the whole
+    /// field, so the focused placeholder and the typed text ran over the
+    /// glyph).
+    private func editingRect(_ rect: NSRect) -> NSRect {
+        guard let f = field else { return rect }
+        let t = f.textRect(rect)
+        return NSRect(x: t.minX, y: rect.minY, width: t.width, height: rect.height)
+    }
+
+    override func edit(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, event: NSEvent?) {
+        super.edit(withFrame: editingRect(rect), in: controlView, editor: textObj, delegate: delegate, event: event)
+    }
+
+    override func select(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, start selStart: Int, length selLength: Int) {
+        super.select(withFrame: editingRect(rect), in: controlView, editor: textObj, delegate: delegate, start: selStart, length: selLength)
+    }
 }
 
 /// A bookmark carried by a menu item.

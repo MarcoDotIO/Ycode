@@ -147,7 +147,10 @@ extension ShellAppModel {
     public func createNewProject() -> NewProjectCreator.Created? {
         guard let m = newProject, let c = m.create() else { return nil }
         newProject = nil
-        if c.addedTo == nil { open(path: c.openURL.path) } else if let w = workspace { open(path: w.session.model.url.path) }
+        if c.addedTo == nil {
+            // The template's initial file in the editor (templates.md § Save step, 5).
+            if open(path: c.openURL.path), let entry = c.entryFile { workspace?.open(entry.path) }
+        } else if let w = workspace { open(path: w.session.model.url.path) }
         return c
     }
 

@@ -5,36 +5,68 @@ import YcodeIDECore
 /// accent background (`specs/ide/reference-ui-3.md` §5.3).
 @MainActor
 final class TemplateTile: NSView {
+    /// How a tile draws: `filled` (the New Project grid: accent glyphs, an
+    /// accent tile when selected) or `outlined` (the New File grid, P-184:
+    /// monochrome outline glyphs; selected, a grey tile and the name on an
+    /// accent capsule).
+    enum Style { case filled, outlined }
+
     let entry: TemplateEntry
+    let style: Style
     var onClick: ((TemplateEntry) -> Void)?
     var onDoubleClick: ((TemplateEntry) -> Void)?
-    var isSelected = false { didSet { needsDisplay = true; label.textColor = isSelected ? .alternateSelectedControlTextColor : .labelColor } }
+    var isSelected = false {
+        didSet {
+            needsDisplay = true
+            label.textColor = isSelected ? .alternateSelectedControlTextColor : .labelColor
+            label.drawsBackground = style == .outlined && isSelected
+        }
+    }
     let label: NSTextField
 
     static let size = NSSize(width: 104, height: 92)
+    /// The New File grid's wider tiles: five fill the sheet on a ≈ 134-point
+    /// pitch (P-184; the reference's ≈ 137).
+    static let outlinedSize = NSSize(width: 130, height: 92)
+    static func size(_ style: Style) -> NSSize { style == .outlined ? outlinedSize : size }
 
-    init(entry: TemplateEntry) {
+    init(entry: TemplateEntry, style: Style = .filled) {
         self.entry = entry
+        self.style = style
         label = NSTextField(wrappingLabelWithString: entry.title)
-        super.init(frame: NSRect(origin: .zero, size: Self.size))
+        let size = Self.size(style)
+        super.init(frame: NSRect(origin: .zero, size: size))
         let icon = NSImageView(image: NSImage(systemSymbolName: entry.symbol, accessibilityDescription: entry.title) ?? NSImage())
-        icon.symbolConfiguration = .init(pointSize: 30, weight: .regular)
-        icon.contentTintColor = .controlAccentColor
+        icon.symbolConfiguration = .init(pointSize: 30, weight: style == .outlined ? .light : .regular)
+        icon.contentTintColor = style == .outlined ? .secondaryLabelColor : .controlAccentColor
+        if style == .outlined {
+            label.backgroundColor = .controlAccentColor
+            label.wantsLayer = true
+            label.layer?.cornerRadius = 4
+            label.layer?.masksToBounds = true
+        }
         label.alignment = .center
         label.font = .systemFont(ofSize: 11)
         label.maximumNumberOfLines = 2
-        label.preferredMaxLayoutWidth = Self.size.width - 8
+        label.preferredMaxLayoutWidth = size.width - 8
         for v in [icon, label] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
         NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: Self.size.width), heightAnchor.constraint(equalToConstant: Self.size.height),
+            widthAnchor.constraint(equalToConstant: size.width), heightAnchor.constraint(equalToConstant: size.height),
             icon.topAnchor.constraint(equalTo: topAnchor, constant: 8), icon.centerXAnchor.constraint(equalTo: centerXAnchor),
             icon.heightAnchor.constraint(equalToConstant: 40),
             label.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 4),
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4), label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
         ])
+        if style == .outlined {
+            // The name's capsule hugs the text.
+            NSLayoutConstraint.activate([label.centerXAnchor.constraint(equalTo: centerXAnchor),
+                                         label.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -8)])
+        } else {
+            NSLayoutConstraint.activate([label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+                                         label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4)])
+        }
         // A button to accessibility: pressing it chooses the template, as a
         // click does (merge-sheet.md §13.2's rule for Ycode's drawn
         // controls in sheets).
@@ -55,7 +87,7 @@ final class TemplateTile: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard isSelected else { return }
-        NSColor.selectedContentBackgroundColor.setFill()
+        (style == .outlined ? NSColor.unemphasizedSelectedContentBackgroundColor : NSColor.selectedContentBackgroundColor).setFill()
         NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 6, yRadius: 6).fill()
     }
 
@@ -69,6 +101,9 @@ final class TemplateTile: NSView {
 @MainActor
 final class TemplateGridView: NSView {
     static let columns = 6
+    /// Tiles per row (the New File grid has 5, P-184).
+    let columns: Int
+    let tileStyle: TemplateTile.Style
     let scroll = NSScrollView()
     private let content = FlippedStack()
     private(set) var tiles: [TemplateTile] = []
@@ -79,7 +114,9 @@ final class TemplateGridView: NSView {
     /// title of the section the top of the visible area is in.
     let stickyHeader = StickyHeaderView()
 
-    init(top: NSView) {
+    init(top: NSView, columns: Int = TemplateGridView.columns, tileStyle: TemplateTile.Style = .filled) {
+        self.columns = columns
+        self.tileStyle = tileStyle
         super.init(frame: .zero)
         stickyHeader.isHidden = true
         scroll.addFloatingSubview(stickyHeader, for: .vertical)
@@ -125,21 +162,21 @@ final class TemplateGridView: NSView {
             headers.append(h)
             content.addArrangedSubview(h)
             let sectionTiles = s.entries.map { e -> TemplateTile in
-                let t = TemplateTile(entry: e)
+                let t = TemplateTile(entry: e, style: tileStyle)
                 t.isSelected = e == selected
                 t.onClick = { [weak self] e in self?.onSelect?(e) }
                 t.onDoubleClick = { [weak self] e in self?.onSelect?(e); self?.onChoose?(e) }
                 return t
             }
             tiles += sectionTiles
-            let rows = stride(from: 0, to: sectionTiles.count, by: Self.columns).map { i -> [NSView] in
-                Array(sectionTiles[i..<min(i + Self.columns, sectionTiles.count)])
+            let rows = stride(from: 0, to: sectionTiles.count, by: columns).map { i -> [NSView] in
+                Array(sectionTiles[i..<min(i + columns, sectionTiles.count)])
             }
             let grid = NSGridView(views: rows)
             grid.rowSpacing = 4
             grid.columnSpacing = 4
             // Fixed columns: a short last row keeps the tiles' positions.
-            for i in 0..<grid.numberOfColumns { grid.column(at: i).width = TemplateTile.size.width }
+            for i in 0..<grid.numberOfColumns { grid.column(at: i).width = TemplateTile.size(tileStyle).width }
             content.addArrangedSubview(grid)
         }
         updateStickyHeader()

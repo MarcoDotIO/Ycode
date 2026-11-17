@@ -59,7 +59,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         wc.setAssistantModeTitle("Documentation Preview")
         #expect(a.textView.string.hasPrefix("Model"))
         wc.setAssistantModeTitle("Superclasses")
-        #expect(a.textView.string == "No Editor")
+        #expect(a.textView.string.isEmpty && a.noEditorPlaceholder?.label.stringValue == "No Editor")   // P-066: a placeholder, not text
         wc.setAssistantModeTitle("Counterparts")
         #expect(wc.assistantMode == .counterparts && wc.assistantModeTitle == "Counterparts")
     }

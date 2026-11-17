@@ -10,7 +10,7 @@ import YcodeIDECore
 extension SourceControlCoordinator {
     /// The overlay over the window while the alert or the sheet is up.
     public var mergeOverlay: MergeOverlayView? {
-        owner.window?.contentView?.superview?.subviews.lazy.compactMap { $0 as? MergeOverlayView }.first
+        owner.window?.contentView?.superview?.subviews.lazy.compactMap { $0 as? MergeOverlayView }.first { !$0.isClosing }
     }
 
     /// The merge sheet, while it is up.
@@ -48,6 +48,7 @@ extension SourceControlCoordinator {
             Task { await self.completeMerge(sheet) }
         }
         sheet.onCancel = { [weak self] in self?.cancelMerge() }
+        sheet.onNothingLeft = { [weak self] in self?.closeConflictEditor() }
         sheet.onResolved = { [weak self] in self?.owner.refreshFileStatus(nil) }
         if overlay.alert != nil { overlay.dismissAlert() }
         overlay.showSheet(sheet)
@@ -76,17 +77,16 @@ extension SourceControlCoordinator {
         }
     }
 
-    /// The sheet's Cancel: while an operation is stopped it asks, then
-    /// aborts it (Ycode's choice, open question 3); otherwise it only
-    /// closes the sheet.
+    /// The sheet's Cancel closes the sheet at once (§9; P-131: no modal
+    /// question, which kept the button from answering). An operation Ycode
+    /// started is aborted, leaving the repository unmerged; one started
+    /// elsewhere stays stopped for Integrate ▸ Continue or Abort.
     public func cancelMerge() {
-        let verb = (mergeSheet?.state.integration ?? snapshot.integration).verb
-        guard snapshot.integration.isInProgress || mergeSheet?.state.integration.isInProgress == true else {
-            closeConflictEditor()
-            return
-        }
-        guard confirm(MergeSheetText.cancelTitle(verb: verb), MergeSheetText.cancelMessage(verb: verb), "Abort") else { return }
-        abortIntegration()
+        let sheet = mergeSheet
+        let stopped = snapshot.integration.isInProgress || sheet?.state.integration.isInProgress == true
+        closeConflictEditor()
+        guard stopped, sheet?.abortsOnCancel == true else { return }
+        perform { try $0.abortIntegration() }
     }
 
     /// Export Stashed Changes as Patch File…: asks where, then writes it.

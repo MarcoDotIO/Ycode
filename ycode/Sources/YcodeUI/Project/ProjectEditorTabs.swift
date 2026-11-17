@@ -348,14 +348,7 @@ extension ProjectEditorController {
         lib.onAdd = { [weak self] c in
             do { try self?.addCapability(c); return nil } catch { return "\(error)" }
         }
-        if let w = view.window, w.isVisible {
-            let panel = NSPanel(contentViewController: lib)
-            panel.title = ProjectEditorModel.capabilityLibraryTitle
-            panel.styleMask = [.titled, .closable, .resizable, .utilityWindow]
-            panel.isReleasedWhenClosed = false
-            panel.setFrameAutosaveName("")
-            w.beginSheet(panel)
-        }
+        if let w = view.window, w.isVisible { CapabilityLibraryPanel.show(lib, over: w) }
         return lib
     }
 

@@ -142,7 +142,12 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
         return out
     }
 
+    /// The text's scroll position when the numbers were last drawn (P-003:
+    /// the numbers must follow the text when the find bar opens).
+    private(set) var drawnScrollTop: CGFloat?
+
     public override func drawHashMarksAndLabels(in rect: NSRect) {
+        drawnScrollTop = scrollView?.contentView.bounds.minY
         Theme.backgroundColor.setFill()
         bounds.fill()
         let numberWidth = ruleThickness - Self.ribbonWidth
@@ -301,6 +306,21 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
         return nil
     }
 
+    /// A gutter x (its own coordinates) in the ribbon's column: the 12
+    /// points before the code (`EditorMetrics.codeColumn`).
+    public func isInRibbonColumn(x: CGFloat) -> Bool { x >= ruleThickness - Self.ribbonWidth && x <= ruleThickness }
+
+    /// The insertion point at the start of a 1-based line, in the editor's
+    /// text view, which takes the keyboard.
+    public func placeCaret(atLine line: Int) {
+        guard let tv = clientView as? NSTextView else { return }
+        let starts = lineIndex.starts
+        let length = (tv.string as NSString).length
+        let o = min(length, starts.indices.contains(line - 1) ? starts[line - 1] : length)
+        tv.window?.makeFirstResponder(tv)
+        tv.setSelectedRange(NSRange(location: o, length: 0))
+    }
+
     public override func mouseDown(with event: NSEvent) {
         let start = convert(event.locationInWindow, from: nil)
         guard let line = line(atGutterY: start.y) else { return }
@@ -312,9 +332,12 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
             if changeRegion(atLine: line) != nil { onChangeClick?(line) }
             return
         }
-        let x = start.x - leftInset
-        if showsRibbon, x >= ruleThickness - leftInset - Self.ribbonWidth {
-            onRibbonClick?(line)
+        // The ribbon's column between the numbers and the code is there
+        // whether or not the ribbon draws: shown, a click folds; hidden, it
+        // places the insertion point at the line's start and never sets a
+        // breakpoint (P-059, as the reference).
+        if isInRibbonColumn(x: start.x) {
+            if showsRibbon { onRibbonClick?(line) } else { placeCaret(atLine: line) }
             return
         }
         if marks.tests[line] != nil, isOnTestDiamond(x: start.x) {

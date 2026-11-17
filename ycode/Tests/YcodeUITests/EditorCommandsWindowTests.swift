@@ -199,7 +199,8 @@ private func git(_ dir: URL, _ args: String...) throws -> String {
             let wc = try window(dir)
             wc.open(path: dir.appendingPathComponent("Sources/App/main.swift").path, line: nil)
             let base = p.theme.fontSize
-            #expect(enabled(wc, "resetFontSize:").0 == false)
+            // P-007: Font Size ▸ Reset is enabled in a source file at any size.
+            #expect(enabled(wc, "resetFontSize:").0)
             wc.increaseFontSize(nil)
             wc.increaseFontSize(nil)
             #expect(p.sourceFontSize == base + 2 && Theme.font.pointSize == CGFloat(base + 2))
@@ -430,8 +431,8 @@ private func git(_ dir: URL, _ args: String...) throws -> String {
         #expect(!wc.isCanvasModeOn && enabled(wc, "setCanvasLayout:", tag: 1).0 == false)
         wc.toggleCanvas(nil)
 
-        // Show / Hide All Issues toggles every editor.
-        #expect(MenuTitles.title(generic: "Show All Issues", in: wc.menuContext) == "Hide All Issues")
+        // Show All Issues toggles every editor; its title stays (P-007).
+        #expect(MenuTitles.title(generic: "Show All Issues", in: wc.menuContext) == "Show All Issues")
         wc.toggleInlineIssues(nil)
         #expect(!wc.editor.showsInlineIssues && MenuTitles.title(generic: "Show All Issues", in: wc.menuContext) == "Show All Issues")
     }

@@ -47,6 +47,13 @@ public enum OpenViewsAutomation {
         return (w.size, w.platform.pixelSize)
     }
 
+    /// Resizes a main window as a person dragging its edge would (the
+    /// window system keeps it within the window's size limits).
+    public static func resize(_ index: Int = 0, to size: CGSize) {
+        guard mainWindows.indices.contains(index) else { return }
+        mainWindows[index].platform.setSize(size)
+    }
+
     /// The menu bar's titles of a main window.
     public static func menuTitles(_ index: Int = 0) -> [String] {
         guard mainWindows.indices.contains(index) else { return [] }
@@ -120,6 +127,52 @@ public enum OpenViewsAutomation {
         } catch {
             return "screenshot failed: \(error)"
         }
+    }
+
+    /// Writes a main window's image with its pop-ups on a canvas large
+    /// enough for both (P-212: menus may extend past the window); the area
+    /// outside the window is mid grey. Returns a line like `screenshot`'s.
+    @discardableResult
+    public static func screenshotWithPopups(_ index: Int = 0, to path: String) -> String {
+        guard mainWindows.indices.contains(index), let h = host else { return "screenshot: no window" }
+        let w = mainWindows[index]
+        guard let base = w.presenter?.readback() ?? w.platform.readback() else { return "screenshot: no readback for \(path)" }
+        let scale = Double(base.width) / max(1, w.size.width)
+        var bounds = CGRect(origin: .zero, size: w.size)
+        var pops: [(PixelBuffer, CGPoint)] = []
+        for p in h.windows where p.isPopup && owner(of: p) === w {
+            guard let pi = p.presenter?.readback() ?? p.platform.readback() else { continue }
+            let o = origin(of: p)
+            pops.append((pi, o))
+            bounds = bounds.union(CGRect(origin: o, size: p.size))
+        }
+        let dx = Int((-bounds.minX * scale).rounded()), dy = Int((-bounds.minY * scale).rounded())
+        var image = PixelBuffer(width: Int((bounds.width * scale).rounded(.up)), height: Int((bounds.height * scale).rounded(.up)),
+                                fill: RGBA8(r: 128, g: 128, b: 128, a: 255))
+        func blit(_ src: PixelBuffer, _ ox: Int, _ oy: Int) {
+            for y in 0..<src.height where oy + y >= 0 && oy + y < image.height {
+                for x in 0..<src.width where ox + x >= 0 && ox + x < image.width { image[ox + x, oy + y] = src[x, y] }
+            }
+        }
+        blit(base, dx, dy)
+        for (pi, o) in pops { blit(pi, dx + Int((o.x * scale).rounded()), dy + Int((o.y * scale).rounded())) }
+        do {
+            try image.writePNG(to: URL(fileURLWithPath: path))
+            return "screenshot \(image.width)x\(image.height) (window at \(dx),\(dy)) written to \(path)"
+        } catch {
+            return "screenshot failed: \(error)"
+        }
+    }
+
+    /// The last pop-up's cost in milliseconds of main-thread work: measuring
+    /// its content, then building and drawing its window (P-212, L-003).
+    public internal(set) static var lastPopupTiming: (measure: Double, build: Double)?
+
+    /// The frames of the open pop-ups of a main window, in its points.
+    public static func popupFrames(_ index: Int = 0) -> [CGRect] {
+        guard mainWindows.indices.contains(index), let h = host else { return [] }
+        let w = mainWindows[index]
+        return h.windows.filter { $0.isPopup && owner(of: $0) === w }.map { CGRect(origin: origin(of: $0), size: $0.size) }
     }
 
     /// A click (press and release) at a point of a main window, through the

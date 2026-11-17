@@ -95,6 +95,27 @@ public class SettingsPane: NSViewController {
 
     func build() {}
 
+    // MARK: Sub-pages (P-138)
+
+    /// The sub-page shown, by title (Editing ▸ Display, Behaviors ▸ Build);
+    /// nil on the pane's own page.
+    public var subPage: String? { nil }
+    /// Shows a sub-page by title, or the pane's own page for nil (the
+    /// window's back and forward; nothing is recorded).
+    func showSubPage(_ title: String?) {}
+    /// Called before a drill-in row pushes a sub-page (the window records
+    /// where it was), then after (the window retitles).
+    var onWillPush: (() -> Void)?
+    var onDidPush: (() -> Void)?
+
+    /// A drill-in row's push: the page changes as a step of the window's
+    /// back/forward history, and the window takes the page's title.
+    func push(_ change: () -> Void) {
+        onWillPush?()
+        change()
+        onDidPush?()
+    }
+
     func rebuild() {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         rowTitles = []
@@ -184,7 +205,8 @@ public class SettingsPane: NSViewController {
     /// 44 tall, the icon at the leading edge, the label after it.
     func drill(_ title: String, icon: SettingsRowIcon? = nil, _ action: @escaping () -> Void) {
         let r = SettingsRowView(label: title, controls: [SettingsDisclosureView()], icon: icon)
-        r.onClick = action
+        r.onClick = { [weak self] in self?.push(action) }
+        r.setAccessibilityElement(true)
         r.setAccessibilityRole(.button)
         r.setAccessibilityLabel(title)
         card.add(r)
@@ -625,6 +647,9 @@ public final class BehaviorsSettingsPane: SettingsPane {
         if isViewLoaded { rebuild() }
     }
 
+    public override var subPage: String? { category }
+    override func showSubPage(_ title: String?) { open(category: title) }
+
     public func select(_ e: Preferences.Event) {
         event = e
         open(category: e.category)
@@ -661,7 +686,6 @@ public final class BehaviorsSettingsPane: SettingsPane {
             }
             return
         }
-        backRow("Behaviors") { [weak self] in self?.open(category: nil) }
         heading(category)
         let list = events(in: category)
         if list.isEmpty { note("Ycode has no events in this category.") }
@@ -780,6 +804,8 @@ public final class TextEditingSettingsPane: SettingsPane {
     public enum Page: String { case main = "Editing", display = "Display", completion = "Completion", indentation = "Indentation" }
     public var page: Page = .main { didSet { if isViewLoaded { rebuild() } } }
     public init(prefs: Preferences = .shared) { super.init("Editing", prefs: prefs) }
+    public override var subPage: String? { page == .main ? nil : page.rawValue }
+    override func showSubPage(_ title: String?) { page = title.flatMap(Page.init(rawValue:)) ?? .main }
     /// The default encoding and line endings (the only ones Ycode writes).
     public static let textEncoding = "Unicode (UTF-8)"
     public static let lineEndings = "macOS / Unix (LF)"
@@ -819,7 +845,6 @@ public final class TextEditingSettingsPane: SettingsPane {
             })
         case .display:
             // reference-ui-5.md §9.3, in order. The minimap is Editor ▸ Minimap.
-            backRow("Editing") { [weak self] in self?.page = .main }
             heading("Display")
             row("", check("Line numbers", prefs.showLineNumbers) { [prefs] in prefs.showLineNumbers = $0 })
             row("", check("Code folding ribbon", prefs.showFoldingRibbon) { [prefs] in prefs.showFoldingRibbon = $0 })
@@ -849,12 +874,10 @@ public final class TextEditingSettingsPane: SettingsPane {
             row("", check("Fade delimiters", prefs.fadeDocCommentDelimiters) { [prefs] in prefs.fadeDocCommentDelimiters = $0 })
             row("", check("Fade comment delimiters", prefs.fadeCommentDelimiters) { [prefs] in prefs.fadeCommentDelimiters = $0 })
         case .completion:
-            backRow("Editing") { [weak self] in self?.page = .main }
             heading("Code Completion")
             note("Completions come from the language server as you type.")
             buildPredictionRows()
         case .indentation:
-            backRow("Editing") { [weak self] in self?.page = .main }
             heading("Indentation")
             row("Prefer indent using:", popUp(["Spaces", "Tabs"], selected: prefs.indentWithTabs ? "Tabs" : "Spaces") { [prefs] in prefs.indentWithTabs = $0 == "Tabs" })
             row("Tab width:", number(prefs.tabWidth) { [prefs] in prefs.tabWidth = $0 })
@@ -939,18 +962,37 @@ public final class KeyBindingsSettingsPane: SettingsPane, NSTableViewDataSource,
 
     public func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
+    /// A row's cell, reused from the table's queue (P-148: a new view for
+    /// every row on every accessibility query hung clients for > 25 s).
     public func tableView(_ t: NSTableView, viewFor c: NSTableColumn?, row: Int) -> NSView? {
         let e = rows[row]
-        switch c?.identifier.rawValue {
+        let column = c?.identifier.rawValue ?? "command"
+        let reuse = NSUserInterfaceItemIdentifier("shortcuts-" + column)
+        switch column {
         case "key":
-            let f = ClosureField(string: e.command.shortcutText)
-            f.isBordered = false
-            f.drawsBackground = false
+            let f = t.makeView(withIdentifier: reuse, owner: nil) as? ClosureField ?? {
+                let f = ClosureField(string: "")
+                f.identifier = reuse
+                f.isBordered = false
+                f.drawsBackground = false
+                return f
+            }()
+            f.stringValue = e.command.shortcutText
             f.font = .systemFont(ofSize: 11, weight: e.customized ? .semibold : .regular)
-            f.onCommit = { [weak self] field in self?.setShortcut(field.stringValue, forRow: row) }
+            let id = e.id
+            f.onCommit = { [weak self] field in
+                guard let self, let i = self.rows.firstIndex(where: { $0.id == id }) else { return }
+                self.setShortcut(field.stringValue, forRow: i)
+            }
             return f
-        case "menu": return NSTextField(labelWithString: e.menu)
-        default: return NSTextField(labelWithString: e.title)
+        default:
+            let l = t.makeView(withIdentifier: reuse, owner: nil) as? NSTextField ?? {
+                let l = NSTextField(labelWithString: "")
+                l.identifier = reuse
+                return l
+            }()
+            l.stringValue = column == "menu" ? e.menu : e.title
+            return l
         }
     }
 }

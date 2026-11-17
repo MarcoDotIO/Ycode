@@ -223,14 +223,14 @@ enum SettingsDriver {
         await click("settings editing display")
         await click("settings line numbers")
         await shot(prefix, "editing-display")
-        await click("settings editing back")
+        await click("settings back")
         await click("settings editing indentation")
         prefs.tabWidth = 2
         await shot(prefix, "editing-indentation")
-        await click("settings editing back")
+        await click("settings back")
         await click("settings editing completion")
         await shot(prefix, "editing-completion")
-        await click("settings editing back")
+        await click("settings back")
 
         // Shortcuts: filter, refuse a taken shortcut, set a free one.
         await open(.shortcuts)

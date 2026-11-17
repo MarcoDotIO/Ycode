@@ -268,6 +268,15 @@ public final class InspectorAreaController: NSViewController {
         guideFollowsArea?.isActive = true
     }
 
+    /// A directory that is not a package (an asset catalog, a project).
+    static func isPlainFolder(_ url: URL) -> Bool {
+        var dir: ObjCBool = false
+        return url.pathExtension.isEmpty && FileManager.default.fileExists(atPath: url.path, isDirectory: &dir) && dir.boolValue
+    }
+
+    /// The file or folder the File inspector shows (tests).
+    public var shownFile: URL? { file }
+
     public func show(file: URL?) {
         if file != self.file { selectedMemberships = [] }
         self.file = file
@@ -462,13 +471,19 @@ public final class InspectorAreaController: NSViewController {
         content.addArrangedSubview(row("Name", name))
         let info = fileInfo?(file) ?? FileInspectorInfo()
         shownInfo = info
-        // The type's name from the file's type (council row 229).
-        let typeRow = row("Type", popUp("Type", ["Default - " + Self.typeName(for: file, recordedType: info.recordedType)]))
-        content.addArrangedSubview(typeRow)
-        let typeRule = addInnerRule()   // metrics.md §13.3: a rule after Type
-        // §16.2: 28 from Type's ink to Location's.
-        content.setCustomSpacing(0, after: typeRow)
-        content.setCustomSpacing(InspectorStyle.afterTypeRule, after: typeRule)
+        // A folder (P-089: a folder or group selected in the navigator) has
+        // no Type, Tags or Localization: Name, Location, Full Path, the
+        // working copy, Target Membership and Text Settings.
+        let isFolder = Self.isPlainFolder(file)
+        if !isFolder {
+            // The type's name from the file's type (council row 229).
+            let typeRow = row("Type", popUp("Type", ["Default - " + Self.typeName(for: file, recordedType: info.recordedType)]))
+            content.addArrangedSubview(typeRow)
+            let typeRule = addInnerRule()   // metrics.md §13.3: a rule after Type
+            // §16.2: 28 from Type's ink to Location's.
+            content.setCustomSpacing(0, after: typeRow)
+            content.setCustomSpacing(InspectorStyle.afterTypeRule, after: typeRule)
+        }
         // reference-ui-6.md §6 (I1): a file in a synchronized folder has
         // the folder's location (a disabled pop-up, no folder button);
         // otherwise the pop-up and the folder button are enabled.
@@ -523,12 +538,12 @@ public final class InspectorAreaController: NSViewController {
         }
         // §6 (I1): a package's files show only Identity and Type and Text
         // Settings.
-        let isImage = ImageViewerController.handles(file)
+        let isImage = !isFolder && ImageViewerController.handles(file)
         // A resource (an image, Markdown, JSON): the "Tags" field and the
         // Localization section (council row 230; `FileTypeRoles`).
-        let isResource = isImage || FileTypeRoles.isResource(file, recorded: info.recordedType)
+        let isResource = !isFolder && (isImage || FileTypeRoles.isResource(file, recorded: info.recordedType))
         if !isProject && !info.isPackageFile {
-            onDemandResourceTags(resource: isResource)
+            if !isFolder { onDemandResourceTags(resource: isResource) }
             // §16.2: the tags section's rule 4 closer to Full Path's.
             if let i = content.arrangedSubviews.firstIndex(of: pathRule), i + 1 < content.arrangedSubviews.count,
                content.arrangedSubviews[i + 1] is NSBox {

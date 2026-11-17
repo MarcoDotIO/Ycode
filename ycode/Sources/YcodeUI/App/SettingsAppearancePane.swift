@@ -84,14 +84,15 @@ public final class ThemesSettingsPane: SettingsPane {
         let capCaption = NSFont.systemFont(ofSize: L.captionFontSize).capHeight
         var cs: [NSLayoutConstraint] = [
             card.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: SettingsMetrics.cardInset),
-            card.widthAnchor.constraint(equalToConstant: SettingsMetrics.cardWidth),
+            // The cards follow the window's width (P-139: it widens).
+            card.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -SettingsMetrics.cardInset),
             card.topAnchor.constraint(equalTo: root.topAnchor, constant: L.cardTop - top),
             card.heightAnchor.constraint(equalToConstant: L.cardHeight),
             // The label's ink at x 210.5 (its frame 1 before), cap top 85.5.
             label.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 210.5 - left - 1),
             label.firstBaselineAnchor.constraint(equalTo: root.topAnchor, constant: L.labelCapTop + capLabel - top),
             box.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: SettingsMetrics.cardInset),
-            box.widthAnchor.constraint(equalToConstant: SettingsMetrics.cardWidth),
+            box.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -SettingsMetrics.cardInset),
             box.topAnchor.constraint(equalTo: root.topAnchor, constant: L.previewTop - top),
             sep1.leadingAnchor.constraint(equalTo: root.leadingAnchor), sep1.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             sep1.topAnchor.constraint(equalTo: root.topAnchor, constant: L.separator1Y - top),
@@ -104,11 +105,13 @@ public final class ThemesSettingsPane: SettingsPane {
             sep2.heightAnchor.constraint(equalToConstant: 1),
         ]
         let m = AppearanceThumbnailButton.margin
+        // The thumbnails keep their place from the card's right end.
+        let cardEnd = left + SettingsMetrics.cardInset + SettingsMetrics.cardWidth
         for (i, (b, c)) in zip(thumbs, captions).enumerated() {
             c.font = .systemFont(ofSize: L.captionFontSize)
             c.alignment = .center
             cs += [
-                b.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: L.thumbnailXs[i] - left - m),
+                b.leadingAnchor.constraint(equalTo: card.trailingAnchor, constant: L.thumbnailXs[i] - m - cardEnd),
                 b.topAnchor.constraint(equalTo: root.topAnchor, constant: L.thumbnailTop - top - m),
                 b.widthAnchor.constraint(equalToConstant: L.thumbnailSize.width + 2 * m),
                 b.heightAnchor.constraint(equalToConstant: L.thumbnailSize.height + 2 * m),

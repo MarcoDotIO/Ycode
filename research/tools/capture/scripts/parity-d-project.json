@@ -1,0 +1,805 @@
+{
+ "name": "parity-d-project",
+ "title": "Part D 5: the project editor: Build Settings width, Build Phases with a disclosure and its + menu, Build Rules, the project's Info and Package Dependencies, ParityTests, the targets list hidden and shown, the target context menu.",
+ "targets": [
+  "xcode",
+  "ycode"
+ ],
+ "compare_order": [
+  "xcode",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "open-project",
+   "note": "Click the project row (Parity, first navigator row): the project editor, target Parity. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Parity",
+      "index": 0
+     }
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "project",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "tab-build-settings",
+   "note": "Click Build Settings (in part B Ycode widened its window to 1530 pt here). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Build Settings",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "bs",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "resize-back-1",
+   "note": "Window back to 1400 × 880 at x 56.",
+   "do": [
+    {
+     "resize": [
+      1400,
+      880
+     ]
+    },
+    {
+     "move": [
+      56,
+      71
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "tab-build-phases",
+   "note": "Click Build Phases. AX tree.",
+   "do": [
+    {
+     "resize": [
+      1400,
+      880
+     ]
+    },
+    {
+     "click": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Build Phases",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "phases",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "phases-disclose",
+   "note": "Expand Compile Sources (its disclosure: AX match, else the row's label).",
+   "do": [
+    {
+     "click": {
+      "role": "AXDisclosureTriangle",
+      "visible": true,
+      "index": 1
+     }
+    },
+    {
+     "click": {
+      "label~": "Compile Sources",
+      "visible": true
+     },
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "phases-open",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": [
+        484,
+        249
+       ]
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "phases-open",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "phases-collapse",
+   "note": "Click the same disclosure again (collapse).",
+   "do": [
+    {
+     "click": {
+      "role": "AXDisclosureTriangle",
+      "visible": true,
+      "index": 1
+     }
+    },
+    {
+     "click": {
+      "label~": "Compile Sources",
+      "visible": true
+     },
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": [
+        484,
+        249
+       ]
+      },
+      {
+       "wait": 1.0
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "phases-add-menu",
+   "note": "The '+' above the phases: its menu. AX tree. (Ycode: its '+' pop-up by coordinate, window point 510, 171; the AX match found nothing in the first run.)",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton|AXMenuButton",
+      "label": "add|Add|New Build Phase",
+      "visible": true
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "phases-add",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "click": [
+        510,
+        171
+       ]
+      },
+      {
+       "wait": 0.8
+      },
+      {
+       "tree": "phases-add",
+       "depth": 40
+      }
+     ]
+    },
+    "xcode": {
+     "do": [
+      {
+       "click": [
+        468,
+        137
+       ]
+      },
+      {
+       "wait": 0.8
+      },
+      {
+       "tree": "phases-add",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "phases-add-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "tab-build-rules",
+   "note": "Click Build Rules. AX tree.",
+   "do": [
+    {
+     "resize": [
+      1400,
+      880
+     ]
+    },
+    {
+     "click": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Build Rules",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "rules",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "project-item",
+   "note": "Select the PROJECT entry (Parity under Project) in the editor's list. AX tree.",
+   "do": [
+    {
+     "resize": [
+      1400,
+      880
+     ]
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Parity",
+      "scope": "window",
+      "index": 2
+     }
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "project-item",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "project-info-tab",
+   "note": "Click Info (project level). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Info",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "project-info",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "package-deps",
+   "note": "Click Package Dependencies (nothing added). AX tree.",
+   "do": [
+    {
+     "resize": [
+      1400,
+      880
+     ]
+    },
+    {
+     "click": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Package Dependencies",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "packages",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "test-target",
+   "note": "Select the ParityTests target, then General. AX tree.",
+   "do": [
+    {
+     "resize": [
+      1400,
+      880
+     ]
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "ParityTests",
+      "scope": "window",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "click": {
+      "role": "AXButton|AXRadioButton",
+      "label": "General",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "tests",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "resize": [
+        1400,
+        880
+       ]
+      },
+      {
+       "click": [
+        294,
+        209
+       ]
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "click": {
+        "role": "AXButton|AXRadioButton",
+        "label": "General",
+        "visible": true
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "tests",
+       "depth": 40
+      }
+     ]
+    },
+    "xcode": {
+     "do": [
+      {
+       "click": [
+        354,
+        271
+       ]
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "click": {
+        "role": "AXButton|AXRadioButton",
+        "label": "General",
+        "visible": true
+       }
+      },
+      {
+       "wait": 1.5
+      },
+      {
+       "tree": "tests",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "hide-list",
+   "note": "Hide the project and targets list (button at the editor's top left).",
+   "do": [
+    {
+     "resize": [
+      1400,
+      880
+     ]
+    },
+    {
+     "click": {
+      "role": "AXButton",
+      "description~": "project and targets list"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "list-hidden",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": [
+        302,
+        103
+       ]
+      },
+      {
+       "wait": 1.0
+      },
+      {
+       "tree": "list-hidden",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "show-list",
+   "note": "Show it again.",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton",
+      "description~": "project and targets list"
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both",
+   "per_target": {
+    "xcode": {
+     "do": [
+      {
+       "click": [
+        302,
+        103
+       ]
+      },
+      {
+       "wait": 1.0
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "target-context",
+   "note": "Right-click the Parity target row in the list: its context menu. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Parity",
+      "scope": "window",
+      "index": 3
+     },
+     "button": "right"
+    },
+    {
+     "wait": 0.9
+    },
+    {
+     "tree": "target-context",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both",
+   "per_target": {
+    "ycode": {
+     "do": [
+      {
+       "click": [
+        294,
+        187
+       ],
+       "button": "right"
+      },
+      {
+       "wait": 0.9
+      },
+      {
+       "tree": "target-context",
+       "depth": 40
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "target-context-items",
+   "note": "Its items (and sub-menus) as stills.",
+   "do": [
+    {
+     "submenus": "items",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "target-context-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "tab-order",
+   "note": "Tab through the project editor (key-view order).",
+   "do": [
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  }
+ ],
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90
+ },
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Shapes|Shapes.swift"
+   }
+  },
+  {
+   "wait": 2.0
+  }
+ ]
+}

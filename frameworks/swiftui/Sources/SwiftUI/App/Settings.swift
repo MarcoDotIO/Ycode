@@ -13,8 +13,11 @@ import SwiftUICore
 // menu's "Settings…" item (Ctrl+,), `openSettings()` and `SettingsLink` open
 // it as a window of its own, or raise it when it is open (one window). The
 // window is titled "Settings", takes its content's ideal size (at least
-// 360 × 200 points; `defaultSize` overrides) and is not resizable; it has no
-// menu bar of its own on Linux (the app's commands stay in the main windows).
+// 360 × 200 points; `defaultSize` overrides) and resizes in height only,
+// from that size up (P-139, as the macOS IDE's Settings window from
+// 710 × 452); ⌘W (Ctrl+W) and Escape close it when nothing in it takes the
+// key (L-072). It has no menu bar of its own on Linux (the app's commands
+// stay in the main windows).
 
 /// A scene for the application's settings, shown in a window of its own.
 public struct Settings<Content: View>: Scene {

@@ -25,8 +25,11 @@ public struct IntegrateMenuState: Equatable, Sendable {
     /// Whether the item with this action applies.
     public func isEnabled(_ action: String) -> Bool {
         switch action {
-        case "showCommitSheet:": hasRepository && hasChanges
-        case "scmPush:", "scmPull:", "scmFetch:": hasRepository && hasRemote
+        // P-016: the reference enables Commit…, Push…, Pull…, Fetch Changes,
+        // Cherry-Pick…, Stash Changes… and Discard All Changes… in any
+        // repository (clean, or without a remote), and New Git Repository…
+        // always.
+        case "showCommitSheet:", "scmPush:", "scmPull:", "scmFetch:": hasRepository
         case "refreshFileStatus:": hasRepository
         case "scmStageAll:": hasRepository && hasUnstaged
         case "scmUnstageAll:": hasRepository && hasStaged
@@ -34,12 +37,12 @@ public struct IntegrateMenuState: Equatable, Sendable {
         case "scmUnstageSelected:": hasRepository && selectedIsStaged
         case "scmMarkResolved:": hasRepository && selectedStatus == .conflicted
         case "scmAddSelected:": hasRepository && selectedStatus == .untracked
-        case "scmCherryPick:": hasRepository && selectedCommit != nil
+        case "scmCherryPick:": hasRepository
         case "scmMerge:": hasRepository && !integration.isInProgress && otherBranchCount > 0
-        case "scmStash:", "scmDiscardAll:": hasRepository && hasChanges
+        case "scmStash:", "scmDiscardAll:": hasRepository
         case "scmTrashSelected:": selectedFileExists
         case "scmClone:": true
-        case "scmNewRepository:": !hasRepository
+        case "scmNewRepository:": true
         // Ycode's conflict section (shown only while an operation is in
         // progress, `MenuCondition.integrationInProgress`).
         case "scmResolveConflicts:": hasRepository && conflictCount > 0

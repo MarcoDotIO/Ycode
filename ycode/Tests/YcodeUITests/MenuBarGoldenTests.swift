@@ -62,9 +62,9 @@ File ▸
     Workspace… | ⌃⌘N
     —
     Group | when
-    Group without Folder | when
+    Group without Folder | ⌥ | alt | when
     Group from Selection | when
-    Group from Selection without Folder | when
+    Group from Selection without Folder | ⌥ | alt | when
     Folder | ⌥⌘N
     Folder from Selection
   —
@@ -81,15 +81,15 @@ File ▸
   Close Document | ⌃⌘W
   Close Editor Pane | ⌃⇧⌘W
   Close Other Editor Panes | ⌃⌥⇧⌘W | alt
-  Close Window | ⇧⌘W | when
-  Close Other Window Tabs | ⌥⇧⌘W | alt | when
+  Close Window | ⇧⌘W
+  Close Other Window Tabs | ⌥⇧⌘W | alt
   Close Workspace | ⌃⌥⌘W
   —
   Duplicate Editor Tab
   Save | ⌘S
   Save All | ⌥⌘S
   Duplicate… | ⇧⌘S
-  Save As… | ⌥⇧⌘S
+  Save As… | ⌥⇧⌘S | alt
   Revert to Saved…
   Unlock…
   Export…
@@ -123,17 +123,17 @@ Edit ▸
     Copy Qualified Symbol Name | ⌃⌥⇧⌘C
   Paste ▸
     Paste | ⌘V
-    Move Item Here | ⌥⌘V | when
+    Move Item Here | ⌥⌘V
     Paste and Preserve Formatting | ⌥⇧⌘V
   Duplicate | ⌘D
   Delete | ⌘⌫
   —
   Select All | ⌘A
   —
-  Bookmark Line | ⌃⌘'
-  Bookmark Line With Dialog | ⌃⌥⌘'
-  Bookmark File | ⌃⇧⌘'
-  Bookmark File With Dialog | ⌃⌥⇧⌘'
+  Add Line Bookmark | ⌃⌘'
+  Add Line Bookmark… | ⌃⌥⌘' | alt
+  Add File Bookmark | ⌃⇧⌘'
+  Add File Bookmark… | ⌃⌥⇧⌘' | alt
   —
   Sort ▸
     By Name
@@ -188,9 +188,9 @@ View ▸
     —
     Show Related Items | ⌃1
     Show Previous History | ⌃2
-    Show Previous Files History | ⌃⌘2
+    Show Previous Files History | ⌃⌘2 | alt
     Show Next History | ⌃3
-    Show Next Files History | ⌃⌘3
+    Show Next Files History | ⌃⌘3 | alt
     Show Top Level Items | ⌃4
     Show Group Files | ⌃5
     Show Document Items | ⌃6
@@ -228,7 +228,7 @@ View ▸
     —
     Show Inspector
   Show Library | ⇧⌘L
-  Open Library | ⌥⇧⌘L
+  Open Library | ⌥⇧⌘L | alt
   Reload Organizer | ⌃R
   —
   Choose Theme…
@@ -280,12 +280,12 @@ Navigate ▸
   Reveal in Changes Navigator | ⇧⌘M
   Reveal in Debug Navigator | ⇧⌘D
   Open using Tab | ⌥⌘,
-  Open in Next Editor Pane | ⌥⌘< | alt
+  Open in Next Editor Pane | ⌥⌘<
   —
   Move Focus to Next Area | ⌥⌘`
-  Move Focus to Previous Area | ⌥⇧⌘`
+  Move Focus to Previous Area | ⌥⇧⌘` | alt
   Move Focus to Next Editor Pane | ⌃`
-  Move Focus to Previous Editor Pane | ⌃⇧`
+  Move Focus to Previous Editor Pane | ⌃⇧` | alt
   Move Focus to Editor Pane… | ⌘J
   —
   Show Previous Tab | ⇧⌘[
@@ -373,7 +373,7 @@ Product ▸
   —
   Build | ⌘B
   Clean Build Folder… | ⇧⌘K
-  Clean Build Folder Immediately | ⌥⇧⌘K
+  Clean Build Folder Immediately | ⌥⇧⌘K | alt
   Delete Derived Data…
   Clear Test Results | ⌃⌥⌘K
   Clear All Issues
@@ -394,6 +394,8 @@ Product ▸
     Edit Scheme… | ⌘<
     New Scheme…
     Manage Schemes…
+    —
+    Convert Scheme to use Test Plans…
   Destination ▸
     Choose Destination | ⌃⇧0
     Select Next Destination | ⌃⌥⌘]
@@ -423,11 +425,11 @@ Debug ▸
   Pause | ⌃⌘Y
   Continue To Current Line | ⌃⌘C
   Step Over | F6
-  Step Over Instruction | ⌃F6
-  Step Over Thread | ⌃⇧F6
+  Step Over Instruction | ⌃F6 | alt
+  Step Over Thread | ⌃⇧F6 | alt
   Step Into | F7
-  Step Into Instruction | ⌃F7
-  Step Into Thread | ⌃⇧F7
+  Step Into Instruction | ⌃F7 | alt
+  Step Into Thread | ⌃⇧F7 | alt
   Step Out | F8
   —
   Step Over and Follow Program Counter
@@ -454,21 +456,21 @@ Debug ▸
     Jump To Source | ⌥⇧⌘J
     —
     Hide Similar Items ▸
-      Type
-      Process
-      PID
-      Library
-      Subsystem
-      Category
-      TID
+      Type '-'
+      Process '-'
+      PID '-'
+      Library '-'
+      Subsystem '-'
+      Category '-'
+      TID '-'
     Show Similar Items ▸
-      Type
-      Process
-      PID
-      Library
-      Subsystem
-      Category
-      TID
+      Type '-'
+      Process '-'
+      PID '-'
+      Library '-'
+      Subsystem '-'
+      Category '-'
+      TID '-'
     —
     Clear Console | ⌘K
     Reload Console | ⌥⌘K
@@ -491,6 +493,24 @@ Debug ▸
   —
   Capture GPU Workload
   Simulate Location ▸
+    Don’t Simulate Location
+    —
+    Berlin, Germany
+    Cupertino, CA, USA
+    Hong Kong, China
+    Johannesburg, South Africa
+    London, England
+    Mexico City, Mexico
+    Mumbai, India
+    New York, NY, USA
+    Paris, France
+    Rio de Janeiro, Brazil
+    San Francisco, CA, USA
+    Sydney, Australia
+    Tokyo, Japan
+    Warsaw, Poland
+    —
+    Add GPS Exchange to Project…
   Induce Device Conditions ▸
   View Debugging ▸
     Capture View Hierarchy
@@ -532,6 +552,7 @@ Debug ▸
     Edit Subscription
     —
     Delete Transaction
+  —
   GameKit ▸
     Manage Game Progress…
 Integrate ▸
@@ -563,10 +584,6 @@ Integrate ▸
   —
   Clone…
   New Git Repository…
-  —
-  [Cloud]
-  Create Workflow…
-  Manage Workflows…
 Window ▸
   Minimize | ⌘M
   Zoom
@@ -602,7 +619,12 @@ Help ▸
 func renderMenu(_ menu: NSMenu, depth: Int = 0) -> [String] {
     var out: [String] = []
     let pad = String(repeating: "  ", count: depth)
-    for i in menu.items {
+    // The window list AppKit appends to the Window menu (another test's
+    // open windows) is the system's, not the table's (§1.6).
+    let windowList = menu.items.filter { $0.action == #selector(NSWindow.makeKeyAndOrderFront(_:)) && !($0 is CommandMenuItem) }
+    var items = menu.items.filter { i in !windowList.contains { $0 === i } }
+    if !windowList.isEmpty, items.last?.isSeparatorItem == true { items.removeLast() }
+    for i in items {
         if i.isSeparatorItem { out.append(pad + "—"); continue }
         if i.isSectionHeader { out.append(pad + "[\(i.title)]"); continue }
         if let sub = i.submenu {
@@ -769,7 +791,8 @@ func canonicalGolden(_ text: String) -> [String] {
             for top in bar.items { walk(top.submenu!) }
             let nav = bar.item(withTitle: "Navigate")!.submenu!
             let next = nav.item(withTitle: "Open in Next Editor Pane")!
-            #expect(next.keyEquivalent == "," && next.keyEquivalentModifierMask == [.command, .option, .shift])
+            // P-001: its own row, drawn with the shifted character as the reference draws it.
+            #expect(!next.isAlternate && next.keyEquivalent == "<" && next.keyEquivalentModifierMask == [.command, .option])
             let archive = bar.item(withTitle: "Product")!.submenu!.item(withTitle: "Archive…")!
             #expect(archive.isAlternate && archive.keyEquivalent.isEmpty && archive.keyEquivalentModifierMask == .option)
         }

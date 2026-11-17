@@ -191,14 +191,30 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
     public init(scheme: Scheme, configurations: [String]) {
         self.scheme = scheme
         self.configurations = configurations
+        openedText = scheme.serialized()
+        isAutocreated = scheme.url.map { !FileManager.default.fileExists(atPath: $0.path) } ?? false
         super.init(nibName: nil, bundle: nil)
     }
+
+    /// The scheme as opened; an autocreated scheme is written only once it
+    /// differs from this (P-108).
+    let openedText: String
+    /// The scheme has no file yet (autocreated for a target, P-108).
+    public let isAutocreated: Bool
+    /// An autocreated scheme was written for the first time (the window
+    /// writes its siblings and reloads the scheme list).
+    public var onAutocreatedSaved: ((Scheme) -> Void)?
+    /// Duplicate Scheme wrote a copy (the window reloads the schemes).
+    public var onDuplicate: ((Scheme) -> Void)?
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     public override func loadView() {
         let root = PanelBackgroundView(frame: NSRect(x: 0, y: 0, width: 760, height: 480))
+        // P-110: Escape ends editing first, then closes the sheet.
+        let escape = SchemeEditorEscapeView { [weak self] in self?.escapePressed() ?? false }
+        root.addSubview(escape)
         let title = NSButton(title: scheme.name, image: NSImage(systemSymbolName: "square.stack.3d.up", accessibilityDescription: nil)!, target: nil, action: nil)
         title.isBordered = false
         title.imagePosition = .imageLeading
@@ -225,8 +241,7 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
         pane.spacing = 10
         pane.edgeInsets = NSEdgeInsets(top: 12, left: 16, bottom: 12, right: 16)
 
-        let duplicate = NSButton(title: "Duplicate Scheme", target: nil, action: nil)
-        duplicate.isEnabled = false
+        let duplicate = NSButton(title: "Duplicate Scheme", target: self, action: #selector(duplicateClicked))
         let manage = NSButton(title: "Manage Schemes…", target: self, action: #selector(manage))
         sharedCheck.title = "Shared"
         sharedCheck.state = scheme.isShared ? .on : .off
@@ -318,16 +333,20 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
         case (3, "Info"):
             pane.addArrangedSubview(configurationRow(element))
             pane.addArrangedSubview(row("Executable", scheme.launchTarget?.buildableName ?? "None"))
-            pane.addArrangedSubview(fixed("Instrument", popUp(["Ask on Launch"])))
+            // `savedToolIdentifier` empty: Ask on Launch (the only instrument
+            // Ycode lists).
+            pane.addArrangedSubview(fixedEnabled("Instrument", SchemeOptionPopUp(["Ask on Launch"], selected: 0) { _ in }))
         case (3, "Options"):
             workingDirectoryRows()
         case (5, _):
             pane.addArrangedSubview(configurationRow(element))
-            let name = NSTextField(string: scheme.name)
-            name.isEnabled = false
+            let name = SchemeOptionField(scheme.attribute("customArchiveName", of: element) ?? scheme.name, placeholder: scheme.name) { [weak self] v in
+                guard let self else { return }
+                self.scheme.setAttribute("customArchiveName", v.isEmpty || v == self.scheme.name ? nil : v, of: element)
+            }
             name.widthAnchor.constraint(equalToConstant: 260).isActive = true
-            pane.addArrangedSubview(fixed("Archive Name", name))
-            pane.addArrangedSubview(fixed("Options", check("Reveal Archive in Organizer", true)))
+            pane.addArrangedSubview(fixedEnabled("Archive Name", name))
+            pane.addArrangedSubview(fixedEnabled("Options", boundCheck("Reveal Archive in Organizer", .revealArchive, element: element)))
             pane.addArrangedSubview(fixed("", check("Allow Archiving for Simulator", false)))
         default:
             pane.addArrangedSubview(configurationRow(element))
@@ -378,12 +397,11 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
     }
 
     private func buildPane() {
-        pane.addArrangedSubview(fixed("Build Order", radios(["Dependency Order", "Manual Order (Deprecated)"], selected: 0)))
+        pane.addArrangedSubview(fixedEnabled("Build Order", boundRadios(.buildOrder, element: "BuildAction")))
         let implicit = NSButton(checkboxWithTitle: "Find Implicit Dependencies", target: self, action: #selector(implicitToggled(_:)))
         implicit.state = scheme.buildImplicitDependencies ? .on : .off
-        pane.addArrangedSubview(fixed("Build Options", implicit))
-        implicit.isEnabled = true
-        pane.addArrangedSubview(fixed("Override Architectures", popUp(["Match Run Destination"])))
+        pane.addArrangedSubview(fixedEnabled("Build Options", implicit))
+        pane.addArrangedSubview(fixedEnabled("Override Architectures", boundPopUp(.overrideArchitectures, element: "BuildAction")))
         pane.addArrangedSubview(fixed("Build Debugging", check("Task Backtraces", false)))
         pane.addArrangedSubview(fixed("", check("Modules Report", false)))
         // Targets | Analyze | Test | Run | Profile | Archive, with +/−
@@ -422,15 +440,90 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
 
     private func runInfoPane(_ element: String) {
         pane.addArrangedSubview(configurationRow(element))
-        pane.addArrangedSubview(fixed("Executable", popUp([scheme.launchTarget?.buildableName ?? "None"])))
-        pane.addArrangedSubview(fixed("", check("Debug executable", true)))
-        pane.addArrangedSubview(fixed("Debug Process As", radios(["Me (\(NSUserName()))", "root"], selected: 0)))
-        let lldb = NSTextField(string: "")
-        lldb.placeholderString = "$(SRCROOT)/LLDBInitFile"
-        lldb.isEnabled = false
+        pane.addArrangedSubview(fixedEnabled("Executable", executablePopUp()))
+        debuggerRows(element)
+        pane.addArrangedSubview(fixedEnabled("Launch", boundRadios(.launchStyle, element: element)))
+    }
+
+    /// Debug executable, Debug Process As and LLDB Init File of the Run
+    /// and Test actions (P-109).
+    private func debuggerRows(_ element: String, label: String = "") {
+        let debug = SchemeOptionButton.checkbox("Debug executable", on: scheme.debugsExecutable(element)) { [weak self] on in
+            self?.scheme.setDebugsExecutable(on, action: element)
+        }
+        debug.setAccessibilityIdentifier("\(element).debugExecutable")
+        pane.addArrangedSubview(fixedEnabled(label, debug))
+        pane.addArrangedSubview(fixedEnabled("Debug Process As", boundRadios(.debugProcessAs(user: NSUserName()), element: element)))
+        let lldb = SchemeOptionField(scheme.attribute("customLLDBInitFile", of: element) ?? "", placeholder: "$(SRCROOT)/LLDBInitFile") { [weak self] v in
+            self?.scheme.setAttribute("customLLDBInitFile", v.isEmpty ? nil : v, of: element)
+        }
+        lldb.setAccessibilityIdentifier("\(element).customLLDBInitFile")
         lldb.widthAnchor.constraint(equalToConstant: 260).isActive = true
-        pane.addArrangedSubview(fixed("LLDB Init File", lldb))
-        pane.addArrangedSubview(fixed("Launch", radios(["Automatically", "Wait for the executable to be launched"], selected: 0)))
+        pane.addArrangedSubview(fixedEnabled("LLDB Init File", lldb))
+    }
+
+    /// Run ▸ Info ▸ Executable: None, the scheme's buildable targets, Ask
+    /// on Launch (`askForAppToLaunch`).
+    private func executablePopUp() -> NSPopUpButton {
+        var refs: [Scheme.BuildableReference] = []
+        for r in scheme.buildEntries.map(\.reference) + availableTargets where !refs.contains(where: { $0.blueprintIdentifier == r.blueprintIdentifier }) {
+            refs.append(r)
+        }
+        let titles = ["None"] + refs.map(\.buildableName) + ["Ask on Launch"]
+        let current = scheme.attribute("askForAppToLaunch", of: "LaunchAction").map { $0 == "YES" || $0 == "Yes" } == true ? titles.count - 1
+            : scheme.launchTarget.flatMap { t in refs.firstIndex { $0.blueprintIdentifier == t.blueprintIdentifier }.map { $0 + 1 } } ?? 0
+        let p = SchemeOptionPopUp(titles, selected: current) { [weak self] i in
+            guard let self else { return }
+            if i == titles.count - 1 {
+                self.scheme.setAttribute("askForAppToLaunch", "YES", of: "LaunchAction")
+            } else {
+                self.scheme.setAttribute("askForAppToLaunch", nil, of: "LaunchAction")
+                self.scheme.setRunnable(i == 0 ? nil : refs[i - 1])
+            }
+        }
+        p.setAccessibilityIdentifier("LaunchAction.executable")
+        return p
+    }
+
+    /// A checkbox bound to an attribute.
+    func boundCheck(_ title: String, _ b: SchemeOptionBinding, element: String) -> NSButton {
+        let c = SchemeOptionButton.checkbox(title, on: b.isOn(in: scheme, element: element)) { [weak self] on in
+            guard let self else { return }
+            b.set(on, in: &self.scheme, element: element)
+        }
+        c.setAccessibilityIdentifier("\(element).\(b.attribute)")
+        return c
+    }
+
+    /// A pop-up bound to an attribute.
+    func boundPopUp(_ b: SchemeOptionBinding, element: String) -> NSPopUpButton {
+        guard case .choice(let items) = b.kind else { return NSPopUpButton() }
+        let p = SchemeOptionPopUp(items.map(\.title), selected: b.selectedIndex(in: scheme, element: element)) { [weak self] i in
+            guard let self else { return }
+            b.choose(i, in: &self.scheme, element: element)
+        }
+        p.setAccessibilityIdentifier("\(element).\(b.attribute)")
+        return p
+    }
+
+    /// A radio group bound to an attribute.
+    func boundRadios(_ b: SchemeOptionBinding, element: String) -> NSView {
+        guard case .choice(let items) = b.kind else { return NSView() }
+        let selected = b.selectedIndex(in: scheme, element: element)
+        var buttons: [NSButton] = []
+        for (i, item) in items.enumerated() {
+            let r = SchemeOptionButton.radio(item.title, on: i == selected) { [weak self] in
+                guard let self else { return }
+                b.choose(i, in: &self.scheme, element: element)
+                for (j, other) in buttons.enumerated() { other.state = j == i ? .on : .off }
+            }
+            r.setAccessibilityIdentifier("\(element).\(b.attribute).\(i)")
+            buttons.append(r)
+        }
+        let s = NSStackView(views: buttons)
+        s.orientation = .vertical
+        s.alignment = .leading
+        return s
     }
 
     private func argumentsPane() {
@@ -440,11 +533,27 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
             pane.addArrangedSubview(v)
             v.widthAnchor.constraint(equalTo: pane.widthAnchor, constant: -32).isActive = true
         }
-        pane.addArrangedSubview(fixed("Expand Variables Based On", popUp([scheme.launchTarget?.blueprintName ?? "None"])))
+        pane.addArrangedSubview(fixedEnabled("Expand Variables Based On", expandVariablesPopUp()))
     }
 
-    /// Run ▸ Options rows with their defaults; only the working directory
-    /// maps to scheme attributes Ycode knows.
+    /// Run ▸ Arguments ▸ Expand Variables Based On: the `MacroExpansion`
+    /// target (none: the runnable).
+    private func expandVariablesPopUp() -> NSPopUpButton {
+        var refs: [Scheme.BuildableReference] = []
+        for r in scheme.buildEntries.map(\.reference) + availableTargets where !refs.contains(where: { $0.blueprintIdentifier == r.blueprintIdentifier }) {
+            refs.append(r)
+        }
+        let shown = scheme.macroExpansion() ?? scheme.launchTarget
+        let current = shown.flatMap { t in refs.firstIndex { $0.blueprintIdentifier == t.blueprintIdentifier }.map { $0 + 1 } } ?? 0
+        let p = SchemeOptionPopUp(["None"] + refs.map(\.blueprintName), selected: current) { [weak self] i in
+            self?.scheme.setMacroExpansion(i == 0 ? nil : refs[i - 1])
+        }
+        p.setAccessibilityIdentifier("LaunchAction.MacroExpansion")
+        return p
+    }
+
+    /// Run ▸ Options rows with their defaults; rows with a binding
+    /// (`SchemeOptionBinding`) and the working directory edit the scheme.
     public static let runOptionRows: [(String, String)] = [
         ("Core Location", "Allow Location Simulation"), ("App Data", "None"), ("Routing App Coverage File", "None"),
         ("GameKit Configuration", "Enable Debug Mode"), ("StoreKit Configuration", "None"), ("GPU Frame Capture", "Automatically"),
@@ -469,9 +578,13 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
             if label == "Working Directory" {
                 let (c, f) = workingDirectoryControls()
                 stack.addArrangedSubview(fixedEnabled(label, NSStackView(views: [c, f])))
+            } else if let b = SchemeOptionBinding.checkboxes[value] {
+                stack.addArrangedSubview(fixedEnabled(label, boundCheck(value, b, element: "LaunchAction")))
+                if label == "Core Location" { stack.addArrangedSubview(fixed("Default Location", popUp(["None"]))) }
             } else if Self.checkboxRows.contains(label) {
                 stack.addArrangedSubview(fixed(label, check(value, Self.checkedByDefault.contains(value))))
-                if label == "Core Location" { stack.addArrangedSubview(fixed("Default Location", popUp(["None"]))) }
+            } else if let b = SchemeOptionBinding.popUps[label] {
+                stack.addArrangedSubview(fixedEnabled(label, boundPopUp(b, element: "LaunchAction")))
             } else {
                 stack.addArrangedSubview(fixed(label, popUp([value])))
             }
@@ -565,14 +678,15 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
 
     private func diagnosticsPane() {
         for r in Self.diagnosticRows {
+            let bound = SchemeOptionBinding.checkboxes[r.title]
             let c = Self.sanitizerRows[r.title] != nil ? sanitizerCheck(r.title, indent: r.indent, element: "LaunchAction")
-                : check((r.indent ? "    " : "") + r.title, r.on)
+                : bound.map { boundCheck((r.indent ? "    " : "") + r.title, $0, element: "LaunchAction") } ?? check((r.indent ? "    " : "") + r.title, r.on)
             if r.section == "Runtime Sanitization" {
                 let sub = NSTextField(labelWithString: "Requires recompilation")
                 sub.font = .systemFont(ofSize: 10)
                 sub.textColor = .secondaryLabelColor
                 pane.addArrangedSubview(fixed(r.section, NSStackView(views: [c, sub])))
-            } else if Self.sanitizerRows[r.title] != nil {
+            } else if Self.sanitizerRows[r.title] != nil || bound != nil {
                 pane.addArrangedSubview(fixedEnabled(r.section, c))
             } else {
                 pane.addArrangedSubview(fixed(r.section, c))
@@ -585,12 +699,7 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
 
     private func testPane(_ element: String) {
         pane.addArrangedSubview(configurationRow(element))
-        pane.addArrangedSubview(fixed("Debugger", check("Debug executable", true)))
-        pane.addArrangedSubview(fixed("Debug Process As", radios(["Me (\(NSUserName()))", "root"], selected: 0)))
-        let lldb = NSTextField(string: "")
-        lldb.placeholderString = "$(SRCROOT)/LLDBInitFile"
-        lldb.isEnabled = false
-        pane.addArrangedSubview(fixed("LLDB Init File", lldb))
+        debuggerRows(element, label: "Debugger")
         // The test action's own sanitizers (schemes.md §Diagnostics).
         for (n, r) in Self.diagnosticRows.prefix(4).enumerated() {
             pane.addArrangedSubview(fixedEnabled(n == 0 ? "Diagnostics" : "", sanitizerCheck(r.title, indent: r.indent, element: element)))
@@ -662,16 +771,73 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
     /// The bottom bar's Shared checkbox (moves the file; see Manage Schemes).
     public let sharedCheck = NSButton(checkboxWithTitle: "Shared", target: nil, action: nil)
     @objc private func sharedToggled(_ b: NSButton) {
-        do { try scheme.setShared(b.state == .on) } catch { b.state = scheme.isShared ? .on : .off; NSSound.beep() }
+        do {
+            // An autocreated scheme gets its file first, then moves.
+            if let url = scheme.url, !FileManager.default.fileExists(atPath: url.path) { writeScheme(force: true) }
+            try scheme.setShared(b.state == .on)
+        } catch { b.state = scheme.isShared ? .on : .off; NSSound.beep() }
     }
     @objc private func manage() { onManage?() }
 
-    /// Close writes the scheme if it changed, then dismisses.
+    /// Close writes the scheme if it changed, then dismisses. An
+    /// autocreated scheme is written only when it was changed.
     @objc public func closeSheet() {
-        try? scheme.save()
+        writeScheme(force: false)
         onClose?(scheme)
         if presentingViewController != nil { dismiss(nil) }
     }
+
+    private var autocreatedWritten = false
+
+    private func writeScheme(force: Bool) {
+        let firstWrite = isAutocreated && !autocreatedWritten
+        if firstWrite && !force && scheme.serialized() == openedText { return }
+        guard (try? scheme.save()) == true || !firstWrite else { return }
+        if firstWrite {
+            autocreatedWritten = true
+            onAutocreatedSaved?(scheme)
+        }
+    }
+
+    /// Duplicate Scheme: a copy named "<name> Copy" (then " Copy 2" …)
+    /// next to the scheme's file, shared like it.
+    @discardableResult
+    public func duplicateScheme() -> Scheme? {
+        guard let url = scheme.url else { NSSound.beep(); return nil }
+        // An autocreated scheme is written first, so it stays listed.
+        if isAutocreated { writeScheme(force: true) }
+        let dir = url.deletingLastPathComponent()
+        var name = "\(scheme.name) Copy"
+        var n = 2
+        while FileManager.default.fileExists(atPath: dir.appendingPathComponent("\(name).xcscheme").path) {
+            name = "\(scheme.name) Copy \(n)"
+            n += 1
+        }
+        var copy = scheme
+        copy.name = name
+        copy.url = dir.appendingPathComponent("\(name).xcscheme")
+        guard (try? copy.save()) == true else { NSSound.beep(); return nil }
+        onDuplicate?(copy)
+        return copy
+    }
+
+    @objc private func duplicateClicked() { duplicateScheme() }
+
+    /// Escape (and ⌘.): ends the text editing in progress, discarding the
+    /// typed value; with nothing being edited, closes the sheet (P-110).
+    @discardableResult
+    public func escapePressed() -> Bool {
+        guard isViewLoaded, let w = view.window else { closeSheet(); return true }
+        if let editor = w.firstResponder as? NSTextView, editor.isFieldEditor, let field = editor.delegate as? NSTextField {
+            field.abortEditing()
+            w.makeFirstResponder(actionList)
+            return true
+        }
+        closeSheet()
+        return true
+    }
+
+    public override func cancelOperation(_ sender: Any?) { escapePressed() }
 
     /// Replaces the arguments (as the table would) — for tests and scripting.
     public func setArguments(_ args: [Scheme.Argument]) {
@@ -774,8 +940,10 @@ public final class ManageSchemesController: NSViewController, NSTableViewDataSou
         view = root
     }
 
-    /// The Shared checkbox: moves the file between shared and user data.
+    /// The Shared checkbox: moves the file between shared and user data
+    /// (an autocreated scheme is written first, P-108).
     public func setShared(_ shared: Bool, at index: Int, user: String = NSUserName()) throws {
+        if let url = schemes[index].url, !FileManager.default.fileExists(atPath: url.path) { try schemes[index].save() }
         try schemes[index].setShared(shared, user: user)
         if isViewLoaded { table.reloadData() }
     }
@@ -883,4 +1051,31 @@ final class SchemeActionCell: NSTableCellView {
 final class SanitizerBox: NSButton {
     var key: WritableKeyPath<SchemeDiagnostics, Bool>?
     var element = "LaunchAction"
+}
+
+/// A zero-size view in the scheme editor that takes Escape and ⌘. as key
+/// equivalents, before the field editor or the window see them (P-110).
+@MainActor
+final class SchemeEditorEscapeView: NSView {
+    let onEscape: () -> Bool
+
+    init(_ onEscape: @escaping () -> Bool) {
+        self.onEscape = onEscape
+        super.init(frame: .zero)
+        setAccessibilityElement(false)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    static func isEscape(_ e: NSEvent) -> Bool {
+        guard e.type == .keyDown else { return false }
+        let mods = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if e.keyCode == 53 && mods.subtracting([.function, .numericPad]).isEmpty { return true }
+        return mods == .command && e.charactersIgnoringModifiers == "."
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        Self.isEscape(event) ? onEscape() : false
+    }
 }

@@ -126,7 +126,7 @@ struct CenterToolbar: View {
             SchemeCapsule(model: model, app: app, glyphsOnly: fit.schemeGlyphsOnly)
                 .padding(.leading, 8)
             IssueCapsule(summary: model.issueSummary, symbolsOnly: fit.schemeGlyphsOnly, underSheet: model.sourceControl.isMergeModalShown) {
-                model.perform(.showIssueNavigator)
+                model.showNavigator(.issues)
             }   // ToolbarChrome.swift
                 .padding(.leading, model.issueSummary.isEmpty ? 0 : CGFloat(IssueSummary.Capsule.gapAfterScheme))
             Spacer(minLength: 8)
@@ -161,7 +161,7 @@ struct ActivityView: View {
         HStack(spacing: 8) {
             // Ycode's mark in a 19.5-point box, centred on the title's line,
             // the title 8 after it; the build ring while busy (row 212; TitleMark.swift).
-            TitleMark(isBusy: model.isBusy, activity: model.activityText)
+            TitleMark(isBusy: model.isBusy, isPaused: model.isActivityPaused, activity: model.activityText)
             VStack(alignment: .leading, spacing: 0) {
                 Text(verbatim: model.workspaceName).font(ShellFonts.activityName).foregroundStyle(c.label).lineLimit(1)
                 if !model.activityText.isEmpty {

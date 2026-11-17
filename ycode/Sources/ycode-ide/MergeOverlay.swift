@@ -54,7 +54,7 @@ struct MergeOverlayLayer: View {
                         .shellTarget("merge veil")
                 }
                 if let e = sheet {
-                    let f = MergeSheetMetrics.sheetFrame(window: size, toolbarBottom: WorkspaceChrome.toolbarHeight)
+                    let f = Self.sheetFrame(window: size)
                     MergeSheetView(scm: scm, editor: e, isClosing: sheetClosing)
                         .frame(width: CGFloat(f.width), height: CGFloat(f.height))
                         .compositingGroup()
@@ -211,5 +211,20 @@ struct MergeButtonLabel: View {
             .frame(width: width, height: height)
             .background { RoundedRectangle(cornerRadius: cornerRadius ?? height / 2, style: .continuous).fill(Color(mergeHex: fill)) }
             .contentShape(Rectangle())
+    }
+}
+
+extension MergeOverlayLayer {
+    /// How far the macOS sheet hangs below its window (§14.1): its buttons'
+    /// row and bottom margin, less the content box's inset (28 points).
+    static var macOSOverflow: Double {
+        MergeSheetMetrics.buttonGap + MergeSheetMetrics.buttonHeight + MergeSheetMetrics.bottomMargin - MergeSheetMetrics.boxBottomInset
+    }
+
+    /// The sheet's frame in the Linux window: the overlay cannot draw past
+    /// the window's edge, so the sheet is laid out for a window shorter by
+    /// that overflow and Cancel and Merge stay inside it (P-215, P-131).
+    static func sheetFrame(window size: (width: Double, height: Double)) -> MergeSheetMetrics.Rect {
+        MergeSheetMetrics.sheetFrame(window: (size.width, size.height - macOSOverflow), toolbarBottom: WorkspaceChrome.toolbarHeight)
     }
 }

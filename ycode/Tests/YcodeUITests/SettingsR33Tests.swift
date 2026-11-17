@@ -213,7 +213,9 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         _ = try WindowSnapshotTests().render(pane.view, to: "settings-editing-display.png")
     }
 
-    @Test func appearanceAndBehaviorsPanes() throws {
+    // Writer: choosing Dark on the shared Preferences repaints every
+    // workspace window of the process.
+    @Test(.appearanceWriter) func appearanceAndBehaviorsPanes() throws {
         try withPrefs("appearance") { p, _ in
             let pane = ThemesSettingsPane(prefs: p)
             _ = pane.view

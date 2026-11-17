@@ -47,7 +47,7 @@ extension WorkspaceWindowController {
             a.setCounterparts(list.map { (URL(fileURLWithPath: $0).lastPathComponent, $0) }) { [weak self, weak a] p in
                 if let self, let a { self.open(path: p, line: nil, in: a) }
             }
-            if let first = list.first { if a.fileURL?.path != first { open(path: first, line: nil, in: a) } } else { a.showText("No Editor", title: "No Editor") }
+            if let first = list.first { if a.fileURL?.path != first { open(path: first, line: nil, in: a) } } else { a.showNoEditor() }
         }
         switch mode {
         case "Extensions": showFiles(AssistantModeCatalog.extensions(of: current, in: files, readFile: read))
@@ -55,13 +55,13 @@ extension WorkspaceWindowController {
         case "Included By": showFiles(AssistantModeCatalog.includedBy(current, in: files, readFile: read))
         case "Generated Interface":
             let text = read(current).map(AssistantModeCatalog.generatedInterface) ?? ""
-            a.showText(text.isEmpty ? "No Editor" : text, title: URL(fileURLWithPath: current).lastPathComponent + " (Interface)")
+            if text.isEmpty { a.showNoEditor() } else { a.showText(text, title: URL(fileURLWithPath: current).lastPathComponent + " (Interface)") }
         case "Documentation Preview":
             let text = read(current).map(AssistantModeCatalog.documentationPreview) ?? ""
-            a.showText(text.isEmpty ? "No Editor" : text, title: URL(fileURLWithPath: current).lastPathComponent + " (Documentation)")
+            if text.isEmpty { a.showNoEditor() } else { a.showText(text, title: URL(fileURLWithPath: current).lastPathComponent + " (Documentation)") }
         case "Callers", "Callees":
             let e = editor
-            guard let language = session.language, let url = e.fileURL else { a.showText("No Editor", title: "No Editor"); return }
+            guard let language = session.language, let url = e.fileURL else { a.showNoEditor(); return }
             let p = e.textView.lineIndex.position(at: e.textView.selectedRange().location)
             assistantExtra.task = Task { [weak self, weak a] in
                 let items = (try? await language.client.prepareCallHierarchy(url, at: p)) ?? []
@@ -77,11 +77,11 @@ extension WorkspaceWindowController {
                 if let f = found.first {
                     self.open(path: f.url.standardizedFileURL.path, line: f.selection.line + 1, in: a)
                 } else {
-                    a.showText("No Editor", title: "No Editor")
+                    a.showNoEditor()
                 }
             }
         default:
-            a.showText("No Editor", title: "No Editor")
+            a.showNoEditor()
         }
     }
 }

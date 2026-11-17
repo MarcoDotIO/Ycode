@@ -159,6 +159,11 @@ final class SourceEditorController {
         let digits = String(buffer.lineCount).count
         return max(CGFloat(EditorMetrics.codeColumn), CGFloat(digits) * 6.6 + 18)
     }
+    /// Whether a viewport x is in the folding ribbon's column, the 12
+    /// points before the code (shown or not).
+    func isInRibbonColumn(_ x: CGFloat) -> Bool {
+        x < gutterWidth && x >= gutterWidth - CGFloat(WorkspaceChrome.foldingRibbonWidth)
+    }
     var numberRight: CGFloat { gutterWidth - CGFloat(EditorMetrics.codeColumn - EditorMetrics.lineNumberEnd) - EditorCell.numberInset }
     var textOrigin: CGFloat { gutterWidth }
 
@@ -491,6 +496,14 @@ final class SourceEditorController {
         lastClick = (time, p, count)
         let o = offset(at: p)
         let b = buffer
+        if isInRibbonColumn(p.x), !shift {
+            // The ribbon's column before the code: the caret, never a
+            // breakpoint (P-059, as the macOS gutter).
+            b.setCaret(o)
+            dragStart = nil
+            noteActivity(reveal: false)
+            return
+        }
         if p.x < gutterWidth, !shift, count == 1, onGutterDiamondClick(b.document.line(containing: o) + 1) {
             // A test diamond runs its test.
             dragStart = nil
@@ -686,10 +699,14 @@ final class SourceEditorController {
         }
     }
 
-    /// Text typed: the list follows the word; a "." asks for members.
+    /// Text typed: the list follows the word; the start of a word or a "."
+    /// asks for completions, and a growing word asks again while the list
+    /// is incomplete (`EditorCompletion.shouldRequest`, P-080).
     func typed(_ text: String) {
         if completion != nil { refilterCompletion() }
-        if text == ".", ShellPreferences.completionWhileTyping { triggerCompletion(automatic: true) }
+        guard ShellPreferences.completionWhileTyping,
+              EditorCompletion.shouldRequest(typed: text, in: buffer, showing: completion?.all) else { return }
+        triggerCompletion(automatic: true)
     }
 
     /// The list's frame in the editor (nil when hidden), and its first row.

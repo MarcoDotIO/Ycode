@@ -87,7 +87,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             wc.setLeftPane(codingAssistant: false)
             #expect(!wc.navigator.showsCodingAssistant && wc.leftPanesControl.isSelected(forSegment: 0))
             // Menus: Integrate, bookmarks, unavailable items disabled.
-            #expect(CommandTable.command(titled: "Bookmark Line") != nil && CommandTable.command(titled: "Jump to Next Bookmark") != nil)
+            #expect(CommandTable.command(titled: "Add Line Bookmark") != nil && CommandTable.command(titled: "Jump to Next Bookmark") != nil)
             let unavailable = CommandTable.command(titled: "Ycode Extensions…")
             #expect(unavailable?.action.hasPrefix("ycodeUnavailable") == true)
             #expect(!wc.responds(to: Selector(unavailable!.action)))

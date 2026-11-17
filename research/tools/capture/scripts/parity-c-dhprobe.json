@@ -1,0 +1,98 @@
+{
+ "name": "parity-c-dhprobe",
+ "title": "Part C probe 3 (not judged): Device Hub's and Ycode's Device Hub AX names and menu bars.",
+ "targets": [
+  "devicehub",
+  "ycode"
+ ],
+ "compare_order": [
+  "devicehub",
+  "ycode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 1.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.2
+ },
+ "steps": [
+  {
+   "id": "rest",
+   "note": "At rest, sidebar shown. AX tree and menu bar.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    },
+    {
+     "menubar": "rest"
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "project": {
+  "generator": "make-test-project.py",
+  "path": "GlassScroll/GlassScroll.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1100,
+   800
+  ],
+  "display": "builtin",
+  "title": "ycode-test-parity-iphone",
+  "wait_title": null,
+  "first_window_wait": 6.0,
+  "timeout": 90
+ },
+ "per_target_setup": {
+  "devicehub": [
+   {
+    "menu": "View > Show Sidebar"
+   },
+   {
+    "wait": 1.0
+   },
+   {
+    "select": {
+     "role": "AXRow",
+     "text~": "ycode-test-parity-iphone",
+     "scope": "app"
+    }
+   },
+   {
+    "wait": 2.0
+   }
+  ],
+  "ycode": [
+   {
+    "menu": "Ycode > Open Developer Tool > Device Hub"
+   },
+   {
+    "wait": 3.0
+   },
+   {
+    "select": {
+     "role": "AXRow",
+     "text~": "ycode-test-parity-iphone",
+     "scope": "app"
+    }
+   },
+   {
+    "wait": 2.0
+   }
+  ]
+ },
+ "project_targets": [
+  "ycode"
+ ],
+ "setup_settle": 2.0
+}

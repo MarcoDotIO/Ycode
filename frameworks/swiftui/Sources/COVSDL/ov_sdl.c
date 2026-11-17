@@ -76,6 +76,8 @@ const OVSDLAPI *ov_sdl_load(const char *path, char *error, size_t error_len) {
     OV_RESOLVE(GetWindowID);
     OV_RESOLVE(GetWindowSize);
     OV_RESOLVE(SetWindowSize);
+    OV_RESOLVE(SetWindowMinimumSize);
+    OV_RESOLVE(SetWindowMaximumSize);
     OV_RESOLVE(GetWindowSizeInPixels);
     OV_RESOLVE(GetWindowDisplayScale);
     OV_RESOLVE(SetWindowTitle);

@@ -9,6 +9,7 @@ New here? Start with the [README](../README.md). It says what Ycode is, what wor
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the IDE is put together: what is reused, what is rebuilt, the modules, the milestones |
 | [PARITY.md](PARITY.md) | The feature-by-feature audit against Xcode 27.1 and its developer tools, and the Linux IDE's plan |
 | [FUTURE.md](FUTURE.md) | The roadmap |
+| [ROADMAP-1.0.md](ROADMAP-1.0.md) | The plan from 1.0.0-beta.4 to 1.0.0: the release train that closes the parity inventory |
 | [SIMULATOR.md](SIMULATOR.md) | The simulator: where it stands, what it needs, and why it works the way it does |
 | [SIMULATOR-LINUX.md](SIMULATOR-LINUX.md) | The simulator's design, and how to build and run it on arm64 Linux |
 | [SCENE-COMPOSER.md](SCENE-COMPOSER.md) | The design of the Scene Composer |

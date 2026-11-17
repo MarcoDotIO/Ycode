@@ -129,6 +129,10 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     public static let symbols = WorkspaceChrome.navigatorSymbols
 
     public private(set) var selectedIndex = 0
+    /// The project rows selected (and the list's scroll position) while
+    /// another navigator is shown: the band comes back with the Project
+    /// navigator (P-035).
+    private var parkedProjectRows: (keys: [String], scroll: NSPoint?) = ([], nil)
     public var onOpen: ((String, Int?) -> Void)?
     /// Set while the window selects the row of a file it opened.
     let selectionFromOpen = FlagBox()
@@ -226,11 +230,20 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             guard let v = assistantContent else { return }
             v.translatesAutoresizingMaskIntoConstraints = false
             assistantContainer.addSubview(v)
+            // The pane takes the left area's width and never sets it (P-026:
+            // ⌘0 keeps the navigator's width, and so does ⌘1 after it). A
+            // control that cannot be narrower is cut at the area's edge
+            // instead of widening the area: the content is at least as wide
+            // as the area, and as wide only as far as it can be. The fill
+            // outranks the labels' low compression resistance (they wrap or
+            // truncate) and stays under the split view's hold on its divider.
+            let fill = v.widthAnchor.constraint(equalTo: assistantContainer.widthAnchor)
+            fill.priority = .init(rawValue: 260)
             NSLayoutConstraint.activate([
                 v.topAnchor.constraint(equalTo: assistantContainer.topAnchor),
                 v.bottomAnchor.constraint(equalTo: assistantContainer.bottomAnchor),
                 v.leadingAnchor.constraint(equalTo: assistantContainer.leadingAnchor),
-                v.trailingAnchor.constraint(equalTo: assistantContainer.trailingAnchor),
+                v.widthAnchor.constraint(greaterThanOrEqualTo: assistantContainer.widthAnchor), fill,
             ])
         }
     }
@@ -241,7 +254,10 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             if showsCodingAssistant && assistantContent == nil { onShowCodingAssistant?() }
             if oldValue != showsCodingAssistant { onContentChange?() }
             guard isViewLoaded else { return }
-            for v in view.subviews where v !== assistantContainer { v.isHidden = showsCodingAssistant }
+            // The dark fill stays under the Coding Assistant pane too (P-026:
+            // the reference's pane is #28292A; hiding the fill left the
+            // sidebar material's #242528).
+            for v in view.subviews where v !== assistantContainer && v !== darkFill { v.isHidden = showsCodingAssistant }
             assistantContainer.isHidden = !showsCodingAssistant
             if !showsCodingAssistant { select(selectedIndex) }
         }
@@ -558,7 +574,8 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             findScopeTop,
             findScope.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 4),
             reportScopeTop,
-            reportScope.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            reportScope.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            reportScope.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             // Across the navigator, 9 from each side, 16 tall, centred in
             // the header row (navigators.md round 3 §2; row 114).
             sourceControlMode.centerYAnchor.constraint(equalTo: reportScope.centerYAnchor, constant: CGFloat(RepositoriesViewStyle.modeControlDrop)),
@@ -605,11 +622,6 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         scopeHeight.isActive = true
         reportScopeHeight = reportScope.heightAnchor.constraint(equalToConstant: 0)
         reportScopeHeight.isActive = true
-        reportScope.selectedSegment = 0
-        for (i, t) in NavigatorBars.reportScopeToolTips.enumerated() { reportScope.setToolTip(t, forSegment: i) }
-        reportScope.target = self
-        reportScope.action = #selector(reportScopeChanged)
-        reportScope.controlSize = .small
         reportScope.isHidden = true
         configureTestHeader()
         // 16 tall with 10-point titles ("Changes" ink 45 wide; row 114).
@@ -622,6 +634,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         sourceControlMode.target = self
         sourceControlMode.action = #selector(sourceControlModeChanged)
         assistantContainer.isHidden = true
+        assistantContainer.clipsToBounds = true
         assistantContainer.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(assistantContainer)
         NSLayoutConstraint.activate([
@@ -1221,11 +1234,12 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     /// Report navigator (reference-ui-2.md §4): one group per scheme,
     /// then "Package"; rows "<action>  <day>, <time>", newest first, with an
     /// error badge when failed; a test run is "<scheme>/<plan>" with
-    /// Insights, Coverage, Tests, Log and Build under it. The Local | Cloud
-    /// switch and the clock (recent only) toggle filter the rows.
+    /// Insights, Coverage, Tests, Log and Build under it. The clock (recent
+    /// only) toggle filters the rows; there is no Local | Cloud control
+    /// (owner decision 5, 2026-11-16: no cloud entries).
     public func setReports(_ reports: [BuildReport]) {
         allReports = reports
-        let location: ReportLocation = reportScope.selectedSegment == 1 ? .cloud : .local
+        let location = ReportLocation.local
         func item(_ r: ReportNavigatorModel.Row) -> OutlineItem {
             let o = OutlineItem(title: r.title, symbol: r.symbol, tint: r.failed ? Theme.errorColor : .secondaryLabelColor,
                                 children: r.children.map(item), reportIndex: r.index)
@@ -1244,10 +1258,11 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     private var allReports: [BuildReport] = []
     /// The Report navigator's clock toggle: only reports from the last day.
     public var reportsRecentOnly = false { didSet { syncToggleStates(); setReports(allReports) } }
-    @objc private func reportScopeChanged() { setReports(allReports) }
 
-    /// Report navigator's Local | Cloud control (Cloud: not available).
-    public let reportScope = NSSegmentedControl(labels: ["Local", "Cloud"], trackingMode: .selectOne, target: nil, action: nil)
+    /// The header row's slot under the selector (an empty, hidden view the
+    /// Source Control and Test headers are placed on; it held the Report
+    /// navigator's Local | Cloud control, removed by owner decision 5).
+    let reportScope = NSView()
     /// Called with a report and a page ("Insights", "Coverage", "Tests", "Log", "Build").
     public var onOpenReportPage: ((Int, String) -> Void)?
 
@@ -1508,28 +1523,42 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
 
     private func reloadIfShowing(_ i: Int) {
         guard isViewLoaded, selectedIndex == i else { return }
+        // The project rows keep their selection band through a reload (a
+        // source-control status read arriving after a file opens removed it,
+        // P-035: the reference keeps the open file's row selected).
+        let kept = i == 0 ? selectedProjectRowKeys() : []
+        let scroll = i == 0 && !kept.isEmpty ? outline.enclosingScrollView?.contentView.bounds.origin : nil
         refilter()
         outline.reloadData()
+        if i == 0 && !kept.isEmpty {
+            if projectFilterActive { outline.expandItem(nil, expandChildren: true) } else { restoreProjectExpansion() }
+            reselectProjectRows(kept, scrollOrigin: scroll)
+        }
         updateEmpty()
     }
 
     // MARK: Selection
 
     public func select(_ index: Int) {
+        // The navigators share one outline, so a switch reloads it: the
+        // project rows' selection is kept aside and put back (P-035: after
+        // ⌘2–⌘5 and ⌘1 the open file's row has its band again).
+        if isViewLoaded, selectedIndex == 0 {
+            parkedProjectRows = (selectedProjectRowKeys(), outline.enclosingScrollView?.contentView.bounds.origin)
+        }
         selectedIndex = index
         filter.stringValue = filterTexts[index] ?? ""
         refilter()
         findHeight?.constant = index == 3 ? 22 : 0
         optionsHeight?.constant = index == 3 ? 18 : 0
         scopeHeight?.constant = index == 3 ? 18 : 0
-        let headerBar = index == 8 || index == 1 || index == 5
+        let headerBar = index == 1 || index == 5
         reportScopeHeight?.constant = headerBar ? 20 : 0
         // Hidden header rows take no spacing either (N3).
         for c in [findOptionsTop, findFieldTop, findScopeTop] as [NSLayoutConstraint?] { c?.constant = index == 3 ? 2 : 0 }
         reportScopeTop?.constant = headerBar ? 2 : 0
         // Source Control's rows follow its control 2 lower (H.9, row 166).
         scrollTop?.constant = (headerBar || index == 3 ? 4 : 0) + (index == 1 ? CGFloat(RepositoriesViewStyle.modeControlDrop) : 0)
-        reportScope.isHidden = index != 8
         sourceControlMode.isHidden = index != 1
         testHeader.isHidden = index != 5
         // Bookmark rows (Mark as Done), project rows (the file operations),
@@ -1548,6 +1577,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         view.needsLayout = true
         outline.reloadData()
         if index == 1 { expandSourceControlRows(keeping: nil) } else if index != 0 { outline.expandItem(nil, expandChildren: true) } else if projectFilterActive { outline.expandItem(nil, expandChildren: true) } else { restoreProjectExpansion() }
+        if index == 0 { reselectProjectRows(parkedProjectRows.keys, scrollOrigin: parkedProjectRows.scroll) }
         updateEmpty()
         onShownViewChange?()
     }
@@ -1795,6 +1825,7 @@ extension NavigatorAreaController {
 
     public func outlineViewSelectionDidChange(_ notification: Notification) {
         openSelectedProjectFile()
+        inspectSelectedProjectFolder()   // P-089, +FolderInspection.swift
         if selectedIndex == 3 { findSelectionChanged() }
         // The selected issue (bookmark, find result) grows to show all of it.
         guard [2, 3, 4].contains(selectedIndex) else { return }
