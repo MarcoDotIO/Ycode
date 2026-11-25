@@ -45,7 +45,7 @@ struct IssueCapsule: View {
                         .frame(height: CGFloat(k.height))
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ToolbarGlassStyle(kind: .issueCapsule))   // P-198
                     .help(symbolsOnly ? summary.parts.map { "\($0.count) \($0.kind.title)" }.joined(separator: ", ") : part.kind.title)
                     .accessibilityLabel(part.kind.title)
                     .shellTarget("tb issues \(part.kind.title.lowercased())")
@@ -143,33 +143,6 @@ struct IssueCross: Shape {
     }
 }
 
-/// The toolbar's overflow control (G.4): a glass circle with "»" whose
-/// menu holds the items that left the toolbar (the editor modes, as
-/// "Editor Modes" with its three modes), at full size from its first frame.
-struct ToolbarOverflowMenu: View {
-    var model: WorkspaceShellModel
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        let c = ShellColors(scheme)
-        Menu {
-            Menu("Editor Modes") {
-                Button("Canvas") { model.perform(.toggleCanvas) }.disabled(!model.isEnabled(.toggleCanvas))
-                Button("Assistant") {}.disabled(true)
-                Button("Code Review") {}.disabled(true)
-            }
-        } label: {
-            Text(verbatim: "\u{00BB}").font(.system(size: 17)).foregroundStyle(c.toolbarIcon)
-                .frame(width: CGFloat(WorkspaceChrome.toolbarItemHeight), height: CGFloat(WorkspaceChrome.toolbarItemHeight))
-                .background { Circle().fill(c.capsuleFill) }
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .help("Show more toolbar items")
-        .shellTarget("tb overflow")
-    }
-}
-
 /// Add Editor and Editor Options in one capsule (81 wide with its rim, as
 /// the AppKit toolbar's). Add Editor is a pull-down, as the AppKit item's
 /// (`EditorOptionsMenu.addItems`): Tab (the Linux IDE has no editor tabs),
@@ -177,6 +150,9 @@ struct ToolbarOverflowMenu: View {
 /// Editor Options a pull-down too (EditorOptionsMenu.swift).
 struct AddEditorGroup: View {
     var model: WorkspaceShellModel
+    /// Short of room either half can leave for the "»" menu (P-025).
+    var showsAdd = true
+    var showsOptions = true
     @Environment(\.colorScheme) private var scheme
 
     static let segmentWidth: CGFloat = 31.5
@@ -186,31 +162,37 @@ struct AddEditorGroup: View {
         let canSplit = model.isEnabled(.splitEditor)
         let w = Self.segmentWidth + 6, h = CGFloat(WorkspaceChrome.toolbarItemHeight)
         HStack(spacing: 0) {
-            Menu {
-                AddEditorMenuItems(model: model)   // EditorOptionsMenu.swift (P-065)
-            } label: {
-                Image(systemName: WorkspaceChrome.addEditor.symbols[0]).font(.system(size: 15)).foregroundStyle(c.toolbarIcon)
-                    .opacity(canSplit ? 1 : ShellColors.disabledGlyphOpacity)
-                    .frame(width: w, height: h)
-                    .contentShape(Rectangle())
+            if showsAdd {
+                Menu {
+                    AddEditorMenuItems(model: model)   // EditorOptionsMenu.swift (P-065)
+                } label: {
+                    Image(systemName: WorkspaceChrome.addEditor.symbols[0]).font(.system(size: 15))
+                        .foregroundStyle(ControlStates.toolbarGlyph(enabled: canSplit, normal: c.toolbarIcon, scheme))
+                        .frame(width: w, height: h)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.borderlessButton)
+                .hoverBezel(.toolbarSegment, radius: 14, height: ControlStates.toolbarBezelHeight)   // P-198
+                .fixedSize()
+                .help(WorkspaceChrome.addEditor.toolTips[0])
+                .accessibilityLabel("Add Editor")
+                .shellTarget("tb add editor")
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help(WorkspaceChrome.addEditor.toolTips[0])
-            .accessibilityLabel("Add Editor")
-            .shellTarget("tb add editor")
-            Menu {
-                EditorOptionsMenuItems(model: model, revision: ShellPreferences.shared.revision)   // EditorOptionsMenu.swift (P-065)
-            } label: {
-                Image(systemName: WorkspaceChrome.editorOptions.symbols[0]).font(.system(size: 15)).foregroundStyle(c.toolbarIcon)
-                    .frame(width: w, height: h)
-                    .contentShape(Rectangle())
+            if showsOptions {
+                Menu {
+                    EditorOptionsMenuItems(model: model, revision: ShellPreferences.shared.revision)   // EditorOptionsMenu.swift (P-065)
+                } label: {
+                    Image(systemName: WorkspaceChrome.editorOptions.symbols[0]).font(.system(size: 15)).foregroundStyle(c.toolbarIcon)
+                        .frame(width: w, height: h)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.borderlessButton)
+                .hoverBezel(.toolbarSegment, radius: 14, height: ControlStates.toolbarBezelHeight)   // P-198
+                .fixedSize()
+                .help(WorkspaceChrome.editorOptions.toolTips[0])
+                .accessibilityLabel("Editor Options")
+                .shellTarget("tb editor options")
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help(WorkspaceChrome.editorOptions.toolTips[0])
-            .accessibilityLabel("Editor Options")
-            .shellTarget("tb editor options")
         }
         .padding(.horizontal, 4)
         .background { GlassCapsule(fill: c.capsuleFill) }

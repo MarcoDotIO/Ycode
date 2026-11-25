@@ -286,14 +286,14 @@ import YcodeProject
         let expected: [Row] = [
             Row(left: .some(nil), toggles: ["Recent files", "Files with source-control status"],
                 tips: ["Show only recent files", "Show only files with source-control status"], on: [false, false], empty: []),
-            // Source Control: the filter alone, no options button (navigators.md round 3 §2).
-            Row(left: nil, toggles: [], tips: [], on: [], empty: ["No Repository"]),
+            // Source Control: the action (…) button (P-040), "No Git Repositories" (P-039).
+            Row(left: .some("More"), toggles: [], tips: [], on: [], empty: ["No Git Repositories"]),
             Row(left: .some("More"), toggles: ["Incomplete Items"], tips: ["Show only incomplete items"], on: [false],
                 empty: ["No Bookmarks", "Click the '…' button to add bookmarks"]),
             Row(left: nil, toggles: [], tips: [], on: [], empty: []),
             Row(left: nil, toggles: ["Show only latest issues", "Only errors"],
                 tips: ["Show only issues from open documents and recently built sources", "Show only errors"], on: [false, false], empty: ["No Issues"]),
-            Row(left: .some("Add a new test target or class"), toggles: ["Show Only Included Tests", "Recent Tests"],
+            Row(left: .some("More"), toggles: ["Show Only Included Tests", "Recent Tests"],
                 tips: ["Show Only Included Tests", "Show only recent tests and open documents"], on: [false, false],
                 empty: ["No Tests", "Click the \u{2295} button to add test targets"]),
             Row(left: nil, toggles: ["Show compressed stack frames", "Show only interesting content", "Show only running blocks"],
@@ -301,7 +301,7 @@ import YcodeProject
                        "Show only running blocks when in Queues view"], on: [true, false, true], empty: ["No Debug Session"]),
             Row(left: .some("Create a breakpoint"), toggles: ["Modified breakpoints", "Enabled breakpoints"],
                 tips: ["Show only modified breakpoints", "Show only enabled breakpoints"], on: [false, false], empty: ["No Breakpoints"]),
-            Row(left: .some(nil), toggles: ["Recent reports filter"], tips: ["Show only recent reports"], on: [false], empty: ["No Logs"]),
+            Row(left: .some("More"), toggles: ["Recent reports filter"], tips: ["Show only recent reports"], on: [false], empty: ["No Logs"]),
         ]
         for (i, row) in expected.enumerated() {
             nav.select(i)
@@ -324,11 +324,12 @@ import YcodeProject
         #expect(nav.testModeControl.selectedSegment == 0 && nav.testModeControl.accessibilityLabel() == "Mode")
         nav.select(3)
         #expect(nav.findCaseToggle.toolTip == "Case Sensitive" && nav.testHeader.isHidden)
-        // Filter options list the toggles.
+        // Filter options: the recent filters and Clear Recents (P-037), then
+        // the Debug navigator's view options.
         nav.select(7)
-        #expect(nav.filterOptionTitles == ["Show Only Modified Breakpoints", "Show Only Enabled Breakpoints"])
+        #expect(nav.filterOptionTitles == ["Clear Recents"])
         nav.select(6)
-        #expect(nav.filterOptionTitles.prefix(3) == ["Show Compressed Stack Frames", "Show Only Interesting Content", "Show Only Running Blocks"])
+        #expect(nav.filterOptionTitles.prefix(3) == ["Clear Recents", "-", "View Process by Queue"])
     }
 
     @Test func togglesFilterTheirNavigators() throws {
@@ -479,7 +480,7 @@ import YcodeProject
         #expect(nav.findScope.title == "In Workspace" && nav.findScope.menu?.items.first?.title == "Workspace")
         nav.isWorkspace = false
         nav.rebuildScopeMenu()
-        #expect(nav.findScope.title == "In Project")
+        #expect(nav.findScope.title == "In Workspace")   // P-040
         nav.noteRecentSearch("alpha")
         nav.noteRecentSearch("beta")
         nav.noteRecentSearch("alpha")

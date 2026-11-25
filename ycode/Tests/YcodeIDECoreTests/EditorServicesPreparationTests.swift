@@ -19,7 +19,40 @@ import YcodeLanguage
         private var decoder = DAPFraming.Decoder()
         let delay: Double
         let publishes: Bool
-        init(delay: Double, publishes: Bool = true) { self.delay = delay; self.publishes = publishes }
+        /// Holds every publication until `release()` (a test decides when
+        /// the server answers, not the clock).
+        let held: Bool
+        private var pending: [JSON] = []
+        private var released = false
+        private var openCount = 0
+        init(delay: Double, publishes: Bool = true, held: Bool = false) {
+            self.delay = delay
+            self.publishes = publishes
+            self.held = held
+        }
+
+        /// The documents opened so far.
+        var opened: Int { lock.withLock { openCount } }
+
+        /// Publishes what was held, and from now on at once.
+        func release() {
+            let out = lock.withLock { () -> [JSON] in
+                released = true
+                defer { pending = [] }
+                return pending
+            }
+            for m in out { reply(m) }
+        }
+
+        private func publish(_ uri: JSON) {
+            let m: JSON = ["jsonrpc": "2.0", "method": "textDocument/publishDiagnostics", "params": ["uri": uri, "diagnostics": []]]
+            let hold = lock.withLock { () -> Bool in
+                guard held, !released else { return false }
+                pending.append(m)
+                return true
+            }
+            if !hold { reply(m) }
+        }
 
         func start(receiving: @escaping @Sendable (Data?) -> Void) throws { lock.withLock { self.receiving = receiving } }
 
@@ -34,10 +67,9 @@ import YcodeLanguage
                 guard let msg = try? JSON.decode(body) else { continue }
                 let method = msg["method"]?.string
                 if method == "exit" { close(); continue }
+                if method == "textDocument/didOpen" { lock.withLock { openCount += 1 } }
                 if method == "textDocument/didOpen", publishes, let uri = msg["params"]?["textDocument"]?["uri"] {
-                    DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [self] in
-                        reply(["jsonrpc": "2.0", "method": "textDocument/publishDiagnostics", "params": ["uri": uri, "diagnostics": []]])
-                    }
+                    DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [self] in publish(uri) }
                 }
                 guard let id = msg["id"], method != nil else { continue }
                 reply(["jsonrpc": "2.0", "id": id, "result": method == "initialize" ? ["capabilities": [:]] : .null])
@@ -63,19 +95,34 @@ import YcodeLanguage
         return (WorkspaceSession(model: try WorkspaceModel(url: dir)), file)
     }
 
+    /// Waits (up to `limit`) until `done` holds; the main actor stays free
+    /// meanwhile, so a loaded run only takes longer.
+    func waitUntil(_ limit: Duration = .seconds(20), _ done: () -> Bool) async -> Bool {
+        let end = ContinuousClock.now + limit
+        while !done(), ContinuousClock.now < end { try? await Task.sleep(for: .milliseconds(10)) }
+        return done()
+    }
+
+    /// The server answers when the test releases it, not after a delay, so
+    /// the checks hold at any load (they used to rest on a 200 ms sleep
+    /// and a 400 ms answer, which a loaded full run could overrun).
     @Test func subtitleStaysUntilTheRestoredEditorsHaveTheirFirstAnswer() async throws {
         let (s, file) = try session()
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()) }
         var seen: [String] = []
         s.observe { c in if c == .activity { seen.append(WorkspaceChrome.idleActivityText(preparingEditorServices: s.isPreparingEditorServices, indexing: s.isIndexing)) } }
-        let start = ContinuousClock.now
-        let task = Task { await s.startLanguageService(opening: [(file, "print(1)\n")], transport: Server(delay: 0.4)) }
-        try await Task.sleep(for: .milliseconds(200))
-        // Started, the document opened, no answer yet: still preparing.
-        #expect(s.language != nil && s.isPreparingEditorServices)
+        let server = Server(delay: 0, held: true)
+        let task = Task { await s.startLanguageService(opening: [(file, "print(1)\n")], transport: server) }
+        // Started, the document opened, no answer yet: still preparing,
+        // however long the answer takes.
+        #expect(await waitUntil { s.language != nil && server.opened == 1 })
+        #expect(s.isPreparingEditorServices)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(s.isPreparingEditorServices && s.language?.liveDiagnostics[file.standardizedFileURL.path] == nil)
+        // The first answer ends it.
+        server.release()
         await task.value
-        let took = ContinuousClock.now - start
-        #expect(!s.isPreparingEditorServices && took >= .milliseconds(380), "\(took)")
+        #expect(!s.isPreparingEditorServices)
         #expect(s.language?.liveDiagnostics[file.standardizedFileURL.path] != nil)
         #expect(seen.first == WorkspaceChrome.preparingEditorServicesText && seen.last == "")
         await s.language?.stop()

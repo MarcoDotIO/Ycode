@@ -96,7 +96,8 @@ final class SelectionPillView: NSView {
     func follow(_ target: NSView?, size: NSSize) {
         guard let target, !target.isHidden, let sup = superview, target.superview != nil else { isHidden = true; return }
         let r = sup.convert(target.bounds, from: target)
-        frame = NSRect(x: (r.midX - size.width / 2).rounded(), y: (r.midY - size.height / 2).rounded(), width: size.width, height: size.height)
+        move(to: NSRect(x: (r.midX - size.width / 2).rounded(), y: (r.midY - size.height / 2).rounded(), width: size.width, height: size.height),
+             target: target)   // SelectionPillView+Slide.swift (P-193)
         isHidden = false
         needsDisplay = true
     }

@@ -62,7 +62,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             #expect(wc.navigator.addMenuTitles == ["Bookmark File", "Bookmark Line"])
             // Project navigator: "+" and the filters.
             wc.navigator.select(0)
-            #expect(wc.navigator.addMenuTitles.first == "New File…")
+            #expect(wc.navigator.addMenuTitles.first == "New Empty File")   // P-040
             wc.navigator.filterText = "oth"
             let names = wc.navigator.rows(0).flatMap { $0.children.flatMap { $0.children.flatMap { $0.children.map(\.title) } } }
             #expect(names.contains("Other") && !names.contains("main"))  // extensions hidden by default

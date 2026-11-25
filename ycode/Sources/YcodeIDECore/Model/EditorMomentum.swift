@@ -21,8 +21,13 @@ import Foundation
 /// what is left at the edge feeds the stretch there (`TopBounce`).
 ///
 /// The gain and the floor are kept as parameters so that a later round's
-/// measurement can set them again.
+/// measurement can set them again. Beta 5 (P-078, `FlickProfile`) sets the
+/// gain again per display: round 11 at 2x found X05 stopping 206 points
+/// short of the top, round 10 at 1x 48 short; the statics below stay round
+/// 9's (one to one), an instance follows its profile.
 public struct EditorMomentum: Sendable, Equatable {
+    /// The display's flick (`FlickProfile`; round 9's by default).
+    public var profile: FlickProfile
     /// The gain's time constant (seconds): infinite, so every delta applies
     /// one to one (round 9, row 221; round 8's 1.42 s is superseded).
     public static let gainTimeConstant = Double.infinity
@@ -45,7 +50,9 @@ public struct EditorMomentum: Sendable, Equatable {
         var dy: Double
     }
 
-    public init() {}
+    public init(profile: FlickProfile = .round9) {
+        self.profile = profile
+    }
 
     /// A new momentum (or a new gesture) begins.
     public mutating func reset() {
@@ -57,10 +64,13 @@ public struct EditorMomentum: Sendable, Equatable {
     /// The gain `t` seconds after the momentum's first event.
     public static func gain(after t: Double) -> Double { exp(-max(0, t) / gainTimeConstant) }
 
+    /// This profile's gain `t` seconds after the momentum's first event.
+    public func gain(after t: Double) -> Double { exp(-max(0, t) / profile.gainTimeConstant) }
+
     /// The applied speed for events arriving at `speed` (points per second)
     /// at `time`.
     public func appliedSpeed(_ speed: Double, at time: Double) -> Double {
-        speed * Self.gain(after: time - (start ?? time))
+        speed * gain(after: time - (start ?? time))
     }
 
     /// The part of a momentum delta `dy` at `time` to apply; nil once the
@@ -75,7 +85,7 @@ public struct EditorMomentum: Sendable, Equatable {
         recent.removeAll { $0.time <= time - Self.speedWindow }
         let span = time - (recent.first?.time ?? time)
         let speed = span > 0.004 && recent.count > 1 ? recent.dropFirst().reduce(0) { $0 + $1.dy } / span : fallback
-        let g = Self.gain(after: time - first)
+        let g = gain(after: time - first)
         if time > first, abs(speed) * g < Self.stopSpeed {
             isOver = true
             return nil
@@ -85,8 +95,9 @@ public struct EditorMomentum: Sendable, Equatable {
 
     /// The distance a momentum of `events` (time, delta) applies, the speed
     /// read from successive events as the editors read it (tests, specs).
-    public static func distance(of events: [(time: Double, dy: Double)], gestureSpeed: Double) -> (distance: Double, lastMove: Double?) {
-        var m = EditorMomentum()
+    public static func distance(of events: [(time: Double, dy: Double)], gestureSpeed: Double,
+                                profile: FlickProfile = .round9) -> (distance: Double, lastMove: Double?) {
+        var m = EditorMomentum(profile: profile)
         var tracker = TopBounce.VelocityTracker()
         var total = 0.0
         var last: Double?

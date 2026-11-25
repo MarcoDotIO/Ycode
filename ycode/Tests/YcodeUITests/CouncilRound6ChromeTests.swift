@@ -178,8 +178,8 @@ extension CouncilRound6ChromeTests {
         // The hide's fast start: 16 % of the travel 21 ms in (H.2).
         let early = EditorMetrics.inspectorSlideProgress(elapsed: EditorMetrics.inspectorSlideDelay(show: false) + 0.021, show: false)
         #expect(early > 0.1 && early < 0.3, "\(early)")
-        // Round 10 (row 248): hide 200 ms, show 230 (CouncilRound10InspectorTests).
-        #expect(EditorMetrics.inspectorSlideMotion(show: false) == 0.200 && EditorMetrics.inspectorSlideMotion(show: true) == 0.230)
+        // Beta 5 (P-192): the lengths are `Motion.inspector`'s (B5MotionTests).
+        #expect(EditorMetrics.inspectorSlideMotion(show: false) == Motion.inspector(show: false).duration)
     }
 
     /// Each frame of the slide (the divider moved, the window laid out and
@@ -288,6 +288,7 @@ extension CouncilRound6ChromeTests {
         let (wc, _) = try longWindow("flick", width: 1400)
         defer { wc.window?.orderOut(nil) }
         let scroll = try #require(wc.editor.scrollView as? EditorScrollView)
+        scroll.topBounce.profile = .round9   // round 9's flick (B5: the display picks one, FlickProfile)
         let clip = scroll.contentView
         let top = EditorTopBounce.top(of: scroll)
         // Off every display the system's scroll view does not move for

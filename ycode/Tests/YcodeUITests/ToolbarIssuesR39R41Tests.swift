@@ -32,6 +32,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let dir = scratch("n1")
         defer { try? FileManager.default.removeItem(at: dir) }
         let proj = try writeToolProject(at: dir)
+        try RecommendedSettingsFixture.bringUpToDate(proj)   // the build issues alone (P-120 has its own tests)
         let session = WorkspaceSession(model: try WorkspaceModel(url: proj))
         let wc = window(session)
         let greeter = proj.deletingLastPathComponent().appendingPathComponent("Tool/Greeter.swift").path
@@ -171,9 +172,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
 
     /// Row 34 (liquid-glass.md §8.2): short of room, the scheme capsule
     /// drops its titles, then the editor-mode group goes into the system's
-    /// "»" overflow, then the subtitle truncates in the middle. Add Editor, Editor Options, the scheme and the issue capsule
-    /// stay; Show Inspector stays at the far right; a wider window undoes
-    /// it all.
+    /// "»" overflow, then the subtitle truncates in the middle, then the
+    /// right group follows into "»" (P-025, `ToolbarOverflow`): Back |
+    /// Forward and the title area stay; Show Inspector stays at the far
+    /// right; a wider window undoes it all.
     @Test func toolbarOverflowsInOrder() throws {
         let dir = scratch("t1")
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -196,13 +198,17 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             wc.fitToolbar()
             let overflow = wc.overflowedToolbarItems
             print("toolbar \(w): \(wc.toolbarFit) overflow \(overflow) scheme \(wc.schemeCapsuleWidth)")
-            #expect(Set(overflow).isSubset(of: ["editorModes", "history", "activity", "newConversation"]), "overflow at \(w): \(overflow)")
-            if overflow.contains(where: { $0 != "editorModes" }) {
-                #expect(wc.toolbarFit == ToolbarFit.steps(activityNatural: wc.activityView.naturalWidth).last, "at \(w)")
+            #expect(Set(overflow).isSubset(of: ["editorModes", "newConversation", "scheme", "issues", "addEditor", "editorOptions"]),
+                    "overflow at \(w): \(overflow)")
+            // Beyond what the content section forces (council round 12), an
+            // item leaves only once nothing else fits.
+            if !Set(overflow).isSubset(of: wc.toolbarFit.overflowAllowance) {
+                let forced = Set(ToolbarOverflow.forcedOut(content: wc.toolbarContentWidth).map(\.rawValue))
+                #expect(wc.toolbarFit.activityWidth == ToolbarFit.steps(activityNatural: wc.activityView.naturalWidth, forced: forced).last?.activityWidth, "at \(w)")
             }
             let visible = (window.toolbar?.visibleItems ?? []).map(\.itemIdentifier.rawValue)
             #expect(visible.last == "inspectorToggle")
-            #expect(Set(["addEditor", "editorOptions", "scheme", "issues"]).isSubset(of: Set(visible)))
+            #expect(Set(["history", "activity"]).isSubset(of: Set(visible)))
             #expect(wc.schemeShowsGlyphsOnly == wc.toolbarFit.schemeGlyphsOnly)
             if w == 1100 { #expect(!visible.contains("editorModes")) }
             fits[w] = wc.toolbarFit
@@ -212,14 +218,14 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         // and destination, the modes are in "»" and the scheme shows glyphs.
         #expect(fits[1100]?.editorModesInOverflow == true && fits[1100]?.schemeGlyphsOnly == true)
         // Monotone: a narrower window never gives up less.
+        // (A cap may fall between two steps: P-029 keeps the widest that fits.)
         let order = [1600, 1400, 1250, 1150, 1100, 1050].compactMap { fits[$0] }
-        let steps = ToolbarFit.steps(activityNatural: wc.activityView.naturalWidth)
-        let ranks = order.compactMap { steps.firstIndex(of: $0) }
-        #expect(ranks.count == order.count && ranks == ranks.sorted())
-        // In the "»" menu the group is "Editor Modes" with the three modes.
+        let ranks = order.map(Beta5ToolbarTests.tightness)
+        #expect(ranks.count == 6 && ranks == ranks.sorted())
+        // In the "»" menu the group is "Editor Mode" with the three modes.
         let item = try #require(window.toolbar?.items.first { $0.itemIdentifier.rawValue == "editorModes" })
         #expect(item.visibilityPriority == .low)
-        #expect(item.menuFormRepresentation?.title == "Editor Modes")
+        #expect(item.menuFormRepresentation?.title == "Editor Mode")   // the reference's toolbar name (window-layout.md §2.1)
         #expect(item.menuFormRepresentation?.submenu?.items.map(\.title) == ["Canvas", "Assistant", "Code Review"])
     }
 

@@ -374,7 +374,7 @@ public enum LayoutProbe {
         for c in toolbarControls(w) where !items.contains(where: { i in i.view.map { c === $0 || c.isDescendant(of: $0) } ?? false }) {
             let item = items.first { i in
                 if let b = c as? NSButton, let a = i.action, b.action == a { return true }
-                let label = c.accessibilityLabel() ?? c.toolTip ?? ""
+                let label = c.accessibilityLabel() ?? ToolTipPresenter.text(of: c) ?? ""
                 return !label.isEmpty && (label == i.label || label == i.toolTip)
             }
             var name: String

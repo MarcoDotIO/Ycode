@@ -10,6 +10,7 @@ extension NewProjectFlow {
         let wc = WorkspaceWindowController(session: WorkspaceSession(model: .untitled()), loadDestinations: false, startLanguageService: false,
                                            userStateURL: nil)
         wc.window?.title = "Untitled"
+        wc.makeBareChooserHost()   // P-183
         if let window = wc.window, let visible = screen?.visibleFrame {
             window.setFrame(centered(window.frame.size, in: visible), display: false)
         }

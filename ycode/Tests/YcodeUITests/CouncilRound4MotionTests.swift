@@ -112,7 +112,7 @@ import Testing
     /// stand.
     @Test func inspectorSlideFollowsTheRound4Tables() {
         let show: [(Double, Double)] = [(170, 0.07), (197, 0.10), (211, 0.24), (241, 0.36), (256, 0.52), (288, 0.75), (317, 0.79), (331, 0.83), (345, 0.97),
-                                        (358, 1)]
+                                        (EditorMetrics.inspectorSlideTotal(show: true) * 1000, 1)]
         // Round 6's hide is an ease-out (H.2): round 4's hide table, an
         // ease-in-out, is left out; so is its show (round 8), and round 9
         // (row 224) moved the show's start to about 136 ms: only its end is
@@ -126,10 +126,10 @@ import Testing
             }
             #expect((squares / Double(table.count)).squareRoot() < 0.1, "\(isShow ? "show" : "hide")")
         }
-        // Round 10 (row 248): the starts 75 and 170 ms, hide 200 ms, show 230.
-        #expect(EditorMetrics.inspectorSlideDelay(show: false) <= 0.08)
-        #expect((0.12...0.18).contains(EditorMetrics.inspectorSlideDelay(show: true)))
-        #expect(abs(EditorMetrics.inspectorSlideMotion(show: false) - 0.20) <= 0.01 && abs(EditorMetrics.inspectorSlideMotion(show: true) - 0.23) <= 0.01)
+        // Beta 5 (P-192, `Motion.inspector`) supersedes round 10's starts and lengths.
+        #expect(EditorMetrics.inspectorSlideDelay(show: false) == Motion.inspector(show: false).delay)
+        #expect(EditorMetrics.inspectorSlideDelay(show: true) == Motion.inspector(show: true).delay)
+        #expect(EditorMetrics.inspectorSlideMotion(show: false) == Motion.inspector(show: false).duration)
     }
 
     /// The slide's frames do the slide's own layout and nothing else: the

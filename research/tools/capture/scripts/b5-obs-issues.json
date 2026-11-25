@@ -1,0 +1,578 @@
+{
+ "name": "b5-obs-issues",
+ "title": "B5-OBS 5/6: an unbuilt Parity copy's project-validation warning: issue navigator row, toolbar capsule, jump bar stepper, the 'Update to recommended settings' sheet (cancelled).",
+ "targets": [
+  "xcode"
+ ],
+ "compare_order": [
+  "xcode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.0
+ },
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90,
+  "offset": [
+   1020,
+   300
+  ]
+ },
+ "steps": [
+  {
+   "id": "d-rest",
+   "note": "The unbuilt project after the wait; the toolbar's issue capsule. AX tree.",
+   "do": [
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-capsule-hover",
+   "note": "Pointer onto the toolbar's issue capsule, 1.5 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Issues"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-issue-nav",
+   "note": "cmd+5: the issue navigator. AX tree.",
+   "do": [
+    {
+     "key": "cmd+5"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "issuenav",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-jumpbar",
+   "note": "Shapes.swift in the editor: the jump bar's issue stepper.",
+   "do": [
+    {
+     "tree": "jumpbar",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-stepper-next",
+   "note": "Click the jump bar's Show Next Issue arrow. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton",
+      "description": "Show Next Issue"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "next",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-issue-click",
+   "note": "Click the warning's row in the issue navigator (its 'Update to recommended settings' child, else the warning). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "Update to recommended settings"
+     }
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "recommended"
+     },
+     "fallback": true
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "sheet",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-sheet-snap",
+   "note": "Snap of whatever is in front (the sheet).",
+   "do": [
+    {
+     "snap": "sheet",
+     "mode": "app"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-sheet-cancel",
+   "note": "Cancel (never Perform Changes).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "after",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-nav-back",
+   "note": "cmd+1, Shapes.swift.",
+   "do": [
+    {
+     "key": "cmd+1"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Shapes|Shapes.swift"
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-appearance-light",
+   "note": "Settings ▸ Appearance: Xcode's own Appearance set to Light; Settings closed.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "AppearanceLight",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "appearance",
+     "depth": 40
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-rest",
+   "note": "The unbuilt project after the wait; the toolbar's issue capsule. AX tree.",
+   "do": [
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-capsule-hover",
+   "note": "Pointer onto the toolbar's issue capsule, 1.5 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Issues"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-issue-nav",
+   "note": "cmd+5: the issue navigator. AX tree.",
+   "do": [
+    {
+     "key": "cmd+5"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "issuenav",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-jumpbar",
+   "note": "Shapes.swift in the editor: the jump bar's issue stepper.",
+   "do": [
+    {
+     "tree": "jumpbar",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-stepper-next",
+   "note": "Click the jump bar's Show Next Issue arrow. AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton",
+      "description": "Show Next Issue"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "next",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-issue-click",
+   "note": "Click the warning's row in the issue navigator (its 'Update to recommended settings' child, else the warning). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "Update to recommended settings"
+     }
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "text~": "recommended"
+     },
+     "fallback": true
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "sheet",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 1.0
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-sheet-snap",
+   "note": "Snap of whatever is in front (the sheet).",
+   "do": [
+    {
+     "snap": "sheet",
+     "mode": "app"
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-sheet-cancel",
+   "note": "Cancel (never Perform Changes).",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "after",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-nav-back",
+   "note": "cmd+1, Shapes.swift.",
+   "do": [
+    {
+     "key": "cmd+1"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Shapes|Shapes.swift"
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "z-appearance-system",
+   "note": "Settings ▸ Appearance: Xcode's own Appearance set to System; Settings closed.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "AppearanceAuto",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "appearance",
+     "depth": 40
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "z-end",
+   "note": "Back to System (dark). AX tree.",
+   "do": [
+    {
+     "tree": "end",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Shapes|Shapes.swift"
+   }
+  },
+  {
+   "wait": 20.0
+  }
+ ]
+}

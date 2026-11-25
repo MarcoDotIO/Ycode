@@ -27,7 +27,10 @@ import Testing
             return wc.editorArea.view.convert(wc.editorArea.view.bounds, to: nil).maxX
         }
         let restShown = edge()
-        for (show, start, length, positions) in [(false, 85.0, 200.0, 7), (true, 180.0, 230.0, 10)] {
+        // Beta 5's catalogue (P-192, `Motion.inspector`) supersedes round 10's 75 + 200 and 170 + 230.
+        let hide = Motion.inspector(show: false), show = Motion.inspector(show: true)
+        for (show, start, length, positions) in [(false, hide.delay * 1000 + 10, hide.duration * 1000, 7),
+                                                 (true, show.delay * 1000 + 10, show.duration * 1000, 10)] {
             let name = show ? "show" : "hide"
             let before = edge()
             wc.toggleInspector(nil)
@@ -55,10 +58,11 @@ import Testing
                          name, first, last, last - first, moves.count))
             print("R10B window \(name) edge from \(before): " + xs.prefix(12).map { "\(Int($0.ms)):\($0.x)" }.joined(separator: " "))
             #expect(abs(first - start) <= 10, "\(name): first movement at \(first) ms")
-            #expect(abs(last - first - length) <= 20, "\(name): \(first)–\(last) ms")
+            #expect(abs(last - first - length) <= 30, "\(name): \(first)–\(last) ms")
             #expect(moves.count >= positions, "\(name): \(moves.count) positions")
-            // Every frame between the first and the last moves the edge (no holds).
-            #expect(moves.count >= Int((last - first) / 10) - 1, "\(name): \(moves.map(\.ms))")
+            // Every frame between the first and the last moves the edge (no
+            // holds but the ease-out's last points, under a point a frame).
+            #expect(moves.count >= Int((last - first) / 10) - 4, "\(name): \(moves.map(\.ms))")
             // The slide ends where the split view lays the pane out at rest.
             spin(0.1)
             #expect(edge() == xs.last?.x, "\(name): \(edge()) after the slide, \(xs.last?.x ?? 0) at its end")

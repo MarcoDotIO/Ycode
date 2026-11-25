@@ -33,8 +33,6 @@ struct ShellColors {
     var content: Color { gray(255, 38) }
     /// Glass capsules' outlines.
     var capsuleStroke: Color { gray(225, 20) }
-    /// A disabled toolbar glyph's opacity over its capsule.
-    static let disabledGlyphOpacity = 0.6
     /// Glass capsules' fill (the AppKit toolbar's #ECECEC / #3A3A3A, §2).
     var capsuleFill: Color { gray(236, 58) }
     /// A toolbar segment that is on (Navigators, Canvas): the AppKit
@@ -151,15 +149,15 @@ struct GlassSegments: View {
                         Image(systemName: s.symbol)
                             .font(.system(size: symbolSize))
                             // The AppKit toolbar keeps a segment's glyph grey when
-                            // it is on; a disabled glyph reads #606060 on the dark
-                            // capsule, #ACACAC on the light one (parity §2).
-                            .foregroundStyle(c.toolbarIcon)
-                            .opacity(s.isEnabled ? 1 : ShellColors.disabledGlyphOpacity)
+                            // it is on; disabled, the state table's grey, dimmed
+                            // once (P-198, control-states.md §7).
+                            .foregroundStyle(ControlStates.toolbarGlyph(enabled: s.isEnabled, normal: c.toolbarIcon, scheme))
                     }
                     .frame(width: segmentWidth + 6, height: CGFloat(WorkspaceChrome.toolbarItemHeight))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                // P-198: hover bezel, held tint and grow (ControlStateViews.swift).
+                .buttonStyle(ToolbarGlassStyle(kind: s.isOn ? .toolbarSelectedSegment : .toolbarSegment, bezelWidth: segmentWidth + 4))
                 .disabled(!s.isEnabled)
                 .help(s.help)
                 .accessibilityLabel(s.help)
@@ -187,13 +185,14 @@ struct GlassCircleButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 15))
-                .foregroundStyle(c.toolbarIcon)
-                .opacity(isEnabled ? 1 : ShellColors.disabledGlyphOpacity)
+                .foregroundStyle(ControlStates.toolbarGlyph(enabled: isEnabled, normal: c.toolbarIcon, scheme))
                 .frame(width: diameter, height: diameter)
-                .background { Circle().fill(c.capsuleFill).overlay { Circle().stroke(c.capsuleStroke, lineWidth: 1) } }
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        // P-198: the whole circle takes the hover and held fills and grows
+        // (ControlStateViews.swift); the glass stays under it.
+        .buttonStyle(ToolbarGlassStyle(kind: .toolbarCircle, circle: true))
+        .background { Circle().fill(c.capsuleFill).overlay { Circle().stroke(c.capsuleStroke, lineWidth: 1) } }
         .disabled(!isEnabled)
         .help(help)
         .accessibilityLabel(help)

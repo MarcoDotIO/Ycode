@@ -36,6 +36,8 @@ extension AppDelegate {
         Task { @MainActor in
             let lists = await Task.detached { DevicesList.load() }.value
             let c = DevicesController(devices: lists.devices, simulators: lists.simulators)
+            // Ycode's simulators and the Mac's simctl ones operate without a workspace too.
+            c.configureStandalone()
             let w = c.makeWindow()
             c.restoreState()
             WelcomeWindows.devices = w

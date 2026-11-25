@@ -22,9 +22,12 @@ import Testing
     }
 
     @Test func startsAndLengths() {
-        #expect(EditorMetrics.inspectorSlideDelay(show: false) == 0.075 && EditorMetrics.inspectorSlideDelay(show: true) == 0.170)
-        #expect(EditorMetrics.inspectorSlideMotion(show: false) == 0.200 && EditorMetrics.inspectorSlideMotion(show: true) == 0.230)
-        for (show, start, length, positions) in [(false, 85.0, 200.0, 7), (true, 180.0, 230.0, 10)] {
+        // Beta 5's catalogue (P-192) supersedes round 10's 75 + 200 and 170 + 230.
+        let hide = Motion.inspector(show: false), show = Motion.inspector(show: true)
+        #expect(EditorMetrics.inspectorSlideDelay(show: false) == hide.delay && EditorMetrics.inspectorSlideDelay(show: true) == show.delay)
+        #expect(EditorMetrics.inspectorSlideMotion(show: false) == hide.duration && EditorMetrics.inspectorSlideMotion(show: true) == show.duration)
+        for (show, start, length, positions) in [(false, hide.delay * 1000 + 10, hide.duration * 1000, 7),
+                                                 (true, show.delay * 1000 + 10, show.duration * 1000, 10)] {
             let f = Self.frames(show: show)
             let moving = f.filter { $0.p > 0 }
             let first = moving.first?.ms ?? 0, last = f.first { $0.p >= 1 }?.ms ?? 0
@@ -39,9 +42,8 @@ import Testing
             print(String(format: "R10B %@: first motion %.0f ms, at rest %.0f ms (slide %.0f ms), %d positions at 100 Hz",
                          show ? "show" : "hide", first, last, last - first, distinct))
         }
-        // The show starts 80–110 ms after the hide does (both rounds).
-        let offset = (EditorMetrics.inspectorSlideDelay(show: true) - EditorMetrics.inspectorSlideDelay(show: false)) * 1000
-        #expect(offset >= 80 && offset <= 110)
+        // Round 10's show starting 80–110 ms after the hide is superseded:
+        // the parity run's show starts 51 ms before the hide (P-192).
     }
 
     @Test func curves() {
@@ -50,9 +52,10 @@ import Testing
         func p(_ show: Bool, _ ms: Double) -> Double {
             EditorMetrics.inspectorSlideProgress(elapsed: EditorMetrics.inspectorSlideDelay(show: show) + ms / 1000, show: show)
         }
-        // Hide (round 10's reference: 25 % at +27 ms, 63 % at +78, 96 % at +167): a fast start.
-        #expect((0.15...0.35).contains(p(false, 27)) && (0.48...0.7).contains(p(false, 78)) && p(false, 167) >= 0.9)
+        // Hide: a fast start (round 10's shape; P-192's 275 ms of motion).
+        #expect((0.1...0.35).contains(p(false, 27)) && p(false, 78) >= 0.4 && p(false, 250) >= 0.97)
         // Show: slow at both ends, half the travel about the middle.
-        #expect(p(true, 20) < 0.06 && (0.4...0.6).contains(p(true, 115)) && p(true, 210) > 0.97)
+        let half = Motion.inspector(show: true).duration * 500
+        #expect(p(true, 20) < 0.06 && (0.4...0.6).contains(p(true, half)) && p(true, half * 2 - 20) > 0.97)
     }
 }

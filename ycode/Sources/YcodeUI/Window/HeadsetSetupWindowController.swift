@@ -265,7 +265,7 @@ public final class HeadsetSetupWindowController: NSWindowController, NSWindowDel
 
     @objc func copyCommand(_ sender: NSButton) {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(sender.toolTip ?? "", forType: .string)
+        NSPasteboard.general.setString(ToolTipPresenter.text(of: sender) ?? "", forType: .string)
         assistant.statusLabel.stringValue = "Copied. Run it in a terminal on \(hub.headsetHost.title)."
     }
 

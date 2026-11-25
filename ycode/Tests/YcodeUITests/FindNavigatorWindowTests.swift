@@ -55,7 +55,9 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             undo.groupsByEvent = false
             wc.open(path: main.path, line: nil)
             let e = wc.editor
-            #expect(e.textView.undoManager === undo)
+            // The text's own history is the file's (source-editor.md, "Text
+            // undo belongs to the file"); Replace All is the window's.
+            #expect(e.textView.undoManager !== undo)
             // An unsaved edit: searched and replaced in the editor, not on disk.
             #expect(e.replaceText(with: e.text + "// old again\n", actionName: "Typing"))
             #expect(e.isDirty)

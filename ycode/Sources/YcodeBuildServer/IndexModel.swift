@@ -57,6 +57,21 @@ public final class IndexModel: @unchecked Sendable {
         return (CompilerArguments.arguments(for: path, language: lang, in: ctx), ctx.projectDirectory)
     }
 
+    /// Why `arguments(for:targetID:)` has none for a file (the build
+    /// server's log, P-070).
+    public func missingArgumentsReason(for file: String, targetID: String?) -> String {
+        let path = URL(fileURLWithPath: file).standardizedFileURL.path
+        let g = graph
+        guard let id = targetID ?? g.targets(containing: path).first?.id else {
+            let near = g.targets.flatMap(\.sources).filter { $0.path.lowercased() == path.lowercased()
+                || ($0.path as NSString).lastPathComponent == (path as NSString).lastPathComponent }
+            return "in no target" + (near.isEmpty ? "" : " (targets have \(near.map(\.path).joined(separator: ", ")))")
+        }
+        guard let t = g.target(id: id) else { return "unknown target \(id)" }
+        guard compileContext(id) != nil else { return "target \(t.name) has no build settings" + (diagnostics.isEmpty ? "" : ": " + diagnostics.joined(separator: "; ")) }
+        return "not a source of target \(t.name)"
+    }
+
     /// Reloads when a watched file changed; returns the identifiers of the
     /// targets that were added, removed or changed (empty: nothing changed).
     @discardableResult

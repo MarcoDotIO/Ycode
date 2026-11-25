@@ -6,6 +6,89 @@ Notable changes to Ycode are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0-beta.5] - 2026-11-24
+
+Beta 5 is about motion, popovers and window layout: panels slide as Xcode's do, choosers and Quick Help are popovers,
+toolbars and windows narrow the way Xcode's do, and the navigators gain their missing depth. Device Hub can now start
+simulators on macOS and Linux, and `ycrun` is a new command-line tool for Ycode's simulators. The Linux IDE draws its
+panel slides several times faster.
+
+### Added
+
+- **Device Hub starts simulators (#98)** on macOS and Linux, from Ycode ▸ Open Developer Tool ▸ Device Hub with or without
+  a workspace, and from Product ▸ Destination ▸ Manage Devices… (⇧⌘2).
+  - **Ycode's own simulators** run on a Linux simulator host and show their live screen in the hub.
+  - **The Mac's own simulators** (the ones `xcrun simctl` lists) start, restart, shut down and erase from the hub. Their
+    screen opens in the Mac's simulator viewer: Device Hub on Xcode 27, Simulator on Xcode 26. Screenshot saves each lit
+    screen of a two-screen device.
+- **`ycrun` (#98):** a simctl-style command-line tool for Ycode's simulators, on macOS and Linux.
+  - It runs simulators locally on arm64 Linux with KVM, and through a simulator host from x86-64 Linux and macOS.
+  - `ycrun remote setup` sets up that host, and the `ycrun simctl` verbs (create, boot, screenshot and more) follow simctl's
+    names.
+- **The live project warning (#108):** an unbuilt project whose `LastUpgradeCheck` is older than the IDE shows Xcode's
+  "Update to recommended settings" warning in the toolbar, the Issue navigator and the jump bar. Its checklist sheet
+  applies the changes. New projects from Ycode's templates don't show it.
+
+### Changed
+
+- **Motion (#100):**
+  - The navigator, debug area and inspector slide with Xcode's timings, including a second ⌘0 and the toolbar's
+    navigator button.
+  - Outlines collapse with Left, and the navigator selector moves with the tab you click.
+  - Tooltips appear after Xcode's delay, stay briefly when the pointer leaves, then fade. Only Ycode's tooltip shows.
+- **Popovers (#106):**
+  - The scheme and destination choosers are popovers with Xcode's rows and keys. The destination chooser opens on the
+    current destination.
+  - Quick Help is a popover at the symbol, and works on module names too.
+  - Jump to Line, Quick Actions (two-line rows with glyphs) and Open Quickly are panels inside the window.
+- **Window layout (#101):**
+  - Windows narrow to about 503 pt with the inspector shown and 410 pt without. The navigator gives way to the editor
+    during a live resize.
+  - Toolbar items move into the » menu at Xcode's widths.
+  - The navigator button and Run | Stop stay in the toolbar while the navigator is hidden.
+  - Holding the mouse on Run shows its Run/Test/Profile/Analyze menu, and Stop is disabled when nothing runs.
+- **Navigators (#102):** the filter, its empty state and options, the file context menu, drag and drop with an insertion
+  line, and rename in place. A dragged file opens in the editor, and ⌘Z doesn't undo the move, as in Xcode.
+- **Control states (#107):** hover, press and focus states for toolbar glass, choosers, tabs, pop-ups and sheet buttons, the
+  inspector tabs' lens, and the jump bar's sticky declaration line.
+- **New Project (#103):** the template chooser has keyboard navigation and a filter, and the options and save steps match
+  Xcode's. Quick New Project (⇧⌘N) works with a workspace open.
+- **Menus (#104):** the menus with no file open and with only Welcome open match Xcode's, and fewer items differ in when
+  they are enabled.
+- **Editor (#105):** documentation comments are laid out as Xcode's; Close Editor in a split; the remaining false "Cannot
+  find … in scope" errors are gone; Editor Options on Linux.
+- **The Linux IDE (#99):** panel slides draw at 26–59 frames per second instead of 6–11. Pop-ups, the file dialog, the
+  on-demand menu bar and Settings' keys behave as on macOS.
+- **UI fidelity:** council round 12 scored the IDEs 8.3, 8.6 and 8.9 against Xcode 27.1 (mean 8.60; round 11: 8.50). Beta
+  4's workflows rose from 7.73 to 8.53; beta 5's own 15 checks scored 8.17. A fix round after the review addressed:
+  - the navigator button while the navigator is hidden;
+  - the narrow-window rules;
+  - Quick Help on modules;
+  - tooltips;
+  - the destination chooser's first row;
+  - Quick Actions rows;
+  - the debug area's slide;
+  - undo after a navigator move.
+
+  The fix round was checked by tests and screenshots, not scored again.
+
+### Fixed
+
+- **Undo stays with its file:** ⌘Z after switching files no longer applies the previous file's edits to the file you
+  switched to, on macOS. Each open file keeps its own undo history, an undone edit is no longer reverted by the disk
+  check a second later, and two panes on one file share their text.
+- **Hover highlights:** a toolbar chooser in a window opened after another was closed no longer loses its hover highlight.
+
+### Known limitations
+
+- Apple's simulators show their screen in Apple's viewer, not in Ycode's hub (a view-only live picture is planned for beta
+  6). Ycode's hub can't send them touches.
+- On Linux the window can still be narrowed below the editor's minimum, and the » menu combines a few rows that Xcode lists
+  separately.
+- Scrolling's momentum and live resize still trail Xcode's (moved to beta 6).
+- Physical devices are listed only, and signing and distribution are partial (on Linux, not there yet).
+- Simulators are slower than Apple's on a Mac, and parts are missing: see [docs/SIMULATOR.md](docs/SIMULATOR.md).
+
 ## [1.0.0-beta.4] - 2026-11-17
 
 Beta 4 fixes the quick wins and broken workflows found in a full video comparison of both IDEs with Xcode 27.1
@@ -291,7 +374,8 @@ no earlier releases. [The README](https://github.com/MarcoDotIO/Ycode#what-works
 - Physical devices are listed only, and signing and distribution are partial.
 - Simulators are slower than Apple's on a Mac, and parts are missing: see [docs/SIMULATOR.md](docs/SIMULATOR.md).
 
-[Unreleased]: https://github.com/MarcoDotIO/Ycode/compare/v1.0.0-beta.4...HEAD
+[Unreleased]: https://github.com/MarcoDotIO/Ycode/compare/v1.0.0-beta.5...HEAD
+[1.0.0-beta.5]: https://github.com/MarcoDotIO/Ycode/releases/tag/v1.0.0-beta.5
 [1.0.0-beta.4]: https://github.com/MarcoDotIO/Ycode/releases/tag/v1.0.0-beta.4
 [1.0.0-beta.3]: https://github.com/MarcoDotIO/Ycode/releases/tag/v1.0.0-beta.3
 [1.0.0-beta.2]: https://github.com/MarcoDotIO/Ycode/releases/tag/v1.0.0-beta.2

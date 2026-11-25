@@ -41,8 +41,8 @@ HELPERS="ycode-bsp"
 if [ "${YCODE_APP_MINIMAL:-0}" = 1 ]; then
     ARCHS=$HOST_ARCH
 else
-    PRODUCTS="$PRODUCTS ycode ycodebuild ycode-sim-viewer ycode-simhost YcodeTestAgent"
-    HELPERS="ycode-bsp ycode ycodebuild ycode-sim-viewer ycode-simhost"
+    PRODUCTS="$PRODUCTS ycode ycodebuild ycode-sim-viewer ycode-simhost ycrun YcodeTestAgent"
+    HELPERS="ycode-bsp ycode ycodebuild ycode-sim-viewer ycode-simhost ycrun"
 fi
 
 # Source paths in the binaries become relative to the repository, so no
@@ -146,6 +146,12 @@ if [ "${YCODE_APP_MINIMAL:-0}" != 1 ]; then
     mkdir -p "$APP/Contents/Resources/simulator-host"
     cp scripts/ycode-sim.sh "$APP/Contents/Resources/simulator-host/ycode-sim"
     cp scripts/ycode-sim-serve "$APP/Contents/Resources/simulator-host/ycode-sim-serve"
+    # The guest tools (ylaunch and Ycode's guest agents, built on a Mac by
+    # packaging/flatpak/build-guest-tools.sh), when the build has them: `ycrun
+    # remote setup` copies them to a host that has none (docs/YCRUN.md).
+    if [ -n "${YCODE_GUEST_TOOLS:-}" ] && [ -f "$YCODE_GUEST_TOOLS/ylaunch" ]; then
+        COPYFILE_DISABLE=1 tar -cf "$APP/Contents/Resources/simulator-host/guest-tools.tar" -C "$YCODE_GUEST_TOOLS" .
+    fi
 fi
 
 sed -e "s|@VERSION@|$VERSION|g" -e "s|@BUILD_NUMBER@|$BUILD_NUMBER|g" -e "s|@MINIMUM_SYSTEM@|$MINIMUM_SYSTEM|g" \

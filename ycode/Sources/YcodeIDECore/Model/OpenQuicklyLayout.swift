@@ -8,9 +8,11 @@ import Foundation
 public enum OpenQuicklyLayout {
     // MARK: Panel
 
-    /// 640 wide, centred on the window, its top 200 below the window's top.
+    /// 640 wide, centred on the window, its top 70 below the window's top:
+    /// 18 under the toolbar, the default place of `popovers.md` §5 (council
+    /// round 9 found 200, probably a position the reference had stored).
     public static let width = 640.0
-    public static let top = 200.0
+    public static let top = 70.0
     /// The panel's corners: the rows' radius plus their inset, so the
     /// corners are concentric (Liquid Glass; the reference's panel radius
     /// was not measured).

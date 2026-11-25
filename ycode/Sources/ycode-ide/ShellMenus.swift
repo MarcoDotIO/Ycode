@@ -60,19 +60,47 @@ struct MenuSpecItems: View {
     var body: some View {
         // Settings ▸ Shortcuts: a changed shortcut rebuilds the items.
         let _ = ShellPreferences.shared.revision
-        ForEach(Array(ShellMenuModel.shown(items, app: app).enumerated()), id: \.offset) { pair in
-            view(pair.element)
+        // The menu context and Integrate's state, once for this menu's items.
+        let pass = ShellMenuModel.Pass(app)
+        ForEach(Array(ShellMenuModel.shown(items, in: pass).enumerated()), id: \.offset) { pair in
+            view(pair.element, pass)
         }
     }
 
-    func view(_ spec: MenuItemSpec) -> AnyView {
+    /// The menu has glyph rows (P-013): every title then starts after the
+    /// glyph column, as AppKit lays the menu out.
+    var reservesGlyph: Bool { ShellMenuModel.reservesGlyph(items) }
+
+    /// A row's title, after its glyph (OpenViews' own artwork) or an empty
+    /// glyph column.
+    @ViewBuilder
+    func label(_ title: String, symbol: String?) -> some View {
+        if reservesGlyph {
+            Label {
+                Text(title)
+            } icon: {
+                if let symbol { Image(systemName: symbol).frame(width: Self.glyphWidth) } else { Color.clear.frame(width: Self.glyphWidth, height: 1) }
+            }
+        } else {
+            Text(title)
+        }
+    }
+
+    /// The glyph column's width (AppKit's menu image size).
+    static let glyphWidth: CGFloat = 16
+
+    func view(_ spec: MenuItemSpec, _ pass: ShellMenuModel.Pass) -> AnyView {
         switch spec {
         case .separator:
             return AnyView(Divider())
         case .label(let t):
             return AnyView(Button(t) {}.disabled(true))
         case .submenu(let title, let sub):
-            return AnyView(Menu(title) {
+            // Product ▸ Destination (P-014): headings, versions, Incompatible (DestinationMenuItems.swift).
+            if title == "Destination", let w = app.workspace {
+                return AnyView(Menu { DestinationMenuItems(app: app, model: w, items: sub) } label: { label(title, symbol: nil) })
+            }
+            return AnyView(Menu {
                 if title == "Scheme", let w = app.workspace {
                     ForEach(w.schemes, id: \.self) { s in Button(s) { w.scheme = s } }
                     if !w.schemes.isEmpty { Divider() }
@@ -85,22 +113,21 @@ struct MenuSpecItems: View {
                     }
                     if !app.recent.isEmpty { Divider() }
                 }
-                if title == "Destination", let w = app.workspace {
-                    ForEach(w.destinations, id: \.specifier) { d in Button(d.name) { w.destination = d } }
-                    if !w.destinations.isEmpty { Divider() }
-                }
                 MenuSpecItems(app: app, items: ShellMenuModel.submenuItems(title, sub, app: app))
+            } label: {
+                label(title, symbol: nil)
             }.disabled(sub.isEmpty))
         case .command(let c):
-            let title = ShellMenuModel.title(c, app: app)
+            let title = ShellMenuModel.title(c, in: pass)
             let shortcut = ShellShortcut(command: KeyBindings.effective(c))?.keyboardShortcut
-            let enabled = ShellMenuModel.isEnabled(c, app: app)
+            let enabled = ShellMenuModel.isEnabled(c, in: pass)
+            let symbol = ShellMenuModel.symbol(c)
             if let on = ShellMenuModel.checked(c, app: app) {
-                return AnyView(Toggle(title, isOn: Binding(get: { on }, set: { _ in perform(c) }))
+                return AnyView(Toggle(isOn: Binding(get: { on }, set: { _ in perform(c) })) { label(title, symbol: symbol) }
                     .keyboardShortcut(shortcut)
                     .disabled(!enabled))
             }
-            return AnyView(Button(title) { perform(c) }
+            return AnyView(Button { perform(c) } label: { label(title, symbol: symbol) }
                 .keyboardShortcut(shortcut)
                 .disabled(!enabled))
         }

@@ -319,6 +319,12 @@ package final class WindowChromeState {
     package var menuBarOnDemand = false
     /// The on-demand menu bar is shown.
     package var menuBarRevealed = false
+    /// A menu of the on-demand bar is open (the bar shows while it is).
+    package var menuBarMenuOpen = false
+    /// P-033 (L-001): the on-demand bar is on screen; the window's content
+    /// (its toolbar first) moves down by the bar's height meanwhile, so the
+    /// bar covers nothing.
+    package var menuBarShown: Bool { menuBarOnDemand && (menuBarRevealed || menuBarMenuOpen) }
     /// Where the pointer last was (window points; nil: outside).
     @ObservationIgnored package var lastPointer: CGPoint?
     /// The window's actions (the host sets them).

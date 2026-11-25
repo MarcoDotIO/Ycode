@@ -176,9 +176,10 @@ extension SourceEditorController {
 
     public var emptyView: EmptyEditorView? { emptyHolder.view }
 
-    /// An assistant pane with nothing to show (no counterpart): "No Editor"
-    /// centred on the editor's background under its jump bar, which keeps
-    /// the mode pop-up; no text, gutter or scroll bar (P-066).
+    /// A pane with nothing to show beside another pane (the assistant with
+    /// no counterpart, a split's pane whose file was closed): "No Editor"
+    /// centred on the editor's background under its jump bar; no text,
+    /// gutter or scroll bar (P-066, `EditorPanePlaceholder`).
     public func showNoEditor() {
         _ = view
         showText("", title: "")
@@ -187,6 +188,9 @@ extension SourceEditorController {
         textView.caretLine = nil
         gutter.caretLine = nil
         showsNoDocument = true
+        emptyHolder.view?.removeFromSuperview()   // not the start page as well
+        emptyHolder.view = nil
+        emptyHolder.placeholder?.removeFromSuperview()
         let v = NoEditorPlaceholderView()
         v.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(v, positioned: .above, relativeTo: nil)
@@ -205,12 +209,12 @@ extension SourceEditorController {
 /// the size of the editor's other empty-state titles.
 @MainActor
 public final class NoEditorPlaceholderView: NSView {
-    public let label = NSTextField(labelWithString: "No Editor")
+    public let label = NSTextField(labelWithString: EditorPanePlaceholder.title)
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        label.font = .systemFont(ofSize: 20, weight: .regular)
+        label.font = .systemFont(ofSize: CGFloat(EditorPanePlaceholder.fontSize), weight: .regular)
         label.textColor = .tertiaryLabelColor
         label.alignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false

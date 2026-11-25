@@ -110,8 +110,14 @@ package final class CompositorPresenter: FramePresenter {
         return RenderFrame(displayList: list, scale: window.platform.scale, background: background)
     }
 
+    /// B5 (P-200): seconds of the last `present` spent building the display
+    /// list (the rest is the compositor's: damage, drawing, presenting).
+    package private(set) var lastListSeconds = 0.0
+
     package func present(_ window: WindowHost) {
+        let t0 = ViewGraph.clock()
         let frame = makeFrame(window)
+        lastListSeconds = ViewGraph.clock() - t0
         if let compositor {
             do {
                 try compositor.render(frame)

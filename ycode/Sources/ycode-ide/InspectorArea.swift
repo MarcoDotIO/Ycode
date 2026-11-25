@@ -52,6 +52,8 @@ struct InspectorColumn: View {
                     SourceControlInspector(scm: model.sourceControl)
                 } else if tab != 0 {
                     centered("No Quick Help", c)
+                } else if model.navigatorFilterLeavesNoRows {
+                    centered(NavigatorFilterModel.inspectorNoResults, c)   // P-037: the filter left no row
                 } else if model.document == nil && model.inspectedFolder == nil {   // P-089: a selected folder's inspector
                     // "No Selection" in the Repositories view (editor-area.md F.10).
                     centered(model.navigator == .sourceControl && model.sourceControl.mode == .repositories ? "No Selection" : "Not Applicable", c)
@@ -124,6 +126,8 @@ struct InspectorTabs: View {
             }
         }
         .padding(.horizontal, 3)
+        // P-198: a glass lens while held; the tab selects on release (ControlStateViews.swift).
+        .glassTabLens(.inspector, count: WorkspaceChrome.inspectorSymbols.count + extras.count, selected: selected, leading: 3) { select($0) }
         .frame(height: CGFloat(WorkspaceChrome.selectorHeight))
         .background { PaneCapsule(height: CGFloat(WorkspaceChrome.selectorHeight)) }   // PaneStyle.swift
     }

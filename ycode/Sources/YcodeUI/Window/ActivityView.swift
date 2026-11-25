@@ -24,6 +24,11 @@ public final class ActivityView: NSView {
     /// room is short, reference-ui-6.md §2.2); the subtitle truncates to
     /// fit. The leading pad comes on top, as with `naturalWidth`.
     public var maximumWidth: CGFloat = .greatestFiniteMagnitude { didSet { if oldValue != maximumWidth { changed() } } }
+    /// Room the view keeps beyond its text (blank, after it): the toolbar
+    /// gives it so that the items the content section's width puts in "»"
+    /// leave (council round 12, `window-layout.md` §2.3; `ToolbarOverflow.
+    /// forcedOut`). Zero at rest.
+    public var reservedWidth: CGFloat = 0 { didSet { if oldValue != reservedWidth { invalidateIntrinsicContentSize() } } }
 
     let icon = NavigatorFlatIconView()
     let spinner = BuildRingView()
@@ -129,7 +134,7 @@ public final class ActivityView: NSView {
     public var naturalFrameWidth: CGFloat { leadingPad + naturalWidth }
 
     public override var intrinsicContentSize: NSSize {
-        NSSize(width: max(textStart + 40, leadingPad + min(naturalWidth, maximumWidth)), height: 34)
+        NSSize(width: max(textStart + 40, leadingPad + min(naturalWidth, maximumWidth), reservedWidth), height: 34)
     }
 
     public override func layout() {
@@ -235,10 +240,16 @@ extension ActivityView {
     public override func accessibilityChildren() -> [Any]? {
         var out: [Any] = []
         if showsSpinner {
-            let p = NSAccessibilityElement.element(withRole: .progressIndicator, frame: screenRect(spinner.frame), label: "Activity",
+            // P-029: the ring's progress as a number from 0 to 1 (n/m of
+            // "Building • n/m"), read out as the status line; the Linux
+            // ring has the same label.
+            let p = NSAccessibilityElement.element(withRole: .progressIndicator, frame: screenRect(spinner.frame), label: BuildRingView.accessibilityName,
                                                    parent: self) as? NSAccessibilityElement
             if let p {
-                p.setAccessibilityValue(status)
+                p.setAccessibilityValue(NSNumber(value: spinner.progress.target))
+                p.setAccessibilityMinValue(NSNumber(value: 0))
+                p.setAccessibilityMaxValue(NSNumber(value: 1))
+                p.setAccessibilityValueDescription(status)
                 p.setAccessibilityEnabled(true)
                 out.append(p)
             }

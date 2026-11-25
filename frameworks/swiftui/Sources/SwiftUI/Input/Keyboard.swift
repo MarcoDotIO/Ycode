@@ -173,12 +173,16 @@ package final class ShortcutRegistry {
 
     package func register(_ owner: AnyObject, _ entry: Entry?) {
         let id = ObjectIdentifier(owner)
-        let order = entries.first { $0.owner == id }?.order
-        entries.removeAll { $0.owner == id }
+        // B5 (P-200): an owner registering again keeps its place (the list
+        // stays in registration order without sorting it again: a menu of
+        // hundreds of items re-registers every item when it is rebuilt).
+        if let i = entries.firstIndex(where: { $0.owner == id }) {
+            if let entry { entries[i].entry = entry } else { entries.remove(at: i) }
+            return
+        }
         guard let entry else { return }
         counter += 1
-        entries.append((id, order ?? counter, entry))
-        entries.sort { $0.order < $1.order }
+        entries.append((id, counter, entry))
     }
 
     package func unregister(_ owner: AnyObject) {

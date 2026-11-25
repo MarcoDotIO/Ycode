@@ -10,6 +10,9 @@ public struct NavigatorItem: Identifiable, Hashable, Sendable {
     public var name: String
     public var kind: NavigatorNode.Kind
     public var path: String?
+    /// The pbxproj object of a project row (nil for a row on disk only:
+    /// in a synchronized folder or a package). The file operations act on it.
+    public var objectID: String?
     public var children: [NavigatorItem]?
 
     public init(_ node: NavigatorNode) {
@@ -17,11 +20,12 @@ public struct NavigatorItem: Identifiable, Hashable, Sendable {
         name = node.name
         kind = node.kind
         path = node.path
+        objectID = node.objectID
         children = node.kind == .file ? nil : node.children.map(NavigatorItem.init)
     }
 
     public static func == (a: Self, b: Self) -> Bool {
-        a.id == b.id && a.name == b.name && a.path == b.path && a.children == b.children
+        a.id == b.id && a.name == b.name && a.path == b.path && a.objectID == b.objectID && a.children == b.children
     }
     public func hash(into h: inout Hasher) { h.combine(id) }
 
@@ -38,6 +42,20 @@ public struct NavigatorItem: Identifiable, Hashable, Sendable {
             if let rest = c.idPath(to: path) { return [id] + rest }
         }
         return nil
+    }
+
+    /// The rows from the root to the row with this id (inclusive), or nil.
+    public func ancestry(ofID id: String) -> [NavigatorItem]? {
+        if self.id == id { return [self] }
+        for c in children ?? [] {
+            if let rest = c.ancestry(ofID: id) { return [self] + rest }
+        }
+        return nil
+    }
+
+    /// Every row's id under this one (not its own), depth first.
+    public var descendantIDs: [String] {
+        (children ?? []).flatMap { [$0.id] + $0.descendantIDs }
     }
 
     /// The row with this id.

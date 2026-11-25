@@ -84,6 +84,7 @@ func makeArchive(in dir: URL, name: String, app: String?, version: String, build
         try FileManager.default.createDirectory(at: proj, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: ycodeDir.appendingPathComponent("Tests/YcodeProjectTests/Fixtures/Hello.xcodeproj/project.pbxproj"),
                                          to: proj.appendingPathComponent("project.pbxproj"))
+        try RecommendedSettingsFixture.bringUpToDate(proj)   // this test is about the archive's issue, not P-120's
         let wc = WorkspaceWindowController(session: WorkspaceSession(model: try WorkspaceModel(url: proj)), loadDestinations: false, startLanguageService: false)
         wc.archivesDirectory = dir.appendingPathComponent("Archives")
         var calls: [(URL, String)] = []

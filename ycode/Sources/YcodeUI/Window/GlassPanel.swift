@@ -32,6 +32,9 @@ final class GlassPanel: NSPanel {
     }
 
     override var canBecomeKey: Bool { true }
+    /// Never main: the workspace behind keeps its active look (P-031,
+    /// `popovers.md` §8).
+    override var canBecomeMain: Bool { false }
 
     override func resignKey() {
         super.resignKey()

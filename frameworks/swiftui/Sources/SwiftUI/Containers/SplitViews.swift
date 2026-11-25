@@ -118,7 +118,7 @@ final class SplitPanesState: @unchecked Sendable {
             chosen[lengths.count - 1] = nil
         }
         if ended { dragStart = nil }
-        node?.graph.scheduleUpdate(transaction: Transaction())
+        node?.setNeedsLayout()
     }
 }
 

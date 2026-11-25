@@ -10,6 +10,8 @@ import Foundation
 public struct InspectorSlideClock: Sendable {
     public let show: Bool
     public let press: Double
+    /// ⌥⌘1/2/3 on the shown inspector (P-192's own curves).
+    public let bySelector: Bool
     /// The curve's time so far (nil before the first frame).
     public private(set) var elapsed: Double?
     private var lastFrame: Double?
@@ -17,9 +19,10 @@ public struct InspectorSlideClock: Sendable {
     /// The most a frame advances the curve (a 30 Hz frame).
     public static let maximumStep = 1.0 / 30
 
-    public init(show: Bool, press: Double) {
+    public init(show: Bool, press: Double, bySelector: Bool = false) {
         self.show = show
         self.press = press
+        self.bySelector = bySelector
     }
 
     /// The slide's progress (0–1) for a frame drawn at `time`.
@@ -29,13 +32,13 @@ public struct InspectorSlideClock: Sendable {
             next = elapsed + min(max(0, time - lastFrame), Self.maximumStep)
         } else {
             // On time: from the press. Late: the motion starts with this frame.
-            next = min(max(0, time - press), EditorMetrics.inspectorSlideDelay(show: show))
+            next = min(max(0, time - press), EditorMetrics.inspectorSlideDelay(show: show, bySelector: bySelector))
         }
         elapsed = next
         lastFrame = time
-        return isFinished ? 1 : EditorMetrics.inspectorSlideProgress(elapsed: next, show: show)
+        return isFinished ? 1 : EditorMetrics.inspectorSlideProgress(elapsed: next, show: show, bySelector: bySelector)
     }
 
     /// Whether the curve has reached its end.
-    public var isFinished: Bool { (elapsed ?? 0) >= EditorMetrics.inspectorSlideTotal(show: show) }
+    public var isFinished: Bool { (elapsed ?? 0) >= EditorMetrics.inspectorSlideTotal(show: show, bySelector: bySelector) }
 }

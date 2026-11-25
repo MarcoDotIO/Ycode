@@ -201,6 +201,17 @@ final class EditorTopBounce: NSObject {
     /// Off: the system's own momentum and elastic stop (before/after measurements).
     var isEnabled = true
 
+    /// The flick's profile (P-078): nil follows the window's display
+    /// (`FlickProfile.forDisplay`); tests pin one.
+    var profile: FlickProfile?
+    /// The profile the running gesture uses.
+    private(set) var activeProfile = FlickProfile.retina
+
+    /// The profile for `scrollView`'s window.
+    func resolvedProfile(_ scrollView: NSScrollView) -> FlickProfile {
+        profile ?? FlickProfile.forDisplay(scale: Double(scrollView.window?.backingScaleFactor ?? 2))
+    }
+
     /// Returns true when the event was used here (the system must not see it).
     func handle(_ event: NSEvent, in scrollView: NSScrollView) -> Bool {
         guard isEnabled else { return false }
@@ -212,7 +223,8 @@ final class EditorTopBounce: NSObject {
             heldEnd = nil
             appliedMomentum = 0
             tracker.reset()
-            momentumShare.reset()
+            activeProfile = resolvedProfile(scrollView)
+            momentumShare = EditorMomentum(profile: activeProfile)
         }
         if swallowingMomentum, !momentum.isEmpty {
             if momentum.contains(.ended) || momentum.contains(.cancelled) {
@@ -229,7 +241,8 @@ final class EditorTopBounce: NSObject {
         if momentum.contains(.began) {
             gestureVelocity = tracker.velocity
             tracker.reset()
-            momentumShare.reset()
+            activeProfile = resolvedProfile(scrollView)
+            momentumShare = EditorMomentum(profile: activeProfile)
         }
         tracker.add(delta, at: event.timestamp)
         guard momentum.contains(.began) || momentum.contains(.changed) else { return false }
@@ -272,8 +285,9 @@ final class EditorTopBounce: NSObject {
     func begin(edge: Edge, velocity v: Double, from overscroll: CGFloat = 0, in scrollView: NSScrollView) {
         self.scrollView = scrollView
         self.edge = edge
+        activeProfile = resolvedProfile(scrollView)
         let visible = Double(scrollView.contentView.bounds.height - scrollView.contentInsets.top - scrollView.contentInsets.bottom)
-        velocity = TopBounce.effectiveVelocity(v, visibleHeight: visible)
+        velocity = TopBounce.effectiveVelocity(v, visibleHeight: visible, edge: edge, profile: activeProfile)
         startOverscroll = Double(overscroll)
         lastPeak = overscroll
         swallowingMomentum = true
@@ -304,8 +318,8 @@ final class EditorTopBounce: NSObject {
         guard let v = velocity else { return }
         if start == nil { start = now - frame }
         let t = now - (start ?? now)
-        let x = CGFloat(TopBounce.overscroll(from: startOverscroll, velocity: v, at: t, edge: edge))
-        if TopBounce.isAtRest(from: startOverscroll, velocity: v, at: t, edge: edge) {
+        let x = CGFloat(TopBounce.overscroll(from: startOverscroll, velocity: v, at: t, edge: edge, profile: activeProfile))
+        if TopBounce.isAtRest(from: startOverscroll, velocity: v, at: t, edge: edge, profile: activeProfile) {
             finish(at: 0)
             return
         }

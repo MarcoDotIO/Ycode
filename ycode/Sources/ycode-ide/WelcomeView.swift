@@ -14,6 +14,10 @@ import YcodeIDEShell
 struct WelcomeView: View {
     @Bindable var app: ShellAppModel
     @State private var selected = 0
+    /// The close button is under the pointer (P-186).
+    @State private var closeHovered = false
+    /// The recent list has keyboard focus (L-070, L-177).
+    @FocusState private var recentsFocused: Bool
     @Environment(\.dismissWindow) private var dismissWindow
     @Environment(\.colorScheme) private var scheme
 
@@ -22,6 +26,26 @@ struct WelcomeView: View {
         let m = WelcomeMetrics.self
         ZStack(alignment: .top) {
             gray(255, 29)   // the AppKit window's background, #FFFFFF / #1D1D1E
+            // P-186: the close button first in accessibility order: a
+            // 37-point circle (centred where the 36-point one was) with a
+            // 13-point ×, its fill brightening on hover.
+            HStack(spacing: 0) {
+                Button { dismissWindow() } label: {
+                    // The glyph at 17 points: its ink about 13 (as the AppKit ×).
+                    Image(systemName: "xmark").font(.system(size: closeGlyphFont, weight: .semibold)).foregroundStyle(c.secondaryLabel)
+                        .frame(width: closeSide, height: closeSide)
+                        .background { Circle().fill(closeHovered ? closeHoverFill : welcomeCloseFill) }
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .onHover { closeHovered = $0 }
+                .help("Close")
+                .accessibilityLabel("Close")
+                .shellTarget("welcome close")
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 19.5)
+            .padding(.leading, 19.5)
             YcodeMark(size: m.iconFrameSide)
                 .frame(width: m.iconFrameSide, height: m.iconFrameSide)
                 .padding(.top, m.iconFrameTop)
@@ -36,51 +60,63 @@ struct WelcomeView: View {
                     .shellTarget("welcome open")
                 welcomeButton("Clone…", width: 107, c) { app.showClone() }
                     .shellTarget("welcome clone")
-                welcomeButton("New Project", width: 130, chevron: true, c) { app.showNewProject() }
+                newProjectMenu(c)
                     .shellTarget("welcome new project")
             }
             .padding(.top, m.buttonsTop)
             recents(c)
                 .frame(width: 360, height: 277)
+                .shellTarget("welcome recents")
                 .padding(.top, 295)
-            // The round close button (W5): a 36-point filled circle at (20, 20).
-            HStack(spacing: 0) {
-                Button { dismissWindow() } label: {
-                    Image(systemName: "xmark").font(.system(size: 13, weight: .semibold)).foregroundStyle(gray(159, 100))
-                        .frame(width: 36, height: 36)
-                        .background { Circle().fill(welcomeButtonFill) }
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Close")
-                .accessibilityLabel("Close")
-                .shellTarget("welcome close")
-                Spacer(minLength: 0)
-            }
-            .padding(.top, 20)
-            .padding(.leading, 20)
         }
         .frame(width: 480, height: 632)
         .navigationTitle(Self.windowTitle)
     }
 
     static let windowTitle = "Welcome to Ycode"
+    /// P-186: the close button's circle and glyph.
+    let closeSide: CGFloat = 37, closeGlyphFont: CGFloat = 17
 
-    func welcomeButton(_ title: String, width: CGFloat, chevron: Bool = false, _ c: ShellColors, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 0) {
-                Spacer(minLength: 0)
-                Text(verbatim: title).font(.system(size: 13)).foregroundStyle(c.label)
-                Spacer(minLength: 0)
-                if chevron {
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(c.label).padding(.trailing, 14)
-                }
+    /// P-186: the close button's fills (dark #3C3D3E, #505152 on hover).
+    var welcomeCloseFill: Color { scheme == .dark ? Color(ycodeWelcomeHex: 0x3C3D3E) : Color.black.opacity(0.06) }
+    var closeHoverFill: Color { scheme == .dark ? Color(ycodeWelcomeHex: 0x505152) : Color.black.opacity(0.12) }
+
+    /// New Project: a pull-down of the compact picker's rows, as the macOS
+    /// Welcome's (App, Command Line Tool, Package…, Playground, —, Choose
+    /// Template…).
+    func newProjectMenu(_ c: ShellColors) -> some View {
+        Menu {
+            ForEach(Array(NewProjectPicker.rows.enumerated()), id: \.offset) { i, r in
+                if i == NewProjectPicker.chooseTemplateIndex { Divider() }
+                Button(r.title) { app.showNewProject(row: i) }.help(r.subtitle)
             }
-            .frame(width: width, height: 36)
-            .background { Capsule(style: .continuous).fill(welcomeButtonFill) }
-            .contentShape(Capsule(style: .continuous))
+        } label: {
+            welcomeLabel("New Project", width: 130, chevron: true, c)
         }
         .buttonStyle(.plain)
+        .frame(width: 130, height: 36)
+        .accessibilityLabel("New Project")
+    }
+
+    func welcomeButton(_ title: String, width: CGFloat, chevron: Bool = false, _ c: ShellColors, action: @escaping () -> Void) -> some View {
+        Button(action: action) { welcomeLabel(title, width: width, chevron: chevron, c) }
+            .buttonStyle(.plain)
+            // P-186: the name is the button's description.
+            .accessibilityLabel(title)
+    }
+
+    func welcomeLabel(_ title: String, width: CGFloat, chevron: Bool, _ c: ShellColors) -> some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: 0)
+            Text(verbatim: title).font(.system(size: 13)).foregroundStyle(c.label)
+            Spacer(minLength: 0)
+            if chevron {
+                Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(c.label).padding(.trailing, 14)
+            }
+        }
+        .frame(width: width, height: 36)
+        .background { Capsule(style: .continuous).fill(welcomeButtonFill) }
+        .contentShape(Capsule(style: .continuous))
     }
 
     /// A grey for each appearance (the AppKit Welcome window's, parity §9).
@@ -93,6 +129,9 @@ struct WelcomeView: View {
         let v = (scheme == .dark ? 48.0 : 235.0) / 255
         return Color(.sRGB, red: v, green: v, blue: v)
     }
+
+    /// The row is selected while the list has focus (accent selection).
+    func focusedRow(_ i: Int) -> Bool { i == selected && recentsFocused }
 
     func recents(_ c: ShellColors) -> some View {
         let box = scheme == .dark ? 36.0 / 255 : 248.0 / 255
@@ -122,34 +161,58 @@ struct WelcomeView: View {
                                 }
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(verbatim: RecentProjects.displayName(url)).font(.system(size: CGFloat(R.titleSize), weight: .semibold))
-                                        .foregroundStyle(c.label)
+                                        .foregroundStyle(focusedRow(pair.offset) ? Color.white : c.label)
                                         .lineLimit(1)
                                         .offset(y: CGFloat(R.titleDrop))
                                     Text(verbatim: RecentProjects.folderText(url)).font(.system(size: CGFloat(R.pathSize)))
-                                        .foregroundStyle(c.secondaryLabel)   // the grey selection keeps it (the accent one: #B3CEF1)
+                                        // The grey selection keeps it; the accent one: #B3CEF1.
+                                        .foregroundStyle(focusedRow(pair.offset) ? Color(ycodeWelcomeHex: WelcomeRecentRow.selectedPathColor) : c.secondaryLabel)
                                         .lineLimit(1).truncationMode(.middle)
                                         .offset(y: CGFloat(R.pathDrop))
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .padding(.leading, 16)
+                            // P-186: 2.75 further left, as the AppKit row's text.
+                            .padding(.leading, 16 + CGFloat(R.textShift + 6))
                             .padding(.trailing, CGFloat(R.trailingInset))
                             .frame(height: CGFloat(WelcomeMetrics.recentRowPitch))
                             .background {
                                 if pair.offset == selected {
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color(.sRGB, red: sel, green: sel, blue: sel))
+                                    // L-177: the accent selection while the list has
+                                    // focus, grey otherwise (the AppKit list's).
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(recentsFocused ? Color.accentColor : Color(.sRGB, red: sel, green: sel, blue: sel))
                                         .padding(.horizontal, 8)
                                 }
                             }
                             .contentShape(Rectangle())
                             .onTapGesture(count: 2) { app.open(path: url.path) }
-                            .onTapGesture { selected = pair.offset }
+                            .onTapGesture { selected = pair.offset; recentsFocused = true }
+                            // L-177: the full path as the row's tooltip.
+                            .help(url.path)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityAddTraits(pair.offset == selected ? [.isSelected] : [])
+                            .accessibilityAction { app.open(path: url.path) }
                             .shellTarget("recent \(RecentProjects.displayName(url))")
                         }
                     }
                     .padding(.vertical, 4)
                 }
                 .scrollIndicators(.hidden)
+                // L-070: the list is keyboard-operable: Up and Down move the
+                // selection, Return opens it.
+                .focusable()
+                .focused($recentsFocused)
+                .onKeyPress(keys: [.upArrow, .downArrow, .return]) { press in
+                    switch press.key {
+                    case .upArrow: selected = max(0, selected - 1)
+                    case .downArrow: selected = min(app.recent.count - 1, selected + 1)
+                    default:
+                        if app.recent.indices.contains(selected) { app.open(path: app.recent[selected].path) }
+                    }
+                    return .handled
+                }
+                .accessibilityLabel("Recent Projects")
             }
         }
     }
@@ -179,5 +242,12 @@ enum WelcomeMetrics {
     static var iconFrameTop: CGFloat {
         let capTop = nameBaseline - nameCapHeight
         return capTop - iconGapAboveName + iconFrameSide * CGFloat(ProductIconGeometry.fieldMin / ProductIconGeometry.side) - iconFrameSide
+    }
+}
+
+extension Color {
+    /// An sRGB colour from 0xRRGGBB (the Welcome window's measured fills).
+    init(ycodeWelcomeHex hex: UInt32) {
+        self.init(.sRGB, red: Double(hex >> 16 & 0xFF) / 255, green: Double(hex >> 8 & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
     }
 }

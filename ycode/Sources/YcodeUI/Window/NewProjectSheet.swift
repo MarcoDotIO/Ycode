@@ -87,6 +87,7 @@ public final class NewProjectSheetController: TemplateChooserController {
         grid?.highlight(selectedEntry)
         captionLabel.stringValue = flow.templateCaption
         captionLabel.textColor = flow.selected?.isAvailable == false ? .systemOrange : .secondaryLabelColor
+        captionLabel.isHidden = flow.selected != nil
         updateButtons()
     }
 
@@ -102,17 +103,74 @@ public final class NewProjectSheetController: TemplateChooserController {
 
     public override func viewDidAppear() {
         super.viewDidAppear()
-        if flow.step == .options { focusFirstField() }
+        if flow.step == .options { focusFirstField() } else { focusGrid() }
     }
+
+    /// P-181: the template step's heading is regular weight, as the
+    /// options step's (P-182).
+    public override func loadView() {
+        super.loadView()
+        titleLabel.font = Self.headingFont
+    }
+
+    /// The headings' font (P-181, P-182: regular, not bold).
+    public static let headingFont = NSFont.systemFont(ofSize: CGFloat(TemplateChooserMetrics.headingSize))
+    /// P-181: the filter field's width; it never collapses.
+    public static let filterWidth = CGFloat(TemplateChooserMetrics.filterWidth)
+    /// P-181: the template grid: five columns of outlined glyphs.
+    public static let gridColumns = TemplateChooserMetrics.columns
+    /// P-181: the platform tabs' label size.
+    public static let platformLabelSize = CGFloat(TemplateChooserMetrics.platformLabelSize)
+    /// P-181: Next fades the options step in over about 190 ms (to move to
+    /// B5-MOTION's shared constants).
+    public static let optionsFadeDuration = TemplateChooserMetrics.optionsFadeDuration
+
+    /// P-181: the grid has keyboard focus when the template step shows
+    /// (the arrow keys move the selection; Tab goes to the filter).
+    @discardableResult
+    public func focusGrid() -> Bool {
+        guard let grid, let w = view.window else { return false }
+        // The window recomputes its key-view loop when it first shows: link
+        // the filter and the grid again.
+        filterField.nextKeyView = grid
+        grid.nextKeyView = filterField
+        w.initialFirstResponder = grid
+        return w.makeFirstResponder(grid)
+    }
+
+    /// Moves the template selection as an arrow key in the grid does.
+    func moveSelection(_ key: TemplateGridView.MoveKey) { grid?.move(key) }
 
     override func initialBody() -> NSView {
         let body = templateBody()
         return flow.step == .template ? body : optionsView()
     }
 
+    /// P-181: the chooser's top row: small platform tabs at the left, the
+    /// 202-point filter at the right, always drawn in full (New Project and
+    /// New File).
+    static func chooserTopRow(_ platformControl: NSSegmentedControl, _ filterField: NSSearchField) -> NSStackView {
+        platformControl.controlSize = .small
+        platformControl.font = .systemFont(ofSize: platformLabelSize)
+        platformControl.segmentDistribution = .fit
+        filterField.controlSize = .regular
+        filterField.translatesAutoresizingMaskIntoConstraints = false
+        filterField.widthAnchor.constraint(equalToConstant: filterWidth).isActive = true
+        filterField.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let top = NSStackView()
+        top.orientation = .horizontal
+        top.addView(platformControl, in: .leading)
+        top.addView(filterField, in: .trailing)
+        return top
+    }
+
     func templateBody() -> NSView {
-        let top = NSStackView(views: [platformControl, filterField])
-        let g = TemplateGridView(top: top)
+        let top = Self.chooserTopRow(platformControl, filterField)
+        let g = TemplateGridView(top: top, columns: Self.gridColumns, tileStyle: .outlined)
+        top.trailingAnchor.constraint(equalTo: g.trailingAnchor).isActive = true
+        // P-181: Tab alternates the filter and the grid.
+        filterField.nextKeyView = g
+        g.nextKeyView = filterField
         g.onSelect = { [weak self] e in _ = self?.select(templateID: e.templateID) }
         g.onChoose = { [weak self] e in
             guard let self, self.select(templateID: e.templateID) else { return }
@@ -124,6 +182,9 @@ public final class NewProjectSheetController: TemplateChooserController {
         captionLabel.stringValue = flow.templateCaption
         captionLabel.textColor = .secondaryLabelColor
         captionLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+        // P-181: no description line under the grid (a tile's summary is
+        // its tooltip); the line shows only the filter's empty state.
+        captionLabel.isHidden = flow.selected != nil
         let stack = NSStackView(views: [g, captionLabel])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -153,7 +214,10 @@ public final class NewProjectSheetController: TemplateChooserController {
         if isViewLoaded { readFields() }
         flow.previous()
         titleLabel.stringValue = heading
-        if isViewLoaded { show(chooserView) }
+        if isViewLoaded {
+            show(chooserView)
+            focusGrid()
+        }
         syncSelection()
     }
 
@@ -176,10 +240,19 @@ public final class NewProjectSheetController: TemplateChooserController {
     }
 
     /// The label column's width; controls follow it 8 points later.
-    public static let labelColumnWidth: CGFloat = 170
-    /// Text fields' width.
-    public static let fieldWidth: CGFloat = 300
-    public static let rowSpacing: CGFloat = 10
+    public static let labelColumnWidth = CGFloat(TemplateChooserMetrics.labelColumnWidth)
+    /// P-182: every control in the column is 267 points wide.
+    public static let fieldWidth = CGFloat(TemplateChooserMetrics.fieldWidth)
+    /// P-182: pop-ups 20 points tall on a 33-point pitch.
+    public static let rowHeight = CGFloat(TemplateChooserMetrics.rowHeight)
+    public static let rowPitch = CGFloat(TemplateChooserMetrics.rowPitch)
+    public static var rowSpacing: CGFloat { rowPitch - rowHeight }
+    /// P-182: the pop-ups' fill in the dark appearance (#2F2F31); the
+    /// light appearance keeps the system's.
+    public static let popUpBezel = NSColor(name: nil) { a in
+        a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(chooserHex: TemplateChooserMetrics.popUpFillDark) : .controlColor
+    }
 
     func optionsView() -> NSView {
         fieldControls = [:]
@@ -195,6 +268,13 @@ public final class NewProjectSheetController: TemplateChooserController {
             switch f.kind {
             case .text:
                 let t = NSTextField(string: f.id == TemplateOptionID.team ? flow.team : flow.form.value(f.id))
+                if f.id == TemplateOptionID.productName {
+                    // P-182: Product Name is borderless, without a focus ring.
+                    t.isBordered = false
+                    t.isBezeled = false
+                    t.drawsBackground = false
+                    t.focusRingType = .none
+                }
                 t.placeholderString = f.placeholder
                 t.delegate = self
                 t.target = self
@@ -204,6 +284,11 @@ public final class NewProjectSheetController: TemplateChooserController {
                 control = t
             case .popUp(let choices):
                 let p = NSPopUpButton()
+                // P-182: 20 points tall, 267 wide, the reference's fill.
+                p.controlSize = .small
+                p.font = .systemFont(ofSize: NSFont.systemFontSize)
+                p.bezelColor = Self.popUpBezel
+                p.widthAnchor.constraint(equalToConstant: Self.fieldWidth).isActive = true
                 p.autoenablesItems = false
                 for c in choices {
                     let item = NSMenuItem(title: c.title, action: nil, keyEquivalent: "")
@@ -235,13 +320,18 @@ public final class NewProjectSheetController: TemplateChooserController {
         g.column(at: 0).width = Self.labelColumnWidth
         g.rowSpacing = Self.rowSpacing
         g.columnSpacing = 8
-        for i in 0..<g.numberOfRows { g.row(at: i).yPlacement = .center }
+        // P-182: every row 20 points tall, so rows sit on a 33-point pitch
+        // (a taller bordered field overhangs its row evenly).
+        for i in 0..<g.numberOfRows {
+            g.row(at: i).yPlacement = .center
+            g.row(at: i).height = Self.rowHeight
+        }
         // The sheet's heading becomes the options step's.
         titleLabel.stringValue = NewProjectFlowModel.optionsHeading
         let stack = NSStackView(views: [g])
         stack.orientation = .vertical
         stack.alignment = .centerX
-        stack.edgeInsets = NSEdgeInsets(top: 28, left: 0, bottom: 0, right: 0)
+        stack.edgeInsets = NSEdgeInsets(top: CGFloat(TemplateChooserMetrics.optionsTop), left: 0, bottom: 0, right: 0)
         let wrap = NSView()
         stack.translatesAutoresizingMaskIntoConstraints = false
         wrap.addSubview(stack)
@@ -273,8 +363,18 @@ public final class NewProjectSheetController: TemplateChooserController {
     }
 
     func showOptions() {
-        show(optionsView())
+        let v = optionsView()
+        show(v)
         focusFirstField()
+        // P-181: the options step fades in (none with Reduce Motion).
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        v.wantsLayer = true
+        v.alphaValue = 0
+        NSAnimationContext.runAnimationGroup { c in
+            c.duration = Self.optionsFadeDuration
+            c.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            v.animator().alphaValue = 1
+        }
     }
 
     /// Copies the controls' values into the form.
@@ -337,6 +437,12 @@ extension NewProjectSheetController: NSTextFieldDelegate {
         guard let t = obj.object as? NSTextField, let id = t.identifier?.rawValue else { return }
         flow.setOption(id, t.stringValue)
         refreshOptions()
+    }
+}
+
+private extension NSColor {
+    convenience init(chooserHex hex: UInt32) {
+        self.init(srgbRed: CGFloat(hex >> 16 & 0xFF) / 255, green: CGFloat(hex >> 8 & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
     }
 }
 

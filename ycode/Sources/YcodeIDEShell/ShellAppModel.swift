@@ -21,6 +21,11 @@ public final class ShellAppModel {
     public private(set) var recent: [URL] = []
     /// The New Project sheet, while it is up.
     public var newProject: NewProjectShellModel?
+    /// The New File sheet, while it is up (P-187; ShellAppModel+NewItems.swift).
+    public var newFile: NewFileShellModel?
+    /// Closes the active workspace window when more than one is open (P-022;
+    /// the view layer installs it); false when it did not.
+    @ObservationIgnored public var closeActiveWorkspaceWindow: () -> Bool = { false }
     /// The Clone sheet, while it is up.
     public var clone: CloneShellModel?
     /// The About sheet is up.
@@ -34,6 +39,8 @@ public final class ShellAppModel {
     @ObservationIgnored public var openExternally: (URL) -> Void = { _ in }
     /// The Organizer window's model (Window ▸ Organizer; ShellAppModel+Organizer.swift).
     @ObservationIgnored public let organizer = OrganizerShellModel()
+    /// Device Hub (ShellAppModel+DeviceHub.swift).
+    @ObservationIgnored public let deviceHub = DeviceHubShellModel()
     /// Opens a window scene by id (the views install the toolkit's action).
     @ObservationIgnored public var openWindow: (String) -> Void = { _ in }
     /// Where New Project remembers its choices (tests pass their own).
@@ -217,7 +224,9 @@ public final class ShellAppModel {
     public func perform(_ c: ShellCommand) {
         switch c {
         case .open: showOpenSheet()
-        case .newProject: showNewProject()
+        // P-187: the compact picker first; with a workspace open, Quick New
+        // Project's in-window panel (P-180, ShellPopoverModel.swift).
+        case .newProject: if let w = workspace { w.showQuickNewProject() } else { showNewProjectPicker() }
         case .closeWorkspace: closeWorkspace()
         case .welcome: showWelcome()
         case .about: isAboutShown = true

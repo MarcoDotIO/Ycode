@@ -310,6 +310,9 @@ import YcodeProject
         w.isReleasedWhenClosed = false
         w.contentViewController = c
         w.contentView?.layoutSubtreeIfNeeded()
+        // Beta 5 (P-086): the capsule lists nothing until something is typed.
+        #expect(c.shown.isEmpty)
+        c.setQuery("e")
         #expect(c.shown.count > 50)
         let first = accessibilityWalk(c.view)
         let second = accessibilityWalk(c.view)
@@ -400,7 +403,9 @@ import YcodeProject
         a.isBusy = true
         let kids = (a.accessibilityChildren() ?? []).compactMap { $0 as? NSAccessibilityElement }
         #expect(kids.map { $0.accessibilityRole() } == [.progressIndicator, .staticText, .staticText])
-        #expect(kids.compactMap { $0.accessibilityValue() as? String } == ["Building • 39 / 58", "Panes", "Building • 39 / 58"])
+        // P-029 (beta 5): the progress indicator's value is its fraction, read out as the status.
+        #expect(kids.compactMap { $0.accessibilityValue() as? String } == ["Panes", "Building • 39 / 58"])
+        #expect(kids.first?.accessibilityValueDescription() == "Building • 39 / 58" && kids.first?.accessibilityValue() is NSNumber)
         a.isBusy = false
         a.status = ""
         #expect((a.accessibilityChildren() ?? []).count == 1)

@@ -188,7 +188,14 @@ extension ModifiedContent: PrimitiveView where Content: View, Modifier: ViewModi
             let cache = node.primitiveEnvironmentCache
             let unchanged = old.map { GraphComparison.fieldsEqual($0, m) } ?? false
             if !(unchanged && cache == node.environment.revision && node.environmentOverride != nil) {
-                node.environmentOverride = m._environment(node.environment)
+                let new = m._environment(node.environment)
+                // B5 (P-200): a new modifier value (a closure) that writes the
+                // same values over the same environment changes nothing below.
+                if node.graph.reusesLowering, cache == node.environment.revision, let old = node.environmentOverride,
+                   new.hasSameValues(as: old) {
+                } else {
+                    node.environmentOverride = new
+                }
                 node.primitiveEnvironmentCache = node.environment.revision
             }
         }

@@ -324,6 +324,7 @@ struct SegmentedPicker: View {
     @Environment(\._desktopChrome) private var desktop
     @Environment(\.controlSize) private var controlSize
     @Environment(\.font) private var font
+    @Environment(\.fullKeyboardAccess) private var fullKeyboardAccess
     @State private var isFocused = false
     @State private var pressed: Int?
 
@@ -347,7 +348,8 @@ struct SegmentedPicker: View {
                     .font(font ?? DesktopControlMetrics.segmentFont(controlSize))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                    .opacity(pressed == i ? 0.6 : 1)
+                    // B5-STATES: the held segment's label dims (ControlStates.swift).
+                    .opacity(pressed == i ? DesktopControlStates.pressedSegmentLabel : 1)
             }
         }
         .background {
@@ -360,12 +362,18 @@ struct SegmentedPicker: View {
                             .frame(width: max(0, segment), height: g.size.height)
                             .offset(x: CGFloat(selected) * segment)
                     }
+                    // B5-STATES: the held segment takes the selected fill.
+                    if let pressed, pressed != selected, n > 0 {
+                        shape.fill(DesktopControlMetrics.segmentSelected(scheme))
+                            .frame(width: max(0, segment), height: g.size.height)
+                            .offset(x: CGFloat(pressed) * segment)
+                    }
                 }
             }
         }
         .overlay { pressCatchers(n) }
-        .focusRing(isFocused, shape)
-        .controlFocus($isFocused) { k in keyStep(k, n) }
+        .focusRing(DesktopControlStates.showsFocusRing(focused: isFocused, desktop: desktop, fullKeyboardAccess: fullKeyboardAccess), shape)
+        .controlTabStop($isFocused, desktop: desktop, fullKeyboardAccess: fullKeyboardAccess) { k in keyStep(k, n) }
         .opacity(isEnabled ? 1 : 0.45)
     }
 
@@ -453,6 +461,7 @@ struct MenuPickerButton: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\._desktopChrome) private var desktop
     @Environment(\._menuStyle) private var menuStyle
+    @Environment(\.fullKeyboardAccess) private var fullKeyboardAccess
     @State private var ref = NodeRef()
     @State private var box = PopupBox()
     @State private var isFocused = false
@@ -461,11 +470,16 @@ struct MenuPickerButton: View {
     var body: some View {
         let services = services, ref = ref, box = box
         let options = options, selected = selected, choose = choose
+        // P-217 (L-222): where the button's title starts, so the menu's
+        // selected row lands on it (the desktop styles below).
+        let textInset: CGFloat = desktop && menuStyle == 2 ? 6 : (columnWidth != nil ? 8 : 0)
+        let overSelection = desktop
         let open: @MainActor () -> Void = {
             let rows = ForEach(Array(options.enumerated()), id: \.offset) { i, o in
                 MenuRow(label: o.view, checked: i == selected, trailing: nil, isDestructive: false, action: { choose(i) })
             }
-            openPopup(services: services, ref: ref, box: box, submenu: false, content: AnyView(rows))
+            openPopup(services: services, ref: ref, box: box, submenu: false, over: overSelection ? (selected ?? 0) : nil,
+                      textInset: textInset, content: AnyView(rows))
         }
         Group {
             if desktop && menuStyle == 2 {
@@ -523,15 +537,19 @@ struct MenuPickerButton: View {
                 .foregroundStyle(.tint)
             }
         }
-        .opacity(isPressed ? 0.4 : (isEnabled ? 1 : 0.4))
+        // B5-STATES (ControlStates.swift): on the desktop the pop-up opens on
+        // mouse-down and does not fade while held; no focus ring or Tab stop
+        // without Full Keyboard Access.
+        .opacity(isPressed && !desktop ? 0.4 : (isEnabled ? 1 : 0.4))
         .contentShape(Rectangle())
-        .gesture(ControlPressGesture(onPressed: { p in isPressed = p }, onAction: { open() }))
-        .controlFocus($isFocused) { k in
+        .controlPress(desktop ? .mouseDown : .mouseUp, onPressed: { p in isPressed = p }, onAction: { open() })
+        .controlTabStop($isFocused, desktop: desktop, fullKeyboardAccess: fullKeyboardAccess) { k in
             guard isActivationKey(k) || (k.isDown && (k.key == .downArrow || k.key == .upArrow)) else { return false }
             open()
             return true
         }
-        .focusRing(isFocused, RoundedRectangle(cornerRadius: 4))
+        .focusRing(DesktopControlStates.showsFocusRing(focused: isFocused, desktop: desktop, fullKeyboardAccess: fullKeyboardAccess),
+                   RoundedRectangle(cornerRadius: 4))
         .modifier(NodeCaptureModifier(ref: ref))
     }
 }

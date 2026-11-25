@@ -60,16 +60,16 @@ extension WorkspaceWindowController {
         })
     }
 
-    /// Replace (All) as one step of the window's undo manager: the open
-    /// editors' edits, and an action that puts the files changed on disk
-    /// back (or forward, on redo).
+    /// Replace (All) as one step of the window's undo manager: an action
+    /// that puts every changed file back (or forward, on redo), through its
+    /// open editor or on disk. An open editor's change is also an entry of
+    /// that file's own text history (`source-editor.md`, "Text undo belongs
+    /// to the file").
     func performWorkspaceReplace(_ plan: ReplacePlan) -> ReplaceTransaction {
         let um = window?.undoManager
         um?.beginUndoGrouping()
         let t = plan.apply(findReplaceIO)
-        var disk = t
-        disk.changes = t.changes.filter { findEditor(for: $0.path) == nil }
-        if !disk.changes.isEmpty { registerDiskReplace(disk, toOriginal: true) }
+        if !t.changes.isEmpty { registerDiskReplace(t, toOriginal: true) }
         um?.setActionName(t.title)
         um?.endUndoGrouping()
         return t

@@ -136,9 +136,10 @@ private let fixtures = ycodeDir.appendingPathComponent("Tests/YcodeIDECoreTests/
         let menu = NSMenu()
         wc.navigator.rebuildRowMenu(menu)
         let titles = menu.items.filter { !$0.isSeparatorItem }.map(\.title)
-        #expect(titles == ["Show in Finder", "New File from Template…", "New Empty File", "Add Files to \u{201C}Nav\u{201D}…", "Rename", "Delete",
-                           "New Group", "New Group without Folder", "New Group from Selection", "New Group from Selection without Folder",
-                           "New Folder", "New Folder from Selection", "Sort by Name", "Sort by Type", "Find in Selected File…"])
+        // A file row: the reference's items and order (P-041), no Rename.
+        #expect(titles == ["Show in Finder", "Open Terminal at Location", "Open in New Tab", "Open in New Window", "Open with External Editor",
+                           "New Empty File", "New File from Template…", "Add Files to \u{201C}Nav\u{201D}…", "Add Package Dependencies…",
+                           "Delete", "New Folder", "New Folder from Selection", "Bookmark", "Find in Selected File…", "Source Control"])
         #expect(menu.item(withTitle: "Delete")?.isEnabled == true)
         // In a folder the group and sort items are left out.
         select(wc, paths: [s.path("Shared/Debug.swift")])
@@ -280,8 +281,10 @@ private let fixtures = ycodeDir.appendingPathComponent("Tests/YcodeIDECoreTests/
         _ = try #require(wc.moveNavigatorRows([readme], to: nav, at: 0))
         #expect(s.exists("Nav/README.md") && !s.exists("README.md"))
         #expect(try PBXProj(contentsOf: s.xcodeproj)[Self.navGroup]?.references("children").first == "0B0000000000000000000003")
+        // A drag move is not undoable (P-042): ⌘Z leaves it in place.
+        #expect(wc.window?.undoManager?.canUndo == false)
         wc.window?.undoManager?.undo()
-        #expect(s.exists("README.md") && s.written == s.base)
+        #expect(s.exists("Nav/README.md") && !s.exists("README.md"))
         // Into the synchronized folder: the reference goes, Nav gets an exception.
         let tool = try #require(row(wc, id: Self.toolMain))
         let shared = try #require(row(wc, id: Self.shared))

@@ -7,7 +7,8 @@ import YcodeIDEShell
 /// holds the merge confirmation and the merge sheet
 /// (`specs/ide/merge-sheet.md` §1.2, §2, §10), as the AppKit
 /// `MergeOverlayView` does: the veil that darkens the window over 255 ms
-/// (ease-out), the alert centred on it (fading out over 90 ms on Merge),
+/// (ease-out), the alert centred on it, dropping into its place over 283 ms
+/// as the veil darkens with it (P-137; fading out over 90 ms on Merge),
 /// and the sheet under the toolbar, fading in over 90 ms while it slides
 /// down 32 points over 200 ms (with Reduce Motion it fades only; closing
 /// reverses it). While anything is up it takes every click.
@@ -23,6 +24,8 @@ struct MergeOverlayLayer: View {
     /// The alert drawn (kept while it fades out).
     @State private var alert: MergeAlertState?
     @State private var alertOpacity = 1.0
+    /// The alert's drop into its place (P-137).
+    @State private var alertOffset = 0.0
     /// Merge turns accent once the alert is up (§1.2).
     @State private var alertReady = false
     /// The sheet drawn (kept while it goes away).
@@ -67,7 +70,7 @@ struct MergeOverlayLayer: View {
                         .frame(width: CGFloat(f.width), height: CGFloat(f.height))
                         .compositingGroup()
                         .opacity(alertOpacity)
-                        .offset(x: CGFloat(f.x), y: CGFloat(f.y))
+                        .offset(x: CGFloat(f.x), y: CGFloat(f.y + alertOffset))
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
@@ -99,8 +102,19 @@ struct MergeOverlayLayer: View {
             alert = a
             alertOpacity = 1
             if appearing {
+                // P-137: the alert slides down into its place as the
+                // reference's alert sheet does (+85 → +368 ms, symmetric),
+                // as the macOS overlay's `slideAlertIn`.
+                let m = Motion.mergeAlertSheet
                 alertReady = false
-                after(d(MergeSheetMotion.veilIn)) { if scm.mergeAlert != nil { alertReady = true } }
+                alertOffset = reduceMotion ? 0 : -Motion.mergeAlertDrop
+                if !reduceMotion {
+                    after(d(m.delay)) {
+                        guard scm.mergeAlert != nil else { return }
+                        withAnimation(.timingCurve(m.bezier.x1, m.bezier.y1, m.bezier.x2, m.bezier.y2, duration: d(m.duration))) { alertOffset = 0 }
+                    }
+                }
+                after(d(m.total)) { if scm.mergeAlert != nil { alertReady = true } }
             }
         } else if alert != nil, alertOpacity == 1 {
             // Clicking Merge (or Cancel): the alert fades out over 90 ms.
@@ -151,10 +165,18 @@ struct MergeOverlayLayer: View {
     }
 
     func syncVeil() {
-        // The veil: ease-out over 255 ms (§1.2), in and out.
-        let curve = Animation.timingCurve(0.215, 0.61, 0.355, 1, duration: d(MergeSheetMotion.veilIn))
+        // The veil: ease-out over 255 ms (§1.2), in and out, as the macOS
+        // overlay's (L-174: the curve was (0.215, 0.61, 0.355, 1)); under
+        // the alert it darkens on the alert's own curve (P-137).
+        let e = Motion.Bezier.easeOut
+        let curve = Animation.timingCurve(e.x1, e.y1, e.x2, e.y2, duration: d(MergeSheetMotion.veilIn))
+        let m = Motion.mergeAlertSheet
+        let alertCurve = Animation.timingCurve(m.bezier.x1, m.bezier.y1, m.bezier.x2, m.bezier.y2, duration: d(m.duration))
         if isWanted {
-            if veil < 1 { after(0.016) { if isWanted, veil < 1 { withAnimation(curve) { veil = 1 } } } }
+            let underAlert = scm.mergeAlert != nil
+            if veil < 1 {
+                after(underAlert ? d(m.delay) : 0.016) { if isWanted, veil < 1 { withAnimation(underAlert ? alertCurve : curve) { veil = 1 } } }
+            }
         } else if isActive {
             let wait = max(sheet != nil ? d(MergeSheetMotion.sheetOutSlide) : 0, alert != nil ? d(MergeSheetMotion.alertOut) : 0)
             withAnimation(curve) { veil = 0 }

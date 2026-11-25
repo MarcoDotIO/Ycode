@@ -118,6 +118,8 @@ public final class OutlineItem: NSObject {
         unfocusedTint = Self.unfocusedColor(WorkspaceChrome.iconTint(kind: node.kind, name: node.name))
         objectID = node.objectID
         expansionKey = node.kind == .file ? nil : node.expansionKey
+        // An empty group or folder keeps its disclosure triangle (P-043).
+        alwaysExpandable = node.kind == .group || node.kind == .folder
     }
 }
 
@@ -134,6 +136,9 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     /// navigator (P-035).
     private var parkedProjectRows: (keys: [String], scroll: NSPoint?) = ([], nil)
     public var onOpen: ((String, Int?) -> Void)?
+    /// An issue without a file was clicked in the Issue navigator (its
+    /// message): the recommended-settings warning opens its sheet (P-120).
+    public var onOpenProjectIssue: ((String) -> Void)?
     /// Set while the window selects the row of a file it opened.
     let selectionFromOpen = FlagBox()
     private var scrollerStyleObserver: NSObjectProtocol?
@@ -151,14 +156,14 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     /// The selector buttons' tooltips (tests).
     public var selectorToolTips: [String] { buttons.map { $0.toolTip ?? "" } }
     /// The left pull-down button of the bottom bar (nil while hidden; tests).
-    public var leftButtonToolTip: String?? { addBreakpointButton.isHidden ? nil : .some(addBreakpointButton.toolTip) }
+    public var leftButtonToolTip: String?? { addBreakpointButton.isHidden ? nil : .some(ToolTipPresenter.text(of: addBreakpointButton)) }
 
     /// Keeps rows whose title contains the text, and parents of such rows.
     func refilter() {
-        let t = (filterTexts[selectedIndex] ?? "").lowercased()
-        guard selectedIndex != 0, !t.isEmpty else { filteredRoots = nil; return }
+        let t = filterTexts[selectedIndex] ?? ""
+        guard selectedIndex != 0, NavigatorFilterModel.isActive(t) else { filteredRoots = nil; return }
         func keep(_ item: OutlineItem) -> OutlineItem? {
-            if item.title.lowercased().contains(t) { return item }
+            if NavigatorFilterModel.matches(item.title, query: t) { return item }
             let kids = item.children.compactMap(keep)
             guard !kids.isEmpty else { return nil }
             let copy = OutlineItem(title: item.title, symbol: item.symbol, tint: item.tint, children: kids, path: item.path, line: item.line,
@@ -181,10 +186,18 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     public func setFilter(_ text: String) {
         _ = view
         filter.stringValue = text
-        filterChanged()
+        applyFilterNow()
     }
     private let selector = NSStackView()
     private var buttons: [NSButton] = []
+    /// The selector bar's glass lens (P-198), wired as the inspector's.
+    lazy var selectorLens: GlassTabLensController = {
+        let l = GlassTabLensController(bar: .navigator)
+        l.buttons = { [weak self] in self?.buttons ?? [] }
+        l.selected = { [weak self] in self?.selectedIndex ?? 0 }
+        l.select = { [weak self] i in self?.select(i) }
+        return l
+    }()
     let outline = NavigatorOutlineView()
     /// The outline and the selector (tests: row metrics).
     var outlineView: NSOutlineView { outline }
@@ -270,6 +283,13 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     public let thirdToggle: NSButton = NavigatorFilterToggle()
     public var toggleButtons: [NSButton] { [recentToggle, sourceControlToggle, thirdToggle] }
     let rowMenu = NSMenu(title: "Row")
+    /// The filter's recents and pending refilter (+Filter.swift, P-037).
+    let filterState = NavigatorFilterState()
+    let filterDelegate = NavigatorFilterDelegate()
+    /// The rows an open context menu acts on (+RowMenu.swift, P-041).
+    let contextRowState = NavigatorContextRows()
+    /// The file a press opened (+SelectionOpen.swift, P-199).
+    let pressState = NavigatorPressState()
     /// The Test navigator's row menu (Run Repeatedly…; set by the window).
     public var testRowMenu: (() -> [NSMenuItem])?
     /// The Source Control navigator's row menu for a row key (set by the window).
@@ -306,6 +326,8 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     public var filterSourceControl = false { didSet { syncToggleStates(); applyProjectFilter() } }
     public var filterText = "" { didSet { applyProjectFilter() } }
     private var unfilteredProject: [OutlineItem] = []
+    /// The project rows before the bottom bar's filters.
+    var unfilteredProjectRows: [OutlineItem] { unfilteredProject }
     /// Symbols of the workspace's files (no navigator since Bookmarks took
     /// its place; used by the jump bar and Open Quickly).
     public private(set) var symbolRows: [OutlineItem] = []
@@ -382,14 +404,22 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         selector.orientation = .horizontal
         selector.distribution = .fillEqually
         selector.spacing = 0
+        selector.setClippingResistancePriority(.init(200), for: .horizontal)
         for (i, name) in CommandTable.navigators.enumerated() {
             // Four of them in Ycode's own drawings (row 192, NavigatorRowIcons.swift).
             let img = SelectorGlyphImages.image(forSymbol: Self.symbols[i], description: "\(name) navigator")
                 ?? NSImage(systemSymbolName: Self.symbols[i], accessibilityDescription: "\(name) navigator")
                 ?? NSImage(systemSymbolName: "circle", accessibilityDescription: name)!
-            let b = NSButton(image: img, target: self, action: #selector(selectorClicked(_:)))
+            // P-198: a glass lens while held; the tab selects on release, no
+            // hover (control-states.md; ControlStateAppKit.swift).
+            let b = GlassTabButton(image: img, target: self, action: #selector(selectorClicked(_:)))
+            b.lens = selectorLens
             b.isBordered = false
             b.tag = i
+            // P-024: the bar gives way down to ≈ 135 points (its glyphs
+            // shrink) instead of holding the navigator at ≈ 266.
+            b.setContentCompressionResistancePriority(.init(200), for: .horizontal)
+            b.imageScaling = .scaleProportionallyDown
             b.toolTip = NavigatorBars.selectorToolTips[i]   // reference-ui-5.md §5.2
             b.setButtonType(.toggle)
             // reference-ui-6.md §5.6 (N8): the tab keeps its title (and its
@@ -452,6 +482,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         filter.controlSize = .small
         filter.target = self
         filter.action = #selector(filterChanged)
+        configureFilterBehaviour()   // +Filter.swift (P-037)
         filterOptions.isBordered = false
         filterOptions.addItem(withTitle: "")
         // §5.6 (N7): a funnel glyph with a chevron, inside the field.
@@ -591,7 +622,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             scrollClip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             scrollClip.bottomAnchor.constraint(equalTo: filter.topAnchor, constant: -4),
             emptyLabel.centerXAnchor.constraint(equalTo: scrollClip.centerXAnchor),
-            emptyLabel.centerYAnchor.constraint(equalTo: scrollClip.centerYAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: scrollClip.centerYAnchor, constant: -CGFloat(NavigatorEmptyStyle.raise)),
             emptyLabel.widthAnchor.constraint(lessThanOrEqualTo: scrollClip.widthAnchor, constant: -24),
             addBreakpointButton.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: glass ? Self.plusLeading : 4),
             addBreakpointButton.centerYAnchor.constraint(equalTo: filter.centerYAnchor),
@@ -655,6 +686,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         ])
         darkFill = fill
         view = root
+        letHeadersCompress()   // +Filter.swift (P-024)
         select(0)
     }
 
@@ -715,12 +747,12 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     /// whose name contains the text, opened in this window (Recent), or
     /// with a source-control status; groups stay when a row under them does.
     func applyProjectFilter() {
-        let text = filterText.lowercased()
+        let text = NavigatorFilterModel.normalized(filterText)
         let active = !text.isEmpty || filterRecent || filterSourceControl
         func keep(_ item: OutlineItem) -> OutlineItem? {
             if item.children.isEmpty {
                 guard item.path != nil else { return active ? nil : item }
-                let ok = (text.isEmpty || item.title.lowercased().contains(text))
+                let ok = NavigatorFilterModel.matches(item.title, query: text)
                     && (!filterRecent || recentFiles.contains(item.path!))
                     && (!filterSourceControl || fileBadges[item.path!] != nil)
                 return ok ? item : nil
@@ -737,6 +769,11 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             copy.nodePath = item.nodePath
             copy.objectID = item.objectID
             copy.expansionKey = item.expansionKey
+            // The project row keeps its mark and a group its glyph while
+            // the filter shows them.
+            copy.rowIcon = item.rowIcon
+            copy.unfocusedTint = item.unfocusedTint
+            copy.alwaysExpandable = item.alwaysExpandable
             return copy
         }
         roots[0] = active ? unfilteredProject.compactMap(keep) : unfilteredProject
@@ -761,7 +798,10 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         restoringExpansion = true
         defer { restoringExpansion = false }
         func expand(_ items: [OutlineItem]) {
-            for i in items where i.expansionKey.map(keys.contains) == true {
+            for i in items {
+                // An empty group or folder shows its triangle open (P-043).
+                if i.alwaysExpandable, i.children.isEmpty { outline.expandItem(i); continue }
+                guard i.expansionKey.map(keys.contains) == true else { continue }
                 outline.expandItem(i)
                 expand(i.children)
             }
@@ -774,7 +814,8 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         guard isViewLoaded, selectedIndex == 0 else { return savedProjectExpansion ?? [] }
         var out: [String] = []
         func walk(_ items: [OutlineItem]) {
-            for i in items where outline.isItemExpanded(i) {
+            // An empty group's open triangle is not a saved expansion (P-043).
+            for i in items where outline.isItemExpanded(i) && !i.children.isEmpty {
                 if let k = i.expansionKey { out.append(k) }
                 walk(i.children)
             }
@@ -793,9 +834,10 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     public func outlineViewItemDidExpand(_ notification: Notification) { projectExpansionChanged() }
     public func outlineViewItemDidCollapse(_ notification: Notification) { projectExpansionChanged() }
 
-    @objc private func filterChanged() {
+    @objc func filterChanged() {
         filterTexts[selectedIndex] = filter.stringValue
-        if selectedIndex == 0 { filterText = filter.stringValue; return }
+        filterState.applied[selectedIndex] = filter.stringValue
+        if selectedIndex == 0 { filterText = filter.stringValue; updateEmpty(); return }
         refilter()
         outline.reloadData()
         outline.expandItem(nil, expandChildren: true)
@@ -803,10 +845,6 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     }
     @objc private func toggleClicked(_ b: NSButton) {
         setToggle(selectedIndex, b.tag, !toggleValue(selectedIndex, b.tag))
-    }
-    /// Filter options ▸ a toggle's item (tag = toggle index).
-    @objc private func toggleMenuChosen(_ item: NSMenuItem) {
-        setToggle(selectedIndex, item.tag, !toggleValue(selectedIndex, item.tag))
     }
 
     /// The bottom bar of navigator `index` (reference-ui-5.md §5.2): the
@@ -913,6 +951,9 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
                 item.tag = i
                 menu.addItem(item)
             }
+        } else if selectedIndex == 0 {
+            // New Empty File, New File from Template…, —, Add Files to “<project>”… (P-040).
+            for item in projectMenuItems(ProjectRowMenu.addMenu, kind: .project) { menu.addItem(item) }
         } else {
             for item in addMenuItems?(selectedIndex) ?? [] { menu.addItem(item) }
         }
@@ -1021,9 +1062,9 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
                 for (k, t) in items.enumerated() { add(t, #selector(issueFilterChosen(_:)), tag: n * 10 + k, state: n == 0 && issueModel.deprecationOnly) }
             }
         } else {
-            for (i, t) in NavigatorBars.specs[selectedIndex].toggles.enumerated() {
-                add(t.menuTitle, #selector(toggleMenuChosen(_:)), tag: i, state: toggleValue(selectedIndex, i))
-            }
+            // The recent filters and Clear Recents (P-037; the toggles are
+            // in the field, not in this menu).
+            addRecentFilterItems(to: menu)
             if selectedIndex == 6 {
                 // The process view options (reference-ui-4.md §5.3).
                 menu.addItem(.separator())
@@ -1123,7 +1164,9 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     func rebuildScopeMenu() {
         guard let menu = findScope.menu else { return }
         menu.removeAllItems()
-        let unit = isPackage ? "Package" : (isWorkspace ? "Workspace" : "Project")   // reference-ui-5.md §5.4
+        // "In Workspace" for every container (P-040, the 27.1 parity run;
+        // reference-ui-5.md §5.4 had "Project" and "Package").
+        let unit = "Workspace"
         func add(_ title: String, enabled: Bool, tag: Int, path: String? = nil) {
             let i = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             i.isEnabled = enabled
@@ -1546,8 +1589,13 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         if isViewLoaded, selectedIndex == 0 {
             parkedProjectRows = (selectedProjectRowKeys(), outline.enclosingScrollView?.contentView.bounds.origin)
         }
+        if isViewLoaded, index != selectedIndex { noteRecentFilter() }
+        filterState.settle?.invalidate()
+        filterState.settle = nil
         selectedIndex = index
         filter.stringValue = filterTexts[index] ?? ""
+        filterState.applied[index] = filter.stringValue
+        updateFilterGlyph()
         refilter()
         findHeight?.constant = index == 3 ? 22 : 0
         optionsHeight?.constant = index == 3 ? 18 : 0
@@ -1583,26 +1631,39 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     }
 
     /// The navigator's empty state (reference-ui-5.md §5.2): a title and,
-    /// for some, a second line in smaller text.
-    private func updateEmpty() {
-        let lines = NavigatorBars.specs[selectedIndex].emptyState
-        emptyLabel.isHidden = !shownRoots.isEmpty || lines.isEmpty
+    /// for some, a second line in smaller text; "No Filter Results" when
+    /// the filter left no row (P-037). The title is 16 points medium in
+    /// #9D9FA1 (dark), raised above the centre (P-039).
+    func updateEmpty() {
+        let had = selectedIndex == 0 ? !unfilteredProject.isEmpty : !roots[selectedIndex].isEmpty
+        let lines = NavigatorFilterModel.emptyState(navigator: selectedIndex, filterText: filterTexts[selectedIndex] ?? "",
+                                                    hadRows: had, shownRows: shownRoots.count)
+        emptyLabel.isHidden = lines.isEmpty
         let text = NSMutableAttributedString()
         let center = NSMutableParagraphStyle()
         center.alignment = .center
         for (i, l) in lines.enumerated() {
             text.append(NSAttributedString(string: (i > 0 ? "\n" : "") + l, attributes: [
-                .font: i == 0 ? NSFont.systemFont(ofSize: 13, weight: .medium) : NSFont.systemFont(ofSize: 11),
-                .foregroundColor: i == 0 ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor, .paragraphStyle: center,
+                .font: i == 0 ? NSFont.systemFont(ofSize: NavigatorEmptyStyle.titleSize, weight: .medium)
+                    : NSFont.systemFont(ofSize: NavigatorEmptyStyle.detailSize),
+                .foregroundColor: i == 0 ? Self.emptyTitleColor : NSColor.tertiaryLabelColor, .paragraphStyle: center,
             ]))
         }
         emptyLabel.attributedStringValue = text
+    }
+
+    /// The empty state's title colour (P-039): #9D9FA1 in dark.
+    static let emptyTitleColor = NSColor(name: "NavigatorEmptyTitle") { a in
+        let v = a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NavigatorEmptyStyle.titleColorDark : NavigatorEmptyStyle.titleColorLight
+        return NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
     }
 
     @objc private func selectorClicked(_ sender: NSButton) { select(sender.tag) }
 
     /// The selected row's file, if any.
     public var selectedPath: String? {
+        if let p = contextRowState.openingPath { return p }
+        if !contextRowState.rows.isEmpty { return contextRowState.rows.count == 1 ? contextRowState.rows[0].path : nil }
         guard isViewLoaded, outline.selectedRow >= 0 else { return nil }
         return (outline.item(atRow: outline.selectedRow) as? OutlineItem)?.path
     }
@@ -1629,15 +1690,21 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         guard selectedIndex == 0, !selectionFromOpen.value, outline.selectedRowIndexes.count == 1,
               let item = outline.item(atRow: outline.selectedRow) as? OutlineItem, let path = item.path,
               item.nodeKind == .file || path.hasSuffix(".xcodeproj") else { return }
-        // A click in the outline right now: `rowClicked` opens it.
+        // A click in the outline right now: `rowClicked` opens it, except a
+        // plain single click, which opens at once on the press (P-199).
         if let e = NSApp.currentEvent, [.leftMouseDown, .leftMouseUp, .rightMouseDown, .otherMouseDown].contains(e.type),
            e.window === outline.window, ProcessInfo.processInfo.systemUptime - e.timestamp < 1,
-           outline.bounds.contains(outline.convert(e.locationInWindow, from: nil)) { return }
+           outline.bounds.contains(outline.convert(e.locationInWindow, from: nil)) {
+            if Self.opensOnPress(e) { openOnPress(path, line: item.line) }
+            return
+        }
         onOpen?(path, item.line)
     }
 
     @objc private func rowClicked() {
         guard let item = outline.item(atRow: outline.clickedRow) as? OutlineItem else { return }
+        // Opened already when the button went down (P-199).
+        if pressOpened(item.path) { return }
         if item.enabledMarker != nil, let path = item.path, let line = item.line, let e = NSApp.currentEvent,
            outline.convert(e.locationInWindow, from: nil).x > outline.bounds.maxX - 26 {
             onToggleBreakpointEnabled?(path, line)
@@ -1649,6 +1716,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             if let page = item.reportPage { onOpenReportPage?(r, page) } else { onOpenReport?(r) }
         }
         if selectedIndex == 3, item.findIndex?.match != nil { openFindRow(item); return }   // FindNavigator.swift
+        if selectedIndex == 4, item.path == nil, item.children.isEmpty, item.detail == nil { onOpenProjectIssue?(item.title); return }
         if let path = item.path { onOpen?(path, item.line) }
     }
 
@@ -1695,6 +1763,12 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         }
         if item.middleTruncation { label.lineBreakMode = .byTruncatingMiddle }
         if item.dimmed { label.textColor = .secondaryLabelColor; cell.labelColor = .secondaryLabelColor }
+        // A filtered row: the match bold, the rest dimmed (P-037).
+        if item.detail == nil, item.maxLines == 0, selectedIndex != 3, let styled = emphasizedTitle(item.title, size: Self.rowFontSize) {
+            label.attributedStringValue = styled
+            cell.recolorsLabel = false
+            cell.filterTitle = styled
+        }
         if let detail = item.detail {
             label.attributedStringValue = NSAttributedString(string: item.title, attributes: [.font: NSFont.systemFont(ofSize: Self.rowFontSize)])
                 + NSAttributedString(string: "  " + detail, attributes: [.font: NSFont.systemFont(ofSize: Self.rowFontSize - 1),
@@ -1756,10 +1830,16 @@ extension NavigatorAreaController: NSMenuDelegate {
         if menu === findScope.menu { rebuildScopeMenu() } else if menu === rowMenu { rebuildRowMenu(menu) } else { rebuildAddMenu() }
     }
 
+    public func menuDidClose(_ menu: NSMenu) {
+        if menu === rowMenu { contextMenuDidClose() }
+    }
+
     /// The row context menu: for a bookmark, Mark as Done / Not Done; for
     /// project rows, the file operations (`projectRowMenu`).
     func rebuildRowMenu(_ menu: NSMenu) {
         menu.removeAllItems()
+        menu.autoenablesItems = true
+        menu.minimumWidth = 0
         if selectedIndex == 0 { rebuildProjectRowMenu(menu); return }
         if selectedIndex == 1 {
             // The Source Control navigator: by the clicked row's key. The

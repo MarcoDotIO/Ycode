@@ -30,8 +30,9 @@ import Testing
     /// Hide: ease-out (round 10, row 248: over 200 ms). Show: ease-in-out
     /// over 230 ms since round 10 (rounds 8–9: an even ease-out over 280).
     @Test func slideCurves() {
-        #expect(EditorMetrics.inspectorSlideMotion(show: false) == 0.200)
-        #expect(EditorMetrics.inspectorSlideMotion(show: true) == 0.230)
+        // Beta 5 (P-192, `Motion.inspector`) supersedes round 10's lengths.
+        #expect(EditorMetrics.inspectorSlideMotion(show: false) == Motion.inspector(show: false).duration)
+        #expect(EditorMetrics.inspectorSlideMotion(show: true) == Motion.inspector(show: true).duration)
         for show in [false] {
             let c = EditorMetrics.inspectorSlideCurve(show: show)
             #expect(c == EditorMetrics.inspectorSlideEaseOut)

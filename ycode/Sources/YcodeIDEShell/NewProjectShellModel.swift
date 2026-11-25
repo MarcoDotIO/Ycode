@@ -4,15 +4,21 @@ import YcodeIDECore
 
 /// The Linux shell's New Project sheet state over the core's
 /// `NewProjectFlowModel` (`templates.md` § Ycode implementation): the
-/// template step, the options step, and the save step drawn in the sheet
-/// (Save As, Where, Create Git repository, Add to, Group).
+/// compact picker (File ▸ New ▸ Project…, P-187), the template step, the
+/// options step, and the save step drawn in the sheet (Save As, Where,
+/// then the macOS save panel's accessory: Create Git repository, Add to,
+/// Group and the new-workspace choice). OpenViews' file dialog takes no
+/// accessory, so the save step stays a page of the sheet.
 @MainActor
 @Observable
 public final class NewProjectShellModel {
-    public enum Step: Equatable, Sendable { case template, options, save }
+    public enum Step: Equatable, Sendable { case picker, template, options, save }
 
     public private(set) var flow: NewProjectFlowModel
     public private(set) var step = Step.template
+    /// Add to = a project: save both projects in a new workspace (L-154;
+    /// on by default, as the macOS accessory).
+    public var newWorkspaceForProject = true
     /// Save As: the folder's name.
     public var saveAs = ""
     /// Where: the folder the project folder is made in.
@@ -31,7 +37,10 @@ public final class NewProjectShellModel {
     @ObservationIgnored let defaults: UserDefaults
     @ObservationIgnored var gitEnvironment: [String: String]?
 
-    public init(defaults: UserDefaults = .standard, row: Int? = nil, openContainer: URL? = nil, gitEnvironment: [String: String]? = nil) {
+    /// - Parameter picker: open on the compact picker (File ▸ New ▸
+    ///   Project…, P-187) instead of the template step.
+    public init(defaults: UserDefaults = .standard, row: Int? = nil, openContainer: URL? = nil, gitEnvironment: [String: String]? = nil,
+                picker: Bool = false) {
         self.defaults = defaults
         self.gitEnvironment = gitEnvironment
         flow = NewProjectFlowModel(defaults: defaults, chooser: row == 2 ? .package : .project)
@@ -44,11 +53,33 @@ public final class NewProjectShellModel {
         if let row, let id = NewProjectPicker.templateID(forRow: row) {
             flow.jump(to: id)
             step = .options
+        } else if row == nil, picker {
+            step = .picker
         }
     }
 
+    /// A compact-picker row (P-187): Command Line Tool and Playground jump
+    /// to their options, Package… to the package chooser, Choose
+    /// Template… to the template step. App (row 0) is the app's (the
+    /// untitled project, no sheet).
+    public func choose(row: Int) {
+        guard step == .picker else { return }
+        NewProjectPicker.remember(row: row, in: defaults)
+        if row == 2 { flow = NewProjectFlowModel(defaults: defaults, chooser: .package) }
+        if let id = NewProjectPicker.templateID(forRow: row) {
+            flow.jump(to: id)
+            step = .options
+        } else {
+            step = .template
+        }
+    }
+
+    /// Whether the new-workspace choice applies: Add to names a project.
+    public var offersNewWorkspace: Bool { addToOpenContainer && openContainer?.pathExtension == "xcodeproj" }
+
     public var heading: String {
         switch step {
+        case .picker: NewProjectPicker.header
         case .template: flow.chooser == .project ? NewProjectFlowModel.templateHeading : "Choose a template for your new package:"
         case .options: NewProjectFlowModel.optionsHeading
         case .save: "Save your new project:"
@@ -60,9 +91,10 @@ public final class NewProjectShellModel {
     public func select(_ id: String) { flow.select(id) }
     public func setOption(_ id: String, _ value: String) { flow.setOption(id, value) }
 
-    public var isPreviousEnabled: Bool { step != .template }
+    public var isPreviousEnabled: Bool { step != .template && step != .picker }
     public var isNextEnabled: Bool {
         switch step {
+        case .picker: false
         case .template, .options: flow.isNextEnabled
         case .save: !saveAs.trimmingCharacters(in: .whitespaces).isEmpty && !location.isEmpty
         }
@@ -77,6 +109,7 @@ public final class NewProjectShellModel {
 
     public func next() {
         switch step {
+        case .picker: break
         case .template:
             flow.next()
             if flow.step == .options { step = .options }
@@ -92,7 +125,7 @@ public final class NewProjectShellModel {
 
     public func previous() {
         switch step {
-        case .template: break
+        case .picker, .template: break
         case .options:
             flow.previous()
             step = .template
@@ -109,6 +142,7 @@ public final class NewProjectShellModel {
                                          saveAs: saveAs, createGitRepository: createGitRepository,
                                          addTo: addToOpenContainer ? openContainer : nil, group: group)
         save.team = flow.team
+        save.newWorkspaceForProject = newWorkspaceForProject
         defaults.set(save.location, forKey: NewProjectFlowModel.saveFolderKey)
         defaults.set(createGitRepository, forKey: NewProjectFlowModel.gitKey)
         do {
@@ -139,6 +173,24 @@ extension ShellAppModel {
             return
         }
         newProject = NewProjectShellModel(defaults: newProjectDefaults, row: row, openContainer: workspace?.session.model.url)
+    }
+
+    /// File ▸ New ▸ Project… (⇧⌘N, P-187): the compact picker first, as
+    /// on macOS; its rows go on in the same sheet.
+    public func showNewProjectPicker() {
+        newProject = NewProjectShellModel(defaults: newProjectDefaults, openContainer: workspace?.session.model.url, picker: true)
+    }
+
+    /// A compact-picker row chosen in the sheet (P-187): App closes the
+    /// sheet and makes the untitled project; the others go on in the sheet.
+    public func chooseNewProjectRow(_ row: Int) {
+        if NewProjectPicker.template(forRow: row) == .app {
+            NewProjectPicker.remember(row: row, in: newProjectDefaults)
+            newProject = nil
+            showNewProject(row: 0)
+            return
+        }
+        newProject?.choose(row: row)
     }
 
     /// Create in the sheet; on success the sheet closes and the result opens

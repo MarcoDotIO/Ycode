@@ -25,7 +25,7 @@ swift_build() { # package-dir label product
 }
 
 # What every package ships. ycode-ide comes first: it builds most of the rest.
-tools="ycode-ide ycode ycodebuild ycode-bsp ycode-sim-viewer"
+tools="ycode-ide ycode ycodebuild ycode-bsp ycode-sim-viewer ycrun"
 [ "$arch" = aarch64 ] && tools="$tools ycode-simd ycode-simhost"
 for tool in $tools YcodeGaugeAgent; do
     swift_build ycode ycode "$tool"
@@ -122,6 +122,13 @@ export YCODE_SIM_TREE="${YCODE_SIM_TREE:-$sim}"
 exec "$sim/scripts/ycode-sim.sh" "$@"
 SCRIPT
     chmod 755 /app/bin/ycode-sim
+fi
+
+# The guest tools as one archive, on every architecture: `ycrun remote setup`
+# copies them to a simulator host that has none (docs/YCRUN.md).
+if [ -f guest-tools/ylaunch ]; then
+    install -d /app/share/ycode
+    tar -cf /app/share/ycode/guest-tools.tar -C guest-tools --exclude README .
 fi
 
 # The display stream's JPEG (CYcodeCodec loads libjpeg at run time, by this

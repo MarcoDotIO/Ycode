@@ -1,5 +1,6 @@
 import AppKit
 import YcodeIDECore
+import YcodeSyntax
 
 /// Editor colors and fonts. Ycode's own default theme, built from system
 /// colors so it follows light and dark appearance. See
@@ -117,7 +118,16 @@ public enum Theme {
             let scaled = max(Preferences.fontSizeRange.lowerBound, f.size + size - current.fontSize)
             return NSFont(descriptor: base.fontDescriptor, size: CGFloat(scaled)) ?? base
         }
+        if kind == .docComment { return docCommentFont }
         return kind == .keyword ? boldFont : nil
+    }
+
+    /// Documentation comments without a font of the theme's own: the
+    /// proportional system face at the source font's size (P-054,
+    /// `EditorDocCommentStyle`); their `///`, `/**` and `*/` stay in the
+    /// source font.
+    public static var docCommentFont: NSFont {
+        NSFont.systemFont(ofSize: CGFloat(EditorDocCommentStyle.pointSize(sourceSize: Double(font.pointSize))))
     }
 
     public static let errorColor = NSColor.systemRed
@@ -183,6 +193,13 @@ public enum Theme {
                 guard tr.length > 0 else { continue }
                 if styles[t.kind] == nil { styles[t.kind] = [.foregroundColor: color(forToken: t.kind), .font: font(forToken: t.kind) ?? base] }
                 storage.addAttributes(styles[t.kind]!, range: tr)
+                // A doc comment's delimiters keep the source font (P-054).
+                if t.kind == .docComment, (styles[t.kind]?[.font] as? NSFont) != base {
+                    for d in EditorDocCommentStyle.delimiters(in: storage.string as NSString, token: t.range) {
+                        let dr = NSIntersectionRange(d, ns)
+                        if dr.length > 0 { storage.addAttribute(.font, value: base, range: dr) }
+                    }
+                }
             }
         }
         if range == nil { stylePlaceholders(storage) } else { stylePlaceholders(storage, in: ns) }

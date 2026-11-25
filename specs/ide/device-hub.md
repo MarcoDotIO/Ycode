@@ -976,6 +976,51 @@ drawings with the reference's shapes as above.
 - Device Hub's own drawing for a device it cannot drive (every round's
   devices were running in the reference).
 
+## Ycode decisions (2026-11-17)
+
+The owner asked that Device Hub be fully usable on macOS and on Linux, for
+example to turn a simulator on from the hub. These decisions settle the
+options of `parity-inventory.md` §4 item 2 for that goal; the rest of P-172
+to P-175 stays with beta 9.
+
+- **Ycode's own simulators** run, on both platforms, on a Linux simulator
+  host: on macOS through the remote-simulator settings (Settings ▸
+  Components ▸ Simulator Host), on Linux through the hosts paired over
+  Ycode's link, a host on the same computer included. Their live screen
+  shows in the hub's canvas, and the canvas's controls act on it.
+- **The Mac's own simulators** are the ones Apple's public `xcrun simctl` lists. The hub now runs them, not only lists them.
+  - **Start** boots the device with `simctl boot`, then opens the Mac's **simulator viewer** app.
+  - **The viewer** is the first of these that Launch Services can find:
+    1. Device Hub, bundle id `com.apple.dt.Devices`, inside the active developer folder's app bundle (`Contents/Applications`). Xcode 27 and later use it.
+    2. Simulator, bundle id `com.apple.iphonesimulator`. Xcode 26 and earlier use it.
+  - **Opening the viewer:** open Device Hub with its bundle id (`open -b com.apple.dt.Devices`). It lists the booted device as Booted, with no extra arguments. Open Simulator on the device (`open -a Simulator --args -CurrentDeviceUDID <udid>`).
+  - **No viewer found:** the device stays booted, and the hub's banner says that no simulator viewer is installed and the device is running without a screen. It is not a start failure: the row shows Booted.
+  - **Shut Down and Restart** use `simctl shutdown` and `simctl boot`.
+  - **Erase All Content and Settings…** uses `simctl erase` on a shut-down device, behind the hub's existing confirmation.
+  - **The canvas while a device runs:** the screen stays in the viewer. The canvas shows the device's picture with a glass capsule that names the device and its state, "Running in the simulator viewer", and a "Show in Viewer" button. The button opens the viewer again as above. This replaces the earlier notice that Ycode does not run the device.
+  - **Screenshot** acts through `simctl io <udid> screenshot <file>`.
+    - **A device with several screens** (iPhone Duo): simctl refuses with "Cannot choose between N displays. Specify one with --display:", followed by one line per screen, for example `--display=1  LCD (primary) 1398x2034`, and exits with code 22 ("Invalid argument").
+    - **Then Ycode captures each listed screen** with `--display=<id>`.
+    - **It keeps every picture that is not entirely black.** An off screen, such as the inner screen of a closed Duo, is a black picture.
+    - **The saved files** are named as before, with the screen's name in parentheses before `.png` when more than one is kept.
+    - **If every picture is black,** Ycode keeps the first listed screen's.
+    - **The banner** says "Screenshot Saved", or "2 Screenshots Saved".
+  - **Failure messages** read "Could not <action> the simulator: <simctl's last line>", where the action is a whole phrase, for example "take a screenshot of", "start", "shut down" or "erase".
+  - **The other controls** are shown with a tooltip: "The simulator viewer has these controls."
+  - **Names:** Ycode's UI names no Apple product beyond the device and runtime names simctl reports. "simulator viewer" is Ycode's own generic term.
+  - **Correction, 2026-11-24:** this bullet first said Ycode opens the Simulator app. Xcode 27 ships no Simulator.app (see the top of this spec), so `open -a Simulator` fails there.
+- **The hub opens with or without a workspace**, from Product ▸ Destination
+  ▸ Manage Devices… and Ycode ▸ Open Developer Tool ▸ Device Hub, on both
+  platforms. (There is no Window ▸ Devices and Simulators item: the
+  reference has none, `devices.md`.)
+- **macOS and Linux one to one, HIG and Liquid Glass for Ycode-only UI**
+  still hold; the status capsule follows the hub's other glass capsules.
+- **One stream per device.** The display stream takes one viewer at a time.
+  On Linux, Run's device window (`ycode-sim-viewer`) and the hub's canvas
+  each connect on their own; the newer one takes the display and the other
+  shows "Another viewer has this device" with Take Back. On macOS the hub
+  and the compact window share one session per device, as before.
+
 ## I. Ycode implementation (HUB-UI, 2026-10-28)
 
 Clean-room work from this spec, `simulator-features.md` §7 and its
@@ -1946,6 +1991,43 @@ Tests: `DeviceFrameR7Tests` (YcodeDeviceModel), `DeviceWindowR7Tests`
 (YcodeRemoteViewer), `DeviceHubR7Tests` (YcodeUI; `YCODE_B7_SHOTS`,
 `YCODE_B7_VALUES`); rounds 3–6 tests updated where round 7 superseded them.
 
+### I.18 Device Hub usable on macOS and Linux (B5-DEVICEHUB, 2026-11-17)
+
+Clean-room work from this spec, `devices.md`, `display-stream.md`, the
+output of `xcrun simctl help` and Apple's public AppKit documentation. No
+Apple binary, Xcode, Simulator or Device Hub was opened, run or observed,
+and no Apple simulator was booted: the simctl path is tested with fake
+command runners.
+
+- **macOS.** `SimctlDeviceControl` (YcodeIDECore) runs the simctl and `open`
+  commands of the decisions above through injected runners.
+  `DevicesController+Simctl.swift` adds them to the hub: the status view's
+  Start, the row's context menu (Start, or Shut Down and Restart; Show in
+  Simulator; Erase All Content and Settings…), More Actions, the
+  compact-window button (Show in Simulator, or Start), Screenshot, and a
+  2-second poll of `simctl list -j devices` for the states. The canvas's
+  `showElsewhere` draws the status capsule (48 tall, centred over the
+  device) and keeps the control capsules, Screenshot enabled.
+  `DevicesController+Standalone.swift` sets the hub up without a workspace,
+  so Ycode's simulators are listed and started from the Welcome window too.
+- **Linux.** `DeviceHubShellModel`, `DeviceHubScreen` and
+  `DeviceHubLinkBackend` (YcodeIDEShell) list the paired hosts' devices,
+  start and shut them down with the link's `boot` and `shutdown`, connect
+  the display stream (`RemoteDeviceSession`, the device window's client) and
+  sample each picture for the canvas. `DeviceHubWindow.swift` and
+  `DeviceHubCanvas.swift` (ycode-ide) draw the window: the 52-point toolbar
+  (sidebar toggle, title and subtitle, [Open in New Window · More Actions],
+  the Settings · Reports · Info tabs), the 240-point sidebar, the canvas
+  with the frame drawn from the shared geometry and the control capsules
+  (`DeviceControlsLayout`), and the 280-point inspector (Appearance and the
+  five accessibility switches read and set over the stream; Info's rows).
+  A device that stops by itself shows the host log's last error on its
+  picture. OpenViews gained `Image(rgbaPixels:width:height:scale:)` for the
+  live picture; the device windows' glyphs moved to `YcodeDeviceViews`.
+- **Stand-in host.** `DeviceHubStandInBackend` serves a drawn display over
+  the real display-stream protocol in-process, for tests and the Linux walk
+  (`YCODE_IDE_HUB_STANDIN=1`) on machines without a simulator host.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -2001,5 +2083,15 @@ Tests: `DeviceFrameR7Tests` (YcodeDeviceModel), `DeviceWindowR7Tests`
 | Headset menu paths in the instructions (§I.12.2): eye tracking, per-app permission, hand tracking, developer mode, USB debugging | 1, not checked on a headset | Meta's public pages, read 2026-11-02: "Learn about Eye Tracking on Meta Quest Pro" (meta.com/help/quest/8107387169303764: Settings ▸ Hands and eyes ▸ Eye tracking; Settings ▸ Privacy and safety ▸ App permissions), Meta's developer "Eye Tracking Overview" (Settings ▸ Movement Tracking ▸ Eye Tracking), the Hand and Body Privacy Notice (Settings ▸ Movement tracking ▸ Hand and body tracking), "Test your app on your device" (Meta Horizon app ▸ Devices ▸ headset ▸ Headset Settings ▸ Developer Mode; verified account; Always allow from this computer). Meta's pages differ by software version, and the UI says so; nobody has compared them with the owner's headset menus |
 | No live display-size change (§I.12.5) | — | Ycode's own simulator on the Thor with Ycode's own framebuffer library's call log and live-size diagnostic (2026-11-02); Q-HUB-XR1 is for the reference |
 | Verification (§I.7) | — | Ycode's own windows on the Mac (`screencapture -l` with their window ids), Ycode's devices on the Thor |
+| Ycode decisions (2026-11-17): simctl commands and arguments for the Mac's simulators | 1 | `xcrun simctl help boot`, `shutdown`, `erase`, `io`, `list`; `open(1)` |
 
 Level 5 was not used.
+- Simulator viewer (2026-11-24, correction to §I.18's Mac simulators).
+  - Level 3: on Xcode 27.1, `open -a Simulator` reports that no application named Simulator exists. `open -b com.apple.dt.Devices` opens Device Hub, which lists a `simctl boot`ed device as Booted (the owner's check, 2026-11-24).
+  - Level 4: the app's bundle structure. `Contents/Applications/DeviceHub.app` has bundle id `com.apple.dt.Devices` and a `devices` URL scheme. No Simulator.app is in the bundle.
+  - OPEN QUESTION: whether Device Hub can be opened on one particular device.
+- Screenshot of a multi-screen simulator (2026-11-24).
+  - Level 3: on an iPhone Duo simulator with the iOS 27.1 runtime, `simctl io screenshot` without `--display` fails with the "Cannot choose between 2 displays" list and code 22.
+  - With `--display=1` (outer, 1398 × 2034) it gives the lit home screen of the closed device. With `--display=3` (inner, 2007 × 2853) it gives an all-black picture.
+  - `simctl io enumerate` reports every screen's power state as On, so it cannot tell which screen is lit.
+  - OPEN QUESTION: what the reference's Device Hub saves for a two-screen device.

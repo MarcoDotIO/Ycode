@@ -16,7 +16,9 @@ import SwiftUI
 //   queue first), so a burst lands in one frame;
 // - momentum that would carry the text past the top or the bottom starts
 //   `EditorFlick`'s bounce (TopBounce's constants, shared with macOS): a new
-//   position every display frame until it is at rest.
+//   position every display frame until it is at rest;
+// - the momentum's share, the stretch and the spring follow the display
+//   (`FlickProfile.forDisplay`, P-078), as on macOS.
 extension SourceEditorController {
     #if os(Linux)
     /// One scroll event over the editor; true when used.
@@ -33,6 +35,9 @@ extension SourceEditorController {
                 usedX = true
             }
         }
+        // The display's flick (P-078): round 11's at 2x, round 10's at 1x.
+        let profile = FlickProfile.forDisplay(scale: Double(displayScale))
+        if flick.profile != profile { flick.profile = profile }
         let step = EditorFlick.Step(dy: Double(e.delta.height * k), phase: Self.flickPhase(e.phase),
                                     momentumPhase: Self.flickPhase(e.momentumPhase), time: e.timestamp)
         switch flick.handle(step, offset: Double(top), maxOffset: Double(maxY), visibleHeight: Double(viewport.height)) {

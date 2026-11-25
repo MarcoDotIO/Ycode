@@ -213,6 +213,8 @@ public final class CommandMenu: NSMenu {
     public var path = ""
     /// For the Editor menu: the editor kind its items are for (§2.7, §2.8).
     public var editorKind: EditorKind = .source
+    /// For the Editor menu: its items are Welcome's (no workspace window, P-006).
+    public var isWelcomeEditor = false
 }
 
 /// Builds the menu bar from `CommandTable` (`specs/ide/reference-ui-5.md`
@@ -281,7 +283,16 @@ public enum MainMenu {
         i.isAlternate = c.isAlternate
         if AppCommands.handles(c.action) { i.target = AppCommands.shared }
         if !MenuConditions.isShown(c.condition, in: nil) { i.isHidden = true }
+        applyGlyph(i)
         return i
+    }
+
+    /// P-013: Product's and Debug's glyph items carry their symbol from
+    /// the moment the menu bar is built (asked of the system at run time;
+    /// no artwork ships), not only once a menu has been updated.
+    static func applyGlyph(_ i: CommandMenuItem) {
+        guard i.image == nil, let c = i.spec, let name = MenuIcons.symbol(for: c) else { return }
+        i.image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
     }
 
     /// Disabled items that show a check mark (`EditorMenu.checkedDisabled`).
@@ -460,6 +471,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         // Outside its bundle the app has no .icns (make-app.sh adds it).
         if Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") == nil { NSApp.applicationIconImage = ProductIcon.image }
         DeveloperTools.prefetch()
+        SheetButtonStates.install()   // P-198: sheet push buttons' states
         NSApp.mainMenu = MainMenu.make()
         // swiftlint:disable:next discarded_notification_center_observer - lives as long as the app
         NotificationCenter.default.addObserver(forName: Preferences.didChange, object: nil, queue: .main) { _ in

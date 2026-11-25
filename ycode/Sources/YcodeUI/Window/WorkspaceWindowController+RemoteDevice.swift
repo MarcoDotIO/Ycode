@@ -27,8 +27,15 @@ extension WorkspaceWindowController {
             }
             return Self.remoteSimulatorInUse
         }
-        // Running: a run uses it, or it was started from the hub.
-        let running: (RemoteSimulator) -> Bool = { busy($0) || RemoteDeviceSessions.shared.isRunning($0) }
+        // Running: a run uses it, it was started from the hub, or ycrun booted it.
+        let running: (RemoteSimulator) -> Bool = { [weak c] r in
+            busy(r) || RemoteDeviceSessions.shared.isRunning(r) || (c?.isYcrunBooted(r) ?? false)
+        }
+        c.ycrunHost = {
+            var s = RemoteSimulatorSettings.load(defaults)
+            if let ssh { s.ssh = ssh }
+            return s
+        }
         c.setYcodeRemote(rows: RemoteSimulator.hub(settings).map { DeviceRow.ycodeRemote($0, running: running($0)) })
         c.currentRemoteRows = {
             RemoteSimulator.hub(RemoteSimulatorSettings.load(defaults)).map { DeviceRow.ycodeRemote($0, running: running($0)) }
@@ -46,12 +53,14 @@ extension WorkspaceWindowController {
             self?.session.appendConsole("Ycode: starting \(row.name) on \(remote.settings.destination)\n", kind: .debugger)
             return RemoteDeviceSessions.shared.start(remote) ? (true, "Started") : (false, "\(row.name) could not be started.")
         }
-        c.shutDownDevice = { [weak self] row, force in
+        c.shutDownDevice = { [weak self, weak c] row, force in
             guard let remote = remoteFor(row) else { return (false, "Set the remote simulator in Settings ▸ Components ▸ Simulator Host first.") }
             if RemoteDeviceSessions.shared.isRunning(remote) {
                 await RemoteDeviceSessions.shared.shutDown(remote, force: force)
                 return (true, "Shut down")
             }
+            // ycrun booted it: ycrun's own stop (SIGTERM to its launcher).
+            if let c, c.isYcrunBooted(remote) { return await c.stopYcrunDevice(remote) }
             // A run uses it: Shut Down is the run's Stop.
             if let self, let run = self.session.simulatorRun, case .remote = run.target, run.remote?.remoteDevicePath == remote.remoteDevicePath {
                 self.session.stopSimulatorRun(remote: remote)

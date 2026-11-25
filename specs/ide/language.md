@@ -420,6 +420,22 @@ ycode-bsp prepare <container> <target>… …        # emits the modules
 ycode-bsp sample <dir> [ios|portable]            # the sample project of the tests
 ```
 
+`--log FILE` records, besides the server's start, exit and target
+changes, every `textDocument/sourceKitOptions` it answers without
+arguments, with the reason ("in no target", "target T has no build
+settings: …", "not a source of target T"), and every request answered
+after 500 ms or more (the time after which sourcekit-lsp diagnoses with
+fallback settings, which see no other file of the module). P-070.
+
+**Late arguments (beta 5, P-070).** A document that sourcekit-lsp
+diagnosed with fallback settings ("Cannot find 'Counter' in scope" for a
+type of another file) is not always diagnosed again once the arguments
+arrive, and no work progress has to end afterwards (§Features, the
+sending again when progress ends). So the session also sends every open
+document with errors again, unchanged, 3 s after errors arrive for one of
+them (`LanguageService.lateRecheckDelay`), once per set of errors and
+text: a real error comes back the same and is not sent again. Both IDEs.
+
 ### Context changes
 
 The build server reads the scheme and the destination from its command

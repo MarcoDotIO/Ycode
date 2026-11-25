@@ -531,6 +531,9 @@ public final class SoftwareRasterizer {
             UnsafeMutableRawBufferPointer(words).copyMemory(from: src)
         }
         let d = DecodedImage(image: img, size: px.size, words: words)
+        // Pictures made at run time (a live screen, a new image per frame)
+        // come and go: the pixels of images that no longer exist are freed.
+        if images.count >= 64 { images = images.filter { $0.value.image != nil } }
         images[key] = d
         return d
     }

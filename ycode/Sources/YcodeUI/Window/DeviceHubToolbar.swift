@@ -376,18 +376,19 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
     /// Erase All Content and Settings….
     func moreItems() -> [NSMenuItem] {
         guard let r = owner.selected else { return [] }
-        var out = owner.lifecycleItems(for: r) + owner.headsetMenuItems(for: r)
+        var out = owner.lifecycleItems(for: r) + owner.simctlShowItems(for: r) + owner.headsetMenuItems(for: r)
         let bezels = NSMenuItem(title: owner.canvas.showsBezels ? "Hide Bezels" : "Show Bezels", action: #selector(toggleBezels(_:)), keyEquivalent: "")
         bezels.target = self
         let stats = NSMenuItem(title: "Show Frame Rate", action: #selector(toggleStatistics(_:)), keyEquivalent: "")
         stats.target = self
         stats.state = owner.canvas.showsStatistics ? .on : .off
         out += [bezels, stats]
-        if r.isYcodeRemote, let i = owner.rows.firstIndex(where: { $0.identifier == r.identifier }) {
+        if r.isYcodeRemote || owner.isSimctlOperated(r), let i = owner.rows.firstIndex(where: { $0.identifier == r.identifier }) {
             out.append(.separator())
             let erase = NSMenuItem(title: DevicesController.eraseTitle, action: #selector(DevicesController.eraseChosen(_:)), keyEquivalent: "")
             erase.target = owner
             erase.tag = i
+            if owner.isSimctlOperated(r) { erase.isEnabled = owner.canEraseSimctl(r) }
             out.append(erase)
         }
         return out

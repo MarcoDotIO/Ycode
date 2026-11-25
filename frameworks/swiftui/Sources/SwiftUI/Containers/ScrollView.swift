@@ -188,7 +188,7 @@ extension ScrollViewState: ScrollViewportProviding {
     /// The offset changed: lay out again, show the indicators.
     func moved() {
         guard let node, node.isAlive else { return }
-        node.graph.scheduleUpdate(transaction: Transaction())
+        node.setNeedsLayout()
         flashIndicators()
     }
 
@@ -201,9 +201,9 @@ extension ScrollViewState: ScrollViewportProviding {
             let now = node.graph.timeSource.now
             services.setTimer(self, at: now + Self.indicatorHold) { [weak self, weak node] _ in
                 guard let self, let node, node.isAlive, let a = self.indicatorOpacity else { return }
-                a.onChange = { [weak node] in node?.graph.scheduleUpdate(transaction: Transaction()) }
+                a.onChange = { [weak node] in node?.setNeedsLayout() }
                 a.update(to: 0, animation: .easeOut(duration: 0.25), graph: node.graph)
-                node.graph.scheduleUpdate(transaction: Transaction())
+                node.setNeedsLayout()
             }
         }
     }
@@ -250,7 +250,7 @@ extension ScrollViewState: ScrollViewportProviding {
             let active = speed * decay > Self.stopSpeed && !atEdge
             return (changed, active)
         }
-        driver.onChange = { [weak node] in node?.graph.scheduleUpdate(transaction: Transaction()) }
+        driver.onChange = { [weak node] in node?.setNeedsLayout() }
         deceleration = driver
         node.graph.activate(driver)
     }
@@ -292,12 +292,12 @@ extension ScrollViewState: GeometryObserving {
             appliedDefaultAnchor = true
             let m = maxOffset
             offset = CGPoint(x: m.x * a.x, y: m.y * a.y)
-            node.graph.scheduleUpdate(transaction: Transaction())
+            node.setNeedsLayout()
         }
         let c = clamped(offset)
         if c != offset {
             offset = c
-            node.graph.scheduleUpdate(transaction: Transaction())
+            node.setNeedsLayout()
         }
         let geo = geometry
         if geo != lastGeometry {
@@ -469,6 +469,7 @@ extension ScrollView: PrimitiveView {
         let env = node.environment
         let palette = ControlPalette(env.colorScheme)
         let bar = LayoutNode.color()
+        bar.drawIsLive = true
         bar.draw = { rec, size in
             MainActor.assumeIsolated {
                 if s.desktopScroller != nil {

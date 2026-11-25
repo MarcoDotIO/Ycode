@@ -204,10 +204,16 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             if i.state == .on { ("✓" as NSString).draw(at: NSPoint(x: 8, y: y + 3), withAttributes: attrs) }
             if let img = i.image {
                 // A template glyph in the row's text colour, as a menu draws it.
+                // Tinted on its own canvas (sourceAtop on the menu would
+                // fill the whole square, the background being opaque).
                 let r = NSRect(x: 22, y: y + 4, width: 14, height: 14)
-                img.draw(in: r)
-                color.set()
-                r.fill(using: .sourceAtop)
+                let tinted = NSImage(size: r.size, flipped: false) { b in
+                    img.draw(in: b)
+                    color.set()
+                    b.fill(using: .sourceAtop)
+                    return true
+                }
+                tinted.draw(in: r)
             }
             (i.title as NSString).draw(at: NSPoint(x: i.image == nil ? 24 : 42, y: y + 3), withAttributes: attrs)
             let sc = i.submenu != nil ? "›" : MainMenu.canonicalShortcut(i)
@@ -330,13 +336,9 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         var failures: [String] = []
         func check(_ state: String, _ mac: [MacRow]) {
             let r = Self.compare(mac: mac, linux: ShellMenuModel.rows(linux), state: state)
-            // The first NSDocumentController made becomes `shared` for the
-            // process (a later init returns it). The app makes Ycode's
-            // first; in a full test run AppKit or another suite may have
-            // made its plain one, which disables File ▸ Open… (no document
-            // types), so Open…'s enablement is only compared with Ycode's.
-            let plainController = !(NSDocumentController.shared is YcodeDocumentController)
-            failures += r.failures.filter { !(plainController && $0.contains("[openDocument:]")) }.map { "\(state): \($0)" }
+            // File ▸ Open… is the application delegate's, whichever
+            // document controller is shared (menu test hygiene, beta 5).
+            failures += r.failures.map { "\(state): \($0)" }
             if let out {
                 try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
                 try? r.all.joined(separator: "\n").write(to: out.appendingPathComponent("menu-diff-\(state).txt"), atomically: true, encoding: .utf8)

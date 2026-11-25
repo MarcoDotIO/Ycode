@@ -77,19 +77,22 @@ import YcodeBuild
             wc.activityView.leadingNeighbor = i % 2 == 0 ? neighbor : nil
             window.setFrame(NSRect(x: 0, y: 0, width: CGFloat(w), height: 900), display: false)
             wc.fitToolbar()
-            let steps = ToolbarFit.steps(activityNatural: wc.activityView.naturalWidth)
+            let forced = Set(ToolbarOverflow.forcedOut(content: wc.toolbarContentWidth).map(\.rawValue))
+            let steps = ToolbarFit.steps(activityNatural: wc.activityView.naturalWidth, forced: forced)
             print("B10 toolbar \(w): \(wc.toolbarFit) pad \(wc.activityView.leadingPad) natural \(wc.activityView.naturalWidth)")
-            #expect(steps.contains(wc.toolbarFit), "at \(w): \(wc.toolbarFit) not in \(steps)")
+            // A step, or (P-029) a cap between the step that fits and the one before it.
+            var onStep = wc.toolbarFit
+            onStep.activityWidth = steps.compactMap(\.activityWidth).first { $0 <= (wc.toolbarFit.activityWidth ?? 0) }
+            #expect(steps.contains(wc.toolbarFit) || steps.contains(onStep), "at \(w): \(wc.toolbarFit) not in \(steps)")
             fits[w] = wc.toolbarFit
             pads[w] = wc.activityView.leadingPad
         }
         wc.activityView.leadingNeighbor = neighbor
         // The pad did change (on this Mac 0 and the 27.2 gap's 9).
         #expect(Set(pads.values).count > 1, "pads \(pads)")
-        let steps = ToolbarFit.steps(activityNatural: wc.activityView.naturalWidth)
         let order = [1600, 1400, 1250, 1150, 1100, 1050, 1000].compactMap { fits[$0] }
-        let ranks = order.compactMap { steps.firstIndex(of: $0) }
-        #expect(ranks.count == order.count && ranks == ranks.sorted(), "fits \(order) steps \(steps)")
+        let ranks = order.map(Beta5ToolbarTests.tightness)
+        #expect(ranks.count == 7 && ranks == ranks.sorted(), "fits \(order)")
         #expect(fits[2000] == ToolbarFit())
         // At least one width truncates the subtitle, so the caps are tested.
         #expect(order.contains { $0.activityWidth != nil })

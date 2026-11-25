@@ -31,7 +31,8 @@ struct SourceControlNavigator: View {
                 EmptyNavigator(lines: ["Source Control", "Reading the repository…"])
             } else if scm.repository == nil {
                 VStack(spacing: 10) {
-                    EmptyNavigator(lines: ["No Repository", "This workspace is not in a git repository."]).fixedSize(horizontal: false, vertical: true)
+                    // One line, as the macOS IDE (P-039).
+                    EmptyNavigator(lines: [NavigatorBars.noRepositories]).fixedSize(horizontal: false, vertical: true)
                     Button("New Git Repository…") { model.perform(.scmNewRepository) }
                         .shellTarget("scm new repository")
                 }
@@ -147,7 +148,7 @@ struct SourceControlOutline: View {
 
     var body: some View {
         let c = ShellColors(scheme)
-        let rows = scm.rows
+        let rows = model.filtered(scm.rows, navigator: ShellNavigator.sourceControl.selectorIndex)   // P-037
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(rows) { r in
@@ -161,7 +162,6 @@ struct SourceControlOutline: View {
             .padding(.top, CGFloat(WorkspaceChrome.firstRowGap))
             .padding(.bottom, 8)
         }
-        .scrollIndicators(.hidden)
         .focusable()
         .focused($hasKeyboard)
         .onChange(of: hasKeyboard) { _, on in ShellFocus.outlineHasKeyboard = on }

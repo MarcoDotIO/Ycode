@@ -63,13 +63,20 @@ public struct EditorFlick: Sendable {
     private var tracker = TopBounce.VelocityTracker()
     private var gestureVelocity = 0.0
     private var swallowingMomentum = false
+    /// The display's flick (P-078; round 9's unless the editor sets it).
+    public var profile: FlickProfile {
+        didSet { momentum.profile = profile }
+    }
     /// The share of the momentum applied (row 205).
-    private var momentum = EditorMomentum()
+    private var momentum: EditorMomentum
     public private(set) var bounce: Bounce?
     /// The deepest overscroll of the last bounce (measurement).
     public private(set) var lastPeak = 0.0
 
-    public init() {}
+    public init(profile: FlickProfile = .round9) {
+        self.profile = profile
+        momentum = EditorMomentum(profile: profile)
+    }
 
     public var isBouncing: Bool { bounce != nil }
 
@@ -122,7 +129,7 @@ public struct EditorFlick: Sendable {
             let towards = edge == .top ? measured : -measured
             let fallback = abs(dy) / 0.0167
             let v = towards > 0 ? towards : fallback
-            bounce = Bounce(edge: edge, velocity: TopBounce.effectiveVelocity(v, visibleHeight: visibleHeight), start: nil)
+            bounce = Bounce(edge: edge, velocity: TopBounce.effectiveVelocity(v, visibleHeight: visibleHeight, edge: edge, profile: profile), start: nil)
             lastPeak = 0
             swallowingMomentum = true
             return .bounce(edge)
@@ -140,11 +147,11 @@ public struct EditorFlick: Sendable {
         if b.start == nil { b.start = time - frame }
         bounce = b
         let t = time - (b.start ?? time)
-        if TopBounce.isAtRest(velocity: b.velocity, at: t, edge: b.edge) {
+        if TopBounce.isAtRest(velocity: b.velocity, at: t, edge: b.edge, profile: profile) {
             bounce = nil
             return nil
         }
-        let x = TopBounce.overscroll(velocity: b.velocity, at: t, edge: b.edge)
+        let x = TopBounce.overscroll(velocity: b.velocity, at: t, edge: b.edge, profile: profile)
         lastPeak = max(lastPeak, x)
         return x
     }

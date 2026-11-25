@@ -482,7 +482,8 @@ final class JumpBar: NSView {
             EditorVeil.fill.setFill()
             band.fill(using: .copy)
         }
-        EditorVeil.drawSeparator(NSRect(x: 0, y: 0, width: bounds.width, height: Self.separatorHeight))
+        // #58: the 2-point divider, two rows, the same at every offset (ControlStateAppKit.swift).
+        ScrollEdgeDrawing.drawJumpBarDivider(NSRect(x: 0, y: 0, width: bounds.width, height: Self.separatorHeight), flipped: isFlipped)
     }
 
     /// The Related Items button was clicked (the window opens the ⌃1 menu).
@@ -607,7 +608,7 @@ final class JumpBar: NSView {
             case let p as NSPopUpButton:
                 p.pullsDown ? (p.itemArray.first?.title.isEmpty == false ? p.itemArray.first!.title : (p.accessibilityLabel() ?? ""))
                     : (p.titleOfSelectedItem ?? "")
-            case let b as NSButton: b.toolTip ?? b.title
+            case let b as NSButton: ToolTipPresenter.text(of: b) ?? b.title
             case let t as NSTextField: t.stringValue
             default: nil
             }
@@ -710,7 +711,24 @@ final class JumpBar: NSView {
 /// `specs/ide/source-editor.md`.
 @MainActor
 public final class SourceEditorController: NSViewController, NSTextViewDelegate, NSTextContentManagerDelegate {
-    public private(set) var fileURL: URL?
+    public private(set) var fileURL: URL? {
+        // Text undo belongs to the file (+TextUndo.swift): the history
+        // learns the text the file was left with.
+        didSet { if let oldValue, oldValue != fileURL { leftFile(oldValue) } }
+    }
+    /// The window's per-file text undo histories (TextUndoHistories.swift);
+    /// the editor area gives every editor its own window's.
+    public internal(set) lazy var textUndo: TextUndoHistories = {
+        let h = TextUndoHistories()
+        h.liveEditors = { [weak self] in self.map { [$0] } ?? [] }
+        return h
+    }()
+    /// A change copied from another editor on the same file is being made.
+    var isMirroringEdit = false
+    /// The text storage's characters changed with no change notification
+    /// yet (Undo and Redo send none; +TextUndo.swift).
+    var storageChangedOutsideEdit = false
+    var undoStorageObserver: NSObjectProtocol?
     public var pathComponents: [(String, String)] = [] {
         didSet {
             jumpBar.pathState.fileName = fileURL?.lastPathComponent
@@ -984,7 +1002,8 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
             scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            stickyHeader.topAnchor.constraint(equalTo: findBar.bottomAnchor),
+            // #58: the band starts on the divider's second row.
+            stickyHeader.topAnchor.constraint(equalTo: findBar.bottomAnchor, constant: -CGFloat(GlassMaterials.stickyOverlapsDivider)),
             stickyHeader.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             stickyHeaderTrailing, stickyHeaderHeight,
             minimap.topAnchor.constraint(equalTo: root.topAnchor),
@@ -1000,6 +1019,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         findBarHeight.isActive = true
         findBar.isHidden = true   // P-203
         view = root
+        observeTextStorageForUndo()   // +TextUndo.swift
         prefsObserver = NotificationCenter.default.addObserver(forName: Preferences.didChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.applyPreferences() }
         }
@@ -1375,8 +1395,12 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         hideInlineComparison()
         hideAuxiliary()
         hideEmptyState()
-        let text = try String(contentsOf: url, encoding: .utf8)
+        // Another editor on the file: its text (unsaved edits too), which
+        // this editor shares with its undo history (+TextUndo.swift).
+        let shown = textUndo.shownText(of: url, besides: self)
+        let text = try shown?.text ?? String(contentsOf: url, encoding: .utf8)
         let old = fileURL
+        let reloaded = old == url && textView.string != text
         fileURL = url
         if let old, old != url { onDocumentClosed?(old) }
         textView.isEditable = true
@@ -1386,9 +1410,11 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         clearMultipleSelection()
         showsNoDocument = false
         textView.string = text
-        isDirty = false
+        storageChangedOutsideEdit = false
+        isDirty = shown?.isDirty ?? false
+        enteredFile(url, text: text, reloaded: reloaded)
         reindex()
-        resetSyntax()
+        resetSyntax(deferringParse: true)   // the parser's colours after the first frame (P-199)
         // The exact height after the first frame (row 206): TextKit lays out
         // what is on screen for it.
         textView.settleAfterFirstFrame()
@@ -1420,7 +1446,10 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         textView.caretLine = nil
         gutter.caretLine = nil
         showsNoDocument = true
-        if let old { onDocumentClosed?(old) }
+        if let old {
+            textUndo.close(old, by: self)   // its history ends with its last editor
+            onDocumentClosed?(old)
+        }
         onBecameEmpty?()
     }
 
@@ -1436,6 +1465,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         clearMultipleSelection()
         showsNoDocument = false
         textView.string = text
+        storageChangedOutsideEdit = false
         textView.isEditable = false
         refreshSourceChanges()
         isDirty = false
@@ -1454,6 +1484,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         if Preferences.shared.trimTrailingWhitespace { trimTrailingWhitespace() }
         try textView.string.write(to: url, atomically: true, encoding: .utf8)
         isDirty = false
+        textUndo.noteSaved(by: self)
         refreshSourceChanges()
         onSave?(url)
     }
@@ -1490,6 +1521,8 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     public func textDidChange(_ notification: Notification) {
         symbolCache.symbols = nil
         isDirty = true
+        storageChangedOutsideEdit = false
+        if !isMirroringEdit { textChangedForUndo() }   // +TextUndo.swift
         reindex()
         rehighlight()
         updateDisplayExtras()
@@ -1497,6 +1530,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         scheduleSourceChangesRefresh()
         contentMovedUnderBars()
         if let url = fileURL { onDocumentChanged?(url, textView.string) }
+        guard !isMirroringEdit else { return }   // typing in the other editor: no completions here
         let caret = textView.selectedRange().location
         let ns = textView.string as NSString
         if isShowingCompletions {

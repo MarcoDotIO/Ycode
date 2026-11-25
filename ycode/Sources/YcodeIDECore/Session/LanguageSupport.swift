@@ -38,6 +38,8 @@ public final class LanguageService {
     private var holdTasks: [String: Task<Void, Never>] = [:]
     /// Per document, the errors and text it was last sent again for.
     private var refreshedErrors: [URL: Int] = [:]
+    /// The same for the late recheck (P-070, beta 5).
+    private var lateRefreshedErrors: [URL: Int] = [:]
     /// Edits the server asks to apply (`workspace/applyEdit`).
     package var onApplyEdit: ((WorkspaceEdit) -> Void)?
     var onIssuesChanged: (() -> Void)?
@@ -97,6 +99,30 @@ public final class LanguageService {
         let path = url.standardizedFileURL.path
         liveDiagnostics[path] = list
         showLiveIssues(path)
+        if list.contains(where: { $0.severity == 1 }) { scheduleLateRecheck() }
+    }
+
+    /// How long after a document's errors arrive it is sent again, once
+    /// (P-070, beta 5).
+    public static var lateRecheckDelay: Duration = .seconds(3)
+    private var lateRecheck: Task<Void, Never>?
+
+    /// sourcekit-lsp diagnoses a document with fallback settings (no other
+    /// file of the module: "Cannot find 'Counter' in scope") when the build
+    /// server's arguments come later than it waits for them, and does not
+    /// always publish again once they come; nor is there always a work
+    /// progress ending after that (the B4 refresh). A while after errors
+    /// arrive, the documents with errors are sent again, unchanged, once per
+    /// set of errors and text (`refreshDiagnosticsWithErrors`): real errors
+    /// come back the same and are not sent again.
+    private func scheduleLateRecheck() {
+        guard lateRecheck == nil else { return }
+        lateRecheck = Task { [weak self] in
+            try? await Task.sleep(for: Self.lateRecheckDelay)
+            guard let self, !Task.isCancelled else { return }
+            self.lateRecheck = nil
+            self.refreshDiagnosticsWithErrors(late: true)
+        }
     }
 
     /// The live issues of `path` from its last diagnostics, without those of
@@ -152,14 +178,20 @@ public final class LanguageService {
     /// edit (P-070).
     /// A document is sent again once per set of errors and text, so a real
     /// error (which the server publishes again) does not repeat this.
-    func refreshDiagnosticsWithErrors() {
+    func refreshDiagnosticsWithErrors(late: Bool = false) {
         for (url, text) in openTexts.sorted(by: { $0.key.path < $1.key.path }) {
             guard let list = liveDiagnostics[url.standardizedFileURL.path], list.contains(where: { $0.severity == 1 }) else { continue }
             var key = Hasher()
             key.combine(text)
             for d in list { key.combine(d.message); key.combine(d.start.line) }
             let h = key.finalize()
-            guard refreshedErrors.updateValue(h, forKey: url) != h else { continue }
+            // The late recheck keeps its own record, so it never uses up the
+            // sending again when work progress ends (and the other way).
+            if late {
+                guard lateRefreshedErrors.updateValue(h, forKey: url) != h else { continue }
+            } else {
+                guard refreshedErrors.updateValue(h, forKey: url) != h else { continue }
+            }
             let v = (versions[url] ?? 0) + 1
             versions[url] = v
             client.didChange(url, text: text, version: v)
@@ -179,6 +211,7 @@ public final class LanguageService {
         openTexts[url] = nil
         typingHold.forget(url.standardizedFileURL.path)
         refreshedErrors[url] = nil
+        lateRefreshedErrors[url] = nil
         client.didClose(url)
     }
 
@@ -187,7 +220,10 @@ public final class LanguageService {
         client.notify("workspace/didChangeWatchedFiles", ["changes": [["uri": .string(url.absoluteString), "type": 2]]])
     }
 
-    public func stop() async { await client.shutdown() }
+    public func stop() async {
+        lateRecheck?.cancel()
+        await client.shutdown()
+    }
 }
 
 extension WorkspaceSession {

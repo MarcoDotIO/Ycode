@@ -148,6 +148,14 @@ package final class ViewNode {
     package private(set) var lastLowered: [LayoutNode] = []
     private var lowerGeneration = -1
     private var lowerCounter = 0
+    /// B5 (P-200): true while `lastLowered` still describes this subtree
+    /// (nothing in it changed since it was lowered), so the next lowering
+    /// returns it as it is and the layout engine keeps its measurements.
+    /// Invariant: when a node is not valid, neither are its ancestors.
+    package private(set) var loweringValid = false
+    /// B5 (P-200): the same for the subtree's reduced preference values.
+    private var preferencesValid = false
+    private var cachedPreferences = PreferenceValues()
 
     package init(graph: ViewGraph, parent: ViewNode?, view: any View) {
         self.graph = graph
@@ -174,6 +182,9 @@ package final class ViewNode {
         let dirty = isDirty, dirtyDescendant = hasDirtyDescendant
         isDirty = false
         hasDirtyDescendant = false
+        // B5 (P-200): what a lowering reads changed: the environment, the
+        // node's own state, or (primitives) a new value.
+        if envChanged || dirty || (kind == .primitive && newView != nil) { invalidateLowering() }
         updateEnvironmentChanged = envChanged
         updateWasDirty = dirty
         updateHadDirtyDescendant = dirtyDescendant
@@ -206,6 +217,7 @@ package final class ViewNode {
                                evaluate: () -> any View) -> Bool {
         let envDependencyChanged = updateEnvironmentChanged && environmentDependenciesChanged()
         if inputsChanged || updateWasDirty || envDependencyChanged {
+            invalidateLowering()
             let body = runTracked(inputs: inputs, evaluate)
             reconcileChildren([(AnyHashable(0), body)], transaction: transaction)
             return true
@@ -296,6 +308,7 @@ package final class ViewNode {
         }
         // Removed children (in their old order).
         for k in oldOrder { if let c = oldByKey[k] { remove(c, transaction: transaction) } }
+        invalidateLowering()
         children = newChildren
         childKeys = newKeys
         for (c, v) in toUpdate { c.update(v, environment: env, transaction: transaction) }
@@ -321,6 +334,7 @@ package final class ViewNode {
             c.transitionOpacity = fade
             fade.update(to: 0, transaction: transaction, graph: graph)
         }
+        c.invalidateLowering()
         // The view stays rendered only while the removal animations started
         // here run; other animations in the subtree (a spinner repeating
         // forever) do not keep it (R9 QA: a removed "Syncing…" row stayed).
@@ -475,6 +489,7 @@ package final class ViewNode {
     package func setSuspended(_ suspended: Bool) {
         guard suspended != isSuspended, isAlive else { return }
         isSuspended = suspended
+        invalidateLowering()
         func walk(_ n: ViewNode) {
             if n !== self && n.isSuspended { return }
             (n.primitiveState as? any VisibilityObserving)?.visibilityChanged(!suspended, node: n)
@@ -499,6 +514,7 @@ package final class ViewNode {
     package func invalidate(transaction: Transaction) {
         guard isAlive else { return }
         isDirty = true
+        invalidateLowering()
         var p = parent
         while let q = p, !q.hasDirtyDescendant {
             q.hasDirtyDescendant = true
@@ -552,13 +568,44 @@ package final class ViewNode {
 
     // MARK: Lowering and preferences
 
-    /// The layout nodes this subtree produces (R3 engine input).
+    /// The layout nodes this subtree produces (R3 engine input). B5
+    /// (P-200): an unchanged subtree returns the nodes of its last lowering
+    /// (`loweringValid`); the graph's `reusesLowering` turns that off.
     package func lower() -> [LayoutNode] {
-        switch kind {
-        case .custom: return finishLowering(lowerChildren())
-        // swiftlint:disable:next force_cast - the node kind is .primitive only for primitive views
-        case .primitive: return finishLowering((view as! any PrimitiveView)._lower(node: self))
+        if loweringValid && graph.reusesLowering && !graph.bypassesLoweringCache {
+            graph.loweringStats.reused += 1
+            return lastLowered
         }
+        graph.loweringStats.lowered += 1
+        graph.onLowering?(self)
+        let out: [LayoutNode]
+        switch kind {
+        case .custom: out = finishLowering(lowerChildren())
+        // swiftlint:disable:next force_cast - the node kind is .primitive only for primitive views
+        case .primitive: out = finishLowering((view as! any PrimitiveView)._lower(node: self))
+        }
+        loweringValid = true
+        return out
+    }
+
+    /// B5 (P-200): marks this node's lowering, and its ancestors', as out of
+    /// date (the next lowering builds this node's layout nodes again).
+    package func invalidateLowering() {
+        var n: ViewNode? = self
+        while let m = n, m.loweringValid || m.preferencesValid {
+            m.loweringValid = false
+            m.preferencesValid = false
+            n = m.parent
+        }
+    }
+
+    /// B5 (P-200): a primitive's own state that its lowering reads changed
+    /// (a scroll offset, a split position, a navigation motion): lowers the
+    /// node again in the next pass, which this schedules.
+    package func setNeedsLayout(transaction: Transaction = Transaction()) {
+        guard isAlive else { return }
+        invalidateLowering()
+        graph.scheduleUpdate(transaction: transaction)
     }
 
     /// Marks the layout nodes this node created (and that no deeper node
@@ -577,12 +624,27 @@ package final class ViewNode {
                 return w
             }
         }
-        for n in out {
-            n.forEachNode { m in
-                if m.creator == nil {
-                    m.creator = self
-                    m.creatorIndex = lowerCounter
-                    lowerCounter += 1
+        if graph.reusesLowering {
+            // B5 (P-200): a node with a creator was claimed by a deeper view
+            // with its whole subtree, so the walk stops there (the same
+            // numbering as visiting every node, without walking the kept
+            // subtrees again).
+            func claim(_ m: LayoutNode) {
+                guard m.creator == nil else { return }
+                m.creator = self
+                m.creatorIndex = lowerCounter
+                lowerCounter += 1
+                for c in m.children { claim(c) }
+            }
+            for n in out { claim(n) }
+        } else {
+            for n in out {
+                n.forEachNode { m in
+                    if m.creator == nil {
+                        m.creator = self
+                        m.creatorIndex = lowerCounter
+                        lowerCounter += 1
+                    }
                 }
             }
         }
@@ -594,11 +656,17 @@ package final class ViewNode {
 
     /// The preference values of this subtree, reduced in child order (03 §7).
     package func preferenceValues() -> PreferenceValues {
+        // B5 (P-200): an unchanged subtree reduces to the same values.
+        if preferencesValid && graph.reusesLowering && !graph.bypassesLoweringCache { return cachedPreferences }
+        let p: PreferenceValues
         switch kind {
-        case .custom: return childPreferences()
+        case .custom: p = childPreferences()
         // swiftlint:disable:next force_cast - the node kind is .primitive only for primitive views
-        case .primitive: return (view as! any PrimitiveView)._preferences(node: self)
+        case .primitive: p = (view as! any PrimitiveView)._preferences(node: self)
         }
+        cachedPreferences = p
+        preferencesValid = true
+        return p
     }
 
     package func childPreferences() -> PreferenceValues {

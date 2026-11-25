@@ -143,4 +143,17 @@ final class SchemePopUpButton: NSPopUpButton {
         super.selectItem(at: index)
         needsLayout = true
     }
+
+    /// The scheme chooser popover (`popovers.md` §2.1, P-111) opens on
+    /// mouse-down, not the pop-up's menu.
+    override func mouseDown(with event: NSEvent) {
+        guard isEnabled, let wc = window?.windowController as? WorkspaceWindowController else { return super.mouseDown(with: event) }
+        wc.showSchemeChooser()
+    }
+
+    /// Product ▸ Scheme ▸ Choose Scheme (⌃0) clicks the button: the popover too.
+    override func performClick(_ sender: Any?) {
+        guard let wc = window?.windowController as? WorkspaceWindowController else { return super.performClick(sender) }
+        wc.showSchemeChooser()
+    }
 }

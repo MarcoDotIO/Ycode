@@ -94,7 +94,11 @@ struct WindowRootView: View, PrimitiveView {
     var windowChrome: WindowChromeState?
 
     func _makeChildren(node: ViewNode, old: WindowRootView?, transaction: Transaction) {
-        var items: [(AnyHashable, any View)] = [(AnyHashable(0), content)]
+        // P-033 (L-001): under an on-demand menu bar the content moves down
+        // while the bar shows.
+        func inset<V: View>(_ v: V, _ state: WindowChromeState) -> any View { v.modifier(OnDemandMenuBarInset(state: state)) }
+        let body: any View = chrome?.menuBarOnDemand == true && windowChrome != nil ? inset(content, windowChrome!) : content
+        var items: [(AnyHashable, any View)] = [(AnyHashable(0), body)]
         if let chrome {
             // The commands host (and an on-demand menu bar) also serve
             // windows without an in-window bar.
@@ -261,6 +265,12 @@ package final class WindowHost {
                           timeSource: clock)
         gestures = GestureEngine(graph: graph)
         self.presenter = presenter
+        if Self.logsBodies {
+            graph.onBodyEvaluation = { [weak self] n in
+                let name = String(String(describing: type(of: n.view)).prefix(60))
+                self?.bodyCounts[name, default: 0] += 1
+            }
+        }
         services.presentations.onChange = { [weak self] in self?.refreshRoot() }
         services.requestDisplay = { [weak self] in self?.needsDisplay = true }
         // P-215: a window grows to show a sheet larger than it.
@@ -376,8 +386,11 @@ package final class WindowHost {
 
     func renderFrame() {
         let began = OpenViewsAutomation.frameDurations == nil || isPopup ? nil : DispatchTime.now().uptimeNanoseconds
+        let phases = Self.logsPhases ? (ViewGraph.clock(), graph.phaseTimes) : nil
+        var presentSeconds = 0.0
         defer {
             if let began { OpenViewsAutomation.frameDurations?.append(Double(DispatchTime.now().uptimeNanoseconds - began) / 1e9) }
+            if let (t0, p0) = phases { logPhases(since: t0, p0, present: presentSeconds) }
         }
         let passes = graph.passCount
         // An animation frame changes presented values without a pass (render
@@ -392,13 +405,49 @@ package final class WindowHost {
         if animating || passes != graph.passCount || needsDisplay {
             needsDisplay = false
             presentedFrames += 1
+            let t = ViewGraph.clock()
             presenter?.present(self)
+            presentSeconds = ViewGraph.clock() - t
         }
         syncTextInputArea()
     }
 
+    /// B5 (P-200, P-211): `OV_FRAME_PHASES=<ms>` prints, for each frame of a
+    /// main window that took at least that long, where its time went:
+    /// bodies, lifecycle actions, layout (lowering, measuring, placing),
+    /// preferences, presenting (display list, drawing) and the rest.
+    static let logsPhases = ProcessInfo.processInfo.environment["OV_FRAME_PHASES"] != nil
+    /// With `OV_FRAME_PHASES_BODIES=1`, the line also names the views whose
+    /// bodies ran most.
+    static let logsBodies = ProcessInfo.processInfo.environment["OV_FRAME_PHASES_BODIES"] != nil
+    private var bodyCounts: [String: Int] = [:]
+    static let phaseThreshold = Double(ProcessInfo.processInfo.environment["OV_FRAME_PHASES"] ?? "") ?? 0
+
+    private func logPhases(since t0: Double, _ p0: ViewGraph.PhaseTimes, present: Double) {
+        guard !isPopup else { return }
+        let total = ViewGraph.clock() - t0
+        guard total * 1000 >= Self.phaseThreshold else { return }
+        let p = graph.phaseTimes
+        let b = p.bodies - p0.bodies, c = p.lifecycle - p0.lifecycle, l = p.layout - p0.layout, r = p.preferences - p0.preferences
+        let list = (presenter as? CompositorPresenter)?.lastListSeconds ?? 0
+        var line = String(format: "ov-frame %.1f ms: bodies %.1f, lifecycle %.1f, layout %.1f, preferences %.1f, present %.1f (list %.1f), other %.1f; passes %d; lowered %d reused %d",
+                          total * 1000, b * 1000, c * 1000, l * 1000, r * 1000, present * 1000, list * 1000, (total - b - c - l - r - present) * 1000,
+                          p.passes - p0.passes, graph.loweringStats.lowered, graph.loweringStats.reused)
+        graph.loweringStats = .init()
+        if !bodyCounts.isEmpty {
+            line += "; bodies: " + bodyCounts.sorted { $0.value > $1.value }.prefix(12).map { "\($0.value) \($0.key)" }.joined(separator: ", ")
+            bodyCounts = [:]
+        }
+        FileHandle.standardError.write(Data((line + "\n").utf8))
+    }
+
     func teardown() {
         gestures.cancel()
+        // B5 (asked by B5-NEWPROJECT): the content is removed first, so its
+        // `onDisappear` actions run (replacing the root's view with
+        // EmptyView alone kept the old children without removing them).
+        graph.setRootView(WindowRootView(content: EmptyView()))
+        graph.update()
         graph.setRootView(EmptyView())
         graph.update()
         presenter?.invalidate()

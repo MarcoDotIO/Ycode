@@ -44,11 +44,13 @@ extension SourceEditorController {
     }
 
     /// Replaces the text with the disk's, the caret and the first visible
-    /// line kept; the editor stays unedited.
+    /// line kept; the editor stays unedited and the file's undo history is
+    /// cleared (`source-editor.md`, "Text undo belongs to the file").
     func reloadFromDisk(_ disk: String) -> Bool {
         let top = firstVisibleLine
         let caret = textView.selectedRange()
         guard replaceText(with: disk, actionName: "Reload") else { return false }
+        if let url = fileURL { textUndo.clear(url) }
         let len = (textView.string as NSString).length
         textView.setSelectedRange(NSRange(location: min(caret.location, len), length: 0))
         scroll(toTopLine: top)

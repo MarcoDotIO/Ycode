@@ -61,9 +61,10 @@ import YcodeDebug
         let moving = frames.filter { $0 > 0 && $0 < 1 }
         #expect(moving.count >= 7, "\(frames)")
         #expect(zip(frames, frames.dropFirst()).allSatisfy { $1 - $0 <= 0.25 })
-        // About the hide's 200 ms of motion after the first frame (round 10, row 248).
+        // About the hide's motion after the first frame (beta 5, P-192: 275 ms).
         let ms = Double(frames.count - 1) / 60 * 1000
-        #expect(ms > 185 && ms < 235, "\(ms)")
+        let motion = EditorMetrics.inspectorSlideMotion(show: false) * 1000
+        #expect(ms > motion - 15 && ms < motion + 35, "\(ms)")
     }
 
     @Test func onTimeFramesFollowThePressClock() {

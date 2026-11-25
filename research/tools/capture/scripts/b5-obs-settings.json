@@ -1,0 +1,696 @@
+{
+ "name": "b5-obs-settings",
+ "title": "B5-OBS 1b: hover and pressed states of a Settings pop-up button, switch and sidebar row.",
+ "targets": [
+  "xcode"
+ ],
+ "compare_order": [
+  "xcode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.0
+ },
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90,
+  "offset": [
+   1020,
+   300
+  ]
+ },
+ "steps": [
+  {
+   "id": "d-open",
+   "note": "cmd+, then the General row; Settings moved to (1100, 300). AX tree.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "General",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "move": [
+      1100,
+      300
+     ],
+     "window": "General"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "settings",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-popup-hover",
+   "note": "Settings ▸ General's first pop-up button ('Use System Setting', window point 677, 117): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": [
+      677,
+      117
+     ]
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-popup-press",
+   "note": "Settings ▸ General's first pop-up button ('Use System Setting', window point 677, 117): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": [
+       677,
+       117
+      ],
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    },
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-checkbox-hover",
+   "note": "Settings ▸ General's 'Window tabs have independent…' switch (window point 742, 396): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": [
+      742,
+      396
+     ]
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-checkbox-press",
+   "note": "Settings ▸ General's 'Window tabs have independent…' switch (window point 742, 396): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": [
+       742,
+       396
+      ],
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-row-hover",
+   "note": "the Settings sidebar's Navigation row (window point 170, 228): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": [
+      170,
+      228
+     ]
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-row-press",
+   "note": "the Settings sidebar's Navigation row (window point 170, 228): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": [
+       170,
+       228
+      ],
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-close",
+   "note": "Settings' close button (window 'Navigation', else 'General').",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "subrole": "AXCloseButton"
+     },
+     "window": "Navigation"
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "subrole": "AXCloseButton"
+     },
+     "window": "General",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-appearance-light",
+   "note": "Settings ▸ Appearance: Xcode's own Appearance set to Light; Settings closed.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "AppearanceLight",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "appearance",
+     "depth": 40
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-open",
+   "note": "cmd+, then the General row; Settings moved to (1100, 300). AX tree.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "General",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "move": [
+      1100,
+      300
+     ],
+     "window": "General"
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "tree": "settings",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-popup-hover",
+   "note": "Settings ▸ General's first pop-up button ('Use System Setting', window point 677, 117): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": [
+      677,
+      117
+     ]
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-popup-press",
+   "note": "Settings ▸ General's first pop-up button ('Use System Setting', window point 677, 117): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": [
+       677,
+       117
+      ],
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    },
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-checkbox-hover",
+   "note": "Settings ▸ General's 'Window tabs have independent…' switch (window point 742, 396): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": [
+      742,
+      396
+     ]
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-checkbox-press",
+   "note": "Settings ▸ General's 'Window tabs have independent…' switch (window point 742, 396): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": [
+       742,
+       396
+      ],
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-row-hover",
+   "note": "the Settings sidebar's Navigation row (window point 170, 228): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": [
+      170,
+      228
+     ]
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-row-press",
+   "note": "the Settings sidebar's Navigation row (window point 170, 228): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": [
+       170,
+       228
+      ],
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-close",
+   "note": "Settings' close button (window 'Navigation', else 'General').",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "subrole": "AXCloseButton"
+     },
+     "window": "Navigation"
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "subrole": "AXCloseButton"
+     },
+     "window": "General",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "z-appearance-system",
+   "note": "Settings ▸ Appearance: Xcode's own Appearance set to System; Settings closed.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "AppearanceAuto",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "appearance",
+     "depth": 40
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "z-end",
+   "note": "Back to System (dark). AX tree.",
+   "do": [
+    {
+     "tree": "end",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Shapes|Shapes.swift"
+   }
+  },
+  {
+   "wait": 1.5
+  }
+ ]
+}

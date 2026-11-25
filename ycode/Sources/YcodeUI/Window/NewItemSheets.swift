@@ -210,11 +210,26 @@ public final class NewFileSheetController: TemplateChooserController {
     public override func loadView() {
         super.loadView()
         nextButton.widthAnchor.constraint(equalToConstant: Self.nextButtonWidth).isActive = true
+        // P-181/P-187: the chooser's heading is regular weight (the same
+        // chooser as New Project's, and as the Linux New File sheet's).
+        titleLabel.font = NewProjectSheetController.headingFont
+    }
+
+    public override func viewDidAppear() {
+        super.viewDidAppear()
+        if let grid, let w = view.window {
+            filterField.nextKeyView = grid
+            grid.nextKeyView = filterField
+            w.makeFirstResponder(grid)
+        }
     }
 
     override func initialBody() -> NSView {
-        let top = NSStackView(views: [platformControl, filterField])
+        let top = NewProjectSheetController.chooserTopRow(platformControl, filterField)
         let g = TemplateGridView(top: top, columns: Self.columns, tileStyle: .outlined)
+        top.trailingAnchor.constraint(equalTo: g.trailingAnchor).isActive = true
+        filterField.nextKeyView = g
+        g.nextKeyView = filterField
         g.onSelect = { [weak self] e in _ = self?.select(title: e.title) }
         g.onChoose = { [weak self] _ in self?.nextClicked() }
         grid = g

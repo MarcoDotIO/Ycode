@@ -99,6 +99,19 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
     /// (default: the session reconnects).
     public var onTakeBack: (() -> Void)?
     private var restoreCameraOnHello = false
+    /// A device whose screen another app shows (a Mac simulator in the
+    /// simulator viewer, device-hub.md "Ycode decisions (2026-11-17)"): its
+    /// picture, the controls that act here, and a glass capsule naming the
+    /// device and its state with a button (Show in Viewer).
+    public private(set) var elsewhereCapsule: GlassCapsule?
+    private let elsewhereTitle = NSTextField(labelWithString: "")
+    private let elsewhereDetail = NSTextField(labelWithString: "")
+    private let elsewhereButton = NSButton(title: "", target: nil, action: nil)
+    private var elsewhere: (title: String, detail: String, action: String)?
+    /// Controls that act although the device is not live here (their
+    /// command goes to `commandFallback`); the others show
+    /// `unavailableControlsReason`.
+    public var availableControls: Set<DeviceCommand> = []
 
     public init(mode: Mode) {
         self.mode = mode
@@ -183,6 +196,7 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         stoppedSpec = nil
         message = nil
         statusAction = nil
+        elsewhere = nil
         refreshGeometry()
         refreshState()
     }
@@ -198,6 +212,7 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
     /// layout, the device centred between the toolbar and the capsules).
     public func showStopped(spec: DeviceFrameSpec, name: String, os: String, action: String?, busy: Bool = false) {
         detachSession()
+        elsewhere = nil
         stoppedSpec = spec
         message = nil
         stoppedName = name
@@ -208,9 +223,28 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         refreshState()
     }
 
+    /// A running device whose screen another app shows: its picture where
+    /// the live device shows, the control capsules (those in
+    /// `availableControls` act, the others say `unavailableControlsReason`),
+    /// and over the device a glass capsule with `title` (the device's name),
+    /// `detail` (its state) and a button `action` (`onAction` runs).
+    public func showElsewhere(spec: DeviceFrameSpec, title: String, detail: String, action: String) {
+        detachSession()
+        stoppedSpec = spec
+        message = nil
+        stoppedName = title
+        statusLabel.stringValue = ""
+        statusAction = nil
+        statusBusy = false
+        elsewhere = (title, detail, action)
+        refreshGeometry()
+        refreshState()
+    }
+
     /// A centred message ("No Selection", "Multiple Devices Selected").
     public func showMessage(_ text: String) {
         detachSession()
+        elsewhere = nil
         stoppedSpec = nil
         message = text
         refreshState()
@@ -232,6 +266,7 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
     /// "live", "connecting: …".
     public var stateDescription: String {
         if let message { return "message: \(message)" }
+        if let e = elsewhere { return "elsewhere: \(e.detail)" }
         if stoppedSpec != nil { return statusBusy ? "starting" : "stopped" }
         if let s = session, s.isTakenOver || s.isHeldForHeadset && takenOverCapsule != nil { return s.isHeldForHeadset ? "in headset" : "taken over" }
         if let s = session { return s.hasImage ? "live" : "connecting: \(s.problemText ?? "")" }
@@ -275,13 +310,61 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
             // tooltips, a press showing it (§15.6, row 175).
             controls.configure(.init(foldable: spec.isFoldable, posture: spec.isFoldable ? .closed : nil, enabled: true,
                                      showsRotate: spec.rotates, showsHome: spec.family != .watch, spatial: spec.family == .vision,
-                                     watch: spec.family == .watch, unavailableReason: unavailableControlsReason))
+                                     watch: spec.family == .watch, unavailableReason: unavailableControlsReason,
+                                     availableCommands: availableControls))
         }
         statsLabel.isHidden = !showsStatistics || session == nil
         updateStatistics()
         updateTakenOver()
+        updateElsewhere()
         needsLayout = true
     }
+
+    /// The capsule over a device another app shows (`showElsewhere`).
+    private func updateElsewhere() {
+        guard let e = elsewhere else {
+            elsewhereCapsule?.removeFromSuperview()
+            elsewhereCapsule = nil
+            return
+        }
+        elsewhereTitle.stringValue = e.title
+        elsewhereTitle.font = .systemFont(ofSize: 13, weight: .semibold)
+        elsewhereTitle.lineBreakMode = .byTruncatingTail
+        elsewhereDetail.stringValue = e.detail
+        elsewhereDetail.font = .systemFont(ofSize: 11)
+        elsewhereDetail.textColor = .secondaryLabelColor
+        elsewhereDetail.lineBreakMode = .byTruncatingTail
+        elsewhereButton.title = e.action
+        // On the capsule's glass, so no bezel of its own (liquid-glass-ycode.md §3): the accent says it acts.
+        elsewhereButton.isBordered = false
+        elsewhereButton.font = .systemFont(ofSize: 13, weight: .semibold)
+        elsewhereButton.contentTintColor = .controlAccentColor
+        elsewhereButton.identifier = .init("elsewhere-button")
+        elsewhereButton.target = self
+        elsewhereButton.action = #selector(actionClicked)
+        elsewhereButton.setAccessibilityLabel(e.action)
+        guard elsewhereCapsule == nil else { return }
+        let text = NSStackView(views: [elsewhereTitle, elsewhereDetail])
+        text.orientation = .vertical
+        text.alignment = .leading
+        text.spacing = 1
+        let stack = NSStackView(views: [text, elsewhereButton])
+        stack.spacing = 14
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 18, bottom: 0, right: 14)
+        let c = GlassCapsule(content: stack, height: Self.elsewhereHeight)
+        c.identifier = .init("elsewhere-capsule")
+        c.setAccessibilityElement(true)
+        c.setAccessibilityRole(.group)
+        c.setAccessibilityLabel("\(e.title), \(e.detail)")
+        addSubview(c)
+        elsewhereCapsule = c
+    }
+
+    static let elsewhereHeight: CGFloat = 48
+
+    /// The capsule's texts and button title (tests).
+    public var elsewhereTexts: (title: String, detail: String, action: String)? { elsewhere }
+    public var elsewhereActionButton: NSButton { elsewhereButton }
 
     /// The capsule while the headset (or another viewer) has the display.
     private func updateTakenOver() {
@@ -481,6 +564,11 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
             let s = captureBanner.fittingSize
             captureBanner.frame = CGRect(x: ((b.width - s.width) / 2).rounded(), y: topInset + (banner == nil ? 12 : 50), width: s.width, height: 44)
         }
+        if let c = elsewhereCapsule {
+            let w = min(c.fittingSize.width, max(120, b.width - 32))
+            c.frame = CGRect(x: ((b.width - w) / 2).rounded(), y: (deviceArea.midY - Self.elsewhereHeight / 2).rounded(), width: w,
+                             height: Self.elsewhereHeight)
+        }
         if let c = takenOverCapsule {
             let s = c.fittingSize
             c.frame = CGRect(x: ((b.width - s.width) / 2).rounded(), y: (deviceArea.midY - 20).rounded(), width: s.width, height: 40)
@@ -673,6 +761,9 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
 
     /// The feedback banner's text (tests; nil: none shown).
     public var bannerText: String? { banner == nil ? nil : bannerLabel.stringValue }
+    /// The last banner's text, after it has gone too (tests on a loaded machine
+    /// may look after its few seconds are over).
+    public private(set) var lastBannerText: String?
 
     /// A glass banner over the top of the canvas for a few seconds (Q9,
     /// Ycode decision: "Screenshot Saved" this way).
@@ -680,6 +771,7 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         bannerTimer?.invalidate()
         banner?.removeFromSuperview()
         bannerLabel.stringValue = text
+        lastBannerText = text
         bannerLabel.font = .systemFont(ofSize: 12, weight: .medium)
         bannerLabel.lineBreakMode = .byTruncatingTail
         let box = NSStackView(views: [bannerLabel])

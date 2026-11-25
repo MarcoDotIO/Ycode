@@ -60,6 +60,9 @@ final class SourceEditorController {
     /// Measures a non-ASCII character in the editor's font.
     final class Measure {
         var character: ((Character) -> CGFloat)?
+        /// A documentation comment character in the proportional face
+        /// (P-054; SourceEditorView+DocComments.swift).
+        var proportional: ((Character) -> CGFloat)?
     }
     let measure = Measure()
     var characterMeasure: ((Character) -> CGFloat)? {
@@ -69,6 +72,11 @@ final class SourceEditorController {
     /// The editor's origin in the window (the input method's caret rectangle).
     var windowOrigin = CGPoint.zero
     var fontSize: CGFloat = 12
+    /// How far documentation comments' proportional text is drawn below
+    /// the source font's top so the baselines meet (P-054; nil: measure).
+    var docCommentBaselineShift: CGFloat?
+    /// The scope guides' blocks (SourceEditorView+Guides.swift, P-065).
+    let guideCache = EditorGuideCache()
     private(set) var measured = false
     /// 18 at 13 points, as the macOS editor (`EditorMetrics.lineHeight`).
     var lineHeight: CGFloat = 18
@@ -136,6 +144,7 @@ final class SourceEditorController {
         let size = CGFloat(ShellPreferences.fontSize)
         let cell = EditorCell.advance(fontSize: size, scale: 1)
         layout = EditorLineLayout(tabWidth: Preferences.shared.tabWidth, advance: cell) { measure.character?($0) ?? cell }
+        layout.proportionalCharacterWidth = { measure.proportional?($0) ?? cell }   // P-054
         fontSize = size
         lineHeight = EditorCell.lineHeight(fontSize: size)
         appliedRevision = ShellPreferences.shared.revision
@@ -246,7 +255,11 @@ final class SourceEditorController {
         characterMeasure = { [fontSize] ch in
             (String(ch) as NSString).size(withAttributes: [.font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)]).width
         }
+        self.measure.proportional = { [fontSize] ch in
+            (String(ch) as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: fontSize)]).width
+        }
         #endif
+        docCommentBaselineShift = nil
         // The face's own advance, then the cell it is drawn on: the macOS
         // editor's (`EditorCell`), the difference spread as tracking.
         let ten = measure("0000000000")

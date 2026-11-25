@@ -247,7 +247,11 @@ public enum ProjectTemplate: String, CaseIterable, Sendable {
                                       ("GCC_OPTIMIZATION_LEVEL", "0"), ("SWIFT_ACTIVE_COMPILATION_CONDITIONS", "DEBUG")]),
             config("Release", common + [("SWIFT_OPTIMIZATION_LEVEL", "-O"), ("DEBUG_INFORMATION_FORMAT", "dwarf-with-dsym")]),
         ])
-        let project = obj([("isa", "PBXProject"), ("buildConfigurationList", .string(projectList)), ("developmentRegion", "en"),
+        // The IDE version, as every new project records it (`templates.md`;
+        // `issues.md` §1 item 5: a current project raises no recommended-settings warning).
+        let project = obj([("isa", "PBXProject"), ("attributes", .dictionary(PlistDictionary([("LastSwiftUpdateCheck", .string(ProjectRecipe.toolsVersionDigits)),
+                                                                        ("LastUpgradeCheck", .string(ProjectRecipe.toolsVersionDigits))]))), ("buildConfigurationList", .string(projectList)),
+                           ("developmentRegion", "en"),
                            ("hasScannedForEncodings", "0"), ("knownRegions", .array(["en", "Base"])), ("mainGroup", .string(main)),
                            ("productRefGroup", .string(products)), ("projectDirPath", ""), ("projectRoot", ""),
                            ("targets", strings([target]))])
@@ -680,7 +684,11 @@ public enum UntitledAppProject {
                                       ("SWIFT_OPTIMIZATION_LEVEL", "-Onone")]),
             config("Release", common + [("DEBUG_INFORMATION_FORMAT", "dwarf-with-dsym"), ("SWIFT_COMPILATION_MODE", "wholemodule")]),
         ])
-        let project = obj([("isa", "PBXProject"), ("buildConfigurationList", .string(projectList)), ("developmentRegion", "en"),
+        // The IDE version, as every new project records it (`templates.md`;
+        // `issues.md` §1 item 5: a current project raises no recommended-settings warning).
+        let project = obj([("isa", "PBXProject"), ("attributes", .dictionary(PlistDictionary([("LastSwiftUpdateCheck", .string(ProjectRecipe.toolsVersionDigits)),
+                                                                        ("LastUpgradeCheck", .string(ProjectRecipe.toolsVersionDigits))]))), ("buildConfigurationList", .string(projectList)),
+                           ("developmentRegion", "en"),
                            ("hasScannedForEncodings", "0"), ("knownRegions", .array(["en", "Base"])), ("mainGroup", .string(main)),
                            ("minimizedProjectReferenceProxies", "1"), ("preferredProjectObjectVersion", "77"),
                            ("productRefGroup", .string(products)), ("projectDirPath", ""), ("projectRoot", ""),

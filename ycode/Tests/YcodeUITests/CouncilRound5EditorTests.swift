@@ -16,6 +16,8 @@ import YcodeBuild
     func window(_ name: String, width: CGFloat = 1400) throws -> (WorkspaceWindowController, URL) {
         Theme.backingScaleOverride = 2
         let dir = try fc.project("r5e-\(name)")
+        // An up-to-date project: the jump bars carry no P-120 stepper.
+        try RecommendedSettingsFixture.bringUpToDate(dir)
         let wc = try fc.window(dir)
         wc.window?.setFrame(NSRect(x: -6000, y: -6000, width: width, height: 880), display: false)
         wc.window?.contentView?.layoutSubtreeIfNeeded()

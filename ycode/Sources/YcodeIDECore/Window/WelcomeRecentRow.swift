@@ -13,10 +13,13 @@ public enum WelcomeRecentRow {
     public static let titleSize = 12.4
     /// The path: about 4.9 points per character.
     public static let pathSize = 10.0
-    /// The text's ink starts 48.5 from the selection's left (6 left of before).
-    public static let textShift = -6.0
-    /// The title's ink 2 lower, the path's 3.5 lower than before.
-    public static let titleDrop = 2.0, pathDrop = 3.5
+    /// The text's ink starts 48.5 from the selection's left (6 left of
+    /// before), and 2.75 further left after P-186 (Ycode's labels were 2.5
+    /// to 3 points right of the reference's).
+    public static let textShift = -8.75
+    /// The title's ink 2 lower, the path's 3.5 lower than before, each
+    /// 0.5 higher after P-186.
+    public static let titleDrop = 1.5, pathDrop = 3.0
     /// Room kept at the row's right.
     public static let trailingInset = 24.0
     /// The path on the selection (#B3CEF1); elsewhere the secondary label colour.

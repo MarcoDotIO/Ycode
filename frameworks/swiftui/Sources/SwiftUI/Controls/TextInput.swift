@@ -616,7 +616,9 @@ extension EditableText: PrimitiveView {
             child = AnyView(leaf
                 .background(fill, in: shape)
                 .overlay {
-                    if state.isFocused {
+                    // B5-STATES: on the desktop a focused field shows only its
+                    // caret unless Full Keyboard Access is on.
+                    if state.isFocused && DesktopControlStates.showsFocusRing(focused: true, desktop: desktop, fullKeyboardAccess: env.fullKeyboardAccess) {
                         shape.strokeBorder(.tint, lineWidth: 2)
                     } else {
                         shape.strokeBorder(rim, lineWidth: 1)
@@ -688,6 +690,7 @@ extension EditableTextLeaf: PrimitiveView {
         let leaf = LayoutNode(behavior, children: [])
         leaf.owner = node
         leaf.draw = editableTextDraw(state: state, placeholder: placeholderText, environment: env)
+        leaf.drawIsLive = true
         return [leaf]
     }
 }

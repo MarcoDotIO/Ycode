@@ -129,6 +129,9 @@ public struct Button<Label: View>: View {
     @Environment(\._inMenu) private var inMenu
     @Environment(\._keyboardShortcut) private var shortcut
     @Environment(\._afterButtonAction) private var after
+    /// B5 (P-200): in the window's commands host a button only registers
+    /// its shortcut; it is never laid out or drawn, so it builds no look.
+    @Environment(\._inCommandHost) private var inCommandHost
     @State private var shortcutOwner = ShortcutOwner()
 
     public init(action: @escaping @MainActor () -> Void, @ViewBuilder label: () -> Label) {
@@ -153,7 +156,9 @@ public struct Button<Label: View>: View {
         let configuration = PrimitiveButtonStyleConfiguration(role: role, label: .init(content: AnyView(label)),
                                                               action: action)
         Group {
-            if let style {
+            if inCommandHost {
+                EmptyView()
+            } else if let style {
                 style.make(configuration)
             } else if inMenu {
                 MenuItemButton(configuration: configuration)
@@ -214,6 +219,10 @@ struct ButtonBehavior<Content: View>: View {
     let content: @MainActor (ButtonStyleConfiguration) -> Content
     @State private var isPressed = false
     @State private var isFocused = false
+    // B5-STATES (ControlStates.swift): desktop press trigger and focus rings.
+    @Environment(\._desktopChrome) private var desktop
+    @Environment(\.fullKeyboardAccess) private var fullKeyboardAccess
+    @Environment(\._controlPressTrigger) private var pressTrigger
 
     init(configuration: PrimitiveButtonStyleConfiguration, ring: AnyShape,
          @ViewBuilder content: @escaping @MainActor (ButtonStyleConfiguration) -> Content) {
@@ -228,13 +237,13 @@ struct ButtonBehavior<Content: View>: View {
         let trigger = configuration.action
         content(c)
             .contentShape(Rectangle())
-            .gesture(ControlPressGesture(onPressed: { p in isPressed = p }, onAction: { trigger() }))
-            .controlFocus($isFocused) { k in
+            .controlPress(pressTrigger, onPressed: { p in isPressed = p }, onAction: { trigger() })
+            .controlTabStop($isFocused, desktop: desktop, fullKeyboardAccess: fullKeyboardAccess) { k in
                 guard isActivationKey(k) else { return false }
                 trigger()
                 return true
             }
-            .focusRing(isFocused, ring)
+            .focusRing(DesktopControlStates.showsFocusRing(focused: isFocused, desktop: desktop, fullKeyboardAccess: fullKeyboardAccess), ring)
     }
 }
 
@@ -310,8 +319,9 @@ public struct PlainButtonStyle: PrimitiveButtonStyle {
 struct PlainLook: View {
     let configuration: ButtonStyleConfiguration
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\._desktopChrome) private var desktop
     var body: some View {
-        configuration.label.opacity(configuration.isPressed ? 0.5 : (isEnabled ? 1 : 0.4))
+        configuration.label.opacity(DesktopControlStates.plainOpacity(pressed: configuration.isPressed, enabled: isEnabled, desktop: desktop))
     }
 }
 
@@ -402,7 +412,7 @@ struct BorderedLook: View {
                     .overlay { shape.stroke(Color.white.opacity(scheme == .dark ? 0.25 : 0.7), lineWidth: 1) }
             }
         }
-        .opacity(configuration.isPressed ? 0.65 : (isEnabled ? 1 : 0.4))
+        .modifier(BorderedPressLook(pressed: configuration.isPressed, enabled: isEnabled, shape: shape, prominent: kind == .prominent))
     }
 }
 

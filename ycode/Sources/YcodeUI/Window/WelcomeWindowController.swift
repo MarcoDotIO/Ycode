@@ -18,8 +18,15 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
     public static let buttonHeight: CGFloat = 36
     public static let buttonSpacing: CGFloat = 8
     public static let buttonsTop: CGFloat = 242
-    public static let closeButtonSize: CGFloat = 36
-    public static let closeButtonInset: CGFloat = 20
+    /// P-186: a 37-point circle (its centre where the 36-point one's was)
+    /// holding a 13-point ×.
+    public static let closeButtonSize: CGFloat = 37
+    public static let closeButtonInset: CGFloat = 19.5
+    public static let closeGlyphSide: CGFloat = 13
+    /// P-186: the New Project menu opens 10 points below its button.
+    public static let newProjectMenuGap: CGFloat = 10
+    /// P-186: Open… fades Welcome out over about 100 ms before its panel.
+    public static let openFadeDuration: TimeInterval = Motion.welcomeFadeOut   // B5-MOTION's shared constant
     /// liquid-glass.md §2.10: the recent list's box, from the window's top
     /// left (macOS 26 and later).
     public static let recentsBoxFrame = NSRect(x: 60, y: 295, width: 360, height: 277)
@@ -63,13 +70,13 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
     public let iconView = NSImageView()
     public let nameLabel = NSTextField(labelWithString: "Ycode")
     public let versionLabel = NSTextField(labelWithString: "")
-    public let openButton = NSButton(title: "Open…", target: nil, action: nil)
-    public let cloneButton = NSButton(title: "Clone…", target: nil, action: nil)
+    public let openButton: NSButton = WelcomeButton(title: "Open…", target: nil, action: nil)
+    public let cloneButton: NSButton = WelcomeButton(title: "Clone…", target: nil, action: nil)
     /// A pull-down: its first item is the button's title.
-    public let newProjectButton = NSPopUpButton(frame: .zero, pullsDown: true)
+    public let newProjectButton: NSPopUpButton = WelcomePullDown(frame: .zero, pullsDown: true)
     public let table = RecentProjectsTable()
     /// The round close button at the top left (no traffic lights, W5).
-    public let closeButton: NSButton = RoundButton()
+    public let closeButton: NSButton = WelcomeCloseButton()
     /// The rounded inset box holding the recent list, and its scroll view.
     public let recentsBox: NSView = RecentsBoxView()
     public let recentsScroll = NSScrollView()
@@ -173,24 +180,18 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
             b.heightAnchor.constraint(equalToConstant: Self.buttonHeight).isActive = true
         }
 
+        // P-186: a drawn 37-point circle whose fill brightens on hover, a ×
+        // whose ink is 13 points (the symbol at 16.3 points: its ink is
+        // three quarters of its 17-point box).
         closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold))
+            .withSymbolConfiguration(.init(pointSize: 16.3, weight: .semibold))
         closeButton.imagePosition = .imageOnly
-        if #available(macOS 26, *) {
-            // A round glass button (liquid-glass-ycode.md §4): the system
-            // draws the material, its contrast and its pressed state.
-            closeButton.bezelStyle = .glass
-            closeButton.borderShape = .circle
-            closeButton.isBordered = true
-        } else {
-            closeButton.isBordered = false
-            closeButton.wantsLayer = true
-            closeButton.layer?.cornerRadius = Self.closeButtonSize / 2
-            closeButton.layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
-        }
+        closeButton.imageScaling = .scaleProportionallyDown
+        closeButton.isBordered = false
         closeButton.contentTintColor = .secondaryLabelColor
         closeButton.toolTip = "Close"
-        closeButton.setAccessibilityTitle("Close")
+        // P-186: the name is the button's description, not its title.
+        closeButton.setAccessibilityLabel("Close")
         closeButton.target = self
         closeButton.action = #selector(closeClicked(_:))
 
@@ -225,7 +226,8 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
         scroll.translatesAutoresizingMaskIntoConstraints = false
         recentsBox.addSubview(scroll)
 
-        for v in [iconView, nameLabel, versionLabel, buttons, recentsBox, emptyLabel, closeButton] as [NSView] {
+        // P-186: the close button comes first in accessibility order.
+        for v in [closeButton, iconView, nameLabel, versionLabel, buttons, recentsBox, emptyLabel] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(v)
         }
@@ -400,15 +402,60 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
         open(entries[row])
     }
 
-    /// "Open…": the Open panel.
+    /// Runs the Open panel and hands back the chosen URLs (empty for
+    /// Cancel). Tests replace it.
+    public static var runOpenPanel: (NSOpenPanel, @escaping ([URL]) -> Void) -> Void = { panel, done in
+        panel.begin { r in done(r == .OK ? panel.urls : []) }
+    }
+
+    /// "Open…" (P-186): Welcome fades out and closes, then the Open panel
+    /// appears on its own; Cancel brings Welcome back when no workspace
+    /// window is open.
     @objc func openClicked(_ sender: Any?) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.treatsFilePackagesAsDirectories = false
         panel.allowsMultipleSelection = true
-        panel.begin { [weak self] r in
-            guard r == .OK else { return }
-            MainActor.assumeIsolated { for u in panel.urls { self?.open(u) } }
+        fadeOutAndClose { [weak self] in
+            Self.runOpenPanel(panel) { urls in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if urls.isEmpty {
+                        let others = NSApp.windows.contains { $0.isVisible && $0.windowController is WorkspaceWindowController }
+                        if !others { self.present() }
+                        return
+                    }
+                    for u in urls { self.openWorkspace(u) { _ in } }
+                }
+            }
+        }
+    }
+
+    /// Fades the window out (none with Reduce Motion), closes it, puts
+    /// its opacity back for the next time, then runs `then`.
+    func fadeOutAndClose(then: @escaping @MainActor () -> Void) {
+        guard let window, window.isVisible, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            close()
+            then()
+            return
+        }
+        let once = RunOnce()
+        let finish: @MainActor () -> Void = { [weak self] in
+            guard once.claim() else { return }
+            self?.close()
+            window.alphaValue = 1
+            then()
+        }
+        NSAnimationContext.runAnimationGroup({ c in
+            c.duration = Self.openFadeDuration
+            window.animator().alphaValue = 0
+        }, completionHandler: {
+            MainActor.assumeIsolated { finish() }
+        })
+        // A busy main thread can hold the animation's completion back: the
+        // panel never waits much longer than the fade.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.openFadeDuration + 0.25) {
+            MainActor.assumeIsolated { finish() }
         }
     }
 
@@ -694,14 +741,123 @@ final class RecentCellView: NSTableCellView {
     }
 }
 
+/// Lets the first of several callers through (the fade's completion or
+/// its fallback).
+@MainActor
+final class RunOnce {
+    private var done = false
+    func claim() -> Bool {
+        if done { return false }
+        done = true
+        return true
+    }
+}
+
 final class RoundButton: NSButton {
     override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsets() }
+}
+
+/// Welcome's push buttons (P-186): the name is the accessibility
+/// description, not the title.
+final class WelcomeButton: NSButton {
+    override func accessibilityTitle() -> String? { nil }
+    override func accessibilityLabel() -> String? { title }
+}
+
+/// The New Project pull-down (P-186): its menu opens 10 points below the
+/// button, without the title item; the name is the description.
+final class WelcomePullDown: NSPopUpButton {
+    override func accessibilityTitle() -> String? { nil }
+    override func accessibilityLabel() -> String? { itemTitles.first }
+
+    /// The menu shown on a click: every item but the title item.
+    func dropDownMenu() -> NSMenu {
+        let m = NSMenu()
+        m.autoenablesItems = false
+        for item in itemArray.dropFirst() {
+            // swiftlint:disable:next force_cast - NSMenuItem.copy() is an NSMenuItem
+            m.addItem(item.copy() as! NSMenuItem)
+        }
+        m.font = font
+        return m
+    }
+
+    /// Where the menu's top-left corner goes, in the button's coordinates.
+    var dropDownOrigin: NSPoint {
+        NSPoint(x: 0, y: isFlipped ? bounds.maxY + WelcomeWindowController.newProjectMenuGap
+                                   : bounds.minY - WelcomeWindowController.newProjectMenuGap)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard isEnabled else { return }
+        highlight(true)
+        dropDownMenu().popUp(positioning: nil, at: dropDownOrigin, in: self)
+        highlight(false)
+    }
+}
+
+/// Welcome's close button (P-186): a 37-point circle filled #3C3D3E
+/// (dark) that turns #505152 under the pointer; the glyph is 13 points.
+final class WelcomeCloseButton: NSButton {
+    static let fill = NSColor(name: nil) { a in
+        a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(srgbRed: 0x3C / 255.0, green: 0x3D / 255.0, blue: 0x3E / 255.0, alpha: 1)
+            : NSColor(white: 0, alpha: 0.06)
+    }
+    static let hoverFill = NSColor(name: nil) { a in
+        a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(srgbRed: 0x50 / 255.0, green: 0x51 / 255.0, blue: 0x52 / 255.0, alpha: 1)
+            : NSColor(white: 0, alpha: 0.12)
+    }
+    private(set) var isHovered = false { didSet { if oldValue != isHovered { needsDisplay = true } } }
+    private var tracking: NSTrackingArea?
+
+    override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsets() }
+    override func accessibilityTitle() -> String? { nil }
+
+    /// The pointer entered or left (tests call it as the tracking area does).
+    func setHovered(_ on: Bool) { isHovered = on }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let t = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
+        addTrackingArea(t)
+        tracking = t
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false }
+
+    /// The fill drawn now.
+    var currentFill: NSColor { isHovered ? Self.hoverFill : Self.fill }
+
+    override func draw(_ dirtyRect: NSRect) {
+        currentFill.setFill()
+        NSBezierPath(ovalIn: bounds).fill()
+        guard let image, image.size.width > 0, image.size.height > 0 else { return }
+        let r = glyphRect(for: image.size)
+        let color = contentTintColor ?? .secondaryLabelColor
+        let tinted = NSImage(size: r.size, flipped: false) { rect in
+            image.draw(in: rect)
+            color.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        tinted.draw(in: r)
+    }
+
+    /// The glyph's frame: the symbol at its own size, centred.
+    func glyphRect(for size: NSSize) -> NSRect {
+        NSRect(x: (bounds.midX - size.width / 2).rounded(), y: (bounds.midY - size.height / 2).rounded(), width: size.width, height: size.height)
+    }
 }
 
 /// The Recent Projects table: Return opens the selected row.
 @MainActor
 public final class RecentProjectsTable: NSTableView {
     var onReturn: (() -> Void)?
+    /// P-186: the recent list is an outline to accessibility, as the
+    /// reference's.
+    public override func accessibilityRole() -> NSAccessibility.Role? { .outline }
     public override func keyDown(with event: NSEvent) {
         if event.keyCode == 36 || event.keyCode == 76 { onReturn?() } else { super.keyDown(with: event) }
     }

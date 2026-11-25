@@ -483,7 +483,7 @@ Launching Apple's apps is passthrough, not parity. It does nothing on Linux.
 | Quartz Debug, Pixie, AU Lab, PacketLogger, Printer Simulator | Mac graphics, audio, Bluetooth and printing utilities | none | n.a. for Linux / missing | – | – | – | Low value for Ycode | – | P3 |
 | `xcrun` | Find tools and SDKs | `ycodebuild -version -sdk`, `-showsdks` | partial: no `xcrun`; `-find-executable` unsupported | – / partial / – | `specs/xcodebuild/info-commands.md` | – | Public man page (level 1) | S | P2 |
 | `xcodebuild` | Build, test, archive, export, settings | `ycodebuild` | done for most actions (§2.4); hosted tests done (TEST-HOST) | – / yes / – | `specs/xcodebuild/` | – | Existing specs | – | P0 |
-| `simctl` | Device lifecycle and I/O | `ycode-simd` flags plus `ycode-sim` and `ycode-sim-serve` | done: boot, shutdown, erase, screenshot, location, ui, pair. partial: create, install, launch, openurl, spawn, privacy (only together with boot or launch; no separate terminate). missing: device list, push, status_bar, addmedia, keychain, pbcopy/pbpaste, recordVideo from the CLI, reboot (new in 27). | – / yes (arm64) / – | `ycode-simd/main.swift`, `ycode/scripts/` | – | Public `simctl help` (level 1). A `ycode simctl` front end with the same verbs would help scripts and agents. | M | P1 |
+| `simctl` | Device lifecycle and I/O | `ycrun simctl`: Ycode's own `xcrun simctl` for Ycode's simulators (`docs/YCRUN.md`), on `ycode-simd` and its launcher; `ycrun remote setup` sets up a simulator host | done: list (`-j`), create, delete, rename, boot, bootstatus, shutdown, reboot, erase, install, launch, io screenshot, location, ui, pair, unpair, pair_activate, and `view` (Ycode only). Devices run on arm64 Linux with KVM itself, and through a simulator host from x86-64 Linux and macOS. missing (exit 69, listed in `docs/YCRUN.md`): terminate, openurl, spawn, privacy, push, status_bar, addmedia, keychain, pbcopy/pbpaste, io recordVideo. | yes (through a host) / yes / – | `specs/ide/ycrun.md`, `ycode/Sources/ycrun`, `ycode/Sources/YcodeSimControl` | – | Public `simctl help` (level 1) | M | P1 |
 | `devicectl` | Physical devices through CoreDevice | none (Apple's JSON is parsed to list devices) | missing | no / no / no | `YcodeBuild/Destinations.swift` | libimobiledevice is **LGPL-2.1** (excluded by the frameworks policy unless used as a separate process); usbmuxd is GPL/LGPL | The CoreDevice protocol needs a dirty-room spec. On macOS, wrapping Apple's `devicectl` is allowed (it is the user's tool). | XL | P2 |
 | `xcresulttool` | Read result bundles | `ycodebuild` writes bundles; nothing reads them | partial | – / partial / – | `specs/xcodebuild/result-bundle.md` | – | Existing spec | M | P2 |
 | `xctrace` | Record and export traces from the CLI | `ycode profile record\|summary\|tree\|flame\|annotate\|symbolicate` | partial: own format | – / yes / – | `specs/ide/profiler.md` §7 | – | – | M | P2 |
@@ -599,7 +599,7 @@ Other simulator gaps:
   server and SpringBoard never do). The other clients wait
   about 6.5 s in all; texture contents only the GPU held are still lost at
   the reset (`metal-sim-protocol.md` §8.8).
-- **simctl verbs** that are missing are listed in §3.2.
+- **simctl verbs** that are missing are listed in §3.2 (the `simctl` row: `ycrun simctl`).
 - **Device Hub 27.2 extras** are missing: shake, memory pressure, slow
   animations, Standby.
 
@@ -1410,7 +1410,7 @@ The next items after these, not ranked:
 - A Network Link Conditioner in `ycode-simd`.
 - visionOS input.
 - The tvOS simulator.
-- A `ycode simctl` front end with Apple's verbs.
+- A `ycode simctl` front end with Apple's verbs: done as `ycrun simctl` (1.0.0-beta.5).
 - Interface Builder connections and Auto Layout.
 - New target templates (extensions, widgets).
 - The Core Data model editor.

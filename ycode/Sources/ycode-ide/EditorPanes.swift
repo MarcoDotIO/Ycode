@@ -129,8 +129,9 @@ struct EditorPaneView: View {
         } else {
             // Nothing open: the editor's background alone, no minimap,
             // separator or scroll lane (editor-area.md E.5, row 74; "No
-            // Selection" is the jump bar's).
-            Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Selection" is the jump bar's); beside another pane, "No
+            // Editor" (P-066).
+            NoEditorPlaceholder(shown: EditorPanePlaceholder.shows(paneCount: model.panes.panes.count), colors: c)
                 .contentShape(Rectangle())
                 .onTapGesture { model.focusPane(pane.id) }
                 .shellTarget("no selection")
@@ -155,7 +156,7 @@ struct EditorPaneView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { model.focusPane(pane.id) }
         case .none:
-            Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+            NoEditorPlaceholder(shown: EditorPanePlaceholder.shows(paneCount: model.panes.panes.count), colors: c)
                 .contentShape(Rectangle())
                 .onTapGesture { model.focusPane(pane.id) }
         }
@@ -228,15 +229,20 @@ enum PaneControllers {
     }
 }
 
-/// The jump bar's 2-point rule (`EditorMetrics.jumpBarSeparator`), in the
-/// macOS editor's colours: #E5E5E5 light, #404040 dark.
+/// The jump bar's 2-point divider (#58, `glass-materials.md` §3.1): two
+/// rows from `GlassMaterials`, the macOS editor's, the same at every scroll
+/// offset.
 struct JumpBarRule: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        Rectangle().fill(scheme == .dark ? Color(red: 0x40 / 255, green: 0x40 / 255, blue: 0x40 / 255)
-            : Color(red: 0xE5 / 255, green: 0xE5 / 255, blue: 0xE5 / 255))
-            .frame(height: CGFloat(EditorMetrics.jumpBarSeparator))
+        let rows = GlassMaterials.jumpBarDivider(dark: scheme == .dark)
+        let half = CGFloat(GlassMaterials.jumpBarDividerHeight) / 2
+        VStack(spacing: 0) {
+            Rectangle().fill(rows.top.color).frame(height: half)
+            Rectangle().fill(rows.bottom.color).frame(height: half)
+        }
+        .frame(height: CGFloat(EditorMetrics.jumpBarSeparator))
     }
 }
 
@@ -409,5 +415,26 @@ struct ImageEditorView: View {
         }
         .buttonStyle(.plain)
         .shellTarget("open with image viewer")
+    }
+}
+
+/// An empty pane beside another pane: "No Editor" centred in it, as the
+/// macOS IDE's `NoEditorPlaceholderView` (P-066, `EditorPanePlaceholder`);
+/// a lone empty editor stays blank.
+struct NoEditorPlaceholder: View {
+    let shown: Bool
+    let colors: ShellColors
+
+    var body: some View {
+        ZStack {
+            Color.clear
+            if shown {
+                Text(verbatim: EditorPanePlaceholder.title)
+                    .font(.system(size: CGFloat(EditorPanePlaceholder.fontSize)))
+                    .foregroundStyle(EditorGuideColors.tertiary(dark: colors.dark))
+                    .shellTarget("no editor")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

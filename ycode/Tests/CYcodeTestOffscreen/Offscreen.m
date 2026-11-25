@@ -2,6 +2,7 @@
 
 #import "CYcodeTestOffscreen.h"
 #import <QuartzCore/QuartzCore.h>
+#import <objc/objc-exception.h>
 #import <objc/runtime.h>
 #import <stdatomic.h>
 #import <unistd.h>
@@ -316,6 +317,24 @@ static void unconstrain(void) {
     free(classes);
 }
 
+/// Prints every Objective-C exception's name, reason and stack as it is
+/// raised (AppKit's layout catches one and crashes on it without printing
+/// the reason). The engine's own unsatisfiable-constraint exceptions, which
+/// it handles, are left out.
+static objc_exception_preprocessor previousPreprocessor;
+static id logException(id e) {
+    if ([e isKindOfClass:[NSException class]]) {
+        NSException *x = e;
+        if (![x.reason containsString:@"not satisfiable"]) {
+            fprintf(stderr, "YcodeTestException: %s: %s\n%s\n", x.name.UTF8String, x.reason.UTF8String,
+                    [[NSThread.callStackSymbols subarrayWithRange:NSMakeRange(0, MIN((NSUInteger)40, NSThread.callStackSymbols.count))]
+                        componentsJoinedByString:@"\n"].UTF8String);
+        }
+    }
+    return previousPreprocessor ? previousPreprocessor(e) : e;
+}
+static void logExceptions(void) { previousPreprocessor = objc_setExceptionPreprocessor(logException); }
+
 static void guardWindows(void) {
     Class W = [NSWindow class];
     origAlpha = (AlphaIMP)method_getImplementation(class_getInstanceMethod(W, @selector(alphaValue)));
@@ -618,6 +637,7 @@ __attribute__((constructor)) static void install(void) {
                 @"transparent": transparentWindows, @"exempt": exemptWindows, @"capturing": capturing,
                 @"startSentinel": [^{ startSentinel(); } copy]} mutableCopy];
     objc_setAssociatedObject(W, key, shared, OBJC_ASSOCIATION_RETAIN);
+    logExceptions();
     guardWindows();
     watchWindows();
     guardModals();

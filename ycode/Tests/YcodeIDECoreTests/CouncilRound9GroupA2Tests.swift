@@ -77,12 +77,12 @@ import Testing
 
     typealias Q = OpenQuicklyLayout
 
-    /// 640 wide, top 200; the field's band 54; rows 620 × 56, 10 in and 10
+    /// 640 wide, top 70 (beta 5: the default place, `popovers.md` §5); the field's band 54; rows 620 × 56, 10 in and 10
     /// below the separator; 130 tall for one result; the name level with
     /// the query (66 and 66.5 from the panel's left); the glyph 13 into
     /// the row (x 403 in a panel at 380).
     @Test func openQuicklyGeometry() {
-        #expect(Q.width == 640 && Q.top == 200 && Q.headerHeight == 54 && Q.separatorInset == 20)
+        #expect(Q.width == 640 && Q.top == 70 && Q.headerHeight == 54 && Q.separatorInset == 20)
         #expect(Q.rowWidth == 620 && Q.rowHeight == 56 && Q.rowCornerRadius == 22 && Q.rowsTop == 64)
         #expect(Q.height(results: 1) == 130 && Q.height(results: 0) == 54)
         #expect(Q.height(results: 30) == Q.height(results: Q.maximumVisibleRows))

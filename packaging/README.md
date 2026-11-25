@@ -66,6 +66,7 @@ Ycode.app/Contents/
   Helpers/SwiftBuild_*.bundle     swift-build's specifications (open source)
   Helpers/ycode-sim-viewer        a window on a simulator device (experimental)
   Helpers/ycode-simhost           a simulator host's service (experimental)
+  Helpers/ycrun                   Ycode's simulators from a terminal (`ycrun simctl`, `ycrun remote setup`; docs/YCRUN.md)
   Helpers/libYcodeTestAgent.dylib the agent for tests hosted in a Mac app
   Resources/simulator-host/       ycode-sim and ycode-sim-serve, to copy to a Linux host
   Resources/Ycode.icns, LICENSE, THIRD_PARTY_NOTICES.md
@@ -77,6 +78,10 @@ wherever the app was copied. Helpers are not in `Contents/MacOS` because `ycode`
 and `Ycode` are the same name on a case-insensitive disk.
 
 The app needs a developer toolchain on the Mac; it does not ship one.
+
+`ycrun --install-link` puts `ycrun` on the PATH (a link in `/usr/local/bin` when
+writable, else `~/.local/bin`; no sudo). In the Flatpak the same command writes a
+`~/.local/bin/ycrun` script that runs `flatpak run --command=ycrun`.
 
 **Architectures.** The image is universal. Each architecture is a separate SwiftPM
 build merged with `lipo`, so it takes about twice as long as one. Set
@@ -137,7 +142,7 @@ with `flatpak override --user --filesystem=<path> io.github.MarcoDotIO.Ycode`.
 
 ### What each architecture contains
 
-Both: `ycode-ide`, `ycode`, `ycodebuild`, `ycode-bsp`, `ycode-swb`,
+Both: `ycode-ide`, `ycode`, `ycodebuild`, `ycode-bsp`, `ycode-swb`, `ycrun`,
 `SWBBuildServiceBundle`, swift-build's and the UI's resources, `ycode-sim-viewer`,
 `libYcodeGaugeAgent.so`, `scripts/ycode-ios-build-linux`, SDL 3, the Swift runtime
 libraries the tools load (unmodified from swift.org's toolchain), libxml2 2.13 and

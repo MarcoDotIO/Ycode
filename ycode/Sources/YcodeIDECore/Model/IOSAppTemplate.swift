@@ -441,7 +441,10 @@ public enum IOSAppTemplate {
                                         ("VALIDATE_PRODUCT", "YES")]),
         ])
         p[projectID] = PBXObject(id: projectID, attributes: PlistDictionary([
-            ("isa", "PBXProject"), ("buildConfigurationList", .string(projectList)), ("developmentRegion", "en"),
+            // The IDE version (`templates.md`; `issues.md` §1 item 5).
+            ("isa", "PBXProject"), ("attributes", .dictionary(PlistDictionary([("LastSwiftUpdateCheck", .string(ProjectRecipe.toolsVersionDigits)),
+                                                                                ("LastUpgradeCheck", .string(ProjectRecipe.toolsVersionDigits))]))),
+            ("buildConfigurationList", .string(projectList)), ("developmentRegion", "en"),
             ("hasScannedForEncodings", "0"), ("knownRegions", .array(["en", "Base"])), ("mainGroup", .string(main)),
             ("productRefGroup", .string(productsGroup)), ("projectDirPath", ""), ("projectRoot", ""), ("targets", strings(targets)),
         ]))

@@ -367,6 +367,15 @@ final class ClosurePopUp: NSPopUpButton {
         cell = c
         target = self
         action = #selector(fire)
+        // P-198: a bezel over the whole control under the pointer (ControlStateAppKit.swift).
+        hoverTracker = HoverBezelTracker(control: self, kind: .settingsPopUp, lead: CGFloat(ControlStates.popUpBezelLead),
+                                         height: CGFloat(ControlStates.popUpBezelHeight), radius: CGFloat(ControlStates.popUpBezelRadius))
+    }
+    /// The card pop-up's hover bezel (P-198).
+    private(set) var hoverTracker: HoverBezelTracker?
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        hoverTracker?.update()
     }
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }

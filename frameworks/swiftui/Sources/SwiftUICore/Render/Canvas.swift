@@ -394,6 +394,8 @@ extension Canvas: PrimitiveView {
         let n = LayoutNode(ShapeViewLeaf(fits: { $0.replacingUnspecifiedDimensions() }))
         let renderer = self.renderer
         let env = node.environment
+        // The renderer reads its state when it draws (B5, P-200).
+        n.drawIsLive = true
         n.draw = { rec, size in
             let recording = GraphicsRecording(id: rec.nextID())
             var ctx = GraphicsContext(recording: recording, environment: env, size: size)

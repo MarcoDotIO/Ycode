@@ -113,7 +113,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             wc.navigator.setFindScope(.group(src.path))
             #expect(wc.navigator.findScope.title == "In Demo" || wc.navigator.findScope.title.hasPrefix("In "))
             wc.navigator.setFindScope(.workspace)
-            #expect(wc.navigator.findScope.title == "In Package")
+            #expect(wc.navigator.findScope.title == "In Workspace")   // P-040
         }
     }
 

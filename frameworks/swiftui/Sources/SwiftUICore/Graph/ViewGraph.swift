@@ -106,6 +106,42 @@ package final class ViewGraph {
     /// Optional observer of body evaluations (tests).
     package var onBodyEvaluation: ((ViewNode) -> Void)?
 
+    // B5 (P-200): incremental layout.
+    /// Unchanged subtrees keep their layout nodes and the layout engine's
+    /// measurements from one pass to the next, and unchanged placements are
+    /// not walked again. `OV_INCREMENTAL=0` turns it off (every pass lowers
+    /// and lays out the whole tree, as before beta 5).
+    package var reusesLowering = ViewGraph.incrementalDefault
+    package nonisolated static let incrementalDefault = ProcessInfo.processInfo.environment["OV_INCREMENTAL"] != "0"
+    /// Set while removed views are lowered (they always lower afresh).
+    package private(set) var bypassesLoweringCache = false
+    /// Counts of the lowering (tests, drivers): nodes lowered again and
+    /// nodes whose last lowering was reused, since the counts were reset.
+    package var loweringStats = LoweringStats()
+    /// Optional observer of nodes lowered again (tests).
+    package var onLowering: ((ViewNode) -> Void)?
+    package struct LoweringStats: Equatable {
+        package var lowered = 0
+        package var reused = 0
+        package init() {}
+    }
+    /// B5 (P-200, P-211): where a window's frames spend their time, by
+    /// phase (seconds, accumulated until reset; drivers and
+    /// `OV_FRAME_PHASES`).
+    package var phaseTimes = PhaseTimes()
+    package struct PhaseTimes: Equatable {
+        package var bodies = 0.0
+        package var lifecycle = 0.0
+        package var layout = 0.0
+        package var preferences = 0.0
+        package var passes = 0
+        package init() {}
+    }
+    package static func clock() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1e9 }
+    /// The layout context kept between passes (incremental layout).
+    private var layoutContext: LayoutContext?
+    private var layoutContextRevision: UInt64?
+
     package init<V: View>(rootView: V, environment: EnvironmentValues = EnvironmentValues(), layout: HostLayout? = nil,
                           timeSource: (any AnimationTimeSource)? = nil) {
         self.rootView = rootView
@@ -301,6 +337,8 @@ package final class ViewGraph {
 
         // 2. Bodies. (A new root value set during the pass — a window's
         // presentation layer — is applied in the next pass.)
+        let t0 = Self.clock()
+        defer { phaseTimes.passes += 1 }
         let changed = rootViewChanged
         rootViewChanged = false
         if let root {
@@ -314,11 +352,13 @@ package final class ViewGraph {
         for g in ghosts where g.node.isAlive {
             g.node.update(nil, environment: g.node.environment, transaction: transaction)
         }
+        phaseTimes.bodies += Self.clock() - t0
         finishPass(animatedGeometry: true)
     }
 
     private func finishPass(animatedGeometry: Bool) {
         // 3. Lifecycle.
+        let t0 = Self.clock()
         let appear = appearQueue
         appearQueue = []
         for a in appear.reversed() { a() }
@@ -327,7 +367,9 @@ package final class ViewGraph {
         for d in disappear.reversed() { d() }
 
         // 4. Layout.
+        let t1 = Self.clock()
         if let layout { performLayout(layout, animated: animatedGeometry) }
+        let t2 = Self.clock()
 
         // 5. Geometry and preferences.
         let geo = geometryActions
@@ -337,6 +379,10 @@ package final class ViewGraph {
         let prefs = preferenceActions
         preferenceActions = []
         for p in prefs { p() }
+        let t3 = Self.clock()
+        phaseTimes.lifecycle += t1 - t0
+        phaseTimes.layout += t2 - t1
+        phaseTimes.preferences += t3 - t2
 
         // Completions: the pass's transactions are complete; handlers whose
         // animations are done (or that started none) run now.
@@ -364,12 +410,32 @@ package final class ViewGraph {
     private func performLayout(_ layout: HostLayout, animated: Bool) {
         let node = rootLayoutNode()
         let engine = LayoutEngine(environment: environment, textMeasurer: layout.textMeasurer, symbols: layout.symbols)
+        // B5 (P-200): the context (and with it every unchanged node's
+        // measurements) is kept while the root environment and the
+        // measurers are the same.
+        var context: LayoutContext?
+        if reusesLowering, let c = layoutContext, layoutContextRevision == environment.revision,
+           Self.same(c.textMeasurer, layout.textMeasurer), Self.same(c.symbols, layout.symbols) {
+            context = c
+        }
         let result: LayoutResult
         switch layout.mode {
-        case .window(let size, let insets): result = engine.layout(node, window: size, safeAreaInsets: insets)
-        case .proposal(let p): result = engine.layout(node, proposal: p)
+        case .window(let size, let insets): result = engine.layout(node, window: size, safeAreaInsets: insets, reusing: context)
+        case .proposal(let p): result = engine.layout(node, proposal: p, reusing: context)
         }
+        layoutContext = reusesLowering ? result.context : nil
+        layoutContextRevision = environment.revision
         layoutResult = result
+        let pass = result.context.pass
+        // Only nodes placed in this pass can have new frames (an unchanged
+        // node at an unchanged place is not walked again). Geometry
+        // observers hear about every pass (a lazy stack's visible rows
+        // follow its scroll view's viewport even where its own frame stays).
+        func placed(_ n: LayoutNode, _ body: (LayoutNode) -> Void) {
+            guard n.placedPass == pass else { return }
+            body(n)
+            for c in n.children { placed(c, body) }
+        }
         node.forEachNode { n in
             guard let owner = n.owner as? ViewNode, owner.isAlive, let frame = result.frame(of: n) else { return }
             let g = NodeGeometry(size: n.placedSize ?? frame.size, frame: frame, safeAreaInsets: result.safeAreaInsets(of: n))
@@ -380,7 +446,7 @@ package final class ViewGraph {
         }
         // Layout geometry of every created node, animated per the
         // transaction that reached its view (R6).
-        node.forEachNode { n in
+        placed(node) { n in
             guard let creator = n.creator as? ViewNode, creator.isAlive, let o = n.placedLocalOrigin,
                   let s = n.placedSize else { return }
             let r = CGRect(origin: o, size: s)
@@ -389,6 +455,23 @@ package final class ViewGraph {
                                 transaction: animated ? creator.transactionForSelf() : Transaction())
         }
         if !matched.isEmpty { updateMatchedGeometry(animated: animated) }
+    }
+
+    /// The same measurer: one object, or values of one type (stateless).
+    private static func same(_ a: Any, _ b: Any) -> Bool {
+        guard type(of: a) == type(of: b) else { return false }
+        if type(of: a) is AnyClass { return (a as AnyObject) === (b as AnyObject) }
+        return true
+    }
+
+    /// Lowers removed views (ghosts) afresh: their transitions change what
+    /// they lower to after they left the tree.
+    package func lowerGhost(_ node: ViewNode) -> [LayoutNode] {
+        beginLowering()
+        let saved = bypassesLoweringCache
+        bypassesLoweringCache = true
+        defer { bypassesLoweringCache = saved }
+        return node.lower()
     }
 
     /// Frames of named layout nodes from the last layout pass.

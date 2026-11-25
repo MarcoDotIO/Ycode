@@ -67,8 +67,14 @@ public final class EditorAreaController: NSViewController {
 
     public init(first: SourceEditorController) {
         super.init(nibName: nil, bundle: nil)
+        textUndo.liveEditors = { [weak self] in self?.allEditors ?? [] }
+        first.textUndo = textUndo
         tabs = [Tab(editor: first)]
     }
+
+    /// The window's per-file text undo histories, shared by its editors
+    /// (TextUndoHistories.swift).
+    public let textUndo = TextUndoHistories()
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
@@ -139,6 +145,7 @@ public final class EditorAreaController: NSViewController {
     }
 
     private func prepare(_ e: SourceEditorController, in tab: Tab) {
+        e.textUndo = textUndo
         e.onActivate = { [weak self, weak e, weak tab] in
             guard let self, let e, let tab, let i = tab.editors.firstIndex(where: { $0 === e }) else { return }
             if tab.focused != i { tab.focused = i; self.onFocusChange?(e) }
@@ -284,14 +291,16 @@ public final class EditorAreaController: NSViewController {
                 b.addSubview(pin)
                 NSLayoutConstraint.activate([pin.trailingAnchor.constraint(equalTo: b.trailingAnchor, constant: -6), pin.centerYAnchor.constraint(equalTo: b.centerYAnchor)])
             }
-            let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close Tab")!, target: self, action: #selector(closeClicked(_:)))
+            // P-198: an 18-point × with a round hover bezel that fades out (ControlStateAppKit.swift).
+            let close = TabCloseButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close Tab")!, target: self, action: #selector(closeClicked(_:)))
             close.tag = i
             close.isBordered = false
             close.identifier = NSUserInterfaceItemIdentifier("tab-close")
             close.translatesAutoresizingMaskIntoConstraints = false
             b.addSubview(close)
-            NSLayoutConstraint.activate([close.leadingAnchor.constraint(equalTo: b.leadingAnchor, constant: 6), close.centerYAnchor.constraint(equalTo: b.centerYAnchor),
-                                         close.widthAnchor.constraint(equalToConstant: 12), close.heightAnchor.constraint(equalToConstant: 12)])
+            let side = CGFloat(EditorTabStates.closeButtonSize)
+            NSLayoutConstraint.activate([close.centerXAnchor.constraint(equalTo: b.leadingAnchor, constant: 12), close.centerYAnchor.constraint(equalTo: b.centerYAnchor),
+                                         close.widthAnchor.constraint(equalToConstant: side), close.heightAnchor.constraint(equalToConstant: side)])
             b.addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self, userInfo: ["tab": i]))
             tabBar.addArrangedSubview(b)
         }
@@ -413,7 +422,16 @@ public final class EditorAreaController: NSViewController {
         t.focused = max(0, t.focused - 1)
         showSelected()
         onFocusChange?(focusedEditor)
+        lonePaneLeftEmpty(t)
         return true
+    }
+
+    /// A pane left alone without a file trades "No Editor" for the lone
+    /// editor's empty state (P-066).
+    func lonePaneLeftEmpty(_ t: Tab) {
+        guard t.editors.count == 1, let e = t.editors.first, e.fileURL == nil, e.auxiliary == nil, e.noEditorPlaceholder != nil else { return }
+        e.hideEmptyState()
+        e.onBecameEmpty?()
     }
 
     /// Shows or creates the assistant editor (side by side, last).
@@ -443,6 +461,7 @@ public final class EditorAreaController: NSViewController {
         t.assistant = nil
         t.focused = min(t.focused, t.editors.count - 1)
         showSelected()
+        lonePaneLeftEmpty(t)
     }
 
     /// The preview canvas, shown right of the editors of the selected tab.

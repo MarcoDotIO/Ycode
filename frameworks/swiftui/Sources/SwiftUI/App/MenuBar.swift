@@ -397,12 +397,27 @@ package final class MenuBarController {
 
     package var menuTitles: [String] { menus.map(\.title) }
 
+    /// P-033 (L-002): the overflow title's capture (the last ref).
+    @ObservationIgnored var overflowRef = NodeRef()
+    /// P-033 (L-002): the bar has no room for every title (the last layout
+    /// placed the overflow title).
+    package internal(set) var overflowShown = false
+
+    /// The menus the bar has no room for (their titles lie outside it).
+    var hiddenMenus: [Int] {
+        menus.indices.filter { i in i >= refs.count || (refs[i].windowFrame.map { $0.minX < 0 } ?? true) }
+    }
+
     package func open(_ i: Int) {
         guard menus.indices.contains(i), i < refs.count, let popups = services?.popups,
-              let frame = refs[i].windowFrame else { return }
+              var frame = refs[i].windowFrame else { return }
+        // A menu whose title is in the overflow opens under the overflow
+        // title (Left and Right step through every menu).
+        if frame.minX < 0, let o = overflowRef.windowFrame { frame = o }
         handle?.dismiss()
         let menu = menus[i]
         openIndex = i
+        services?.windowChrome.menuBarMenuOpen = true
         weak var me = self
         let h = popups.presentPopup(content: AnyView(MenuContentView(sections: menu.sections)),
                                     origin: CGPoint(x: frame.minX, y: frame.maxY), minWidth: 180, chrome: .menu,
@@ -419,17 +434,22 @@ package final class MenuBarController {
                                         guard let me else { return }
                                         if me.openIndex == i {
                                             me.openIndex = nil
+                                            me.services?.windowChrome.menuBarMenuOpen = false
                                             me.lastMenuClosed()
                                         }
                                     })
         handle = h
-        if h == nil { openIndex = nil }
+        if h == nil {
+            openIndex = nil
+            services?.windowChrome.menuBarMenuOpen = false
+        }
     }
 
     package func close() {
         handle?.dismiss()
         handle = nil
         openIndex = nil
+        services?.windowChrome.menuBarMenuOpen = false
     }
 
     /// B5-OPENVIEWS: an on-demand menu bar hides when its last menu closes,
@@ -473,12 +493,17 @@ struct MenuBarView: View {
         while c.refs.count < menus.count { c.refs.append(NodeRef()) }
         services?.menuBar = c
         let palette = ControlPalette(scheme)
-        let bar = HStack(spacing: 0) {
+        // P-033 (L-002): titles keep their full width; the ones the window
+        // has no room for move into an overflow menu at the end of the bar.
+        let bar = MenuBarTitlesLayout(controller: c) {
             ForEach(Array(menus.enumerated()), id: \.offset) { pair in
                 MenuBarTitle(title: pair.element.title, index: pair.offset, isAppMenu: pair.offset == 0, controller: c)
+                    .fixedSize()
                     .modifier(NodeCaptureModifier(ref: c.refs[pair.offset]))
             }
-            Spacer(minLength: 0)
+            MenuBarOverflowTitle(controller: c)
+                .fixedSize()
+                .modifier(NodeCaptureModifier(ref: c.overflowRef))
         }
         .padding(.horizontal, 4)
         .frame(maxWidth: .infinity)
@@ -488,8 +513,9 @@ struct MenuBarView: View {
         .accessibilityControl(.menuBar, children: .contain)
         if let onDemand {
             // On demand: laid out at the top so menus open under their
-            // titles, faded in and out, and taking no presses while hidden.
-            let shown = onDemand.menuBarRevealed || c.openIndex != nil
+            // titles, faded in and out, and taking no presses while hidden;
+            // the content moves down under it (`OnDemandMenuBarInset`).
+            let shown = onDemand.menuBarShown
             return AnyView(bar
                 .shadow(color: Color.black.opacity(shown ? 0.12 : 0), radius: 3, y: 1)
                 .opacity(shown ? 1 : 0)
@@ -503,6 +529,116 @@ struct MenuBarView: View {
 
 enum MenuBarMetrics {
     static let height: CGFloat = 26
+}
+
+/// P-033 (L-002): the bar's titles at their natural widths from the leading
+/// edge; when they do not all fit, the ones from the first that does not
+/// (with room left for the overflow title) are placed outside the bar and
+/// the overflow title (the last subview) follows the last one shown.
+struct MenuBarTitlesLayout: Layout {
+    let controller: MenuBarController
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let widths = subviews.dropLast().map { $0.sizeThatFits(.unspecified).width }
+        let height = subviews.map { $0.sizeThatFits(.unspecified).height }.max() ?? 0
+        return CGSize(width: proposal.width ?? widths.reduce(0, +), height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let overflow = subviews.last else { return }
+        let titles = subviews.dropLast()
+        let widths = titles.map { $0.sizeThatFits(.unspecified).width }
+        let more = overflow.sizeThatFits(.unspecified).width
+        let shown = Self.shownCount(widths: widths, overflow: more, available: bounds.width)
+        var x = bounds.minX
+        let outside = CGPoint(x: -100_000, y: bounds.minY)
+        for (i, v) in titles.enumerated() {
+            let p = ProposedViewSize(width: widths[i], height: bounds.height)
+            if i < shown {
+                v.place(at: CGPoint(x: x, y: bounds.minY), proposal: p)
+                x += widths[i]
+            } else {
+                v.place(at: outside, proposal: p)
+            }
+        }
+        overflow.place(at: shown < widths.count ? CGPoint(x: x, y: bounds.minY) : outside,
+                       proposal: ProposedViewSize(width: more, height: bounds.height))
+        let overflowing = shown < widths.count
+        MainActor.assumeIsolated {
+            if controller.overflowShown != overflowing { controller.overflowShown = overflowing }
+        }
+    }
+
+    /// How many titles show in `available` points: all when they fit,
+    /// else as many as fit beside the overflow title.
+    static func shownCount(widths: [CGFloat], overflow: CGFloat, available: CGFloat) -> Int {
+        if widths.reduce(0, +) <= available + 0.5 { return widths.count }
+        var x: CGFloat = 0, n = 0
+        while n < widths.count, x + widths[n] + overflow <= available + 0.5 {
+            x += widths[n]
+            n += 1
+        }
+        return n
+    }
+}
+
+/// P-033 (L-002): the overflow title ("»"), shown when the window is too
+/// narrow for every menu title; its menu lists the menus left out, each as
+/// a submenu.
+struct MenuBarOverflowTitle: View {
+    let controller: MenuBarController
+    @Environment(\._windowServices) private var services
+    @Environment(\.colorScheme) private var scheme
+    @State private var hovered = false
+    @State private var box = PopupBox()
+
+    var body: some View {
+        let palette = ControlPalette(scheme)
+        let c = controller
+        Text(verbatim: "»")
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 8)
+            .frame(height: MenuBarMetrics.height - 4)
+            .background {
+                if hovered { RoundedRectangle(cornerRadius: 4).fill(palette.menuHighlight) }
+            }
+            .contentShape(Rectangle())
+            .onHover { hovered = $0 }
+            .gesture(ControlPressGesture(onPressed: { p in if p { open(c) } }, onAction: {}))
+            .help("More Menus")
+            .accessibilityControl(.menuBarItem, label: "More Menus", actions: ["default": { open(c) }])
+            .accessibilityHidden(!c.overflowShown)
+    }
+
+    private func open(_ c: MenuBarController) {
+        let hidden = c.hiddenMenus.map { c.menus[$0] }
+        guard !hidden.isEmpty else { return }
+        c.close()
+        let rows = ForEach(Array(hidden.enumerated()), id: \.offset) { pair in
+            Menu(pair.element.title) { MenuContentView(sections: pair.element.sections) }
+        }
+        services?.windowChrome.menuBarMenuOpen = true
+        let chrome = services?.windowChrome
+        openPopup(services: services, ref: c.overflowRef, box: box, submenu: false, minWidth: 180,
+                  onDismiss: { chrome?.menuBarMenuOpen = false; c.lastMenuClosed() }, content: AnyView(rows))
+    }
+}
+
+/// P-033 (L-001): the window's content moves down by the on-demand menu
+/// bar's height while the bar shows (with the bar's fade), so that the bar
+/// covers nothing (the toolbar first); hidden, the content is where it was.
+struct OnDemandMenuBarInset: ViewModifier {
+    let state: WindowChromeState
+    func body(content: Content) -> some View {
+        let shown = state.menuBarShown
+        // Kept at the window's top: a fixed-size content (Welcome) moves
+        // down and loses its bottom 26 points meanwhile, rather than being
+        // centred again (which moved the bar up out of the window).
+        content
+            .padding(.top, shown ? MenuBarMetrics.height : 0)
+            .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
+            .animation(.easeOut(duration: 0.15), value: shown)
+    }
 }
 
 struct MenuBarTitle: View {

@@ -114,9 +114,14 @@ public final class DeviceControlsRow: NSView {
         /// (§15.6, row 175), each tooltip gives the reason and a press shows
         /// it on the canvas. Nil: the controls act (or are disabled).
         public var unavailableReason: String?
+        /// Controls that still act while `unavailableReason` holds for the
+        /// others (a Mac simulator's Screenshot through simctl): their
+        /// tooltips are their own.
+        public var availableCommands: Set<DeviceCommand> = []
         public init(foldable: Bool = false, canRotate: Bool = false, recording: Bool = false, posture: DevicePosture? = nil,
                     enabled: Bool = false, showsRotate: Bool = true, showsHome: Bool = true, spatial: Bool = false,
-                    watch: Bool = false, unavailableReason: String? = nil) {
+                    watch: Bool = false, unavailableReason: String? = nil, availableCommands: Set<DeviceCommand> = []) {
+            self.availableCommands = availableCommands
             self.foldable = foldable
             self.canRotate = canRotate
             self.recording = recording
@@ -242,9 +247,10 @@ public final class DeviceControlsRow: NSView {
                 b.image = NSImage(systemSymbolName: look.symbol, accessibilityDescription: look.help)?
                     .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
             }
-            b.toolTip = configuration.unavailableReason.map { DeviceControlsLayout.unavailableHelp(look.help, reason: $0) } ?? look.help
+            let reason = configuration.availableCommands.contains(c) ? nil : configuration.unavailableReason
+            b.toolTip = reason.map { DeviceControlsLayout.unavailableHelp(look.help, reason: $0) } ?? look.help
             b.setAccessibilityLabel(look.help)
-            b.setAccessibilityHelp(configuration.unavailableReason)
+            b.setAccessibilityHelp(reason)
             // Glyphs black (white in dark, §12.1), the current pose in the accent colour (§11.1).
             b.contentTintColor = c == .recordScreen && configuration.recording ? .systemRed
                 : Self.isCurrentPose(c, configuration.posture) ? .controlAccentColor : Self.glyphColor

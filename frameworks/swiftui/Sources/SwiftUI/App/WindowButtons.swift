@@ -87,7 +87,10 @@ struct WindowButtonsLayer: View {
         let b = state.behaviors
         let enabled = [!modal && b.dismiss != .disabled, b.minimize != .disabled,
                        b.fullScreen != .disabled || b.resize != .disabled]
-        let top = contentTop + state.titleBarHeight / 2 - WindowButtonMetrics.diameter / 2
+        // P-033: below the on-demand menu bar while it shows (the content
+        // moves down with it).
+        let inset = state.menuBarShown ? MenuBarMetrics.height : 0
+        let top = contentTop + inset + state.titleBarHeight / 2 - WindowButtonMetrics.diameter / 2
         // Read here, not in the ForEach's closure, so that the body depends
         // on them.
         let isKey = activeState != .inactive
@@ -108,6 +111,7 @@ struct WindowButtonsLayer: View {
         .onHover { h in if state.buttonsHovered != h { state.buttonsHovered = h } }
         .padding(.leading, WindowButtonMetrics.leading - 4)
         .padding(.top, top - 4)
+        .animation(.easeOut(duration: 0.15), value: inset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityElement(children: .contain)
     }

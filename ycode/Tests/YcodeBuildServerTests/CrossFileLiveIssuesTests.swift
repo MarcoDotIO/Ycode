@@ -19,10 +19,8 @@ import YcodeLanguage
 @Suite(.serialized, .timeLimit(.minutes(8))) struct CrossFileLiveIssuesTests {
     static let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
-    static var server: String? {
-        let p = packageRoot.appendingPathComponent(".build/debug/ycode-bsp").path
-        return FileManager.default.isExecutableFile(atPath: p) ? p : nil
-    }
+    /// `ycode-bsp` of this build (any scratch path; B5LiveDiagnosticsTests).
+    static var server: String? { B5LiveDiagnosticsTests.server }
 
     static let counter = """
     import Foundation

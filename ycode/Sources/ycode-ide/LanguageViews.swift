@@ -20,16 +20,28 @@ import OVPlatform
 struct QuickHelpContent: View {
     var document: QuickHelpDocument
     var model: WorkspaceShellModel
+    /// The popover's look (`popovers.md` §4.2): a borderless 385-wide
+    /// declaration box with modifiers on their own line, the file's glyph.
+    var popover = false
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
+        if popover && document.isModule { moduleBody } else { symbolBody }
+    }
+
+    var symbolBody: some View {
         let c = ShellColors(scheme)
         let d = document
-        VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 8) {
             Text(verbatim: d.title).font(Font.system(size: 15, weight: .bold)).foregroundStyle(c.label)
                 .shellTarget("quickhelp title")
             if let s = d.summary { paragraph(s, c) }
-            if !d.declaration.isEmpty {
+            if !d.declaration.isEmpty, popover {
+                QuickHelpDeclarationBox(declaration: d.declaration)
+                    .contextMenu { Button("Copy") { ShellPasteboard.copy(d.declaration) } }
+                    .padding(.bottom, CGFloat(QuickHelpPopoverMetrics.declarationToFile - 8))
+                    .shellTarget("quickhelp declaration")
+            } else if !d.declaration.isEmpty {
                 Text(verbatim: d.declaration).font(Font.system(size: 11, design: .monospaced)).foregroundStyle(c.label)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 8)
@@ -47,7 +59,12 @@ struct QuickHelpContent: View {
             if let f = d.file, d.showsFileLink {
                 Button { model.openQuickHelpFile(f) } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: "doc").font(.system(size: 11))
+                        if popover {
+                            // The file's own glyph in its type's tint (§4.2).
+                            FileGlyphImage(fileName: (f as NSString).lastPathComponent, box: (11.5, 11.5)).frame(width: 14, height: 14)
+                        } else {
+                            Image(systemName: "doc").font(.system(size: 11))
+                        }
                         Text(verbatim: (f as NSString).lastPathComponent).font(ShellFonts.small)
                     }
                     .foregroundStyle(c.accent)
@@ -99,6 +116,40 @@ struct QuickHelpContent: View {
         }
     }
 
+    /// A module's Quick Help (§4.1): the title, the abstract, a hairline,
+    /// Overview and its text, then the documentation link at the bottom
+    /// right; no declaration box or file link.
+    var moduleBody: some View {
+        let c = ShellColors(scheme)
+        let d = document
+        let m = QuickHelpPopoverMetrics.self
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(verbatim: d.title).font(Font.system(size: CGFloat(m.titleFontSize), weight: .bold)).foregroundStyle(c.label)
+                .shellTarget("quickhelp title")
+            if let s = d.summary {
+                QuickHelpText.text(document.runs(for: s)).font(Font.system(size: CGFloat(m.bodyFontSize))).foregroundStyle(c.label)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !d.overview.isEmpty {
+                Rectangle().fill(Color(popoverHex: m.hairline(dark: scheme == .dark))).frame(height: 1)
+                    .padding(.bottom, 4)
+                    .shellTarget("quickhelp hairline")
+                Text("Overview").font(Font.system(size: CGFloat(m.overviewFontSize), weight: .bold)).foregroundStyle(c.label)
+                    .shellTarget("quickhelp heading")
+                ForEach(Array(d.overview.enumerated()), id: \.offset) { pair in QuickHelpBlockView(block: pair.element, colors: c) }
+            }
+            HStack {
+                Spacer(minLength: 0)
+                Button { model.openDocumentation(for: d.title) } label: {
+                    Text("Open in Developer Documentation").font(Font.system(size: CGFloat(m.linkFontSize))).foregroundStyle(c.accent)
+                }
+                .buttonStyle(.plain)
+                .shellTarget("quickhelp documentation")
+            }
+            .padding(.top, 4)
+        }
+    }
+
     func section(_ name: String, _ c: ShellColors) -> some View {
         Text(verbatim: name).font(ShellFonts.smallBold).tracking(ShellFonts.smallTracking).foregroundStyle(c.secondaryLabel)
             .padding(.top, 2)
@@ -137,55 +188,55 @@ struct QuickHelpInspector: View {
     }
 }
 
-/// Quick Help over the editor: a popover hanging under the symbol, its
-/// arrow pointing up at the symbol's start. The bubble and its arrow are one
-/// outline (one fill, one edge, one shadow), so the arrow reads in both
-/// appearances. The editor closes it when the insertion point moves, on
-/// Escape and when it scrolls.
+/// Quick Help over the editor (`popovers.md` §4, P-083): an anchored
+/// popover always **above** the symbol, its arrow pointing down with the
+/// tip 3 points over the symbol's line, centred on the symbol; never
+/// flipped below and never clipped to the editor (it grows upward over the
+/// jump bar and toolbar). Drawn by `AnchoredPopoverBackground`
+/// (PopoverOverlay.swift) in Quick Help's material. The editor closes it
+/// when the insertion point moves, on Escape and when it scrolls.
 struct QuickHelpPopoverLayer: View {
     var model: WorkspaceShellModel
     let controller: SourceEditorController
     @Environment(\.colorScheme) private var scheme
 
-    static let width: CGFloat = 420
+    static let width = CGFloat(QuickHelpPopoverMetrics.width)
 
     var body: some View {
-        // Raised over the editor: white in light mode, a lighter grey in dark.
-        let fill = scheme == .dark ? Color(.sRGB, red: 0.19, green: 0.19, blue: 0.2) : Color.white
-        let edge = scheme == .dark ? Color.white.opacity(0.18) : Color.black.opacity(0.2)
+        let dark = scheme == .dark
         GeometryReader { geo in
             if let p = model.languageFeatures.popover, p.path == controller.document.path {
-                let anchor = controller.symbolAnchor(p.offset)
-                let place = Self.placement(anchorX: anchor.x, lineBottom: anchor.y + controller.lineHeight, width: geo.size.width)
-                let bubble = PopoverBubble(arrowX: place.arrowX)
-                QuickHelpContent(document: p.document, model: model)
-                    .frame(width: Self.width - 28, alignment: .leading)
-                    .padding(14)
-                    .padding(.top, PopoverBubble.arrowSize.height)
+                let a = controller.symbolAnchor(p.offset)
+                let word = TextCommands.identifierRange(in: controller.buffer.text, at: p.offset)
+                let endX = word.map { controller.symbolAnchor($0.location + $0.length).x } ?? a.x + 8
+                let startX = word.map { controller.symbolAnchor($0.location).x } ?? a.x
+                let place = Self.placement(symbol: CGRect(x: startX, y: a.y, width: max(1, endX - startX), height: controller.lineHeight),
+                                           width: geo.size.width)
+                // Bottom-aligned at the arrow's tip, so a tall popover near
+                // the top grows upward past the editor instead of flipping.
+                QuickHelpContent(document: p.document, model: model, popover: true)
+                    .frame(width: Self.width - CGFloat(2 * QuickHelpPopoverMetrics.sideInset), alignment: .leading)
+                    .padding(.horizontal, CGFloat(QuickHelpPopoverMetrics.sideInset))
+                    .padding(.top, CGFloat(QuickHelpPopoverMetrics.topInset))
+                    .padding(.bottom, CGFloat(QuickHelpPopoverMetrics.bottomInset))
+                    .padding(.bottom, CGFloat(PopoverMetrics.arrowHeight))
                     .background {
-                        bubble.fill(fill)
-                            .shadow(color: Color.black.opacity(scheme == .dark ? 0.5 : 0.2), radius: 12, y: 4)
-                            .overlay { bubble.stroke(edge, lineWidth: 1) }
+                        AnchoredPopoverBackground(edge: .above, arrowTipX: CGFloat(place.arrowTipX), fill: PopoverMaterial.quickHelpBody(dark: dark), dark: dark)
                     }
-                    .offset(x: place.x, y: place.y)
                     .onTapGesture {}
                     .shellTarget("quickhelp popover")
+                    .offset(x: place.body.minX)
+                    .frame(width: geo.size.width, height: max(1, place.arrowTip.y), alignment: .bottomLeading)
             }
         }
         .allowsHitTesting(model.languageFeatures.popover != nil)
     }
 
-    /// The bubble's leading edge and top (the arrow's tip) in the editor,
-    /// and the arrow's tip from the bubble's leading edge: the tip just
-    /// under the symbol's line, at the symbol's start; the bubble 8 points
-    /// before it, kept inside the editor and with the arrow clear of its
-    /// rounded corners.
-    static func placement(anchorX: CGFloat, lineBottom: CGFloat, width: CGFloat) -> (x: CGFloat, y: CGFloat, arrowX: CGFloat) {
-        let tipX = anchorX + 6
-        let x = min(max(8, tipX - 28), max(8, width - Self.width - 8))
-        let inset = PopoverBubble.cornerRadius + PopoverBubble.arrowSize.width / 2 + 2
-        let arrowX = min(max(tipX - x, inset), Self.width - inset)
-        return (x, lineBottom + 1, arrowX)
+    /// The popover's place for a symbol's rectangle in the editor: centred
+    /// on it, above it (`PopoverPlacement`), kept inside the editor's width.
+    static func placement(symbol: CGRect, width: CGFloat) -> PopoverPlacement {
+        PopoverPlacement.place(anchor: symbol, bodySize: CGSize(width: Self.width, height: 0), edge: .above,
+                               gap: PopoverMetrics.textAnchorGap, bounds: CGRect(x: 8, y: 0, width: max(Self.width, width - 16), height: 0))
     }
 }
 
@@ -466,4 +517,37 @@ enum SymbolClick {
         return true
     }
     #endif
+}
+
+/// The popover's declaration box (§4.2): 385 × (17.5 per line + 15), no
+/// border, corners 6, #262626 in dark; the declaration in the editor's
+/// face, syntax-coloured, attributes and modifiers on their own line.
+struct QuickHelpDeclarationBox: View {
+    var declaration: String
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let m = QuickHelpPopoverMetrics.self
+        let lines = QuickHelpDeclarationLines.lines(declaration)
+        let runs = MergeSheetLayout.highlight(lines, fileName: "Declaration.swift")
+        let palette = SourcePalette.forAppearance(dark: scheme == .dark, theme: Preferences.shared.theme)
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(runs.enumerated()), id: \.offset) { pair in
+                pair.element.reduce(Text(verbatim: "")) { t, r in
+                    t + Text(verbatim: r.text).foregroundStyle(palette.color(r.role).color)
+                }
+                .font(Font.system(size: CGFloat(m.declarationFontSize), design: .monospaced))
+                .lineLimit(1)
+                .frame(height: CGFloat(m.declarationLinePitch), alignment: .leading)
+            }
+        }
+        .padding(.horizontal, CGFloat(m.declarationHorizontalPadding))
+        .frame(width: CGFloat(m.declarationWidth), height: CGFloat(m.declarationHeight(lines: lines.count)), alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: CGFloat(m.declarationRadius), style: .continuous)
+                .fill(Color(popoverHex: m.declarationFill(dark: scheme == .dark)))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(lines.joined(separator: "\n"))
+    }
 }

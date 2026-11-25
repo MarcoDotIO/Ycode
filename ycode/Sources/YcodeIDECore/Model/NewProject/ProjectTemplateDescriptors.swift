@@ -263,13 +263,14 @@ public enum ProjectTemplates {
               id + [TemplateOptionField(ID.libraryFramework, "Framework", .popUp(["Cocoa", TemplateChoice("STL", title: "STL (C++ Library)"),
                                                                                  TemplateChoice("None", title: "None (Plain C/C++ Library)")]), default: "Cocoa"),
                     TemplateOptionField(ID.libraryType, "Type", .popUp(["Dynamic", "Static"]), default: "Dynamic")], "library"),
+            // P-181: between Library and XPC Service (Ycode's key 11).
+            d(mac, lib, "Metal Library", 11, "A standalone .metallib", "cube", [TemplateFields.productName, TemplateFields.team], "metalLibrary"),
             d(mac, lib, "XPC Service", 100, "An XPC service bundle", "point.3.connected.trianglepath.dotted",
               id + [swiftOnlyLanguage, TemplateOptionField(ID.apiLevel, "API Level", .popUp([
                   TemplateChoice("Low Level", title: "Low Level - libXPC"), TemplateChoice("High Level", title: "High Level - NSXPCConnection"),
               ]), default: "High Level")], "xpcService"),
             d(mac, lib, "Bundle", 101, "A loadable bundle with a chosen extension", "archivebox",
               id + [TemplateOptionField(ID.bundleExtension, "Bundle Extension", .text, default: "bundle")], "bundle"),
-            d(mac, lib, "Metal Library", nil, "A standalone .metallib", "cube", [TemplateFields.productName, TemplateFields.team], "metalLibrary"),
             d(mac, "Other", "Generic Kernel Extension", nil, "A C kernel extension", "cpu", id, "kernelExtension"),
             d(mac, "Other", "IOKit Driver", nil, "A C++ IOKit kernel extension", "cpu.fill", id, "iokitDriver"),
             d(mac, "Other", "Installer Plug-in", nil, "An Installer pane plug-in", "shippingbox.and.arrow.backward", id, "installerPlugin"),

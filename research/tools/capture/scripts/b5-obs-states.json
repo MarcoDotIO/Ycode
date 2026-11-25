@@ -1,0 +1,4785 @@
+{
+ "name": "b5-obs-states",
+ "title": "B5-OBS 1/6: hover, pressed, focus and disabled states of the toolbar, tabs, segments, fields, bottom bars, sheet buttons and Settings controls; tooltip; menu entrance.",
+ "targets": [
+  "xcode"
+ ],
+ "compare_order": [
+  "xcode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.0
+ },
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90,
+  "offset": [
+   1020,
+   300
+  ]
+ },
+ "steps": [
+  {
+   "id": "d-rest",
+   "note": "Shapes.swift and Counter.swift in two tabs, Shapes selected. AX tree (frames of every control).",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-run-hover",
+   "note": "Run (toolbar): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Run"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-run-press",
+   "note": "Run (toolbar): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "description": "Run"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-stop-hover",
+   "note": "Stop (toolbar; disabled while nothing runs; no press: a press on it drags the window): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Stop"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-nav-toggle-hover",
+   "note": "the Navigators toggle (toolbar): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton",
+      "description": "Navigators"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-nav-toggle-press",
+   "note": "the Navigators toggle (toolbar): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXRadioButton",
+       "description": "Navigators"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-assistant-hover",
+   "note": "the Coding Assistant toggle (toolbar; released away, never clicked): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton",
+      "description": "Coding Assistant"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-assistant-press",
+   "note": "the Coding Assistant toggle (toolbar; released away, never clicked): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXRadioButton",
+       "description": "Coding Assistant"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-insp-toggle-hover",
+   "note": "the inspector toggle (toolbar): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Hide Inspector|Show Inspector"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-insp-toggle-press",
+   "note": "the inspector toggle (toolbar): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "description": "Hide Inspector|Show Inspector"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-library-hover",
+   "note": "the Library button (toolbar): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Show Library|Library|Add"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-library-press",
+   "note": "the Library button (toolbar): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "description": "Show Library|Library|Add"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-scheme-hover",
+   "note": "the scheme capsule: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-scheme-press",
+   "note": "the scheme capsule: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "label": "Active Scheme",
+       "role": "AXPopUpButton"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    },
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-destination-hover",
+   "note": "the destination capsule: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "label": "Active Run Destination",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-destination-press",
+   "note": "the destination capsule: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "label": "Active Run Destination",
+       "role": "AXPopUpButton"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    },
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-nav-tab-hover",
+   "note": "the Find navigator tab: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton",
+      "subrole": "AXTabButton",
+      "description": "Find"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-nav-tab-press",
+   "note": "the Find navigator tab: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXRadioButton",
+       "subrole": "AXTabButton",
+       "description": "Find"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    },
+    {
+     "key": "cmd+1"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-insp-tab-hover",
+   "note": "the History inspector tab: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton",
+      "description": "History Inspector"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-insp-tab-press",
+   "note": "the History inspector tab: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXRadioButton",
+       "description": "History Inspector"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-editor-tab-hover",
+   "note": "the Counter.swift editor tab (not selected): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton",
+      "subrole": "AXTabButton",
+      "title": "Counter.swift"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-tab-close-hover",
+   "note": "the selected tab's close button: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "title": "close tab",
+      "index": 0
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-tab-close-press",
+   "note": "the selected tab's close button: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "title": "close tab",
+       "index": 0
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-jumpbar-hover",
+   "note": "the jump bar's file segment (window point 586, 66): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": [
+      586,
+      66
+     ]
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-jumpbar-press",
+   "note": "the jump bar's file segment (window point 586, 66): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": [
+       586,
+       66
+      ],
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    },
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-filter-hover",
+   "note": "the navigator filter field (bottom bar): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXTextField",
+      "subrole": "AXSearchField",
+      "description": "Project navigator filter"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-filter-press",
+   "note": "the navigator filter field (bottom bar): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXTextField",
+       "subrole": "AXSearchField",
+       "description": "Project navigator filter"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-filter-menu-hover",
+   "note": "the navigator bottom bar's filter options menu button: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "identifier": "filterControlBarActionMenuButton"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-filter-menu-press",
+   "note": "the navigator bottom bar's filter options menu button: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "identifier": "filterControlBarActionMenuButton"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    },
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-recent-hover",
+   "note": "the bottom bar's Recent files toggle: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXCheckBox",
+      "title": "Recent files"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-recent-press",
+   "note": "the bottom bar's Recent files toggle: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXCheckBox",
+       "title": "Recent files"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-disclosure-hover",
+   "note": "a group's disclosure triangle (second row): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXDisclosureTriangle",
+      "index": 1
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-disclosure-press",
+   "note": "a group's disclosure triangle (second row): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXDisclosureTriangle",
+       "index": 1
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-debug-toggle-hover",
+   "note": "the editor's bottom bar Show Debug Area button: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "show debug area"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-debug-toggle-press",
+   "note": "the editor's bottom bar Show Debug Area button: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "description": "show debug area"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-find-open",
+   "note": "cmd+F: the find bar. AX tree.",
+   "do": [
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "key": "cmd+f"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "findbar",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-find-field-hover",
+   "note": "the find bar's Find field: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXTextField",
+      "subrole": "AXSearchField",
+      "description": "Find"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-find-field-press",
+   "note": "the find bar's Find field: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXTextField",
+       "subrole": "AXSearchField",
+       "description": "Find"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-find-close",
+   "note": "Escape closes the find bar.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-focus-tab",
+   "note": "Click into the editor, then Tab ×6 with the system's keyboard-navigation setting left as it is: where focus goes, whether a ring shows. Snaps + AX trees.",
+   "do": [
+    {
+     "click": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-focus-filter",
+   "note": "Click into the navigator filter field (its focus ring), then Tab ×3.",
+   "do": [
+    {
+     "click": {
+      "role": "AXTextField",
+      "subrole": "AXSearchField",
+      "description": "Project navigator filter"
+     }
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "snap": "f00",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "f01",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "f02",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "f03",
+     "mode": "app"
+    },
+    {
+     "key": "escape"
+    },
+    {
+     "click": [
+      700,
+      500
+     ]
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-open-bs",
+   "note": "The project editor, target Parity, Build Settings.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Parity",
+      "index": 0
+     }
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "click": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Build Settings",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "bs",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-seg-basic-hover",
+   "note": "the Build Settings 'Basic' segment: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Basic",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-seg-basic-press",
+   "note": "the Build Settings 'Basic' segment: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton|AXRadioButton",
+       "label": "Basic",
+       "visible": true
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-seg-customized-hover",
+   "note": "the Build Settings 'Customized' segment: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Customized",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-seg-customized-press",
+   "note": "the Build Settings 'Customized' segment: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton|AXRadioButton",
+       "label": "Customized",
+       "visible": true
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-seg-all-hover",
+   "note": "the Build Settings 'All' segment: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton|AXRadioButton",
+      "label": "All",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-seg-all-press",
+   "note": "the Build Settings 'All' segment: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton|AXRadioButton",
+       "label": "All",
+       "visible": true
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-seg-combined-hover",
+   "note": "the Build Settings 'Combined' segment: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Combined",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-seg-combined-press",
+   "note": "the Build Settings 'Combined' segment: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton|AXRadioButton",
+       "label": "Combined",
+       "visible": true
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-seg-levels-hover",
+   "note": "the Build Settings 'Levels' segment: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Levels",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-seg-levels-press",
+   "note": "the Build Settings 'Levels' segment: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton|AXRadioButton",
+       "label": "Levels",
+       "visible": true
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-back",
+   "note": "Back to Shapes.swift.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Shapes|Shapes.swift"
+     }
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-sheet-open",
+   "note": "cmd+N: the File from Template sheet.",
+   "do": [
+    {
+     "key": "cmd+n"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "sheet",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-sheet-next-hover",
+   "note": "the sheet's default button (Next): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "title": "Next",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-sheet-next-press",
+   "note": "the sheet's default button (Next): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "title": "Next",
+       "scope": "app"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-sheet-cancel-hover",
+   "note": "the sheet's Cancel button: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-sheet-cancel-press",
+   "note": "the sheet's Cancel button: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "title": "Cancel",
+       "scope": "app"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-sheet-close",
+   "note": "Cancel.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-settings-open",
+   "note": "cmd+, then the General pane. AX tree.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "General",
+      "scope": "app"
+     }
+    },
+    {
+     "press": {
+      "role": "AXButton|AXRadioButton",
+      "label": "General",
+      "scope": "app"
+     },
+     "fallback": true
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "move": [
+      1100,
+      300
+     ],
+     "window": "General"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "settings",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-set-pane-hover",
+   "note": "the Settings pane selector's 'Navigation' item: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "label": "Navigation",
+      "role": "AXButton|AXRadioButton|AXRow|AXCell",
+      "scope": "app"
+     },
+     "window": "General"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-set-popup-hover",
+   "note": "the first pop-up button of Settings ▸ General: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXPopUpButton",
+      "scope": "app",
+      "index": 0
+     },
+     "window": "General"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-set-popup-press",
+   "note": "the first pop-up button of Settings ▸ General: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXPopUpButton",
+       "scope": "app",
+       "index": 0
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3,
+     "window": "General"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    },
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-set-checkbox-hover",
+   "note": "the first checkbox of Settings ▸ General: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXCheckBox",
+      "scope": "app",
+      "index": 0
+     },
+     "window": "General"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-set-checkbox-press",
+   "note": "the first checkbox of Settings ▸ General: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXCheckBox",
+       "scope": "app",
+       "index": 0
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3,
+     "window": "General"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-settings-close",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-tip-run",
+   "note": "Pointer onto Run, rests 3 s (tooltip), then leaves for 1.5 s (its fade).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Run"
+     }
+    },
+    {
+     "wait": 3.0
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-menu-view",
+   "note": "Click View in the menu bar, 1.2 s, Escape (entrance and dismissal).",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "View",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-appearance-light",
+   "note": "Settings ▸ Appearance: Xcode's own Appearance set to Light; Settings closed.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "AppearanceLight",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "appearance",
+     "depth": 40
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-rest",
+   "note": "Shapes.swift and Counter.swift in two tabs, Shapes selected. AX tree (frames of every control).",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-run-hover",
+   "note": "Run (toolbar): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Run"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-run-press",
+   "note": "Run (toolbar): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "description": "Run"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-stop-hover",
+   "note": "Stop (toolbar; disabled while nothing runs; no press: a press on it drags the window): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Stop"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-nav-toggle-hover",
+   "note": "the Navigators toggle (toolbar): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton",
+      "description": "Navigators"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-nav-toggle-press",
+   "note": "the Navigators toggle (toolbar): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXRadioButton",
+       "description": "Navigators"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-assistant-hover",
+   "note": "the Coding Assistant toggle (toolbar; released away, never clicked): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton",
+      "description": "Coding Assistant"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-assistant-press",
+   "note": "the Coding Assistant toggle (toolbar; released away, never clicked): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXRadioButton",
+       "description": "Coding Assistant"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-insp-toggle-hover",
+   "note": "the inspector toggle (toolbar): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Hide Inspector|Show Inspector"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-insp-toggle-press",
+   "note": "the inspector toggle (toolbar): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "description": "Hide Inspector|Show Inspector"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-library-hover",
+   "note": "the Library button (toolbar): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Show Library|Library|Add"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-library-press",
+   "note": "the Library button (toolbar): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "description": "Show Library|Library|Add"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-scheme-hover",
+   "note": "the scheme capsule: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-scheme-press",
+   "note": "the scheme capsule: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "label": "Active Scheme",
+       "role": "AXPopUpButton"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    },
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-destination-hover",
+   "note": "the destination capsule: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "label": "Active Run Destination",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-destination-press",
+   "note": "the destination capsule: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "label": "Active Run Destination",
+       "role": "AXPopUpButton"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    },
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-nav-tab-hover",
+   "note": "the Find navigator tab: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton",
+      "subrole": "AXTabButton",
+      "description": "Find"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-nav-tab-press",
+   "note": "the Find navigator tab: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXRadioButton",
+       "subrole": "AXTabButton",
+       "description": "Find"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    },
+    {
+     "key": "cmd+1"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-insp-tab-hover",
+   "note": "the History inspector tab: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton",
+      "description": "History Inspector"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-insp-tab-press",
+   "note": "the History inspector tab: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXRadioButton",
+       "description": "History Inspector"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-editor-tab-hover",
+   "note": "the Counter.swift editor tab (not selected): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRadioButton",
+      "subrole": "AXTabButton",
+      "title": "Counter.swift"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-tab-close-hover",
+   "note": "the selected tab's close button: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "title": "close tab",
+      "index": 0
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-tab-close-press",
+   "note": "the selected tab's close button: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "title": "close tab",
+       "index": 0
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-jumpbar-hover",
+   "note": "the jump bar's file segment (window point 586, 66): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": [
+      586,
+      66
+     ]
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-jumpbar-press",
+   "note": "the jump bar's file segment (window point 586, 66): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": [
+       586,
+       66
+      ],
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    },
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-filter-hover",
+   "note": "the navigator filter field (bottom bar): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXTextField",
+      "subrole": "AXSearchField",
+      "description": "Project navigator filter"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-filter-press",
+   "note": "the navigator filter field (bottom bar): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXTextField",
+       "subrole": "AXSearchField",
+       "description": "Project navigator filter"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-filter-menu-hover",
+   "note": "the navigator bottom bar's filter options menu button: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "identifier": "filterControlBarActionMenuButton"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-filter-menu-press",
+   "note": "the navigator bottom bar's filter options menu button: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "identifier": "filterControlBarActionMenuButton"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    },
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-recent-hover",
+   "note": "the bottom bar's Recent files toggle: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXCheckBox",
+      "title": "Recent files"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-recent-press",
+   "note": "the bottom bar's Recent files toggle: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXCheckBox",
+       "title": "Recent files"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-disclosure-hover",
+   "note": "a group's disclosure triangle (second row): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXDisclosureTriangle",
+      "index": 1
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-disclosure-press",
+   "note": "a group's disclosure triangle (second row): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXDisclosureTriangle",
+       "index": 1
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-debug-toggle-hover",
+   "note": "the editor's bottom bar Show Debug Area button: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "show debug area"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-debug-toggle-press",
+   "note": "the editor's bottom bar Show Debug Area button: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "description": "show debug area"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-find-open",
+   "note": "cmd+F: the find bar. AX tree.",
+   "do": [
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "key": "cmd+f"
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "findbar",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-find-field-hover",
+   "note": "the find bar's Find field: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXTextField",
+      "subrole": "AXSearchField",
+      "description": "Find"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-find-field-press",
+   "note": "the find bar's Find field: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXTextField",
+       "subrole": "AXSearchField",
+       "description": "Find"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-find-close",
+   "note": "Escape closes the find bar.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-focus-tab",
+   "note": "Click into the editor, then Tab ×6 with the system's keyboard-navigation setting left as it is: where focus goes, whether a ring shows. Snaps + AX trees.",
+   "do": [
+    {
+     "click": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k01",
+     "mode": "app"
+    },
+    {
+     "tree": "k01",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k02",
+     "mode": "app"
+    },
+    {
+     "tree": "k02",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k03",
+     "mode": "app"
+    },
+    {
+     "tree": "k03",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k04",
+     "mode": "app"
+    },
+    {
+     "tree": "k04",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k05",
+     "mode": "app"
+    },
+    {
+     "tree": "k05",
+     "depth": 40
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "k06",
+     "mode": "app"
+    },
+    {
+     "tree": "k06",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-focus-filter",
+   "note": "Click into the navigator filter field (its focus ring), then Tab ×3.",
+   "do": [
+    {
+     "click": {
+      "role": "AXTextField",
+      "subrole": "AXSearchField",
+      "description": "Project navigator filter"
+     }
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "snap": "f00",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "f01",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "f02",
+     "mode": "app"
+    },
+    {
+     "key": "tab"
+    },
+    {
+     "wait": 0.4
+    },
+    {
+     "snap": "f03",
+     "mode": "app"
+    },
+    {
+     "key": "escape"
+    },
+    {
+     "click": [
+      700,
+      500
+     ]
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-open-bs",
+   "note": "The project editor, target Parity, Build Settings.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Parity",
+      "index": 0
+     }
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "click": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Build Settings",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "bs",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-seg-basic-hover",
+   "note": "the Build Settings 'Basic' segment: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Basic",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-seg-basic-press",
+   "note": "the Build Settings 'Basic' segment: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton|AXRadioButton",
+       "label": "Basic",
+       "visible": true
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-seg-customized-hover",
+   "note": "the Build Settings 'Customized' segment: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Customized",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-seg-customized-press",
+   "note": "the Build Settings 'Customized' segment: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton|AXRadioButton",
+       "label": "Customized",
+       "visible": true
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-seg-all-hover",
+   "note": "the Build Settings 'All' segment: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton|AXRadioButton",
+      "label": "All",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-seg-all-press",
+   "note": "the Build Settings 'All' segment: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton|AXRadioButton",
+       "label": "All",
+       "visible": true
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-seg-combined-hover",
+   "note": "the Build Settings 'Combined' segment: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Combined",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-seg-combined-press",
+   "note": "the Build Settings 'Combined' segment: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton|AXRadioButton",
+       "label": "Combined",
+       "visible": true
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-seg-levels-hover",
+   "note": "the Build Settings 'Levels' segment: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton|AXRadioButton",
+      "label": "Levels",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-seg-levels-press",
+   "note": "the Build Settings 'Levels' segment: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton|AXRadioButton",
+       "label": "Levels",
+       "visible": true
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-back",
+   "note": "Back to Shapes.swift.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Shapes|Shapes.swift"
+     }
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-sheet-open",
+   "note": "cmd+N: the File from Template sheet.",
+   "do": [
+    {
+     "key": "cmd+n"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "sheet",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-sheet-next-hover",
+   "note": "the sheet's default button (Next): pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "title": "Next",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-sheet-next-press",
+   "note": "the sheet's default button (Next): mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "title": "Next",
+       "scope": "app"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-sheet-cancel-hover",
+   "note": "the sheet's Cancel button: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-sheet-cancel-press",
+   "note": "the sheet's Cancel button: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXButton",
+       "title": "Cancel",
+       "scope": "app"
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-sheet-close",
+   "note": "Cancel.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-settings-open",
+   "note": "cmd+, then the General pane. AX tree.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "General",
+      "scope": "app"
+     }
+    },
+    {
+     "press": {
+      "role": "AXButton|AXRadioButton",
+      "label": "General",
+      "scope": "app"
+     },
+     "fallback": true
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "move": [
+      1100,
+      300
+     ],
+     "window": "General"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "settings",
+     "depth": 40
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-set-pane-hover",
+   "note": "the Settings pane selector's 'Navigation' item: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "label": "Navigation",
+      "role": "AXButton|AXRadioButton|AXRow|AXCell",
+      "scope": "app"
+     },
+     "window": "General"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-set-popup-hover",
+   "note": "the first pop-up button of Settings ▸ General: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXPopUpButton",
+      "scope": "app",
+      "index": 0
+     },
+     "window": "General"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-set-popup-press",
+   "note": "the first pop-up button of Settings ▸ General: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXPopUpButton",
+       "scope": "app",
+       "index": 0
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3,
+     "window": "General"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    },
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.4
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-set-checkbox-hover",
+   "note": "the first checkbox of Settings ▸ General: pointer onto it, rests 1.2 s, then leaves to window point (700, 500) for 1.0 s. Hover still = the video frame 1.0 s after the hover.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXCheckBox",
+      "scope": "app",
+      "index": 0
+     },
+     "window": "General"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-set-checkbox-press",
+   "note": "the first checkbox of Settings ▸ General: mouse held 0.5 s, then dragged off and released at (700, 500) (nothing triggers). Held still = the frame 0.4 s after mouse-down.",
+   "do": [
+    {
+     "drag": {
+      "from": {
+       "role": "AXCheckBox",
+       "scope": "app",
+       "index": 0
+      },
+      "to": [
+       700,
+       500
+      ]
+     },
+     "hold": 0.5,
+     "duration": 0.3,
+     "window": "General"
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "move": [
+      1020,
+      300
+     ],
+     "window": "Parity"
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-settings-close",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-tip-run",
+   "note": "Pointer onto Run, rests 3 s (tooltip), then leaves for 1.5 s (its fade).",
+   "do": [
+    {
+     "hover": {
+      "role": "AXButton",
+      "description": "Run"
+     }
+    },
+    {
+     "wait": 3.0
+    },
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-menu-view",
+   "note": "Click View in the menu bar, 1.2 s, Escape (entrance and dismissal).",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "View",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "z-appearance-system",
+   "note": "Settings ▸ Appearance: Xcode's own Appearance set to System; Settings closed.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "AppearanceAuto",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "appearance",
+     "depth": 40
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "z-end",
+   "note": "Back to System (dark). AX tree.",
+   "do": [
+    {
+     "tree": "end",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Shapes|Shapes.swift"
+   }
+  },
+  {
+   "wait": 2.0
+  },
+  {
+   "key": "cmd+t"
+  },
+  {
+   "wait": 1.0
+  },
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Counter|Counter.swift"
+   }
+  },
+  {
+   "wait": 1.5
+  },
+  {
+   "click": {
+    "role": "AXRadioButton",
+    "subrole": "AXTabButton",
+    "title": "Shapes.swift"
+   }
+  },
+  {
+   "wait": 1.0
+  }
+ ]
+}

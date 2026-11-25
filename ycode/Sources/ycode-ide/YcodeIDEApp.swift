@@ -32,6 +32,8 @@ struct YcodeIDEApp: App {
         YcodeRelease.handleVersionFlag(tool: "ycode-ide")
         YcodeRelease.adoptBundledHelpers()
         ShellLook.apply()
+        // P-197: tooltips on the macOS IDE's timing, Welcome included (ShellTooltips.swift).
+        ShellTooltips.apply()
         // The models' Copy commands (Debug ▸ Console ▸ Copy Row) write here.
         ShellPasteboard.writer = { ShellClipboard.copy($0) }
         #if os(Linux)
@@ -59,7 +61,8 @@ struct YcodeIDEApp: App {
         // `cross-platform-parity.md` §2, OV-1). At launch it opens when a
         // workspace was given, Welcome otherwise.
         WindowGroup("Ycode", id: ShellWindowID.workspace) {
-            ShellRootView(app: ShellApp.model).shellAppearance()
+            // File ▸ Save As…, Export…, Save As Workspace… and the ⌥ alternates' keys (P-001).
+            ShellRootView(app: ShellApp.model).shellAppearance().shellMenuSupport(app: ShellApp.model)
         }
         .defaultSize(width: ShellMetrics.windowSize.width, height: ShellMetrics.windowSize.height)
         .windowStyle(.hiddenTitleBar)
@@ -82,6 +85,15 @@ struct YcodeIDEApp: App {
         // Window ▸ Organizer is the command table's item; the toolkit's own
         // entry for the scene would list it twice.
         .commandsRemoved()
+        #if os(Linux)
+        // Device Hub (DeviceHubWindow.swift): Manage Devices… and Open Developer Tool ▸ Device Hub.
+        Window("Devices", id: ShellAppModel.deviceHubWindowID) {
+            DeviceHubWindowView(model: ShellApp.model.deviceHub).shellAppearance()
+                .onAppear { ShellApp.model.deviceHub.openDeviceWindow = DeviceHubWindowView.openDeviceWindow }
+        }
+        .defaultSize(width: DeviceHubWindowView.windowSize.width, height: DeviceHubWindowView.windowSize.height)
+        .commandsRemoved()
+        #endif
         // The simulator runtime wizard, in a window of its own as on macOS
         // (RuntimeSetupSheet.swift).
         Window("Simulator Runtimes", id: ShellAppModel.runtimeSetupWindowID) {
@@ -93,6 +105,25 @@ struct YcodeIDEApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .commandsRemoved()
+    }
+}
+
+/// The workspace windows on screen, in the order they opened (P-022).
+@MainActor
+enum ShellWorkspaceWindows {
+    static var alive: [Int] = []
+    private static var next = 0
+    static func allocate() -> Int {
+        next += 1
+        return next
+    }
+    /// The first open workspace window presents the app's sheets.
+    static func isPrimary(_ serial: Int) -> Bool { alive.min().map { $0 == serial } ?? true }
+
+    /// A workspace window went away: the app's count follows.
+    static func closed(_ serial: Int, _ app: ShellAppModel) {
+        alive.removeAll { $0 == serial }
+        app.workspaceWindowCount = alive.count
     }
 }
 
@@ -110,6 +141,9 @@ struct ShellRootView: View {
     @Bindable var app: ShellAppModel
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
+    @Environment(\.appearsActive) private var appearsActive
+    /// This window's place among the workspace windows (P-022).
+    @State private var serial = ShellWorkspaceWindows.allocate()
 
     var body: some View {
         Group {
@@ -119,9 +153,28 @@ struct ShellRootView: View {
                 Color.clear
             }
         }
-        .modifier(ShellPresentations(app: app, window: .workspace))
-        .onAppear { app.workspaceWindowCount += 1 }
-        .onDisappear { app.workspaceWindowCount = max(0, app.workspaceWindowCount - 1) }
+        // P-022: the first workspace window presents the app's sheets and
+        // alerts; another window on the workspace never doubles them.
+        .modifier(ShellPresentations(app: app, window: .workspace,
+                                     secondary: app.workspaceWindowCount > 1 && !ShellWorkspaceWindows.isPrimary(serial)))
+        .onAppear {
+            ShellWorkspaceWindows.alive.append(serial)
+            app.workspaceWindowCount = ShellWorkspaceWindows.alive.count
+        }
+        .onDisappear { ShellWorkspaceWindows.closed(serial, app) }
+        // P-022: the active workspace window is the one Close Window closes
+        // while two or more are open.
+        .onChange(of: appearsActive, initial: true) { _, active in
+            guard active else { return }
+            let dismiss = dismissWindow, serial = serial, app = app
+            app.closeActiveWorkspaceWindow = {
+                dismiss()
+                // The count follows at once (a closed window may not see
+                // its views disappear).
+                ShellWorkspaceWindows.closed(serial, app)
+                return true
+            }
+        }
         .onChange(of: app.workspace == nil) { _, closed in
             if closed, app.newProject == nil { backToWelcome() }
         }
@@ -167,11 +220,14 @@ struct ShellPresentations: ViewModifier {
     /// The window this is on: Welcome beside a workspace window leaves the
     /// app's sheets and alerts to the workspace window.
     var window: ShellAppModel.ShellWindow
+    /// A second window on the workspace (P-022): it presents nothing.
+    var secondary = false
     @Environment(\.openURL) private var openURL
     @Environment(\.openWindow) private var openWindow
 
     func body(content: Content) -> some View {
-        let here = app.presents(in: window)
+        let here = app.presents(in: window) && !secondary
+        let sheetsHere = window == .workspace && !secondary
         return content
         // File ▸ Open…: the toolkit's file dialog (OpenViews draws its own
         // on Linux).
@@ -182,9 +238,13 @@ struct ShellPresentations: ViewModifier {
         .fileDialogDefaultDirectory(app.recent.first?.deletingLastPathComponent())
         // File ▸ New ▸ Project…: the core's New Project flow, on a
         // workspace window (P-177).
-        .sheet(isPresented: Binding(get: { app.presentsNewProject(in: window) && app.newProject != nil },
+        .sheet(isPresented: Binding(get: { app.presentsNewProject(in: window) && !secondary && app.newProject != nil },
                                     set: { if !$0 { app.cancelNewProject() } })) {
             if let m = app.newProject { NewProjectSheet(model: m, app: app) }
+        }
+        // File ▸ New ▸ File from Template… (P-187): on the workspace window.
+        .sheet(isPresented: Binding(get: { sheetsHere && app.newFile != nil }, set: { if !$0 { app.cancelNewFile() } })) {
+            if let m = app.newFile { NewFileSheet(model: m, app: app) }
         }
         .sheet(isPresented: Binding(get: { here && app.clone != nil }, set: { if !$0 { app.cancelClone() } })) {
             if let m = app.clone { CloneSheet(model: m, app: app) }

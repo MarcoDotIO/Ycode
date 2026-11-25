@@ -228,6 +228,16 @@ public enum OpenViewsAutomation {
                                              isPressed: false, timestamp: h.backend.now)))
     }
 
+    /// One primary-button pointer event at a point of a main window (B5:
+    /// drags and timed clicks): `.down`, `.moved` with the button held, or
+    /// `.up`, through the back end's event queue.
+    public static func pointer(_ phase: PointerPhase, at p: CGPoint, window index: Int = 0) {
+        guard let h = host, mainWindows.indices.contains(index) else { return }
+        let pressed = phase != .up
+        h.backend.post(.pointer(PointerEvent(window: mainWindows[index].platform.id, phase: phase, location: p, button: 1,
+                                             isPressed: pressed, timestamp: h.backend.now)))
+    }
+
     /// A key press with modifiers, through the back end's event queue.
     public static func press(_ key: Key, modifiers: KeyModifiers = [], window index: Int = 0) {
         guard let h = host, mainWindows.indices.contains(index) else { return }

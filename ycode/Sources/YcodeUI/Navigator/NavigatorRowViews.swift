@@ -67,6 +67,9 @@ final class NavigatorCellView: NSTableCellView {
     /// Plain labels follow the band; attributed ones (details, Find
     /// matches) keep their own colours.
     var recolorsLabel = true
+    /// A filtered row's title (match bold, the rest dimmed, P-037): on
+    /// the accent band it is drawn white throughout, keeping its weights.
+    var filterTitle: NSAttributedString?
     /// #3B3B3C in light, the system label colour in dark.
     static var rowLabelColor: NSColor {
         NSColor(name: nil) { a in
@@ -84,6 +87,14 @@ final class NavigatorCellView: NSTableCellView {
         if recolorsLabel, let label = textField {
             let color = on ? NSColor.alternateSelectedControlTextColor : labelColor
             if label.textColor != color { label.textColor = color }
+        }
+        if let styled = filterTitle, let label = textField {
+            let shown = NSMutableAttributedString(attributedString: styled)
+            if on { shown.addAttribute(.foregroundColor, value: NSColor.alternateSelectedControlTextColor, range: NSRange(location: 0, length: shown.length)) }
+            if label.attributedStringValue != shown {
+                (label as? NavigatorRowLabel)?.styledTitle = shown
+                label.attributedStringValue = shown
+            }
         }
         let selected = (superview as? NSTableRowView)?.isSelected == true
         imageView?.contentTintColor = on ? .alternateSelectedControlTextColor : selected ? (unfocusedSelectedTint ?? iconTint) : iconTint

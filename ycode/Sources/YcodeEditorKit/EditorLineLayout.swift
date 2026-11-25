@@ -21,9 +21,13 @@ public enum EditorCellCharacters {
 public struct EditorRun: Equatable, Sendable {
     public var text: String
     public var role: SyntaxTokenKind.Role?
-    public init(_ text: String, role: SyntaxTokenKind.Role? = nil) {
+    /// Drawn in the proportional face, off the grid: a documentation
+    /// comment's text (P-054, `EditorDocCommentStyle`).
+    public var proportional: Bool
+    public init(_ text: String, role: SyntaxTokenKind.Role? = nil, proportional: Bool = false) {
         self.text = text
         self.role = role
+        self.proportional = proportional
     }
 }
 
@@ -52,8 +56,8 @@ extension EditorDisplayLine {
             } else if left <= 0 {
                 after.append(r)
             } else {
-                before.append(EditorRun(String(r.text.prefix(left)), role: r.role))
-                after.append(EditorRun(String(r.text.dropFirst(left)), role: r.role))
+                before.append(EditorRun(String(r.text.prefix(left)), role: r.role, proportional: r.proportional))
+                after.append(EditorRun(String(r.text.dropFirst(left)), role: r.role, proportional: r.proportional))
                 left = 0
             }
         }
@@ -71,6 +75,10 @@ public final class EditorLineLayout {
     public var advance: CGFloat
     private let characterWidth: (Character) -> CGFloat
     private var widths: [Character: CGFloat] = [:]
+    /// The widths of documentation comments' text in the proportional face
+    /// (P-054, `EditorDocCommentStyle`); nil keeps them on the grid.
+    public var proportionalCharacterWidth: ((Character) -> CGFloat)? { didSet { proportionalWidths = [:] } }
+    private var proportionalWidths: [Character: CGFloat] = [:]
 
     /// Lines longer than this draw only what is in view (ASCII) or their
     /// beginning (other text): shaping megabytes per frame would hang.
@@ -86,6 +94,37 @@ public final class EditorLineLayout {
     public func reset(advance: CGFloat) {
         self.advance = advance
         widths = [:]
+        proportionalWidths = [:]
+    }
+
+    /// A documentation comment character's advance in the proportional face.
+    public func proportionalWidth(of c: Character) -> CGFloat {
+        guard let measure = proportionalCharacterWidth else { return width(of: c) }
+        if let w = proportionalWidths[c] { return w }
+        let w = measure(c)
+        proportionalWidths[c] = w
+        return w
+    }
+
+    /// The offsets of line `n` drawn in the proportional face: its
+    /// documentation comments without their delimiters (none while
+    /// `proportionalCharacterWidth` is nil).
+    public func proportionalRanges(line n: Int, in buffer: EditorBuffer) -> [Range<Int>] {
+        guard proportionalCharacterWidth != nil else { return [] }
+        let doc = buffer.document
+        let docTokens = doc.tokens(onLine: n).filter { $0.kind == .docComment }
+        guard !docTokens.isEmpty else { return [] }
+        let r = doc.lineRange(n)
+        let line = String(decoding: doc.units[r], as: UTF16.self) as NSString
+        var out: [Range<Int>] = []
+        for t in docTokens {
+            let a = max(t.location, r.lowerBound), b = min(t.end, r.upperBound)
+            guard a < b else { continue }
+            for p in EditorDocCommentStyle.proportionalRanges(in: line, token: NSRange(location: a - r.lowerBound, length: b - a)) {
+                out.append((p.location + r.lowerBound)..<(NSMaxRange(p) + r.lowerBound))
+            }
+        }
+        return out.sorted { $0.lowerBound < $1.lowerBound }
     }
 
     /// A character's advance: one cell for ASCII and for the cell
@@ -115,7 +154,8 @@ public final class EditorLineLayout {
         let r = doc.lineRange(n)
         let end = min(max(offset, r.lowerBound), r.upperBound)
         let u = doc.units[r.lowerBound..<end]
-        if isPlain(u) { return CGFloat(u.count) * advance }
+        let proportional = proportionalRanges(line: n, in: buffer)
+        if proportional.isEmpty, isPlain(u) { return CGFloat(u.count) * advance }
         var x: CGFloat = 0
         var column = 0
         var at = r.lowerBound
@@ -126,7 +166,7 @@ public final class EditorLineLayout {
                 x += CGFloat(k) * advance
                 column += k
             } else {
-                x += width(of: c)
+                x += proportional.contains(where: { $0.contains(at) }) ? proportionalWidth(of: c) : width(of: c)
                 column += 1
             }
             at += c.utf16.count
@@ -139,7 +179,8 @@ public final class EditorLineLayout {
         let doc = buffer.document
         let r = doc.lineRange(n)
         let u = doc.units[r]
-        if isPlain(u) {
+        let proportional = proportionalRanges(line: n, in: buffer)
+        if proportional.isEmpty, isPlain(u) {
             let c = Int((x / advance).rounded())
             return r.lowerBound + min(max(c, 0), u.count)
         }
@@ -153,7 +194,7 @@ public final class EditorLineLayout {
                 w = CGFloat(k) * advance
                 column += k
             } else {
-                w = width(of: c)
+                w = proportional.contains(where: { $0.contains(at) }) ? proportionalWidth(of: c) : width(of: c)
                 column += 1
             }
             if x < pos + w / 2 { return at }
@@ -206,21 +247,35 @@ public final class EditorLineLayout {
         }
         var out: [EditorRun] = []
         var column = firstColumn
-        func add(_ r: Range<Int>, _ role: SyntaxTokenKind.Role?) {
+        func add(_ r: Range<Int>, _ role: SyntaxTokenKind.Role?, proportional: Bool = false) {
             guard !r.isEmpty else { return }
             let s = expandTabs(String(decoding: units[r], as: UTF16.self), column: &column)
-            if let last = out.last, last.role == role {
+            if let last = out.last, last.role == role, last.proportional == proportional {
                 out[out.count - 1].text += s
             } else {
-                out.append(EditorRun(s, role: role))
+                out.append(EditorRun(s, role: role, proportional: proportional))
             }
         }
+        let proportional = proportionalRanges(line: n, in: buffer)
         var at = line.lowerBound
         for t in doc.tokens(onLine: n).sorted(by: { $0.location < $1.location }) {
             let a = max(t.location, at), b = min(t.end, line.upperBound)
             guard a < b else { continue }
             add(at..<a, nil)
-            add(a..<b, t.kind.role == .identifier ? nil : t.kind.role)
+            let role = t.kind.role == .identifier ? nil : t.kind.role
+            if t.kind == .docComment, !proportional.isEmpty {
+                // The delimiters on the grid, the text in the proportional face.
+                var i = a
+                for p in proportional where p.upperBound > a && p.lowerBound < b {
+                    let pa = max(p.lowerBound, a), pb = min(p.upperBound, b)
+                    add(i..<pa, role)
+                    add(pa..<pb, role, proportional: true)
+                    i = pb
+                }
+                add(i..<b, role)
+            } else {
+                add(a..<b, role)
+            }
             at = b
         }
         add(at..<line.upperBound, nil)

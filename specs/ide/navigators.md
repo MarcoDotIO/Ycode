@@ -458,11 +458,37 @@ use (tests use `PBXProj.idSequence`).
 - Undo and redo go through the window's undo manager ("Undo New Group",
   "Undo Move to Trash", …). An undo is refused when the project was
   changed since by something else (it would be lost).
+- **Exception: a move by drag and drop is not undone by ⌘Z** (P-042; owner
+  decision 2026-11-21: match the reference). See "A drag move and ⌘Z" below.
 - Unsaved editor text is saved before an operation; editors showing a
   moved or renamed file (or a file in a moved folder) follow it.
 - With Settings ▸ Source Control on, every created, moved and trashed
   path inside the repository is staged with `git add -A -- <path>`, so a
   move or rename shows as a rename (`R`), as `git mv` would record it.
+
+### A drag move and ⌘Z (P-042, council round 12 C11)
+
+Observed in the reference (Counter.swift dragged from the Parity group onto the
+ParityTests group, then ⌘Z):
+
+1. **After the drop:** the file is in ParityTests; the project row shows the
+   modified mark (M); **the moved file opens in the editor and the editor has
+   keyboard focus**; the moved row is selected in the navigator's unfocused grey
+   (§1 of the round 3 measurements).
+2. **⌘Z:** nothing changes. The file stays in ParityTests, the project stays
+   modified, the editor keeps the file. The key reaches the editor, whose own
+   text-undo history is empty; the move is not on it.
+3. What Edit ▸ Undo reads after the move was **not captured** (OPEN).
+
+**For Ycode (both IDEs):**
+- After a drop that moves rows, open the (first) moved file in the editor and
+  give the editor keyboard focus, as above.
+- ⌘Z (and Edit ▸ Undo) right after the move must leave the move in place: the
+  move is not registered with the undo history that ⌘Z reaches from the editor
+  or the navigator. The editor's own text undo is unaffected.
+- Moves made another way (Edit ▸ Paste ▸ Move Item Here) and Ycode's other file
+  operations keep their undo until the reference is observed (OPEN).
+- In round 12 Ycode moved the file back on ⌘Z.
 
 ### Commands
 
@@ -492,13 +518,34 @@ use (tests use `PBXProj.idSequence`).
 - Drag and drop: rows onto a group, a folder or between rows; a drop on
   a file goes after it in its group; not into itself or while the filter
   is active.
-- Context menu on project rows (Ycode's order, until the reference's
-  menu is observed): Show in Finder; New File from Template…, New Empty
-  File, Add Files to “<project>”…; Rename, Delete; New Group, New Group
-  without Folder, New Group from Selection, New Group from Selection
-  without Folder (not in folders), New Folder, New Folder from Selection;
-  Sort by Name, Sort by Type (not in folders); Find in Selected
-  File…/Groups….
+- Context menu on project rows (P-041, the reference's items and order,
+  `ProjectRowMenu` in `YcodeIDECore`, shared by both IDEs; 240 points
+  wide). A file, group or folder row: Show in Finder (Show in Files on
+  Linux), Open Terminal at Location, Open in New Tab, (a group or folder:
+  Open in New Tabs), Open in New Window, Open with External Editor; New
+  Empty File, New File from Template…, Add Files to “<project>”…, Add
+  Package Dependencies…; Delete; New Folder, New Folder from Selection;
+  Bookmark; Find in Selected File…/Groups…; Source Control ▸ (Commit…,
+  Add, Mark as Resolved, Refresh File Status). The project row has the
+  four New Group items, Sort by Name / by Type and Migrate to String
+  Catalog… in place of Delete, Bookmark and the folder items. There is no
+  Rename (Return renames). A right click does not select: the commands act
+  on the clicked row when it is outside the selection, else on the
+  selection; the row gets only the context-click ring. Commands Ycode
+  lacks (Open in New Window; on Linux also those needing the desktop) are
+  shown disabled; the reference's Open As ▸, Help and Services ▸ are not
+  listed.
+- The bottom bar's "+" (P-040): New Empty File, New File from Template…,
+  —, Add Files to “<project>”…. Source Control, Tests and Reports have an
+  action (…) button instead.
+- The filter (P-037, `NavigatorFilterModel`): rows filter 50 ms after the
+  last key; the matched part of a row is bold, the rest dimmed; with no
+  row left, "No Filter Results" and the inspector's "No Selection"; while
+  text is in the field the options glyph is accent-coloured; its menu
+  (opening upward from the glyph) lists the navigator's recent filters,
+  newest first, and Clear Recents.
+- A plain single click on a file row opens it when the button goes down
+  (P-199); a click with modifiers or a second click opens on release.
 - New File from Template… and New Empty File create in the navigator's
   insertion point when the project navigator has a selection (else the
   open file's folder), through the same operations (so they are undoable
@@ -804,6 +851,10 @@ above (Ycode's drawings), the other five unchanged.
 - Council round 3 section, level 3: the round 3 Retina stills of both apps
   (main step 16 before and after; conflict step 01 with the reference's
   re-run still), colour runs and ink boxes measured in the dirty room.
+- A drag move and ⌘Z (P-042): council round 12 (2026-11-21), C11, level 3:
+  stills before and after the drop and after ⌘Z, and the accessibility tree
+  after the drop (the focused element, the selected row). The rule for Ycode
+  is the owner's decision of 2026-11-21.
 - Council round 7 section, level 3: the round 7 extra (X15) and reopen
   (R01) stills of both apps and their session manifests (the disclosure
   actions and the close); glyph ink boxes, core colours and inked areas

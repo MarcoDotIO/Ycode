@@ -35,6 +35,7 @@ struct BuildRing: View {
             .frame(width: d, height: d)
         }
         .frame(width: CGFloat(FileGlyphs.titleMarkSide), height: CGFloat(FileGlyphs.titleMarkSide))
+        .accessibilityElement(children: .ignore)   // one element, as the macOS ring (P-029)
         .accessibilityLabel("Build progress")
         .accessibilityValue("\(Int((progress.target * 100).rounded())) %")
         .shellTarget("build ring")

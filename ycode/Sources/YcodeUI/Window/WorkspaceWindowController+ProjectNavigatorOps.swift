@@ -4,7 +4,7 @@ import YcodeProject
 
 /// The project navigator's file operations in the window: File ▸ New ▸
 /// Group / Folder items, Add Files…, Edit ▸ Delete, Sort, inline rename,
-/// drag and drop, and the rows' context menu. The model work is
+/// drag and drop, and the rows' context menu's commands. The model work is
 /// `ProjectFileOperations` (YcodeIDECore); this file maps rows to items,
 /// writes the project, refreshes the tree, follows open files, stages the
 /// change in git and registers undo. See `specs/ide/navigators.md`
@@ -15,7 +15,6 @@ extension WorkspaceWindowController {
 
     /// Connects the navigator's project hooks to this window.
     func wireProjectNavigatorOperations() {
-        navigator.projectOps.rowMenu = { [weak self] in self?.projectRowMenuItems() ?? [] }
         navigator.projectOps.delete = { [weak self] in self?.deleteNavigatorSelection(nil) }
         navigator.projectOps.cut = { [weak self] in self?.cutNavigatorSelection() }
         navigator.projectOps.rename = { [weak self] row, name in self?.renameNavigatorRow(row, to: name) }
@@ -72,9 +71,11 @@ extension WorkspaceWindowController {
     // MARK: Running an operation
 
     /// Runs an operation on a project (nil: the package), applies it and
-    /// registers its undo. Returns nil (and reports the error) on failure.
+    /// registers its undo (unless `registersUndo` is false: a drag move,
+    /// P-042). Returns nil (and reports the error) on failure.
     @discardableResult
-    func performNavigatorEdit(_ project: String?, _ body: (inout ProjectFileOperations) throws -> ProjectEdit) -> ProjectEdit? {
+    func performNavigatorEdit(_ project: String?, registersUndo: Bool = true,
+                              _ body: (inout ProjectFileOperations) throws -> ProjectEdit) -> ProjectEdit? {
         guard var ops = navigatorOperations(project) else { NSSound.beep(); return nil }
         saveDirtyEditors()
         do {
@@ -82,7 +83,7 @@ extension WorkspaceWindowController {
             lastNavigatorError = nil
             applyNavigator(project: project, ops.project, moved: edit.moved, touched: edit.touchedPaths)
             selectNavigatorItems(edit.result)
-            registerNavigatorUndo(edit, project)
+            if registersUndo { registerNavigatorUndo(edit, project) }
             return edit
         } catch {
             reportNavigatorError(error)
@@ -145,6 +146,7 @@ extension WorkspaceWindowController {
             }
             return nil
         }
+        editorArea.textUndo.move(moved)   // a moved file keeps its text undo history
         for t in editorArea.tabs {
             for e in t.editors where e !== editor { if let p = newPath(e.fileURL) { try? e.open(URL(fileURLWithPath: p)) } }
         }
@@ -186,7 +188,7 @@ extension WorkspaceWindowController {
 
     func registerNavigatorUndo(_ edit: ProjectEdit, _ project: String?) {
         guard let um = window?.undoManager else { return }
-        um.registerUndo(withTarget: self) { wc in MainActor.assumeIsolated { wc.revertNavigatorEdit(edit, project) } }
+        um.registerUndo(withTarget: navigatorUndoTarget(project)) { t in MainActor.assumeIsolated { t.controller?.revertNavigatorEdit(edit, project) } }
         um.setActionName(edit.actionName)
     }
 
@@ -197,7 +199,9 @@ extension WorkspaceWindowController {
         do {
             let before = try edit.undo(bin: Self.navigatorTrashBin)
             applyNavigator(project: project, before, moved: Dictionary(uniqueKeysWithValues: edit.moved.map { ($1, $0) }), touched: edit.touchedPaths)
-            window?.undoManager?.registerUndo(withTarget: self) { wc in MainActor.assumeIsolated { wc.reapplyNavigatorEdit(edit, project) } }
+            window?.undoManager?.registerUndo(withTarget: navigatorUndoTarget(project)) { t in
+                MainActor.assumeIsolated { t.controller?.reapplyNavigatorEdit(edit, project) }
+            }
             window?.undoManager?.setActionName(edit.actionName)
         } catch {
             reportNavigatorError(error)
@@ -449,7 +453,9 @@ extension WorkspaceWindowController {
         return performNavigatorEdit(project) { try $0.rename(item, to: name) }
     }
 
-    /// A drag inside the navigator: rows onto a group or folder row.
+    /// A drag inside the navigator: rows onto a group or folder row. The
+    /// move is not undoable; the moved file opens with the editor focused
+    /// (P-042, `+NavigatorDragMove.swift`).
     @discardableResult
     public func moveNavigatorRows(_ rows: [OutlineItem], to dest: OutlineItem, at index: Int?) -> ProjectEdit? {
         let items = rows.compactMap(projectItem)
@@ -457,7 +463,11 @@ extension WorkspaceWindowController {
             NSSound.beep()
             return nil
         }
-        return performNavigatorEdit(project) { try $0.move(items.map(\.item), to: target, at: index) }
+        guard let edit = performNavigatorEdit(project, registersUndo: false, { try $0.move(items.map(\.item), to: target, at: index) }) else {
+            return nil
+        }
+        finishNavigatorDragMove(edit, project: project)
+        return edit
     }
 
     /// Edit ▸ Cut in the navigator: remembers the selection to move.
@@ -565,37 +575,5 @@ extension WorkspaceWindowController {
             && navigator.selectedProjectRows.first?.nodeKind != .container
         default: return nil
         }
-    }
-
-    /// The project rows' context menu (Ycode's grouping of the commands).
-    func projectRowMenuItems() -> [NSMenuItem] {
-        func item(_ title: String, _ action: Selector, target: AnyObject? = nil) -> NSMenuItem {
-            let i = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            i.target = target ?? self
-            return i
-        }
-        let inFolder = projectSelectionIsInFolder
-        var items: [NSMenuItem] = [
-            item("Show in Finder", #selector(showNavigatorSelectionInFinder(_:))),
-            .separator(),
-            item("New File from Template…", #selector(newFile(_:))),
-            item("New Empty File", #selector(newEmptyFile(_:))),
-            item(MenuTitles.title(generic: "Add Files…", in: menuContext), #selector(addFiles(_:))),
-            .separator(),
-            item("Rename", #selector(renameNavigatorSelection(_:))),
-            item("Delete", #selector(deleteNavigatorSelection(_:))),
-            .separator(),
-        ]
-        if !inFolder {
-            items += [item("New Group", #selector(newGroup(_:))), item("New Group without Folder", #selector(newGroupWithoutFolder(_:))),
-                      item("New Group from Selection", #selector(newGroupFromSelection(_:))),
-                      item("New Group from Selection without Folder", #selector(newGroupFromSelectionWithoutFolder(_:)))]
-        }
-        items += [item("New Folder", #selector(newFolder(_:))), item("New Folder from Selection", #selector(newFolderFromSelection(_:))),
-                  .separator()]
-        if !inFolder { items += [item("Sort by Name", #selector(sortByName(_:))), item("Sort by Type", #selector(sortByType(_:))), .separator()] }
-        items.append(item(MenuTitles.title(generic: "Find in Selected Groups…", in: menuContext), #selector(findInSelectedGroups(_:))))
-        for i in items where !i.isSeparatorItem { i.isEnabled = validateMenuItem(i) }
-        return items
     }
 }

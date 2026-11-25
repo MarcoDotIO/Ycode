@@ -1302,6 +1302,30 @@ B5-PARITY shots and view dumps); nothing here is Apple artwork.
   `activeState(_:)`, `setActiveState(_:window:)`,
   `accessibilityDump(_:)`.
 
+### Incremental frames and desktop fixes (Ycode 1.0.0-beta.5, B5-OPENVIEWS)
+
+`docs/beta5/b5-openviews.md` in the repository has the measurements.
+
+- **Incremental passes.** A view subtree in which nothing changed keeps its
+  layout nodes (`ViewNode.loweringValid`), the engine keeps the context and
+  every kept node's size and placement memos between passes, a kept node
+  placed where it was is not walked again, preferences are cached per
+  subtree, and an environment modifier that writes equal values keeps its
+  revision. Primitives whose lowering reads their own state call
+  `setNeedsLayout()`. A kept node whose subtree did not change in its own
+  coordinates gives its display items from the last frame
+  (`LayoutNode.emitCache`, `contentStamp`); live drawings (`drawIsLive`:
+  `Canvas`, text fields, scrollers) and animations are drawn every frame;
+  large subtrees stay translating groups. `OV_INCREMENTAL=0` turns all of it
+  off; `OV_FRAME_PHASES=<ms>` (and `OV_FRAME_PHASES_BODIES=1`) prints where
+  slow frames spend their time.
+- **On-demand menu bar**: the content moves down under the shown bar; titles
+  that do not fit go into an overflow ("»") menu.
+- **Pop-up buttons** open over their chosen row on desktop hosts.
+- **File dialogs** use the desktop portal's FileChooser
+  (`FileChooserPortal.swift`), OpenViews' panel without one
+  (`OV_FILE_DIALOG=sheet|portal`).
+
 ### Engine design (R3)
 
 `Sources/SwiftUICore/Engine/`: a `LayoutNode` has a `NodeBehavior` and

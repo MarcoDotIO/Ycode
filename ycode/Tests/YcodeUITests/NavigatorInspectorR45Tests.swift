@@ -73,7 +73,8 @@ import YcodeProject
         let rows = (0..<o.numberOfRows).compactMap { o.item(atRow: $0) as? OutlineItem }
         #expect(rows.map { ($0.title as NSString).deletingPathExtension } == ["Pkg", "Package", "Sources", "Pkg", "Tool", "Tests", "PkgTests", "README"])
         let expanded = rows.filter { o.isItemExpanded($0) }.map(\.title)
-        #expect(expanded == ["Pkg", "Sources", "Tests"])
+        // An empty folder ("Tool") shows its triangle open (P-043).
+        #expect(expanded == ["Pkg", "Sources", "Tool", "Tests"])
         // A project expands every group of its main group (council round 6, row 160).
         let proj = NavigatorNode(name: "App", kind: .container, path: "/tmp/App.xcodeproj", children: [
             NavigatorNode(name: "Sources", kind: .group, path: "/tmp/S", objectID: "G1", children: []),
@@ -367,20 +368,17 @@ import YcodeProject
         content.layoutSubtreeIfNeeded()
         #expect(win.frame.size == NSSize(width: 480, height: 632))
         let h = content.bounds.height
-        // No traffic lights; a round 36 × 36 close button at (20, 20).
+        // No traffic lights; a round close button: since P-186 (beta 5) a
+        // drawn 37 × 37 circle centred where the 36-point one was (at 20, 20).
         for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
             #expect(win.standardWindowButton(b)?.isHidden ?? true)
         }
         let close = w.closeButton.frame
-        #expect(close.size == NSSize(width: 36, height: 36) && close.minX == 20 && h - close.maxY == 20, "\(close)")
-        // Round: a circular glass button with the Liquid Glass design
-        // (liquid-glass-ycode.md §4), a drawn circle before it.
-        if #available(macOS 26, *) {
-            #expect(w.closeButton.bezelStyle == .glass && w.closeButton.borderShape == .circle && w.closeButton.isBordered)
-        } else {
-            #expect(w.closeButton.layer?.cornerRadius == 18)
-        }
-        #expect(w.closeButton.accessibilityTitle() == "Close")
+        // (19.5 from the top left; a 1x backing rounds it to the pixel.)
+        #expect(close.size == NSSize(width: 37, height: 37) && abs(close.minX - 19.5) <= 0.5 && abs(h - close.maxY - 19.5) <= 0.5, "\(close)")
+        #expect(w.closeButton is WelcomeCloseButton && !w.closeButton.isBordered)
+        // P-186: the name is the button's description.
+        #expect(w.closeButton.accessibilityLabel() == "Close")
         // The buttons row: 107, 107, 130 wide, 36 tall, 8 apart, centered, top at 242.
         let frames = [w.openButton, w.cloneButton, w.newProjectButton].map { b in
             b.alignmentRect(forFrame: b.convert(b.bounds, to: content))

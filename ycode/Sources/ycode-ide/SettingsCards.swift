@@ -276,7 +276,6 @@ struct SettingsSwitch: View {
     var isOn: Binding<Bool>
     var label: String
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.isEnabled) private var isEnabled
 
     static let size = SettingsLayout.switchSize
     static let knob = SettingsLayout.switchKnobSize
@@ -294,7 +293,6 @@ struct SettingsSwitch: View {
                     .padding((Self.size.height - Self.knob.height) / 2)
             }
             .frame(width: Self.size.width, height: Self.size.height)
-            .opacity(isEnabled ? 1 : 0.45)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -326,7 +324,6 @@ struct SettingsPopUp<Value: Hashable>: View {
     var selection: Binding<Value>
     var options: [(Value, String)]
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         let p = SettingsPalette(scheme)
@@ -350,10 +347,13 @@ struct SettingsPopUp<Value: Hashable>: View {
                 .frame(width: SettingsLayout.popUpCircle, height: SettingsLayout.popUpCircle)
             }
             .padding(.trailing, SettingsLayout.popUpCircleInset - SettingsLayout.controlInset)
-            .opacity(isEnabled ? 1 : 0.45)
             .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
+        // P-198: a bezel over the whole control under the pointer; the menu
+        // opens on mouse-down (OpenViews' desktop menus); dimmed once when
+        // disabled (by the menu's button).
+        .hoverBezel(.settingsPopUp, lead: ControlStates.popUpBezelLead, height: ControlStates.popUpBezelHeight)
     }
 }
 

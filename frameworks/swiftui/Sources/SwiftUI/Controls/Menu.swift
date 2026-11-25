@@ -60,14 +60,26 @@ final class PopupBox {
 /// `ref`.
 @MainActor
 func openPopup(services: WindowServices?, ref: NodeRef, box: PopupBox, submenu: Bool, minWidth: CGFloat? = nil,
+               over selected: Int? = nil, textInset: CGFloat = 0, offset: CGFloat? = nil,
                onDismiss: @escaping () -> Void = {}, content: AnyView) {
     guard let services, let popups = services.popups, let frame = ref.windowFrame else { return }
     if box.isOpen {
         box.handle?.dismiss()
         return
     }
+    if !submenu, let selected {
+        // P-217 (L-222): a pop-up button's menu opens over the button with
+        // its selected row on the button and that row's title on the
+        // button's (macOS pop-up buttons); near the screen's edges it is
+        // moved, not flipped.
+        let placed = MenuMetrics.overSelection(frame, selected: selected, textInset: textInset)
+        box.handle = popups.presentPopup(content: content, origin: placed.origin, anchor: nil,
+                                         minWidth: max(minWidth ?? 0, placed.minWidth), chrome: .menu, fallbackKeys: nil,
+                                         onDismiss: onDismiss)
+        return
+    }
     let origin = submenu ? CGPoint(x: frame.maxX - 2, y: frame.minY - MenuMetrics.verticalPadding)
-                         : CGPoint(x: frame.minX, y: frame.maxY + 4)
+                         : CGPoint(x: frame.minX, y: frame.maxY + (offset ?? 4))
     box.handle = popups.presentPopup(content: content, origin: origin, anchor: frame, minWidth: minWidth ?? (submenu ? 0 : frame.width),
                                      chrome: .menu, fallbackKeys: nil, onDismiss: onDismiss)
 }
@@ -80,6 +92,18 @@ enum MenuMetrics {
     /// How long the pointer rests on a row before its submenu opens (or a
     /// sibling's open submenu closes); P-212.
     static let submenuDelay: TimeInterval = 0.2
+    /// Where a row's title starts in the menu (the row's padding and the
+    /// check mark's slot).
+    static let titleInset: CGFloat = horizontalPadding - 4 + checkSlot
+
+    /// P-217: the origin and least width of a pop-up button's menu that
+    /// puts row `selected` (of plain rows) on the button `frame`, centred on
+    /// it, its title over the button's title (`textInset` into the button).
+    static func overSelection(_ frame: CGRect, selected: Int, textInset: CGFloat) -> (origin: CGPoint, minWidth: CGFloat) {
+        let rowTop = verticalPadding + CGFloat(max(0, selected)) * rowHeight
+        let origin = CGPoint(x: (frame.minX + textInset - titleInset).rounded(), y: (frame.midY - rowTop - rowHeight / 2).rounded())
+        return (origin, frame.maxX - origin.x)
+    }
 }
 
 /// The rest timer of a menu row (P-212).
@@ -236,6 +260,11 @@ public struct Menu<Label: View, Content: View>: View {
     @Environment(\._inMenu) private var inMenu
     @Environment(\._windowServices) private var services
     @Environment(\._inCommandHost) private var inCommandHost
+    @Environment(\._desktopChrome) private var desktop
+    @Environment(\._menuOffset) private var menuOffset
+    /// The button style around the menu (`.menuStyle(.button)` draws its
+    /// button with it, as SwiftUI's `ButtonMenuStyle` does).
+    @Environment(\._buttonStyle) private var ambientButtonStyle
     @State private var ref = NodeRef()
     @State private var box = PopupBox()
     /// A submenu row's submenu is open (P-212: its row stays highlighted).
@@ -271,8 +300,13 @@ public struct Menu<Label: View, Content: View>: View {
         let services = services, ref = ref, box = box
         let popup = AnyView(content)
         let expanded = $isExpanded
+        // P-217 (L-222): on a desktop, a menu that is a picker's choices
+        // (a pop-up button built as a menu) opens over its chosen row.
+        let overChoice = desktop && !inMenu
+        let offset = menuOffset
         let open: @MainActor () -> Void = {
             openPopup(services: services, ref: ref, box: box, submenu: inMenu,
+                      over: overChoice ? pickerChoice(popup) : nil, offset: offset,
                       onDismiss: { if expanded.wrappedValue { expanded.wrappedValue = false } }, content: popup)
             if box.isOpen && inMenu { expanded.wrappedValue = true }
         }
@@ -283,13 +317,57 @@ public struct Menu<Label: View, Content: View>: View {
                 .modifier(NodeCaptureModifier(ref: ref))
         } else {
             let action = primaryAction ?? open
-            Button(action: action) {
-                label
+            Group {
+                // `.menuStyle(.button)` under a `.buttonStyle(…)`: the
+                // menu's button takes that style (its hover, press and
+                // grow), as in SwiftUI; otherwise the menu style's look.
+                if style == 1, ambientButtonStyle != nil {
+                    Button(action: action) { label }
+                } else {
+                    Button(action: action) { label }
+                        .buttonStyle(style == 1 ? AnyPrimitiveStyleBox.bordered : AnyPrimitiveStyleBox.borderless)
+                }
             }
-            .buttonStyle(style == 1 ? AnyPrimitiveStyleBox.bordered : AnyPrimitiveStyleBox.borderless)
+            // B5-STATES: a desktop menu opens on mouse-down (ControlStates.swift).
+            .environment(\._controlPressTrigger, DesktopControlStates.menuTrigger(desktop: desktop, hasPrimaryAction: primaryAction != nil))
             .modifier(NodeCaptureModifier(ref: ref))
         }
     }
+}
+
+private enum MenuOffsetKey: EnvironmentKey { static let defaultValue: CGFloat? = nil }
+
+extension EnvironmentValues {
+    package var _menuOffset: CGFloat? {
+        get { self[MenuOffsetKey.self] }
+        set { self[MenuOffsetKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// OpenViews (not SwiftUI API; asked by B5-NEWPROJECT): the gap between
+    /// a `Menu`'s button and its menu when it opens below it (4 by default).
+    public func _menuOffset(_ gap: CGFloat) -> some View { environment(\._menuOffset, gap) }
+}
+
+/// P-217: the chosen row of a menu whose content is a picker's choices
+/// alone (nil for other menus): the content is built once, unlaid out.
+@MainActor
+func pickerChoice(_ content: AnyView) -> Int? {
+    let g = ViewGraph(rootView: content.environment(\._inMenu, true))
+    g.update()
+    defer {
+        g.setRootView(EmptyView())
+        g.update()
+    }
+    var pickers: [Int?] = []
+    var rows = 0
+    g.root?.forEachNode { n in
+        if let p = n.view as? InlinePicker { pickers.append(p.selected) }
+        if n.view is MenuItemButton { rows += 1 }
+    }
+    guard pickers.count == 1, rows == 0, let selected = pickers[0] else { return nil }
+    return selected
 }
 
 /// A style chosen by value (the menu styles map onto button looks).

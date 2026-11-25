@@ -380,11 +380,13 @@ public enum ProjectChecks {
     /// "Signing for “<target>” requires a development team." for each
     /// device-platform app or extension target that manages signing
     /// automatically and has no `DEVELOPMENT_TEAM`. Mac-only targets sign
-    /// to run locally and need none. ("Update to recommended settings" is
-    /// left out: the recommended set is not specified yet.)
+    /// to run locally and need none. Before them, "Update to recommended
+    /// settings" for a project whose settings differ from the recommended
+    /// set (`issues.md` §1, P-120; `RecommendedSettings`).
     public static func issues(in model: WorkspaceModel, configuration: String) -> [Diagnostic] {
         var out: [Diagnostic] = []
         for (path, proj) in model.projects.sorted(by: { $0.key < $1.key }) {
+            out += RecommendedSettingsCheck.issues(proj, path: path)   // WorkspaceSession+RecommendedSettings.swift
             let builder = ProjectSettingsBuilder(proj: proj, xcodeprojURL: URL(fileURLWithPath: path))
             for t in proj.targets {
                 guard let name = t.string("name"), signedProductTypes.contains(t.string("productType") ?? ""),

@@ -36,6 +36,11 @@ Ycode module: `YcodeUI` (`EditorAreaController`, `NavigationHistory`,
   first split of a tab chooses the direction for that tab.
 - Splits share the space equally when added; each has its own jump bar.
 - File ▸ Close Editor Pane (⌃⇧⌘W) closes the focused split (not the last).
+- In a split, File ▸ Close "<file>" (⌃⌘W) empties only the focused pane:
+  it keeps its share of the split and shows "No Editor" centred (20-point
+  type, tertiary label colour), as the assistant with no counterpart does;
+  a lone editor shows its empty state instead, and a pane left alone
+  without a file turns into it (beta 5, P-066, `EditorPanePlaceholder`).
 - Focus: the editor whose text view became first responder. Commands
   (find, open from the navigator, history) act on the focused editor.
 

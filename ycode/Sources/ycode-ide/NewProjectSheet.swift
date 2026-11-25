@@ -14,24 +14,31 @@ struct NewProjectSheet: View {
     @Environment(\.colorScheme) private var scheme
     /// The focused text field's option (P-178: Product Name on arrival).
     @FocusState private var focusedOption: String?
+    /// The template step's focus: the grid on arrival (P-181).
+    @FocusState private var chooserFocus: TemplateChooser.Focus?
+    /// The options step fades in after Next (P-181).
+    @State private var optionsOpacity = 1.0
+
+    typealias M = TemplateChooserMetrics
 
     var body: some View {
         let c = ShellColors(scheme)
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(verbatim: model.heading).font(.system(size: 13, weight: .bold)).foregroundStyle(c.label)
-                Spacer()
-                if model.step == .template {
-                    TextField("Filter", text: Binding(get: { model.flow.filter }, set: { model.setFilter($0) }))
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 160)
-                        .shellTarget("new project filter")
-                }
-            }
+        Group {
+            if model.step == .picker { picker(c).background(c.content) } else { pages(c).background(c.content) }
+        }
+        .fileImporter(isPresented: $model.isFolderDialogShown, allowedContentTypes: [.folder]) { result in
+            if case .success(let url) = result { model.location = url.path }
+        }
+    }
+
+    func pages(_ c: ShellColors) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // P-181, P-182: the heading is regular weight.
+            Text(verbatim: model.heading).font(.system(size: CGFloat(M.headingSize))).foregroundStyle(c.label)
             Group {
                 switch model.step {
-                case .template: templateStep(c)
-                case .options: optionsStep(c)
+                case .picker, .template: templateStep(c)
+                case .options: optionsStep(c).opacity(optionsOpacity)
                 case .save: saveStep(c)
                 }
             }
@@ -43,89 +50,123 @@ struct NewProjectSheet: View {
                 Button("Cancel") { app.cancelNewProject() }.keyboardShortcut(.cancelAction).buttonStyle(.bordered).shellTarget("new project cancel")
                 Spacer()
                 Button("Previous") { model.previous() }.disabled(!model.isPreviousEnabled).buttonStyle(.bordered).shellTarget("new project previous")
-                Button(model.nextTitle) {
-                    if model.step == .save { app.createNewProject() } else { model.next() }
-                }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .disabled(!model.isNextEnabled)
-                .shellTarget("new project next")
+                Button(model.nextTitle) { nextClicked() }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!model.isNextEnabled)
+                    .shellTarget("new project next")
             }
         }
-        .padding(16)
-        .frame(width: 760, height: 540)
-        .background(c.content)
-        .fileImporter(isPresented: $model.isFolderDialogShown, allowedContentTypes: [.folder]) { result in
-            if case .success(let url) = result { model.location = url.path }
+        .padding(.top, 14)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 14)
+        // The macOS sheet's size (P-187: 720 × 480).
+        .frame(width: CGFloat(M.sheetWidth), height: CGFloat(M.sheetHeight))
+    }
+
+    func nextClicked() {
+        if model.step == .save {
+            app.createNewProject()
+            return
         }
+        let wasTemplate = model.step == .template
+        model.next()
+        guard wasTemplate, model.step == .options else { return }
+        // P-181: the options step fades in over about 190 ms.
+        optionsOpacity = 0
+        withAnimation(.easeOut(duration: M.optionsFadeDuration)) { optionsOpacity = 1 }
+    }
+
+    // MARK: Compact picker (P-187)
+
+    /// File ▸ New ▸ Project…'s compact picker, as the macOS one: "+ New
+    /// Project", the rows with their subtitles, then Cancel.
+    func picker(_ c: ShellColors) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(verbatim: "+ " + NewProjectPicker.header).font(.system(size: 13, weight: .bold)).foregroundStyle(c.label)
+            ForEach(Array(NewProjectPicker.rows.enumerated()), id: \.offset) { i, r in
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(verbatim: r.title).font(.system(size: 13, weight: .medium)).foregroundStyle(c.label)
+                    Text(verbatim: r.subtitle).font(.system(size: 11)).foregroundStyle(c.secondaryLabel)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { app.chooseNewProjectRow(i) }
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { app.chooseNewProjectRow(i) }
+                .shellTarget("new project row \(r.title)")
+            }
+            Button("Cancel") { app.cancelNewProject() }.keyboardShortcut(.cancelAction).buttonStyle(.bordered)
+                .padding(.top, 8)
+                .shellTarget("new project cancel")
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
+        .frame(width: 340, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: Template step
 
     func templateStep(_ c: ShellColors) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("", selection: Binding(get: { model.flow.platform }, set: { model.setPlatform($0) })) {
-                ForEach(model.flow.tabs, id: \.self) { Text(verbatim: $0).tag($0) }
+            // P-181: small tabs at the left, the 202-point filter at the right.
+            HStack(spacing: 8) {
+                PlatformTabs(tabs: model.flow.tabs, selection: model.flow.platform) { model.setPlatform($0) }
+                    .shellTarget("new project tabs")
+                Spacer(minLength: 8)
+                TextField("Filter", text: Binding(get: { model.flow.filter }, set: { model.setFilter($0) }))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: CGFloat(M.filterWidth))
+                    .focused($chooserFocus, equals: .filter)
+                    .shellTarget("new project filter")
             }
-            .pickerStyle(.segmented)
-            .shellTarget("new project tabs")
-            ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(model.flow.sections, id: \.title) { section in
-                        Text(verbatim: section.title).font(.system(size: 11, weight: .bold)).foregroundStyle(c.secondaryLabel)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 4)
-                        // Six to a row; a catalog tab has a few dozen at most.
-                        ForEach(Array(stride(from: 0, to: section.entries.count, by: 6)), id: \.self) { start in
-                            HStack(spacing: 4) {
-                                ForEach(section.entries[start..<min(start + 6, section.entries.count)], id: \.templateID) { tile($0, c) }
-                            }
-                        }
-                    }
+            TemplateGrid(sections: model.flow.sections, selectedKey: model.flow.selected?.id, key: \.templateID,
+                         select: { model.select($0.templateID) },
+                         choose: { _ in nextClicked() })
+                .focusable()
+                .focused($chooserFocus, equals: .grid)
+                .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
+                    guard let k = TemplateGrid.navigationKey(press.key),
+                          let e = TemplateGrid.entry(moving: k, in: model.flow.sections, selectedKey: model.flow.selected?.id, key: \.templateID)
+                    else { return .ignored }
+                    model.select(e.templateID)
+                    return .handled
                 }
-                .padding(8)
+                .shellTarget("new project grid")
+            // P-181: no description line; only the filter's empty state.
+            if model.flow.selected == nil {
+                Text(verbatim: model.flow.templateCaption).font(.system(size: 12)).foregroundStyle(c.secondaryLabel)
             }
-            .background(c.sidebar)
-            Text(verbatim: model.flow.templateCaption).font(.system(size: 12))
-                .foregroundStyle(model.flow.selected?.isAvailable == false ? Color.orange : c.secondaryLabel)
         }
-    }
-
-    func tile(_ e: TemplateEntry, _ c: ShellColors) -> some View {
-        let selected = model.flow.selected?.id == e.templateID
-        return VStack(spacing: 4) {
-            symbol(e.symbol).font(.system(size: 28)).foregroundStyle(selected ? Color.white : Color.accentColor).frame(height: 40)
-            Text(verbatim: e.title).font(.system(size: 11)).multilineTextAlignment(.center).lineLimit(2)
-                .foregroundStyle(selected ? Color.white : c.label)
+        .onAppear { chooserFocus = .grid }
+        // P-181: Tab goes between the filter and the grid.
+        .onKeyPress(keys: [.tab]) { _ in
+            chooserFocus = chooserFocus == .grid ? .filter : .grid
+            return .handled
         }
-        .frame(width: 104, height: 92)
-        .background { if selected { RoundedRectangle(cornerRadius: 6).fill(Color.accentColor) } }
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) { model.select(e.templateID); model.next() }
-        .onTapGesture { model.select(e.templateID) }
-        // A template tile is a button to accessibility (merge-sheet.md §13.2's rule).
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(e.title)
-        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityAction { model.select(e.templateID) }
-        .shellTarget("template \(e.title)")
     }
 
     // MARK: Options step
 
     func optionsStep(_ c: ShellColors) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        // P-182: rows 20 tall on a 33-point pitch; labels in a 170-point
+        // column, the controls 267 wide 8 points after it.
+        VStack(alignment: .leading, spacing: CGFloat(M.rowSpacing)) {
             ForEach(model.flow.form.visibleFields, id: \.id) { f in
-                HStack(spacing: 8) {
+                HStack(spacing: CGFloat(M.labelGap)) {
                     Text(verbatim: f.kind == .checkbox ? "" : f.label + ":").font(.system(size: 13))
                         .foregroundStyle(model.flow.form.isEnabled(f.id) || f.kind == .derived || f.id == TemplateOptionID.team ? c.label : c.tertiaryLabel)
-                        .frame(width: 170, alignment: .trailing)
+                        .frame(width: CGFloat(M.labelColumnWidth), alignment: .trailing)
                     field(f, c)
                 }
+                .frame(height: CGFloat(M.rowHeight))
                 .help(f.help)   // P-178: every control has a help tag
+                .shellTarget("option row \(f.id)")
             }
         }
-        .padding(.top, 24)
+        .padding(.top, CGFloat(M.optionsTop))
         .frame(maxWidth: .infinity)
         .onAppear { focusedOption = model.flow.form.visibleFields.first { $0.kind == .text }?.id }
         // P-178: Tab moves between the text fields only (Product Name ↔
@@ -141,10 +182,18 @@ struct NewProjectSheet: View {
     @ViewBuilder func field(_ f: TemplateOptionField, _ c: ShellColors) -> some View {
         let enabled = f.id == TemplateOptionID.team || model.flow.form.isEnabled(f.id)
         switch f.kind {
+        case .text where f.id == TemplateOptionID.productName:
+            // P-182: Product Name is borderless, without a focus ring.
+            TextField(f.placeholder, text: Binding(get: { model.flow.form.value(f.id) }, set: { model.setOption(f.id, $0) }))
+                .textFieldStyle(.plain)
+                .frame(width: CGFloat(M.fieldWidth))
+                .disabled(!enabled)
+                .focused($focusedOption, equals: f.id)
+                .shellTarget("option \(f.id)")
         case .text:
             TextField(f.placeholder, text: Binding(get: { model.flow.form.value(f.id) }, set: { model.setOption(f.id, $0) }))
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 300)
+                .frame(width: CGFloat(M.fieldWidth))
                 .disabled(!enabled)
                 .focused($focusedOption, equals: f.id)
                 .shellTarget("option \(f.id)")
@@ -155,16 +204,16 @@ struct NewProjectSheet: View {
                     Text(verbatim: $0.title).tag($0.value)
                 }
             }
-            // Sized to its value at the column's start, as the AppKit
-            // pop-ups (L-233 drew it centred in the column).
-            .fixedSize()
-            .frame(width: 300, alignment: .leading)
+            // P-182: 267 wide and 20 tall, the value at the start and the
+            // chevrons at the end, as the AppKit pop-ups.
+            .menuStyle(.borderlessButton)
+            .frame(width: CGFloat(M.fieldWidth), height: CGFloat(M.rowHeight))
             .disabled(!enabled)
             .shellTarget("option \(f.id)")
         case .checkbox:
             Toggle(f.label, isOn: Binding(get: { model.flow.form.bool(f.id) }, set: { model.setOption(f.id, $0 ? "true" : "false") }))
                 .toggleStyle(.checkbox)
-                .frame(width: 300, alignment: .leading)
+                .frame(width: CGFloat(M.fieldWidth), alignment: .leading)
                 .disabled(!enabled)
                 .shellTarget("option \(f.id)")
         case .derived:
@@ -184,7 +233,7 @@ struct NewProjectSheet: View {
                     Button("Choose…") { model.isFolderDialogShown = true }.buttonStyle(.bordered)
                 }
             }
-            row("Source Control:", c) { Toggle("Create Git repository on this computer", isOn: $model.createGitRepository).toggleStyle(.checkbox).shellTarget("save git") }
+            row("Source Control:", c) { Toggle("Create Git repository on my computer", isOn: $model.createGitRepository).toggleStyle(.checkbox).shellTarget("save git") }
             row("Add to:", c) {
                 Picker("", selection: $model.addToOpenContainer) {
                     Text(verbatim: "Don't add to any project or workspace").tag(false)
@@ -198,6 +247,14 @@ struct NewProjectSheet: View {
                 }
                 .frame(width: 300)
                 .disabled(model.groups.isEmpty)
+            }
+            // L-154: as the macOS accessory, Add to = a project offers a new
+            // workspace for both projects.
+            row("", c) {
+                Toggle("Save both projects in a new workspace", isOn: $model.newWorkspaceForProject)
+                    .toggleStyle(.checkbox)
+                    .disabled(!model.offersNewWorkspace)
+                    .shellTarget("save new workspace")
             }
         }
         .padding(.top, 24)

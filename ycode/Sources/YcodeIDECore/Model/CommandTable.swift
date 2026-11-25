@@ -313,17 +313,20 @@ public enum CommandTable {
             sep,
             c("Duplicate Editor Tab", "", "duplicateEditorTab:"),
             c("Save", "⌘S", "saveDocument:"),
-            c("Save All", "⌥⌘S", "saveAllDocuments:"),
+            // P-001 (council round 11): ⌥ turns Save into Save All.
+            alt("Save All", "⌥⌘S", "saveAllDocuments:"),
             u("Duplicate…", "⇧⌘S"),
-            alt("Save As…", "⌥⇧⌘S"),
+            // P-001: the focused document written elsewhere, then edited there.
+            alt("Save As…", "⌥⇧⌘S", "saveFileAs:"),
             c("Revert to Saved…", "", "revertDocumentToSaved:"),
             u("Unlock…"),
-            u("Export…"),
+            // P-001: a copy of the focused document; the editor keeps the original.
+            c("Export…", "", "exportFile:"),
             sep,
             c("Show in Finder", "", "showInFinder:"),
             c("Open Terminal at Location", "", "openTerminalAtLocation:"),
             c("Open in New Tab", "⌥⌘O", "openInNewTab:"),
-            u("Open in New Window"),
+            c("Open in New Window", "", "openInNewWindow:"),
             c("Open with External Editor", "", "openWithExternalEditor:"),
             sep,
             .submenu("Packages", [
@@ -333,7 +336,7 @@ public enum CommandTable {
                 u("Update to Latest Package Versions"),
             ]),
             sep,
-            u("Save As Workspace…"),
+            c("Save As Workspace…", "", "saveAsWorkspace:"),
             u("Workspace Settings…"),
             sep,
             c("Page Setup…", "", "runPageLayout:"),
@@ -666,7 +669,7 @@ public enum CommandTable {
                 c("Select Previous Scheme", "⌃⌘[", "selectPreviousScheme:"),
                 sep,
                 c("Edit Scheme…", "⌘<", "editScheme:"),
-                u("New Scheme…"),
+                c("New Scheme…", "", "newScheme:"),   // B5-POPOVERS (P-112)
                 c("Manage Schemes…", "", "manageSchemes:"),
                 sep,
                 u("Convert Scheme to use Test Plans…"),

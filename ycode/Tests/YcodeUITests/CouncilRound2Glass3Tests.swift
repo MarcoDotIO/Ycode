@@ -186,6 +186,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let (wc, e) = try editor(text)
         defer { wc.window?.close() }
         let scroll = try #require(e.scrollView as? EditorScrollView)
+        scroll.topBounce.profile = .round9   // round 9's flick (B5: the display picks one, FlickProfile)
         let clip = scroll.contentView
         let top = EditorTopBounce.top(of: scroll)
         clip.scroll(to: NSPoint(x: 0, y: top + 20))   // the first momentum event crosses

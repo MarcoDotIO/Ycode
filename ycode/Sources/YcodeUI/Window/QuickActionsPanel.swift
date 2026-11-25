@@ -12,6 +12,11 @@ public enum QuickActions {
         public var path: String
         public var shortcut: String
         public var item: NSMenuItem
+        /// The menus above it, top first (§5.1's rows).
+        public var menuPath: [String] = []
+
+        /// The row model both IDEs draw (`QuickActionEntry`).
+        public var entry: QuickActionEntry { QuickActionEntry(menuPath: menuPath, title: title, shortcut: shortcut) }
     }
 
     /// The enabled commands of a menu bar, in menu order. Menus are brought
@@ -29,7 +34,8 @@ public enum QuickActions {
                 }
                 guard let a = i.action, a != #selector(WorkspaceWindowController.showQuickActions(_:)),
                       isEnabled(i, action: a, controller: controller) else { continue }
-                out.append(Action(title: i.title, path: path.joined(separator: " ▸ "), shortcut: MainMenu.canonicalShortcut(i), item: i))
+                out.append(Action(title: i.title, path: path.joined(separator: " ▸ "), shortcut: MainMenu.canonicalShortcut(i), item: i,
+                                  menuPath: path))
             }
         }
         for top in bar.items { if let m = top.submenu { walk(m, [top.title]) } }
@@ -51,6 +57,12 @@ public enum QuickActions {
         return true
     }
 
+    /// The actions Quick Actions lists for a query (§5.1's ranking), best
+    /// first; none for an empty query.
+    public static func ranked(_ actions: [Action], _ query: String) -> [Action] {
+        QuickActionRanking.rank(actions.map(\.entry), query: query).map { actions[$0] }
+    }
+
     /// The actions matching a query (fuzzy, by title), best first; all of
     /// them in menu order for an empty query.
     public static func filter(_ actions: [Action], _ query: String) -> [Action] {
@@ -63,136 +75,208 @@ public enum QuickActions {
     }
 }
 
-/// The Quick Actions sheet: a search field over the list of commands.
+/// The Quick Actions capsule (P-086, `popovers.md` §5 and §5.1): 560 × 55,
+/// 3 points under the toolbar, "Quick Actions" in a borderless field; once
+/// something is typed, a hairline under the field and two-line 56-point
+/// rows (the command's glyph, its title with the matched part semibold,
+/// its menu path, its key equivalent), the first selected; the panel grows
+/// downward to 495 points and the list scrolls inside it. Return runs the
+/// selected command.
 @MainActor
-public final class QuickActionsController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
-    public let field = NSSearchField()
-    public let table = NSTableView()
-    public private(set) var all: [QuickActions.Action]
-    public private(set) var shown: [QuickActions.Action]
-    /// Runs the chosen action (after the sheet closes).
+public final class QuickActionsController: PaletteController {
+    public let all: [QuickActions.Action]
+    /// Runs the chosen action (after the panel closes).
     var onChoose: ((QuickActions.Action) -> Void)?
-    var onCancel: (() -> Void)?
+    public let rowsView = QuickActionRowsView()
+    public let scroller = NSScrollView()
+    let hairline = QuickActionHairline()
 
     public init(actions: [QuickActions.Action]) {
         all = actions
-        shown = actions
-        super.init(nibName: nil, bundle: nil)
+        super.init(.quickActions, rowHeight: QuickActionRowMetrics.rowHeight) { q in
+            QuickActions.ranked(actions, q).map { PaletteRow(title: $0.entry.displayTitle, detail: $0.entry.subtitle, trailing: $0.shortcut, symbol: $0.entry.symbol) }
+        }
+        onSubmit = { [weak self] _, i in
+            guard let self, let i, self.actions.indices.contains(i) else { return }
+            self.onChoose?(self.actions[i])
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     public override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 560, height: 360))
-        field.placeholderString = "Search Commands"
-        field.delegate = self
-        field.translatesAutoresizingMaskIntoConstraints = false
-        for (id, w) in [("title", 300.0), ("menu", 170.0), ("key", 70.0)] {
-            let col = NSTableColumn(identifier: .init(id))
-            col.width = w
-            table.addTableColumn(col)
+        super.loadView()
+        resultsView.isHidden = true
+        resultsView.removeFromSuperview()
+        scroller.documentView = rowsView
+        scroller.drawsBackground = false
+        scroller.hasVerticalScroller = true
+        scroller.scrollerStyle = .overlay
+        scroller.autohidesScrollers = true
+        scroller.borderType = .noBorder
+        rowsView.onClick = { [weak self] i in
+            self?.resultsView.selected = i
+            self?.submit()
         }
-        table.headerView = nil
-        table.dataSource = self
-        table.delegate = self
-        table.target = self
-        table.doubleAction = #selector(chooseSelected)
-        table.style = .plain
-        let scroll = NSScrollView()
-        scroll.documentView = table
-        scroll.hasVerticalScroller = true
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(field)
-        root.addSubview(scroll)
-        NSLayoutConstraint.activate([
-            field.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
-            field.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
-            field.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
-            scroll.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 8),
-            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-        ])
-        view = root
+        view.addSubview(hairline)
+        view.addSubview(scroller)
         reload()
     }
 
-    public func setQuery(_ q: String) {
-        _ = view
-        field.stringValue = q
-        reload()
+    /// The listed actions, in list order.
+    public var actions: [QuickActions.Action] { QuickActions.ranked(all, field.stringValue) }
+
+    public override var panelHeight: CGFloat {
+        CGFloat(QuickActionRowMetrics.panelHeight(count: resultsView.rows.count))
     }
 
-    func reload() {
-        shown = QuickActions.filter(all, field.stringValue)
-        table.reloadData()
-        if !shown.isEmpty { table.selectRowIndexes([0], byExtendingSelection: false) }
+    override func reload() {
+        super.reload()
+        guard scroller.superview != nil else { return }
+        let m = QuickActionRowMetrics.self
+        let rows = actions
+        let w = CGFloat(spec.width)
+        rowsView.entries = rows.map(\.entry)
+        rowsView.query = field.stringValue
+        rowsView.selected = 0
+        let n = rows.count
+        hairline.isHidden = n == 0
+        scroller.isHidden = n == 0
+        hairline.frame = NSRect(x: 0, y: CGFloat(m.hairlineY), width: w, height: 1)
+        scroller.frame = NSRect(x: 0, y: CGFloat(m.rowsTop), width: w, height: CGFloat(m.listHeight(count: n)))
+        rowsView.frame = NSRect(x: 0, y: 0, width: w, height: CGFloat(Double(n) * m.rowHeight))
+        rowsView.scroll(.zero)
     }
 
-    public func numberOfRows(in tableView: NSTableView) -> Int { shown.count }
+    public override func move(_ d: Int) {
+        super.move(d)
+        rowsView.selected = resultsView.selected
+        let m = QuickActionRowMetrics.self
+        rowsView.scrollToVisible(NSRect(x: 0, y: CGFloat(Double(rowsView.selected) * m.rowHeight), width: 1, height: CGFloat(m.rowHeight)))
+    }
+}
 
-    /// A row's cell, reused from the table's queue: an accessibility client
-    /// reading the list asks for every row's cell, and a new view for each
-    /// (hundreds of commands, three columns) on every query hung the app
-    /// (P-202).
-    public func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let a = shown[row]
-        let id = tableColumn?.identifier.rawValue ?? "title"
-        let text = id == "title" ? a.title : id == "menu" ? a.path : a.shortcut
-        let reuse = NSUserInterfaceItemIdentifier("quick-actions-" + id)
-        let l = tableView.makeView(withIdentifier: reuse, owner: nil) as? NSTextField ?? {
-            let f = NSTextField(labelWithString: "")
-            f.identifier = reuse
-            f.lineBreakMode = .byTruncatingTail
-            if id != "title" { f.textColor = .secondaryLabelColor }
-            return f
-        }()
-        l.stringValue = text
-        return l
+/// The hairline at the field row's bottom (§5.1).
+@MainActor
+public final class QuickActionHairline: NSView {
+    public override func draw(_ dirtyRect: NSRect) {
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        NSColor(quickActionHex: QuickActionRowMetrics.hairline(dark: dark)).setFill()
+        bounds.fill()
+    }
+}
+
+/// Quick Actions' rows (§5.1): the glyph centred 33 from the panel's left,
+/// the title at 64 (the match semibold, the rest light grey) over the menu
+/// path in secondary grey, the key equivalent right-aligned; the selected
+/// row a #0059D1 rounded rectangle (radius 14) with everything white.
+@MainActor
+public final class QuickActionRowsView: NSView {
+    public var entries: [QuickActionEntry] = [] { didSet { needsDisplay = true } }
+    public var query = "" { didSet { needsDisplay = true } }
+    public var selected = 0 { didSet { needsDisplay = true } }
+    var onClick: ((Int) -> Void)?
+
+    public override var isFlipped: Bool { true }
+
+    public override func mouseUp(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        let i = Int(p.y / CGFloat(QuickActionRowMetrics.rowHeight))
+        if entries.indices.contains(i) { onClick?(i) }
     }
 
-    public func controlTextDidChange(_ obj: Notification) { reload() }
+    /// The row's title as attributed text: the matched part semibold.
+    public static func title(_ e: QuickActionEntry, query: String, lit: Bool, dark: Bool) -> NSAttributedString {
+        let m = QuickActionRowMetrics.self
+        let size = CGFloat(m.titleFontSize)
+        let rest = lit ? NSColor.white : NSColor(quickActionHex: m.title(dark: dark))
+        let match = lit ? NSColor.white : NSColor(quickActionHex: m.match(dark: dark))
+        let s = NSMutableAttributedString(string: e.displayTitle, attributes: [.font: NSFont.systemFont(ofSize: size), .foregroundColor: rest])
+        let length = (e.displayTitle as NSString).length
+        for r in QuickActionRanking.matchedRanges(e, query: query) {
+            let start = e.displayTitle.index(e.displayTitle.startIndex, offsetBy: r.lowerBound, limitedBy: e.displayTitle.endIndex) ?? e.displayTitle.endIndex
+            let end = e.displayTitle.index(start, offsetBy: r.count, limitedBy: e.displayTitle.endIndex) ?? e.displayTitle.endIndex
+            let ns = NSRange(start..<end, in: e.displayTitle)
+            guard ns.location + ns.length <= length else { continue }
+            s.addAttributes([.font: NSFont.systemFont(ofSize: size, weight: .semibold), .foregroundColor: match], range: ns)
+        }
+        return s
+    }
 
-    public func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
-        switch sel {
-        case #selector(NSResponder.moveDown(_:)), #selector(NSResponder.moveUp(_:)):
-            guard !shown.isEmpty else { return true }
-            let d = sel == #selector(NSResponder.moveDown(_:)) ? 1 : -1
-            let r = min(max(table.selectedRow + d, 0), shown.count - 1)
-            table.selectRowIndexes([r], byExtendingSelection: false)
-            table.scrollRowToVisible(r)
-            return true
-        case #selector(NSResponder.insertNewline(_:)): chooseSelected(); return true
-        case #selector(NSResponder.cancelOperation(_:)): onCancel?(); return true
-        default: return false
+    public override func draw(_ dirtyRect: NSRect) {
+        let m = QuickActionRowMetrics.self
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let h = CGFloat(m.rowHeight)
+        for (i, e) in entries.enumerated() {
+            let f = NSRect(x: 0, y: CGFloat(i) * h, width: bounds.width, height: h)
+            guard f.intersects(dirtyRect) else { continue }
+            let lit = i == selected
+            let hl = m.highlightFrame(row: i, width: Double(bounds.width))
+            if lit {
+                NSColor(quickActionHex: m.highlight(dark: dark)).setFill()
+                NSBezierPath(roundedRect: hl, xRadius: CGFloat(m.highlightRadius), yRadius: CGFloat(m.highlightRadius)).fill()
+            }
+            // Glyph.
+            let ink = lit ? NSColor.white : NSColor(quickActionHex: m.glyph(dark: dark))
+            if let image = NSImage(systemSymbolName: e.symbol, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: CGFloat(m.glyphPointSize), weight: .regular)) {
+                let sz = image.size
+                let k = min(1, CGFloat(m.glyphColumn) / max(sz.width, sz.height, 1))
+                let box = NSRect(x: CGFloat(m.glyphCenterX) - sz.width * k / 2, y: f.minY + h / 2 - sz.height * k / 2, width: sz.width * k, height: sz.height * k)
+                let tinted = NSImage(size: sz, flipped: false) { rect in
+                    image.draw(in: rect)
+                    ink.set()
+                    rect.fill(using: .sourceAtop)
+                    return true
+                }
+                tinted.draw(in: box, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+            // Key equivalent, right-aligned.
+            let keyRight = CGFloat(hl.maxX - m.keyRightInset)
+            var textRight = keyRight
+            if !e.shortcut.isEmpty {
+                let key = NSAttributedString(string: e.shortcut, attributes: [.font: NSFont.systemFont(ofSize: CGFloat(m.keyFontSize)),
+                                                                              .foregroundColor: lit ? NSColor.white : NSColor(quickActionHex: m.key(dark: dark))])
+                let ks = key.size()
+                key.draw(at: NSPoint(x: keyRight - ks.width, y: f.minY + CGFloat(m.titleCenterY) - ks.height / 2))
+                textRight = keyRight - ks.width - 12
+            }
+            let x = CGFloat(m.textX)
+            let title = Self.title(e, query: query, lit: lit, dark: dark)
+            let ts = title.size()
+            title.draw(with: NSRect(x: x, y: f.minY + CGFloat(m.titleCenterY) - ts.height / 2, width: max(0, textRight - x), height: ts.height),
+                       options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+            let sub = NSAttributedString(string: e.subtitle, attributes: [.font: NSFont.systemFont(ofSize: CGFloat(m.subtitleFontSize)),
+                                                                          .foregroundColor: lit ? NSColor.white : NSColor(quickActionHex: m.subtitle(dark: dark))])
+            let ss = sub.size()
+            sub.draw(with: NSRect(x: x, y: f.minY + CGFloat(m.subtitleCenterY) - ss.height / 2, width: max(0, CGFloat(hl.maxX) - 12 - x), height: ss.height),
+                     options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }
     }
 
-    @objc func chooseSelected() {
-        let r = table.selectedRow
-        guard shown.indices.contains(r) else { return }
-        onChoose?(shown[r])
+    public override func isAccessibilityElement() -> Bool { true }
+    public override func accessibilityRole() -> NSAccessibility.Role? { .list }
+    public override func accessibilityLabel() -> String? { "Results" }
+}
+
+extension NSColor {
+    convenience init(quickActionHex v: UInt32) {
+        self.init(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
     }
 }
 
 extension WorkspaceWindowController {
-    /// View ▸ Show Quick Actions… (⇧⌘A). Returns the palette (shown as a
-    /// sheet while the window is on screen).
+    /// View ▸ Show Quick Actions… (⇧⌘A): the capsule over the window.
+    /// Returns its controller.
     @discardableResult
     @objc public func showQuickActions(_ sender: Any?) -> QuickActionsController? {
         let bar = NSApp?.mainMenu ?? MainMenu.make()
         let c = QuickActionsController(actions: QuickActions.collect(from: bar, controller: self))
-        guard let window, window.isVisible else { _ = c.view; return c }
-        let sheet = NSPanel(contentViewController: c)
-        sheet.title = "Quick Actions"
-        c.onCancel = { [weak window, weak sheet] in if let sheet { window?.endSheet(sheet) } }
-        c.onChoose = { [weak window, weak sheet] a in
-            if let sheet { window?.endSheet(sheet) }
+        c.onChoose = { a in
             DispatchQueue.main.async { if let act = a.item.action { NSApp.sendAction(act, to: a.item.target, from: a.item) } }
         }
-        window.beginSheet(sheet)
-        sheet.makeFirstResponder(c.field)
+        present(palette: c)
         return c
     }
 }

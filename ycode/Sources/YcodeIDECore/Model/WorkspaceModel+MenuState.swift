@@ -35,11 +35,19 @@ final class PackageTestTargetCache: @unchecked Sendable {
 
 /// The menu items drawn with a glyph (P-013): Product's Run, Test,
 /// Profile, Analyze, Archive and Stop, and Debug's step items (the debug
-/// bar's glyphs). Symbol names; each IDE draws its toolkit's symbol.
+/// bar's glyphs). Symbol names; each IDE draws its toolkit's symbol (the
+/// macOS IDE asks the system for it at run time, the Linux IDE draws
+/// OpenViews' own artwork of the same name), so both use names both have.
 public enum MenuIcons {
     public static let symbols: [String: String] = [
-        "runProduct:": "play", "testProduct:": "checkmark.diamond", "profileProduct:": "gauge.with.needle",
+        "runProduct:": "play", "testProduct:": "checkmark.diamond", "profileProduct:": "gauge.with.dots.needle.33percent",
         "analyzeProduct:": "magnifyingglass", "archiveProduct:": "archivebox", "stopProduct:": "stop",
         "stepOver:": "arrow.turn.down.right", "stepInto:": "arrow.down.to.line", "stepOut:": "arrow.up.to.line",
     ]
+
+    /// The glyph of a menu command; none for an alternate (it takes its
+    /// base item's row).
+    public static func symbol(for c: MenuCommand) -> String? {
+        c.isAlternate ? nil : symbols[c.action]
+    }
 }

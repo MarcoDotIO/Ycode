@@ -87,7 +87,7 @@ let package = Package(
         // third-party code).
         .target(name: "OVDBus", path: "Sources/OVDBus"),
         .target(name: "OVAccessibilityATSPI", dependencies: ["OVDBus"], path: "Sources/OVAccessibilityATSPI"),
-        .target(name: uiModule, dependencies: [.target(name: coreModule), "OVPlatform", "OVRender", "OVAccessibilityATSPI"],
+        .target(name: uiModule, dependencies: [.target(name: coreModule), "OVPlatform", "OVRender", "OVDBus", "OVAccessibilityATSPI"],
                 path: "Sources/SwiftUI", swiftSettings: renamed),
         // A small OpenViews app (R7 done-criterion): a button, a draggable
         // box and a text field in a window.

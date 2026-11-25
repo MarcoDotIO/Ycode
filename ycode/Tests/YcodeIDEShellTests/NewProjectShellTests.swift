@@ -20,6 +20,9 @@ import Testing
         #expect(app.isEnabled(.newProject))
         app.perform(.newProject)
         let m = try #require(app.newProject)
+        // P-187: File ▸ New ▸ Project… shows the compact picker first.
+        #expect(m.step == .picker)
+        app.chooseNewProjectRow(NewProjectPicker.chooseTemplateIndex)
         #expect(m.step == .template && m.heading == "Choose a template for your new project:")
         m.setPlatform("macOS")
         m.select("macos.command-line-tool")

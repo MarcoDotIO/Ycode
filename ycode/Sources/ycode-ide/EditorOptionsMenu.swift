@@ -9,7 +9,11 @@ import YcodeIDEShell
 /// Editor Options is Layout ▸ (where the canvas goes), the comparison
 /// styles, Minimap, Authors, Code Coverage, Invisibles, Scope Guides, Wrap
 /// Lines and Choose Workspace Theme…. Items the Linux editor does not have
-/// yet show disabled (never a silent no-op).
+/// yet show disabled (never a silent no-op): the comparison styles (no Code
+/// Review on Linux) and Authors (no blame column). Code Coverage, Invisibles
+/// and Scope Guides toggle the shared settings the editor draws
+/// (SourceEditorView+Guides.swift); Choose Workspace Theme… opens Settings ▸
+/// Appearance, as on macOS (P-065).
 struct AddEditorMenuItems: View {
     var model: WorkspaceShellModel
 
@@ -29,6 +33,7 @@ struct EditorOptionsMenuItems: View {
     var model: WorkspaceShellModel
     /// Re-read when the preferences change.
     var revision: Int
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         let prefs = Preferences.shared
@@ -45,15 +50,18 @@ struct EditorOptionsMenuItems: View {
         Toggle("Minimap", isOn: Binding(get: { prefs.showMinimap }, set: { prefs.showMinimap = $0 }))
             .keyboardShortcut("m", modifiers: [.control, .shift, .command])
         Toggle("Authors", isOn: .constant(false)).keyboardShortcut("a", modifiers: [.control, .shift, .command]).disabled(true)
-        Toggle("Code Coverage", isOn: .constant(prefs.showCodeCoverage)).disabled(true)
+        Toggle("Code Coverage", isOn: Binding(get: { prefs.showCodeCoverage }, set: { prefs.showCodeCoverage = $0 }))
         Divider()
-        Toggle("Invisibles", isOn: .constant(prefs.showInvisibles)).disabled(true)
-        Toggle("Scope Guides", isOn: .constant(prefs.scopeGuides != .none)).disabled(true)
+        Toggle("Invisibles", isOn: Binding(get: { prefs.showInvisibles }, set: { prefs.showInvisibles = $0 }))
+        Toggle("Scope Guides", isOn: Binding(get: { prefs.scopeGuides != .none }, set: { prefs.scopeGuides = $0 ? .lines : .none }))
         Toggle("Wrap Lines", isOn: Binding(get: { prefs.wrapLines }, set: { prefs.wrapLines = $0 }))
             .keyboardShortcut("l", modifiers: [.control, .shift, .command])
             .disabled(model.editor == nil)
         Divider()
-        Button("Choose Workspace Theme…") {}.disabled(true)
+        Button("Choose Workspace Theme…") {
+            ShellSettingsModel.shared.select(.appearance)
+            openSettings()
+        }
     }
 
     func layout(_ title: String, _ c: ShellCommand) -> some View {

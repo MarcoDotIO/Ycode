@@ -39,6 +39,20 @@ public struct EnvironmentValues: CustomStringConvertible {
     }
 
     public var description: String { "EnvironmentValues(\(storage.count) values set)" }
+
+    /// B5 (P-200): true if both hold the same keys with equal values (the
+    /// graph's input comparison: closures never equal, objects by identity).
+    /// An environment modifier whose closure or value is new but whose
+    /// result is not keeps the old revision, so the subtree below it does
+    /// not count as changed.
+    package func hasSameValues(as other: EnvironmentValues) -> Bool {
+        if revision == other.revision { return true }
+        guard storage.count == other.storage.count else { return false }
+        for (k, v) in storage {
+            guard let w = other.storage[k], GraphComparison.valuesEqual(v, w) else { return false }
+        }
+        return true
+    }
 }
 
 /// Light or dark appearance.

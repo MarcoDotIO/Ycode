@@ -47,9 +47,7 @@ public final class MenuBarDelegate: NSObject, NSMenuDelegate {
             gateTextSystemItem(c, action: spec.action, controller: wc)
             // P-007: the minimap's check mark whoever performs the item.
             if spec.action == "toggleMinimap:", let e = wc?.editor, e.fileURL != nil { c.state = e.showsMinimap ? .on : .off }
-            if c.image == nil, !spec.isAlternate, let name = MenuIcons.symbols[spec.action] {
-                c.image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
-            }
+            MainMenu.applyGlyph(c)
         }
         if menu.supermenu === NSApp?.mainMenu, NSApp?.mainMenu != nil { MainMenu.removeSystemConflicts(in: menu) }
         MainMenu.collapseSeparators(in: menu)
@@ -115,19 +113,23 @@ enum DynamicMenus {
     static func fill(_ m: CommandMenu, controller wc: WorkspaceWindowController?) {
         switch m.path {
         case "Ycode ▸ Open Developer Tool": fillDeveloperTools(m, tools: DeveloperTools.installed)
-        // P-006: no inspectors without an editor (Show Inspector only).
-        case "View ▸ Inspectors": fillInspectors(m, names: wc.map { $0.menuContext.editorKind == .other && $0.editor.fileURL == nil ? [] : $0.inspector.tabNames } ?? [])
+        // P-006 (council round 11, B02): with only Welcome, Show Inspector
+        // alone (disabled); in a workspace with no file open, File, History
+        // and Quick Help before it.
+        case "View ▸ Inspectors":
+            fillInspectors(m, names: wc.map { $0.menuContext.editorKind == .other && $0.editor.fileURL == nil ? CommandTable.inspectors : $0.inspector.tabNames } ?? [])
         case "Product ▸ Scheme": fillSchemes(m, names: wc?.session.model.schemeNames ?? [], active: wc?.session.scheme, target: wc)
         case "Product ▸ Destination":
             guard let wc else { removeDynamic(m); break }
-            fillDestinations(m, model: wc.destinationMenuModel(), current: wc.session.destination, target: wc)
+            fillDestinationMenu(m, model: wc.destinationMenuModel(), current: wc.session.destination, target: wc)   // P-014 (+Choosers.swift)
         case "Product ▸ Test Plan":
             guard let wc else { removeDynamic(m); break }
             fillTestPlans(m, rows: wc.session.testPlanRows, plans: wc.session.testPlanNames, active: wc.session.effectiveTestPlan, target: wc)
-        // P-006: with no editor, the first block only ("Preview" checked).
+        // P-006: with no editor, the first block only. With only Welcome
+        // open "Preview" is unchecked (council round 11).
         case "Editor":
-            fillEditor(m, kind: wc?.menuContext.editorKind ?? .other)
-            if wc == nil { m.items.first { $0.action == NSSelectorFromString("toggleCanvas:") }?.state = .on }
+            fillEditor(m, kind: wc?.menuContext.editorKind ?? .other, welcome: wc == nil)
+            if wc == nil { m.items.first { $0.action == NSSelectorFromString("toggleCanvas:") }?.state = .off }
         case "Debug ▸ Simulate Location": fillMenuBarSimulateLocation(m, controller: wc)
         case "Debug ▸ Attach to Process": RunningProcesses.fillAsync(m, target: wc)
         default: break
@@ -136,15 +138,16 @@ enum DynamicMenus {
 
     /// §2.7 / §2.8: the Editor menu of the focused editor's kind, rebuilt
     /// when the kind changes.
-    static func fillEditor(_ m: CommandMenu, kind: EditorKind) {
-        guard m.editorKind != kind else { return }
-        let fresh = MainMenu.menu("Editor", EditorMenu.items(for: kind), path: "Editor")
+    static func fillEditor(_ m: CommandMenu, kind: EditorKind, welcome: Bool = false) {
+        guard m.editorKind != kind || m.isWelcomeEditor != welcome else { return }
+        let fresh = MainMenu.menu("Editor", welcome ? EditorMenu.welcomeItems : EditorMenu.items(for: kind), path: "Editor")
         m.removeAllItems()
         for i in fresh.items {
             fresh.removeItem(i)
             m.addItem(i)
         }
         m.editorKind = kind
+        m.isWelcomeEditor = welcome
         MainMenu.markCheckedDisabled(in: m, kind: kind)
     }
 

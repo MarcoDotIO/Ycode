@@ -10,12 +10,16 @@ extension ShellAppModel {
     /// on a pane. Listed here so the menu model knows they are enabled.
     public static let viewLayerActions: Set<String> = ["showSettings:", "chooseTheme:", "showBehaviorsSettings:"]
     /// The actions of `menuActionState` that carry a check mark.
-    public static let toggleActions: Set<String> = ["toggleWrapLines:", "toggleMinimap:", "ycodeUnavailableDontSimulateLocation:"]
+    public static let toggleActions: Set<String> = ["toggleWrapLines:", "toggleMinimap:", "ycodeUnavailableDontSimulateLocation:",
+                                                    "toggleInvisibles:", "toggleScopeGuides:", "toggleCodeCoverage:"]
 
     /// Whether a table action applies now, and its check mark; nil for an
     /// action the shell does not perform this way.
     public func menuActionState(_ action: String, tag: Int = 0) -> (enabled: Bool, checked: Bool)? {
         if Self.viewLayerActions.contains(action) { return (true, false) }
+        // File ▸ Save As…, Export…, Save As Workspace… (ShellFileCommands.swift, P-001).
+        if let s = fileCommandState(action) { return (s, false) }
+        if let s = newItemsMenuState(action) { return s }   // +NewItems.swift (P-022, P-187)
         switch action {
         // File: ⌘W closes the file, then the workspace; ⇧⌘W the window (P-008).
         case "closeTab:", "performClose:": return (workspace != nil, false)
@@ -23,6 +27,8 @@ extension ShellAppModel {
         case "clearRecentProjects:": return (!recent.isEmpty, false)
         // Help, Window and Ycode ▸ Open Developer Tool: web pages (as macOS).
         case "showDeveloperDocumentation:", "showHumanInterfaceGuidelines:", "openMoreDeveloperTools:": return (true, false)
+        // Manage Devices… and Open Developer Tool ▸ Device Hub (ShellAppModel+DeviceHub.swift).
+        case "showDevices:": return (true, false)
         default: break
         }
         guard workspace != nil else { return nil }
@@ -37,9 +43,16 @@ extension ShellAppModel {
         // Editor (P-007): Wrap Lines is the editing preference the Linux
         // editor follows; the Linux minimap is always drawn (its check mark).
         case "toggleWrapLines:": return (workspace?.editor != nil, Preferences.shared.wrapLines)
+        // Editor ▸ Invisibles, Scope Guides, Code Coverage (beta 5): the
+        // editing preferences the Linux editor draws (B5-EDITOR2), as macOS.
+        case "toggleInvisibles:": return (workspace?.editor != nil, Preferences.shared.showInvisibles)
+        case "toggleScopeGuides:": return (workspace?.editor != nil, Preferences.shared.scopeGuides != .none)
+        case "toggleCodeCoverage:": return (workspace?.editor != nil, Preferences.shared.showCodeCoverage)
         case "toggleMinimap:": return (false, workspace?.editor != nil)
         // Editor ▸ Show Editor Only (P-006): hides the canvas.
         case "showEditorOnly:": return (true, false)
+        // View ▸ Show Quick Actions… and Product ▸ Scheme ▸ New Scheme… (B5-POPOVERS, P-086, P-112).
+        case "showQuickActions:", "newScheme:": return (true, false)
         default: return nil
         }
     }
@@ -48,12 +61,18 @@ extension ShellAppModel {
     /// it is not one.
     @discardableResult
     public func performMenuAction(_ action: String, tag: Int = 0) -> Bool {
+        if ShellFileCommands.actions[action] != nil {
+            requestSave(action)
+            return true
+        }
+        if performNewItemsAction(action) { return true }   // +NewItems.swift (P-022, P-187)
         switch action {
         case "closeTab:":
             guard let w = workspace else { return false }
             if w.document != nil || w.structuredEditor != nil { w.closeCurrentDocument() } else { closeWorkspace() }
         case "performClose:": closeWorkspace()
         case "clearRecentProjects:": clearRecent()
+        case "showDevices:": showDevices()
         case "showDeveloperDocumentation:": openLink(HelpLinks.developerDocumentation)
         case "showHumanInterfaceGuidelines:": openLink(HelpLinks.humanInterfaceGuidelines)
         case "openMoreDeveloperTools:": openLink(HelpLinks.moreDeveloperTools)
@@ -61,7 +80,12 @@ extension ShellAppModel {
         case "moveFocusToPreviousEditorPane:": workspace?.focusNeighbourPane(forward: false)
         case "openTerminalAtLocation:": workspace?.openTerminal()
         case "changeEditorOrientation:": workspace?.panes.sideBySide.toggle()
+        case "showQuickActions:": workspace?.showQuickActions(ShellQuickActions.collect(app: self))   // ShellPopoverModel.swift
+        case "newScheme:": workspace?.showNewScheme()
         case "toggleWrapLines:": Preferences.shared.wrapLines.toggle()
+        case "toggleInvisibles:": Preferences.shared.showInvisibles.toggle()
+        case "toggleScopeGuides:": Preferences.shared.scopeGuides = Preferences.shared.scopeGuides == .none ? .lines : .none
+        case "toggleCodeCoverage:": Preferences.shared.showCodeCoverage.toggle()
         case "showEditorOnly:":
             if workspace?.isPreviewCommandChecked(.toggleCanvas) == true { workspace?.perform(.toggleCanvas) }
         default: return false
@@ -113,5 +137,6 @@ extension WorkspaceShellModel {
             c.hasNavigatorFileSelection = item.isFile
             c.projectSelection = item.isFile ? .file : .group
         }
+        fillNavigatorMenuContext(&c)
     }
 }

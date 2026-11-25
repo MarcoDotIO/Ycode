@@ -109,6 +109,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         defer { wc.window?.close() }
         wc.open(path: dir.appendingPathComponent("GlassScroll/Long.swift").path, line: nil)
         let scroll = try #require(wc.editor.scrollView as? EditorScrollView)
+        scroll.topBounce.profile = .round9   // round 9's flick (B5: the display picks one, FlickProfile)
         let clip = scroll.contentView
         // Ordered in, it must stay off every display (AppKit would move it on).
         MergeSheetR5UITests.Offscreen.on()
@@ -452,8 +453,8 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(repo.children[0].children.allSatisfy { $0.detail == nil })
         #expect(repo.children.map { SourceControlNavigatorModel.expandsInitially($0) } == [true, false, false, false, false])
         #expect(SourceControlNavigatorModel.expandsInitially(repo))
-        // The filter alone across the bar.
-        #expect(NavigatorBars.specs[1].left == .none)
+        // The action (…) button, then the filter (P-040, the 27.1 parity run).
+        #expect(NavigatorBars.specs[1].left == .more)
         // In the window: the control spans the navigator 9 from each side.
         let (wc, _) = try window("repositories")
         defer { wc.window?.close() }

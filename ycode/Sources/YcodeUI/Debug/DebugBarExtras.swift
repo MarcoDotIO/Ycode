@@ -110,7 +110,7 @@ extension DebugAreaController {
     }
 
     public var isLoadingVariables: Bool { _ = view; return loadingFlag }
-    private var loadingFlag: Bool { variablesSpinner.toolTip == "Loading" }
+    private var loadingFlag: Bool { ToolTipPresenter.text(of: variablesSpinner) == "Loading" }
 
     public func setLoadingVariables(_ on: Bool) {
         _ = view

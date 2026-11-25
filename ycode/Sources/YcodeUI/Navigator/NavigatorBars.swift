@@ -11,8 +11,13 @@ extension NavigatorAreaController {
         // way in a narrower navigator).
         testPlanPopUp.isBordered = true
         let width = testPlanPopUp.widthAnchor.constraint(equalToConstant: NavigatorBars.testPlanPopUpWidth)
-        width.priority = .defaultHigh
+        // Below the split view's hold on its divider: a narrow navigator is
+        // not held wide by the (hidden) Test header (P-024). Above the
+        // pop-up's own hugging, so at the navigator's normal width it is the
+        // reference's 194 and gives way only when the navigator narrows.
+        width.priority = .init(240)
         width.isActive = true
+        testPlanPopUp.setContentHuggingPriority(.init(200), for: .horizontal)
         testPlanPopUp.addItem(withTitle: testPlanName)
         testPlanPopUp.setAccessibilityLabel("Test Plan")
         testModeControl.controlSize = .small
@@ -161,6 +166,31 @@ final class NavigatorFilterField: NSSearchField {
 /// so the layout places that glyph (metrics.md §15).
 final class NavigatorOptionsButton: NSPopUpButton {
     override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
+
+    /// The menu opens upward from the glyph, its left edge at the glyph's
+    /// (P-037: the reference's menu rises from x ≈ 50; a pull-down opened
+    /// below and ≈ 95 points further right).
+    var opensUpward = false
+    /// Where the last menu was opened (its top-left corner in this view;
+    /// tests).
+    private(set) var lastMenuOrigin: NSPoint?
+
+    /// The menu's top-left corner for an upward menu of `height`.
+    func upwardMenuOrigin(height: CGFloat) -> NSPoint {
+        let gap: CGFloat = 4
+        return NSPoint(x: 0, y: isFlipped ? -height - gap : bounds.maxY + height + gap)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard opensUpward, isEnabled, let menu else { return super.mouseDown(with: event) }
+        // The pull-down's title item (index 0) is not a choice.
+        let title = menu.items.first
+        title?.isHidden = true
+        defer { title?.isHidden = false }
+        let origin = upwardMenuOrigin(height: menu.size.height)
+        lastMenuOrigin = origin
+        menu.popUp(positioning: nil, at: origin, in: self)
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         let glyph = NavigatorFilterField.optionsGlyph

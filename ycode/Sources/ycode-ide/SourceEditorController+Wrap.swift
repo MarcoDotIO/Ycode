@@ -142,6 +142,11 @@ extension SourceEditorController {
         let col = layout.displayColumn(ofOffset: offset, line: n, in: buffer)
         let k = starts.lastIndex { $0 <= col }.map { $0 + 1 } ?? 0
         let start = k == 0 ? 0 : starts[k - 1]
+        // Documentation comments' text is not on the grid (P-054): measure.
+        if !layout.proportionalRanges(line: n, in: buffer).isEmpty {
+            let base = layout.x(ofOffset: self.offset(atDisplayColumn: start, line: n), line: n, in: buffer)
+            return (k, rowIndent(n, row: k) + layout.x(ofOffset: offset, line: n, in: buffer) - base)
+        }
         return (k, rowIndent(n, row: k) + CGFloat(col - start) * layout.advance)
     }
 
@@ -165,6 +170,14 @@ extension SourceEditorController {
         guard !starts.isEmpty else { return layout.offset(atX: x, line: n, in: buffer) }
         let start = k == 0 ? 0 : starts[k - 1]
         let end = k < starts.count ? starts[k] : Int.max
+        if !layout.proportionalRanges(line: n, in: buffer).isEmpty {
+            // Documentation comments' text is not on the grid (P-054).
+            let a = offset(atDisplayColumn: start, line: n)
+            let b = end == Int.max ? buffer.document.lineRange(n).upperBound : offset(atDisplayColumn: end, line: n)
+            let base = layout.x(ofOffset: a, line: n, in: buffer)
+            let o = layout.offset(atX: base + max(0, x - rowIndent(n, row: k)), line: n, in: buffer)
+            return min(max(o, a), b)
+        }
         let col = start + max(0, Int(((x - rowIndent(n, row: k)) / layout.advance).rounded()))
         return offset(atDisplayColumn: min(col, end), line: n)
     }

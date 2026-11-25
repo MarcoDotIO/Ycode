@@ -131,9 +131,9 @@ package.targets += [
     .target(name: "YcodeDeviceUI", dependencies: ["YcodeDisplayStream", "YcodeSimFeatures", "YcodeDeviceModel"]),
     .testTarget(name: "YcodeDeviceUITests", dependencies: ["YcodeDeviceUI", "YcodeDeviceModel", "YcodeDisplayStream"]),
     .executableTarget(name: "ycode-sim-viewer", dependencies: ["YcodeRelease", "YcodeDisplayStream", "YcodeSimFeatures", "YcodeDeviceModel", "YcodeDeviceUI", "YcodeRemoteViewer", "YcodeSimLink", "YcodeSubprocess"]),
-    .target(name: "YcodeUI", dependencies: ["YcodeMCP", "YcodeIDECore", "YcodeCompletion", "YcodePreviews", "YcodeProject", "YcodeWorkspace", "YcodeSettings", "YcodeBuild", "YcodeDebug", "YcodeLanguage", "YcodeXcodebuild", "YcodeSubprocess", "YcodeAssistant", "YcodeSimFeatures", "YcodeDeviceModel", "YcodeDeviceUI", "YcodeProfiler"]),
+    .target(name: "YcodeUI", dependencies: ["YcodeMCP", "YcodeIDECore", "YcodeCompletion", "YcodePreviews", "YcodeProject", "YcodeWorkspace", "YcodeSettings", "YcodeBuild", "YcodeDebug", "YcodeLanguage", "YcodeXcodebuild", "YcodeSubprocess", "YcodeAssistant", "YcodeSimFeatures", "YcodeDeviceModel", "YcodeDeviceUI", "YcodeProfiler", "YcodeSimControl"]),
     .executableTarget(name: "YcodeApp", dependencies: ["YcodeRelease", "YcodeUI"]),
-    .testTarget(name: "YcodeUITests", dependencies: ["YcodeMCP", "YcodeUI", "YcodeIDECore", "YcodeCompletion", "YcodePreviews", "YcodeDisplayStream", "YcodeSimFeatures", "YcodeDeviceModel", "YcodeDeviceUI", "YcodeBuild", "YcodeDebug", "YcodeLanguage", "YcodeXcodebuild", "YcodeSubprocess", "YcodeAssistant", "YcodeProfiler", "YcodeBuildServer", "YcodeIDEShell"]),
+    .testTarget(name: "YcodeUITests", dependencies: ["YcodeMCP", "YcodeUI", "YcodeIDECore", "YcodeCompletion", "YcodePreviews", "YcodeDisplayStream", "YcodeSimFeatures", "YcodeDeviceModel", "YcodeDeviceUI", "YcodeBuild", "YcodeDebug", "YcodeLanguage", "YcodeXcodebuild", "YcodeSubprocess", "YcodeAssistant", "YcodeProfiler", "YcodeBuildServer", "YcodeIDEShell", "YcodeSimControl"]),
 ]
 #else
 // The Linux viewer: an SDL 3 window (loaded at run time) on the portable viewer (display-stream.md §13).
@@ -272,9 +272,9 @@ package.targets += [
     .target(name: "YcodeEditorKit", dependencies: ["YcodeSyntax"]),
     .testTarget(name: "YcodeEditorKitTests", dependencies: ["YcodeEditorKit", "YcodeSyntax"]),
     .target(name: "YcodeIDEShell", dependencies: ["YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeXcodebuild", "YcodeSimLink", "YcodeEditorKit", "YcodeDebug", "YcodeAssistant",
-                                                  "YcodePreviews", "YcodeDeviceModel", "YcodeSubprocess"]),
+                                                  "YcodePreviews", "YcodeDeviceModel", "YcodeSubprocess", "YcodeRemoteViewer", "YcodeDisplayStream", "YcodeSimFeatures", "CYcodeCodec", "YcodeSimControl"]),
     .testTarget(name: "YcodeIDEShellTests", dependencies: ["YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion", "YcodeDebug", "YcodeAssistant",
-                                                          "YcodePreviews"]),
+                                                          "YcodePreviews", "YcodeDeviceModel", "YcodeDisplayStream", "YcodeSimControl"]),
 ]
 // Agent mode (specs/ide/coding-assistant.md, "Ycode implementation"): the
 // Ycode MCP server (`ycode mcp`, and in-process for the IDE's agents), the
@@ -301,9 +301,17 @@ if FileManager.default.fileExists(atPath: Context.packageDirectory + "/../framew
                                                           .product(name: "OVPlatform", package: "swiftui"),
                                                           .product(name: "OVDBus", package: "swiftui")]),
     ]
+    // The device windows' glyphs, shared by the device window and the IDE's Device Hub (device-hub.md, 2026-11-17).
+    package.targets += [
+        .target(name: "YcodeDeviceViews", dependencies: ["YcodeDeviceModel", "YcodeRemoteViewer", .product(name: "SwiftUI", package: "swiftui")]),
+    ]
+    if let i = package.targets.firstIndex(where: { $0.name == "ycode-ide" }) {
+        package.targets[i].dependencies += ["YcodeDeviceViews", "YcodeRemoteViewer", "YcodeDeviceModel", "YcodeSimLink"]
+    }
     // The device window's toolbar and inspector are drawn by OpenViews (cross-platform-parity.md §13).
     if let i = package.targets.firstIndex(where: { $0.name == "ycode-sim-viewer" }) {
-        package.targets[i].dependencies += ["YcodeRemoteViewer", .product(name: "SwiftUI", package: "swiftui"), .product(name: "OVRender", package: "swiftui")]
+        package.targets[i].dependencies += ["YcodeDeviceViews", .product(name: "SwiftUI", package: "swiftui"),
+                                            .product(name: "OVRender", package: "swiftui")]
     }
 }
 #else
@@ -326,3 +334,16 @@ for i in package.targets.indices where package.targets[i].type == .test {
     package.targets[i].dependencies.append("CYcodeTestOffscreen")
 }
 #endif
+
+// ycrun (specs/ide/ycrun.md, docs/YCRUN.md): Ycode's xcrun-style front end
+// for its own simulators: `ycrun simctl <verb>` with simctl's verbs on
+// Ycode's simulator (this machine on arm64 Linux with KVM, else a simulator
+// host over ssh), and `ycrun remote setup` for a host from scratch.
+// YcodeSimControl holds the logic (placement, hosts, verbs, the setup
+// wizard); portable (macOS and Linux).
+package.products += [.executable(name: "ycrun", targets: ["ycrun"])]
+package.targets += [
+    .target(name: "YcodeSimControl", dependencies: ["YcodeRelease", "YcodeIDECore", "YcodeBuild", "YcodeSubprocess", "YcodeSimLink"]),
+    .testTarget(name: "YcodeSimControlTests", dependencies: ["YcodeSimControl", "YcodeIDECore", "YcodeSimLink"]),
+    .executableTarget(name: "ycrun", dependencies: ["YcodeRelease", "YcodeSimControl"]),
+]

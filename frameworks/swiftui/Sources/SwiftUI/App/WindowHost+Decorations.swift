@@ -22,8 +22,10 @@ import SwiftUICore
 //
 // On-demand menu bar: the pointer resting within 3 points of the window's
 // top edge for 0.35 s reveals it, as does F10 (which opens the first menu)
-// or a tap of Alt alone; moving the pointer below it, Escape, or closing the
-// last menu hides it again (unless the pointer is over it).
+// or a tap of Alt alone; moving the pointer below it and the title-bar band
+// under it, Escape, or closing the last menu hides it again (unless the
+// pointer is over it). P-033: while it shows, the content moves down by the
+// bar's height, so it covers nothing.
 
 /// Seconds the pointer must rest at the top edge before the menu bar shows.
 package let menuBarRevealDelay: TimeInterval = 0.35
@@ -33,8 +35,11 @@ private final class RevealTimerOwner {}
 extension WindowHost {
     package var windowChrome: WindowChromeState { services.windowChrome }
 
-    /// The top of the content: below an in-window menu bar.
-    var chromeContentTop: CGFloat { chrome?.menuBar == true ? MenuBarMetrics.height : 0 }
+    /// The top of the content: below an in-window menu bar, or below the
+    /// on-demand bar while it shows (P-033: the content moves down with it).
+    var chromeContentTop: CGFloat {
+        chrome?.menuBar == true || services.windowChrome.menuBarShown ? MenuBarMetrics.height : 0
+    }
 
     /// Where a press at `p` (window points) goes: the app, a window move or
     /// a resize.
@@ -93,7 +98,9 @@ extension WindowHost {
             }
         } else {
             services.setTimer(owner, at: nil) { _ in }
-            if state.menuBarRevealed, p.location.y > MenuBarMetrics.height + 8, services.menuBar?.openIndex == nil {
+            // P-033: the content is below the bar meanwhile; the bar stays
+            // while the pointer is over it or the title-bar band under it.
+            if state.menuBarRevealed, p.location.y > MenuBarMetrics.height + state.titleBarHeight + 8, !state.menuBarMenuOpen {
                 state.menuBarRevealed = false
             }
         }

@@ -3,10 +3,12 @@ import QuartzCore
 import YcodeIDECore
 
 /// Showing and hiding the inspector (`specs/ide/editor-area.md` §C.7,
-/// H.2, J.3; `fidelity-council.md` rows 9, 158, 204, 248): the inspector
-/// slides rigidly by its width while the editor resizes live, every frame: a
-/// hide ease-out over 200 ms from 75 ms after the press, a show ease-in-out
-/// over 230 ms from 170 ms (`EditorMetrics.inspectorSlideProgress`); the editor's scrollers are
+/// H.2, J.3; `fidelity-council.md` rows 9, 158, 204, 248; P-192): the
+/// inspector slides rigidly by its width while the editor resizes live,
+/// every frame, on beta 5's curves (`Motion.inspector`): a hide ease-out
+/// over 275 ms from 72 ms after the press, a show ease-in-out over 242 ms
+/// from 21 ms; ⌥⌘1/2/3 on the shown inspector hide it over 300 ms and show
+/// it again over 266 (`EditorMetrics.inspectorSlideProgress`); the editor's scrollers are
 /// not flashed by it. The divider moves one display frame at a
 /// time from the press; the inspector's contents keep their width pinned to
 /// the divider, so nothing in them reflows.
@@ -19,7 +21,21 @@ extension WorkspaceWindowController {
     /// Whether a slide is running (tests).
     public var isInspectorSliding: Bool { inspectorSlide.running }
 
-    func slideInspector(show: Bool) {
+    /// ⌥⌘1/2/3 (View ▸ Inspectors ▸ <inspector>) for the inspector already
+    /// shown hides the inspector, and the next press shows it again
+    /// (P-192: the reference toggles, on its own curves); true when it slid.
+    func toggleInspector(bySelector index: Int) -> Bool {
+        if !inspectorItem.isCollapsed, inspector.selectedIndex == index {
+            slideInspector(show: false, bySelector: true)
+            return true
+        }
+        guard inspectorItem.isCollapsed else { return false }
+        slideInspector(show: true, bySelector: true)
+        inspector.select(index)
+        return true
+    }
+
+    func slideInspector(show: Bool, bySelector: Bool = false) {
         let split = mainSplit.splitView
         guard let window, window.isVisible, !inspectorSlide.running, split.subviews.count >= 3 else {
             if !inspectorSlide.running { inspectorItem.isCollapsed = !show }
@@ -77,7 +93,7 @@ extension WorkspaceWindowController {
         state.from = show ? total - divider - 1 : total - width
         state.to = show ? total - width : total - divider - 1
         state.show = show
-        state.clock = InspectorSlideClock(show: show, press: press)
+        state.clock = InspectorSlideClock(show: show, press: press, bySelector: bySelector)
         // Nothing but the slide's own layout runs per frame: the bars keep
         // their blurred image, and the toolbar is fitted and updated once
         // at the end (row 106).

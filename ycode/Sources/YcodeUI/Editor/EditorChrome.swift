@@ -278,9 +278,10 @@ final class ScopeHeaderView: NSView {
     var totalHeight: CGFloat { rows.isEmpty ? 0 : bandHeight + CGFloat(EditorMetrics.stickyHeaderSeparator) }
 
     override func draw(_ dirtyRect: NSRect) {
-        EditorVeil.fill.setFill()
+        // #58 (glass-materials.md §3.2): an opaque band, then the 2-point separator.
+        (EditorBlurVeil.applies ? Theme.backgroundColor : EditorVeil.fill).setFill()
         NSRect(x: 0, y: 0, width: bounds.width, height: bandHeight).fill(using: .copy)
-        EditorVeil.drawSeparator(NSRect(x: 0, y: bandHeight, width: bounds.width, height: CGFloat(EditorMetrics.stickyHeaderSeparator)))
+        ScrollEdgeDrawing.drawStickySeparator(NSRect(x: 0, y: bandHeight, width: bounds.width, height: CGFloat(EditorMetrics.stickyHeaderSeparator)), flipped: true)
         let numberAttrs: [NSAttributedString.Key: Any] = [.font: Theme.gutterFont, .foregroundColor: Theme.lineNumberColor]
         for (i, r) in rows.enumerated() {
             let top = CGFloat(EditorMetrics.stickyHeaderTopPad) + CGFloat(i) * lineHeight

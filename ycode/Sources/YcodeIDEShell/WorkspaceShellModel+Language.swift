@@ -114,8 +114,8 @@ extension WorkspaceShellModel {
         case .renameSymbol: Task { await beginRename() }
         case .findSelectedSymbol: Task { await findSelectedSymbolInWorkspace() }
         case .showCallHierarchy: Task { await findCallHierarchy() }
-        case .showFileInspector: showInspector(.file)
-        case .showQuickHelpInspector: showInspector(.quickHelp)
+        case .showFileInspector: toggleInspector(bySelector: .file)   // +PaneMotion.swift (P-192)
+        case .showQuickHelpInspector: toggleInspector(bySelector: .quickHelp)
         default: break
         }
     }
@@ -191,6 +191,8 @@ extension WorkspaceShellModel {
     /// the Quick Help inspector. Nil (no popover) when the server has none.
     @discardableResult
     public func showQuickHelp(at offset: Int? = nil) async -> QuickHelpDocument? {
+        // P-083 §4.1: a module named in an import shows the module's Quick Help.
+        if let doc = showModuleQuickHelp(at: offset) { return doc }
         guard let t = languageTarget(at: offset) else { return nil }
         let session = session
         guard let hover = await withLanguageTimeout(nil, { await session.hover(t.url, at: t.position) }) else {
@@ -206,6 +208,29 @@ extension WorkspaceShellModel {
         f.popover = QuickHelpPopover(id: f.popoverCount, path: t.document.path, offset: start, document: doc, text: QuickHelpFormatter.plain(hover))
         f.inspectorHelp = doc
         return doc
+    }
+
+    /// Quick Help for a module named in an import (`popovers.md` §4.1): its
+    /// abstract and Overview from the module's DocC catalog in the
+    /// workspace, else its title and the documentation link. Nil when the
+    /// offset is not on an import's module name.
+    @discardableResult
+    public func showModuleQuickHelp(at offset: Int? = nil) -> QuickHelpDocument? {
+        guard let d = editor else { return nil }
+        let off = offset ?? d.buffer.selection.range.lowerBound
+        guard let name = ModuleQuickHelp.moduleName(in: d.buffer.text, at: off) else { return nil }
+        let doc = ModuleQuickHelp.document(module: name, roots: [ModuleQuickHelp.searchRoot(container: session.model.url)])
+        showQuickHelpPopover(doc, at: d.buffer.identifierStart(before: off), text: name)
+        return doc
+    }
+
+    /// Shows `doc` in the Quick Help popover over the word at `offset` of
+    /// the open file (walks and tests).
+    public func showQuickHelpPopover(_ doc: QuickHelpDocument, at offset: Int, text: String = "") {
+        guard let d = editor else { return }
+        let f = languageFeatures
+        f.popoverCount += 1
+        f.popover = QuickHelpPopover(id: f.popoverCount, path: d.path, offset: offset, document: doc, text: text)
     }
 
     /// Quick Help's "Open in Developer Documentation": a documentation

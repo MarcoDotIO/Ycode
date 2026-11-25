@@ -57,6 +57,14 @@ public final class InspectorAreaController: NSViewController {
     public private(set) var selectedIndex = 0
     private var buttons: [NSButton] = []
     private let bar = NSStackView()
+    /// The tab bar's glass lens (P-198).
+    lazy var tabLens: GlassTabLensController = {
+        let l = GlassTabLensController(bar: .inspector)
+        l.buttons = { [weak self] in self?.buttons ?? [] }
+        l.selected = { [weak self] in self?.selectedIndex ?? 0 }
+        l.select = { [weak self] i in self?.select(i) }
+        return l
+    }()
     /// liquid-glass.md §2.5: the tab bar's glass capsule (248 × 30 at a
     /// 260-point width: 5 from the divider, 6 from the right edge) and the
     /// selected tab's recessed pill (about 78 × 24).
@@ -110,8 +118,10 @@ public final class InspectorAreaController: NSViewController {
         buttons = []
         let all = zip(CommandTable.inspectors, Self.symbols).map { ($0, $1) } + extraInspectors.map { ($0.name, $0.symbol) }
         for (i, (name, symbol)) in all.enumerated() {
-            let b = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: "\(name) inspector") ?? NSImage(),
-                             target: self, action: #selector(tabClicked(_:)))
+            // P-198: a glass lens while held; the tab selects on release (ControlStateAppKit.swift).
+            let b = GlassTabButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: "\(name) inspector") ?? NSImage(),
+                                   target: self, action: #selector(tabClicked(_:)))
+            b.lens = tabLens
             b.isBordered = false
             b.tag = i
             b.toolTip = i < Self.toolTips.count ? Self.toolTips[i] : "Show the \(name) inspector"

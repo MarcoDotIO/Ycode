@@ -441,7 +441,7 @@ extension NavigationStack: PrimitiveView {
             if p >= 1 { MainActor.assumeIsolated { completeMotion(s, node: node) } }
             return (true, p < 1)
         }
-        driver.onChange = { [weak node] in node?.graph.scheduleUpdate(transaction: Transaction()) }
+        driver.onChange = { [weak node] in node?.setNeedsLayout() }
         s.motion?.driver = driver
         node.graph.activate(driver)
     }
@@ -456,7 +456,7 @@ extension NavigationStack: PrimitiveView {
             c.setSuspended(true)
         }
         if m.outgoing != nil { node.invalidate(transaction: Transaction()) } else {
-            node.graph.scheduleUpdate(transaction: Transaction())
+            node.setNeedsLayout()
         }
     }
 
@@ -537,14 +537,14 @@ extension NavigationStackState {
             // Cancelled: back to the top page.
             swipe = nil
             belowNode?.setSuspended(true)
-            node.graph.scheduleUpdate(transaction: Transaction())
+            node.setNeedsLayout()
             return
         }
         let dx = max(0, sample.location.x - sample.startLocation.x)
         if swipe == nil { belowNode?.setSuspended(false) }
         if !ended {
             swipe = dx
-            node.graph.scheduleUpdate(transaction: Transaction())
+            node.setNeedsLayout()
             return
         }
         swipe = nil
@@ -556,7 +556,7 @@ extension NavigationStackState {
             pop(above: key)
         } else {
             belowNode?.setSuspended(true)
-            node.graph.scheduleUpdate(transaction: Transaction())
+            node.setNeedsLayout()
         }
     }
 }

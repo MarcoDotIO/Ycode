@@ -9,6 +9,8 @@ import YcodeIDECore
 /// rows.
 extension NavigatorAreaController {
     func installSelectorBackdrop(in root: NSView) {
+        // The disc slides between tabs on a click (P-193, SelectionPillView+Slide.swift).
+        selectorPill.slidesOnClick = true
         let backdrop = selectorBackdrop
         backdrop.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(backdrop, positioned: .below, relativeTo: selectorGlass)

@@ -40,10 +40,7 @@ extension ViewGraph {
     /// The presented layer of the layout node named `name`.
     package func presented(_ name: String) -> PresentedLayer? { presentedLayers()[name] }
 
-    private func rootLowering(of node: ViewNode) -> [LayoutNode] {
-        beginLowering()
-        return node.lower()
-    }
+    private func rootLowering(of node: ViewNode) -> [LayoutNode] { lowerGhost(node) }
 
     private static func present(_ n: LayoutNode, parent: AffineTransform2D, opacity: Double, mirror: CGFloat?,
                                 into out: inout [String: PresentedLayer]) {

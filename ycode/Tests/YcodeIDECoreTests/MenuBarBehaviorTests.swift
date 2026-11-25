@@ -32,12 +32,15 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(MenuTitles.title(generic: "Compile File", in: c) == "Compile \u{201C}Model.swift\u{201D}")
         #expect(MenuTitles.title(generic: "Add Line Bookmark", in: c) == "Bookmark \u{201C}Model.swift\u{201D} Line 12")
         #expect(MenuTitles.title(generic: "Add File Bookmark…", in: c) == "Bookmark \u{201C}Model.swift\u{201D}…")
-        // P-016: Stage / Unstage Selected Files, Mark as Resolved and Add keep their titles.
-        #expect(MenuTitles.title(generic: "Stage Selected Files", in: c) == "Stage Selected Files")
+        // P-016: "Stage Changes in Selected Files" in a workspace (the generic title with none);
+        // Unstage Selected Files, Mark as Resolved and Add keep their titles.
+        #expect(MenuTitles.title(generic: "Stage Selected Files", in: nil) == "Stage Selected Files")
+        #expect(MenuTitles.title(generic: "Stage Selected Files", in: c) == "Stage Changes in Selected Files")
+        #expect(MenuTitles.title(generic: "Unstage Selected Files", in: c) == "Unstage Selected Files")
         #expect(MenuTitles.title(generic: "Discard Changes in Selected Files…", in: c) == "Discard Changes in \u{201C}Model.swift\u{201D}…")
         #expect(MenuTitles.title(generic: "Mark as Resolved", in: c) == "Mark as Resolved")
         c.hasNavigatorFileSelection = true
-        #expect(MenuTitles.title(generic: "Stage Selected Files", in: c) == "Stage Selected Files")
+        #expect(MenuTitles.title(generic: "Stage Selected Files", in: c) == "Stage Changes in Selected Files")
         c.selectedFileIsUntracked = true
         #expect(MenuTitles.title(generic: "Discard Changes in Selected Files…", in: c) == "Move Selected Files to Trash…")
         c.containerKind = .project

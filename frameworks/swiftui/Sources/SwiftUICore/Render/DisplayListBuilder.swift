@@ -86,10 +86,11 @@ extension ViewGraph {
         let measurer = layout?.textMeasurer ?? TypesetTextMeasurer.shared
         let symbols = layout?.symbols ?? OpenSymbolProvider.shared
         var b = DisplayListBuilder(mirrored: mirror != nil, textMeasurer: measurer, symbols: symbols)
+        b.reusesItems = reusesLowering
         if let root = layoutResult?.root { b.emit(root, into: &items, parentID: .root, childIndex: 0) }
+        b.reusesItems = false
         for g in ghosts where g.node.isAlive && (g.parent?.isAlive ?? false) {
-            beginLowering()
-            let nodes = g.node.lower()
+            let nodes = lowerGhost(g.node)
             let engine = LayoutEngine(environment: environment, textMeasurer: measurer, symbols: symbols)
             for (i, (n, p)) in zip(nodes, g.placements).enumerated() {
                 engine.prepare(n)
@@ -115,6 +116,10 @@ package struct DisplayListBuilder {
     let mirrored: Bool
     let textMeasurer: any TextMeasurer
     let symbols: any SymbolProvider
+    /// B5 (P-200): unchanged nodes give their items from the last frame.
+    package var reusesItems = false
+    /// Subtrees with more items than this keep their own translating group.
+    static let groupThreshold = 24
 
     package init(mirrored: Bool, textMeasurer: any TextMeasurer, symbols: any SymbolProvider) {
         self.mirrored = mirrored
@@ -130,11 +135,35 @@ package struct DisplayListBuilder {
         return parent.child(UInt64(childIndex))
     }
 
-    package mutating func emit(_ n: LayoutNode, into out: inout [DisplayItem], parentID: DisplayItemID, childIndex: Int) {
-        guard let origin = n.placedLocalOrigin, let placedSize = n.placedSize else { return }
-        if n.renderEffects.contains(where: { if case .hidden = $0 { return true } else { return false } }) { return }
+    /// Appends `n`'s items to `out`. Returns true when they depend only on
+    /// the layout (B5, P-200: no live drawing, no animation in the subtree),
+    /// so that the node keeps them for the next frame while its subtree is
+    /// unchanged in its own coordinates (`LayoutNode.emitCache`,
+    /// `contentStamp`): a subtree that only moved gives the same items.
+    @discardableResult
+    package mutating func emit(_ n: LayoutNode, into out: inout [DisplayItem], parentID: DisplayItemID, childIndex: Int) -> Bool {
+        guard let origin = n.placedLocalOrigin, let placedSize = n.placedSize else { return true }
+        if n.renderEffects.contains(where: { if case .hidden = $0 { return true } else { return false } }) { return true }
         var local = CGRect(origin: origin, size: placedSize)
-        if let creator = n.creator as? ViewNode, let f = creator.presentedFrame(index: n.creatorIndex) { local = f }
+        var isStatic = !n.drawIsLive && n.presentation == nil
+        if let creator = n.creator as? ViewNode, let f = creator.presentedFrame(index: n.creatorIndex) {
+            local = f
+            isStatic = false
+        }
+        if reusesItems, isStatic, let c = n.emitCache, c.contentStamp == n.contentStamp, c.childIndex == childIndex,
+           c.local == local, c.parentID == parentID {
+            out.append(contentsOf: c.items)
+            return true
+        }
+        let start = out.count
+        defer {
+            if reusesItems && isStatic {
+                n.emitCache = EmitCache(parentID: parentID, childIndex: childIndex, local: local, contentStamp: n.contentStamp,
+                                        items: Array(out[start...]))
+            } else {
+                n.emitCache = nil
+            }
+        }
         let size = local.size
         let id = Self.itemID(n, parent: parentID, childIndex: childIndex)
 
@@ -164,9 +193,9 @@ package struct DisplayListBuilder {
         var maskItems: [DisplayItem] = []
         for i in order {
             if isMask && i == 1 {
-                emit(n.children[i], into: &maskItems, parentID: id, childIndex: i)
+                if !emit(n.children[i], into: &maskItems, parentID: id, childIndex: i) { isStatic = false }
             } else {
-                emit(n.children[i], into: &kids, parentID: id, childIndex: i)
+                if !emit(n.children[i], into: &kids, parentID: id, childIndex: i) { isStatic = false }
             }
         }
         if let ct = childTransform, !ct.isIdentity, !kids.isEmpty {
@@ -199,14 +228,18 @@ package struct DisplayListBuilder {
                 g.children = g.children.map { $0.multiplyingColors(by: c) }
             }
         }
-        if g.opacity <= 0 && g.effects.isEmpty { return }
+        if g.opacity <= 0 && g.effects.isEmpty { return isStatic }
         let dx = Double(local.minX), dy = Double(local.minY)
-        if g.isPlain {
+        if g.isPlain && !(reusesItems && g.children.count > Self.groupThreshold) {
             out.append(contentsOf: g.children.map { $0.translated(dx, dy) })
         } else {
+            // B5 (P-200): a large subtree stays a group that only moves, so
+            // its items are not copied and moved again at every level above
+            // it (they draw the same).
             g.transform = .translation(dx, dy)
             out.append(DisplayItem(id: id, .group(g)))
         }
+        return isStatic
     }
 }
 

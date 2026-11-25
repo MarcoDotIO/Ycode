@@ -362,16 +362,87 @@ struct FileDialogModifier: ViewModifier {
     @Environment(\._fileDialogMessage) private var message
     @Environment(\._fileDialogConfirmation) private var confirmation
 
+    @State private var portal = FilePortalState()
+    /// Only a window-system host has a desktop to ask (not headless hosts).
+    @Environment(\._desktopChrome) private var desktop
+
     func body(content: Content) -> some View {
         let binding = isPresented, complete = complete, cancelled = cancelled
         let start = directory ?? FileManager.default.homeDirectoryForCurrentUser
-        content.sheet(isPresented: isPresented) {
-            FilePanel(mode: mode, start: start, message: message, confirmation: confirmation,
-                      finish: { result in
-                          binding.wrappedValue = false
-                          if let result { complete(result) } else { cancelled() }
-                      })
+        let state = portal, mode = mode, message = message, confirmation = confirmation, desktop = desktop
+        // B5 (P-217, L-229): the desktop's own dialog through the portal
+        // (FileChooserPortal.swift); OpenViews' panel when there is none.
+        let sheetShown = Binding(get: { binding.wrappedValue && state.usesPanel }, set: { binding.wrappedValue = $0 })
+        content
+            .sheet(isPresented: sheetShown) {
+                FilePanel(mode: mode, start: start, message: message, confirmation: confirmation,
+                          finish: { result in
+                              binding.wrappedValue = false
+                              if let result { complete(result) } else { cancelled() }
+                          })
+            }
+            .onChange(of: binding.wrappedValue, initial: true) { _, shown in
+                guard shown else {
+                    state.end()
+                    return
+                }
+                guard !state.isActive else { return }
+                let title: String
+                switch mode {
+                case .open(let types, _): title = message ?? (types.allSatisfy { $0.conforms(to: .folder) } ? "Choose a Folder" : "Open")
+                case .save: title = message ?? "Save"
+                }
+                state.begin(mode, start: start, title: title, confirmation: confirmation, desktop: desktop) { urls in
+                    binding.wrappedValue = false
+                    guard let urls else {
+                        cancelled()
+                        return
+                    }
+                    if case .save(_, _, let write) = mode {
+                        do {
+                            try write(urls[0])
+                        } catch {
+                            complete(.failure(error))
+                            return
+                        }
+                    }
+                    complete(.success(urls))
+                }
+            }
+    }
+}
+
+/// Whether a file dialog shows the desktop's chooser or OpenViews' panel.
+@MainActor
+@Observable
+final class FilePortalState {
+    /// The portal is not there: the presentation uses the panel.
+    private(set) var usesPanel = false
+    @ObservationIgnored private(set) var isActive = false
+    @ObservationIgnored private var close: (() -> Void)?
+
+    func begin(_ mode: FileDialogMode, start: URL, title: String, confirmation: String?, desktop: Bool,
+               finish: @escaping ([URL]?) -> Void) {
+        guard desktop else {
+            usesPanel = true
+            return
         }
+        isActive = true
+        close = FileChooserPortal.shared.present(mode, start: start, title: title, confirmation: confirmation,
+                                                 finish: { [weak self] urls in
+                                                     self?.isActive = false
+                                                     self?.close = nil
+                                                     finish(urls)
+                                                 },
+                                                 unavailable: { [weak self] in self?.usesPanel = true })
+    }
+
+    /// The presentation ended (chosen, cancelled, or dismissed by the app).
+    func end() {
+        close?()
+        close = nil
+        isActive = false
+        usesPanel = false
     }
 }
 

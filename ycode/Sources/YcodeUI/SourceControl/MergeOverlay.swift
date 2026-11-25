@@ -129,9 +129,10 @@ public final class MergeOverlayView: NSView {
 
     // MARK: Veil
 
-    /// Darkens (or clears) the window over `duration`, ease-out, drawing it
-    /// disabled under the veil while it is on (§13.1).
-    func setVeil(on: Bool, duration: Double) {
+    /// Darkens (or clears) the window over `duration` (ease-out unless a
+    /// `curve` is given, after `delay`), drawing it disabled under the veil
+    /// while it is on (§13.1).
+    func setVeil(on: Bool, duration: Double, curve: Motion.Bezier = .easeOut, delay: Double = 0) {
         if on {
             if parentState == nil, let w = window { parentState = ModalParentDimming(window: w) }
             parentState?.apply(duration: duration)
@@ -146,14 +147,20 @@ public final class MergeOverlayView: NSView {
         a.fromValue = from
         a.toValue = to
         a.duration = duration
-        a.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        a.timingFunction = CAMediaTimingFunction(controlPoints: Float(curve.x1), Float(curve.y1), Float(curve.x2), Float(curve.y2))
+        if delay > 0 {
+            a.beginTime = veil.convertTime(CACurrentMediaTime(), from: nil) + delay
+            a.fillMode = .backwards
+        }
         veil.add(a, forKey: "veil")
     }
 
     // MARK: Alert
 
-    /// Shows the merge confirmation (§1.2): the veil darkens over 255 ms
-    /// and the alert is drawn at once; Merge turns accent once it is up.
+    /// Shows the merge confirmation (§1.2; P-137): the alert slides down
+    /// into its place as the reference's alert sheet does (+85 → +368 ms
+    /// from the click, 24 frames, symmetric: `Motion.mergeAlertSheet`) while
+    /// the veil darkens on the same curve; Merge turns accent once it is up.
     @discardableResult
     func showAlert(_ alert: MergeAlertView) -> MergeAlertView {
         self.alert?.removeFromSuperview()
@@ -161,11 +168,30 @@ public final class MergeOverlayView: NSView {
         addSubview(alert)
         needsLayout = true
         layoutSubtreeIfNeeded()
-        setVeil(on: true, duration: MergeSheetMotion.veilIn)
+        let m = Motion.mergeAlertSheet
+        setVeil(on: true, duration: m.duration, curve: m.bezier, delay: m.delay)
+        slideAlertIn(alert)
         alert.mergeButton.isDefaultLook = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + MergeSheetMotion.veilIn) { [weak alert] in alert?.mergeButton.isDefaultLook = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + m.total) { [weak alert] in alert?.mergeButton.isDefaultLook = true }
         window?.makeFirstResponder(alert)
         return alert
+    }
+
+    /// The alert's slide down by `Motion.mergeAlertDrop` points
+    /// (`Motion.mergeAlertSheet`; Reduce Motion: none).
+    func slideAlertIn(_ alert: MergeAlertView) {
+        alert.wantsLayer = true
+        guard let layer = alert.layer, !reduceMotion else { return }
+        let m = Motion.mergeAlertSheet
+        let flipped = (layer.superlayer?.isGeometryFlipped ?? false) || isFlipped
+        let slide = CABasicAnimation(keyPath: "transform.translation.y")
+        slide.fromValue = flipped ? -Motion.mergeAlertDrop : Motion.mergeAlertDrop
+        slide.toValue = 0
+        slide.duration = m.duration
+        slide.timingFunction = CAMediaTimingFunction(controlPoints: Float(m.bezier.x1), Float(m.bezier.y1), Float(m.bezier.x2), Float(m.bezier.y2))
+        slide.beginTime = layer.convertTime(CACurrentMediaTime(), from: nil) + m.delay
+        slide.fillMode = .backwards
+        layer.add(slide, forKey: "alertSlide")
     }
 
     /// Fades the alert out over 90 ms (§1.2, "Clicking Merge").

@@ -153,4 +153,15 @@ public final class EditorDocument {
 
     /// Restores recovered text over the buffer (an undoable edit; dirty).
     public func restore(text: String) { apply(text: text) }
+
+    /// The same document at the path the file was moved to (a navigator
+    /// move or rename): its buffer, with its text, selection and undo
+    /// history, stays (`source-editor.md`, "Text undo belongs to the file").
+    public func moved(to newPath: String) -> EditorDocument {
+        let data = FileManager.default.contents(atPath: newPath)
+        let d = EditorDocument(path: newPath, buffer: buffer, format: format,
+                               stamp: data.map { EditorFile.stamp(path: newPath, data: $0) } ?? stamp, readOnlyReason: readOnlyReason)
+        buffer.onTextChange = nil
+        return d
+    }
 }

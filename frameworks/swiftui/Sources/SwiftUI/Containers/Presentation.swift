@@ -316,10 +316,11 @@ package final class PresentationCenter {
             }
             return (true, p < 1)
         }
-        driver.onChange = { [weak graph] in graph?.scheduleUpdate(transaction: Transaction()) }
+        // B5 (P-200): the layer lowers the progress; it lowers again.
+        driver.onChange = { [weak owner] in owner?.setNeedsLayout() }
         e.driver = driver
         graph.activate(driver)
-        graph.scheduleUpdate(transaction: Transaction())
+        owner.setNeedsLayout()
     }
 }
 

@@ -345,17 +345,19 @@ func fakeTool(at url: URL, record: URL, output: String) throws {
         let proj = try IOSAppTemplate.create(options: o, in: dir)
         let session = WorkspaceSession(model: try WorkspaceModel(url: proj))
         let wc = window(session)
-        #expect(session.projectIssues.map(\.message) == ["Signing for \u{201C}Phone\u{201D} requires a development team."])
-        #expect(session.projectIssues.first?.severity == .warning && session.projectIssues.first?.location == nil)
-        #expect(session.displayedIssues.contains(session.projectIssues[0]))
-        #expect(wc.issueCapsule.warnings == 1)
+        // The recommended-settings check (P-120) comes first; this test is about signing.
+        let signing = session.projectIssues.filter { !WorkspaceSession.isRecommendedSettingsIssue($0) }
+        #expect(signing.map(\.message) == ["Signing for \u{201C}Phone\u{201D} requires a development team."])
+        #expect(signing.first?.severity == .warning && signing.first?.location == nil)
+        #expect(session.displayedIssues.contains(signing[0]))
+        #expect(wc.issueCapsule.warnings == session.projectIssues.count)
         // Build issues come and go; the project check stays.
         session.clearIssues()
-        #expect(session.displayedIssues.count == 1)
+        #expect(session.displayedIssues.count == session.projectIssues.count)
 
         let tool = WorkspaceSession(model: try WorkspaceModel(url: try writeToolProject(at: dir.appendingPathComponent("tool"))))
         tool.refreshProjectIssues()
-        #expect(tool.projectIssues.isEmpty)
+        #expect(!tool.projectIssues.contains { $0.message.hasPrefix("Signing for") })
     }
 }
 

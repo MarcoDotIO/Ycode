@@ -11,6 +11,8 @@ extension WorkspaceWindowController {
             c.queryItems = [URLQueryItem(name: "q", value: name)]
             if let u = c.url { NSWorkspace.shared.open(u) }
         }
+        // P-197: Ycode's own tooltips (ToolTipPresenter.swift).
+        ToolTipPresenter.shared.install(on: window)
         e.onBecameEmpty = { [weak self, weak e] in
             guard let self, let e else { return }
             self.showEmptyEditor(e)
@@ -29,7 +31,8 @@ extension WorkspaceWindowController {
     func showEmptyEditor(_ e: SourceEditorController) {
         let recent = Array(navigator.recentFiles.reversed()), root = Self.breadcrumbRoot(session.model.url)
         withWorkspaceCandidates { [weak self, weak e] candidates in
-            guard let self, let e, e.fileURL == nil, e.auxiliary == nil else { return }
+            // Not over a split pane's "No Editor" (P-066, `closeDocument`).
+            guard let self, let e, e.fileURL == nil, e.auxiliary == nil, e.noEditorPlaceholder == nil else { return }
             e.showEmptyState(recent: recent, candidates: candidates, root: root) { [weak self, weak e] path, line in
                 guard let self else { return }
                 if let e, let i = self.editorArea.tab.editors.firstIndex(where: { $0 === e }) { self.editorArea.tab.focused = i }

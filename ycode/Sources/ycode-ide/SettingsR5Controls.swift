@@ -175,7 +175,6 @@ struct SettingsPushButton: View {
     var target: String
     var action: () -> Void
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         let p = SettingsPalette(scheme)
@@ -187,7 +186,6 @@ struct SettingsPushButton: View {
                 .padding(.horizontal, SettingsAppearanceLayout.pushButtonPadding)
                 .frame(height: SettingsAppearanceLayout.pushButtonHeight)
                 .background(RoundedRectangle(cornerRadius: SettingsAppearanceR6.pushButtonRadius, style: .circular).fill(p.pushButton))
-                .opacity(isEnabled ? 1 : 0.45)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -325,11 +323,15 @@ struct SettingsTextField: View {
     var target: String
     var onCommit: () -> Void
     @Environment(\.colorScheme) private var scheme
+    /// P-155 (L-198): the value is saved when editing ends: Return, Tab or a
+    /// click elsewhere, or the page going away while the field has focus.
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         let p = SettingsPalette(scheme)
         let P = SimulatorHostPage.self
         TextField(placeholder, text: text)
+            .focused($isFocused)
             .textFieldStyle(.plain)
             .font(.system(size: P.fieldFontSize))
             .foregroundStyle(p.label)
@@ -340,6 +342,8 @@ struct SettingsTextField: View {
                     .overlay { RoundedRectangle(cornerRadius: P.fieldRadius, style: .continuous).stroke(p.fieldBorder, lineWidth: 1) }
             }
             .onSubmit(onCommit)
+            .onChange(of: isFocused) { was, now in if was && !now { onCommit() } }
+            .onDisappear { if isFocused { onCommit() } }
             .shellTarget(target)
     }
 }

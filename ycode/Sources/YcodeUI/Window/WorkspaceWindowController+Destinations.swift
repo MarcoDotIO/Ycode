@@ -323,6 +323,22 @@ final class DestinationPopUpButton: NSPopUpButton, NSMenuDelegate {
         needsLayout = true
     }
 
+    /// The destination chooser popover (`popovers.md` §2.1, P-113) opens on
+    /// mouse-down, not the pop-up's menu.
+    override func mouseDown(with event: NSEvent) {
+        guard isEnabled, let wc = window?.windowController as? WorkspaceWindowController else { return super.mouseDown(with: event) }
+        wc.showDestinationChooser()
+    }
+
+    /// Choose Destination (⌃⇧0) and Show All Run Destinations click the
+    /// button: the popover, Incompatible expanded when the menu lists it
+    /// (Show All, §11.4 item 5).
+    override func performClick(_ sender: Any?) {
+        guard let wc = window?.windowController as? WorkspaceWindowController else { return super.performClick(sender) }
+        let all = menu?.items.contains { $0.isSectionHeader && $0.title == DestinationMenuModel.incompatibleTitle } ?? false
+        wc.showDestinationChooser(expanded: all)
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) { versions(true, in: menu) }
     func menuDidClose(_ menu: NSMenu) {
         versions(false, in: menu)

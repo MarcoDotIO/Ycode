@@ -21,9 +21,13 @@ package struct LayoutEngine {
         self.symbols = symbols
     }
 
+    /// Prepares `root` for a pass: with a new context (every node measured
+    /// afresh), or B5 (P-200) with `reusing`, a context kept from an earlier
+    /// pass, whose unchanged nodes keep their measurements.
     @discardableResult
-    package func prepare(_ root: LayoutNode) -> LayoutContext {
-        let ctx = LayoutContext(environment: environment, textMeasurer: textMeasurer, symbols: symbols)
+    package func prepare(_ root: LayoutNode, reusing kept: LayoutContext? = nil) -> LayoutContext {
+        let ctx = kept ?? LayoutContext(environment: environment, textMeasurer: textMeasurer, symbols: symbols)
+        ctx.beginPass()
         root.prepare(context: ctx)
         return ctx
     }
@@ -37,8 +41,8 @@ package struct LayoutEngine {
 
     /// Sizes the root for `proposal`, places it at the origin and reports
     /// the frames of named nodes.
-    package func layout(_ root: LayoutNode, proposal: ProposedViewSize) -> LayoutResult {
-        let ctx = prepare(root)
+    package func layout(_ root: LayoutNode, proposal: ProposedViewSize, reusing kept: LayoutContext? = nil) -> LayoutResult {
+        let ctx = prepare(root, reusing: kept)
         let size = root.sizeThatFits(proposal)
         root.place(at: .zero, size: size, proposal: proposal)
         return LayoutResult(root: root, context: ctx, size: size, proposal: proposal,
@@ -49,12 +53,16 @@ package struct LayoutEngine {
     /// safe-area rectangle and placed in it (04 §1, §7). `safeAreaInsets` are
     /// in layout-direction terms (on the reference device: bottom 34 and
     /// trailing 84 in left-to-right; leading 84 in right-to-left).
-    package func layout(_ root: LayoutNode, window: CGSize, safeAreaInsets insets: EdgeInsets) -> LayoutResult {
-        let ctx = prepare(root)
+    package func layout(_ root: LayoutNode, window: CGSize, safeAreaInsets insets: EdgeInsets,
+                        reusing kept: LayoutContext? = nil) -> LayoutResult {
         let windowRect = CGRect(origin: .zero, size: window)
         let safe = CGRect(x: insets.leading, y: insets.top,
                           width: Swift.max(window.width - insets.horizontal, 0),
                           height: Swift.max(window.height - insets.vertical, 0))
+        // Placements that grow into the safe area depend on it: a new safe
+        // area starts afresh.
+        let reuse = kept.flatMap { k in k.safeArea.map { $0.window == windowRect && $0.safe == safe } == true ? k : nil }
+        let ctx = prepare(root, reusing: reuse)
         ctx.safeArea = (windowRect, safe)
         let proposal = ProposedViewSize(safe.size)
         let size = root.sizeThatFits(proposal)

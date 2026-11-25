@@ -1,0 +1,1920 @@
+{
+ "name": "b5-obs-popovers",
+ "title": "B5-OBS 2/6: scheme and destination popovers, New Scheme sheet, Quick Help top and bottom, Jump to Line, Quick Actions, Open Quickly, Library, Quick New Project, active look, Product ▸ Destination.",
+ "targets": [
+  "xcode"
+ ],
+ "compare_order": [
+  "xcode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.0
+ },
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90,
+  "offset": [
+   1020,
+   300
+  ]
+ },
+ "steps": [
+  {
+   "id": "d-rest",
+   "note": "Showcase.swift open. AX tree.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-scheme-open",
+   "note": "Click the scheme capsule: the chooser popover appears. AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "scheme",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-scheme-hover-0",
+   "note": "Pointer onto the 'Parity' row, 1.0 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Parity",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.3
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-scheme-hover-1",
+   "note": "Pointer onto the 'Edit Scheme…' row, 1.0 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Edit Scheme…",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.3
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-scheme-hover-2",
+   "note": "Pointer onto the 'New Scheme…' row, 1.0 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "New Scheme…",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.3
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-scheme-hover-3",
+   "note": "Pointer onto the 'Manage Schemes…' row, 1.0 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Manage Schemes…",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.3
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-scheme-keys",
+   "note": "Down, Down, Up (keyboard selection).",
+   "do": [
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "key": "up"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-scheme-escape",
+   "note": "Escape: the popover leaves.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-newscheme",
+   "note": "Chooser again, click 'New Scheme…': the New Scheme sheet. AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "New Scheme…",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "newscheme",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-newscheme-target",
+   "note": "Click the sheet's Target pop-up (its menu). AX tree; Escape.",
+   "do": [
+    {
+     "click": {
+      "role": "AXPopUpButton",
+      "scope": "app",
+      "visible": true,
+      "index": 0
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "target",
+     "depth": 40
+    },
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-newscheme-cancel",
+   "note": "Cancel.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-dest-open",
+   "note": "Click the destination capsule: its popover. AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Run Destination",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "dest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-dest-hover-mac",
+   "note": "Pointer onto the 'My Mac' row, 1.0 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "My Mac",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.3
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-dest-incompatible",
+   "note": "Click 'Incompatible': the section expands in place (rows listing devices are painted out). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Incompatible",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "incompat",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-dest-escape",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-qh-top",
+   "note": "option+click 'Store0' (line 38, upper part of the editor): Quick Help popover. AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "Store0",
+      "occurrence": 1,
+      "offset": 2
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "qh-top",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-qh-top-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-qh-bottom",
+   "note": "option+click 'name' in 'nonisolated let name' (line 40, the editor's last full line at 1400 × 880): Quick Help. AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "let name",
+      "occurrence": 1,
+      "offset": 5
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "qh-bottom",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-qh-bottom-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-jump-line",
+   "note": "cmd+L: Jump to Line. AX tree.",
+   "do": [
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "key": "cmd+l"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "jumpline",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-jump-line-workspace",
+   "note": "Still with Jump to Line open (active look of the workspace).",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-jump-line-escape",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-quick-actions",
+   "note": "cmd+shift+A: Quick Actions. AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+a"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "quickactions",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-quick-actions-escape",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-open-quickly",
+   "note": "cmd+shift+O: Open Quickly (active look behind it). AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+o"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "openquickly",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-open-quickly-escape",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-library-open",
+   "note": "shift+cmd+L: the Library appears. AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+l"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "library",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-library-outside",
+   "note": "Click outside it (window point 150, 700, the navigator): does it leave?",
+   "do": [
+    {
+     "click": [
+      150,
+      700
+     ]
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-library-esc0",
+   "note": "Escape in case it stayed.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-library-open-2",
+   "note": "shift+cmd+L again.",
+   "do": [
+    {
+     "key": "cmd+shift+l"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-library-escape",
+   "note": "Escape: its exit.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-quick-new-project",
+   "note": "cmd+shift+N with the workspace open: what appears. AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+n"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "newproject",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-quick-new-project-cancel",
+   "note": "Cancel (button), else Escape.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-settings-front",
+   "note": "cmd+,: Settings in front of the workspace (active look).",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "move": [
+      1100,
+      300
+     ],
+     "window": "Appearance"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-settings-close",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-about-front",
+   "note": "Xcode ▸ About Xcode in front of the workspace (active look).",
+   "do": [
+    {
+     "menu": "Xcode > About Xcode"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "about",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-about-close",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-product-dest",
+   "note": "Product menu, pointer on Destination (its sub-menu; device rows painted out). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Product",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "hoveritem": "Destination"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "product-dest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-product-dest-items",
+   "note": "Items of the open menus.",
+   "do": [
+    {
+     "submenus": "items",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-product-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-appearance-light",
+   "note": "Settings ▸ Appearance: Xcode's own Appearance set to Light; Settings closed.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "AppearanceLight",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "appearance",
+     "depth": 40
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-rest",
+   "note": "Showcase.swift open. AX tree.",
+   "do": [
+    {
+     "tree": "rest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-scheme-open",
+   "note": "Click the scheme capsule: the chooser popover appears. AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "scheme",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-scheme-hover-0",
+   "note": "Pointer onto the 'Parity' row, 1.0 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Parity",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.3
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-scheme-hover-1",
+   "note": "Pointer onto the 'Edit Scheme…' row, 1.0 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Edit Scheme…",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.3
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-scheme-hover-2",
+   "note": "Pointer onto the 'New Scheme…' row, 1.0 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "New Scheme…",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.3
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-scheme-hover-3",
+   "note": "Pointer onto the 'Manage Schemes…' row, 1.0 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Manage Schemes…",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.3
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-scheme-keys",
+   "note": "Down, Down, Up (keyboard selection).",
+   "do": [
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "key": "down"
+    },
+    {
+     "wait": 0.5
+    },
+    {
+     "key": "up"
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-scheme-escape",
+   "note": "Escape: the popover leaves.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-newscheme",
+   "note": "Chooser again, click 'New Scheme…': the New Scheme sheet. AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "click": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "New Scheme…",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "newscheme",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-newscheme-target",
+   "note": "Click the sheet's Target pop-up (its menu). AX tree; Escape.",
+   "do": [
+    {
+     "click": {
+      "role": "AXPopUpButton",
+      "scope": "app",
+      "visible": true,
+      "index": 0
+     }
+    },
+    {
+     "wait": 1.0
+    },
+    {
+     "tree": "target",
+     "depth": 40
+    },
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-newscheme-cancel",
+   "note": "Cancel.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-dest-open",
+   "note": "Click the destination capsule: its popover. AX tree.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Run Destination",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "dest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-dest-hover-mac",
+   "note": "Pointer onto the 'My Mac' row, 1.0 s.",
+   "do": [
+    {
+     "hover": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "My Mac",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.3
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-dest-incompatible",
+   "note": "Click 'Incompatible': the section expands in place (rows listing devices are painted out). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "subrole": "AXTableRow",
+      "text": "Incompatible",
+      "scope": "app",
+      "visible": true
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "incompat",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-dest-escape",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-qh-top",
+   "note": "option+click 'Store0' (line 38, upper part of the editor): Quick Help popover. AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "Store0",
+      "occurrence": 1,
+      "offset": 2
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "qh-top",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-qh-top-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-qh-bottom",
+   "note": "option+click 'name' in 'nonisolated let name' (line 40, the editor's last full line at 1400 × 880): Quick Help. AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "let name",
+      "occurrence": 1,
+      "offset": 5
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "qh-bottom",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-qh-bottom-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-jump-line",
+   "note": "cmd+L: Jump to Line. AX tree.",
+   "do": [
+    {
+     "hover": [
+      700,
+      500
+     ]
+    },
+    {
+     "key": "cmd+l"
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "jumpline",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-jump-line-workspace",
+   "note": "Still with Jump to Line open (active look of the workspace).",
+   "do": [],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-jump-line-escape",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-quick-actions",
+   "note": "cmd+shift+A: Quick Actions. AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+a"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "quickactions",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-quick-actions-escape",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-open-quickly",
+   "note": "cmd+shift+O: Open Quickly (active look behind it). AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+o"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "openquickly",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-open-quickly-escape",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-library-open",
+   "note": "shift+cmd+L: the Library appears. AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+l"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "library",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-library-outside",
+   "note": "Click outside it (window point 150, 700, the navigator): does it leave?",
+   "do": [
+    {
+     "click": [
+      150,
+      700
+     ]
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-library-esc0",
+   "note": "Escape in case it stayed.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-library-open-2",
+   "note": "shift+cmd+L again.",
+   "do": [
+    {
+     "key": "cmd+shift+l"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-library-escape",
+   "note": "Escape: its exit.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-quick-new-project",
+   "note": "cmd+shift+N with the workspace open: what appears. AX tree.",
+   "do": [
+    {
+     "key": "cmd+shift+n"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "newproject",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-quick-new-project-cancel",
+   "note": "Cancel (button), else Escape.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-settings-front",
+   "note": "cmd+,: Settings in front of the workspace (active look).",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "move": [
+      1100,
+      300
+     ],
+     "window": "Appearance"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-settings-close",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-about-front",
+   "note": "Xcode ▸ About Xcode in front of the workspace (active look).",
+   "do": [
+    {
+     "menu": "Xcode > About Xcode"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "tree": "about",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.4
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-about-close",
+   "note": "cmd+W.",
+   "do": [
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-product-dest",
+   "note": "Product menu, pointer on Destination (its sub-menu; device rows painted out). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXMenuBarItem",
+      "title": "Product",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 0.8
+    },
+    {
+     "hoveritem": "Destination"
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "product-dest",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-product-dest-items",
+   "note": "Items of the open menus.",
+   "do": [
+    {
+     "submenus": "items",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-product-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "z-appearance-system",
+   "note": "Settings ▸ Appearance: Xcode's own Appearance set to System; Settings closed.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "AppearanceAuto",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "appearance",
+     "depth": 40
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "z-end",
+   "note": "Back to System (dark). AX tree.",
+   "do": [
+    {
+     "tree": "end",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Showcase|Showcase.swift"
+   }
+  },
+  {
+   "wait": 2.5
+  }
+ ]
+}

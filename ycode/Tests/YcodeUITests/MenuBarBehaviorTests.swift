@@ -234,12 +234,29 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         }
     }
 
-    /// File ▸ Open… works unbundled (no Info.plist document types).
+    /// File ▸ Open… works unbundled (no Info.plist document types), in any
+    /// test order: the application delegate performs it, before the shared
+    /// document controller (which may be AppKit's plain one, made first by
+    /// another suite, that disables it). Ycode's controller enables it too.
     @Test func openIsEnabledUnbundled() {
         _ = NSApplication.shared
-        let dc = NSDocumentController.shared as? YcodeDocumentController ?? YcodeDocumentController()
         let item = NSMenuItem(title: "Open…", action: #selector(NSDocumentController.openDocument(_:)), keyEquivalent: "o")
-        #expect(dc.validateUserInterfaceItem(item))
+        let delegate = AppDelegate()
+        #expect(delegate.responds(to: item.action))
+        #expect(delegate.validateMenuItem(item))
+        if let dc = NSDocumentController.shared as? YcodeDocumentController { #expect(dc.validateUserInterfaceItem(item)) }
+    }
+
+    /// Menu test hygiene (beta 5): restoring isolated preferences tells
+    /// their observers, as a change in Settings does.
+    @Test func isolatedPreferencesRestorePostsDidChange() {
+        final class Count: @unchecked Sendable { var n = 0 }
+        let prefs = IsolatedPreferences("restore-posts")
+        let posted = Count()
+        let token = NotificationCenter.default.addObserver(forName: Preferences.didChange, object: nil, queue: nil) { _ in posted.n += 1 }
+        defer { NotificationCenter.default.removeObserver(token) }
+        prefs.restore()
+        #expect(posted.n == 1)
     }
 
     @Test func appCommandLinks() {

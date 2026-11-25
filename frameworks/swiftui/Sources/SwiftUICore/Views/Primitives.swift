@@ -43,6 +43,16 @@ public struct Image: Equatable, Sendable {
     package init(naturalSize: CGSize) { source = .natural(naturalSize) }
     /// An image from decoded or encoded pixels; `scale` pixels per point.
     package init(_ image: RenderImage, scale: CGFloat = 1) { source = .raster(image, scale: scale) }
+    /// An image from 8-bit RGBA pixels, alpha premultiplied, row by row
+    /// (`width` × `height` × 4 bytes); `scale` pixels per point. OpenViews'
+    /// stand-in for `Image(decorative: CGImage, scale:)`, for pictures made
+    /// at run time (a live device screen). Nil when the buffer's size is wrong.
+    public init?(rgbaPixels: [UInt8], width: Int, height: Int, scale: CGFloat = 1) {
+        guard width > 0, height > 0, rgbaPixels.count == width * height * 4 else { return nil }
+        let size = PixelSize(width: width, height: height)
+        self.init(RenderImage(source: .pixels(PixelImage(size: size, rgba: rgbaPixels)), pixelSize: size), scale: scale)
+        isDecorative = true
+    }
 
     public enum ResizingMode: Hashable, Sendable { case tile, stretch }
 

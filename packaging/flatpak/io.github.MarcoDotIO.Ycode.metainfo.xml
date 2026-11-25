@@ -35,6 +35,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="1.0.0-beta.5" date="2026-11-24" type="development">
+      <description>
+        <p>Fifth beta: motion, popovers and window layout. Panels slide with Xcode's timings; the scheme and destination choosers and Quick Help are popovers; windows and the toolbar narrow as in Xcode; the navigators gain filtering, drag and drop and rename in place; Device Hub starts simulators, and the new ycrun tool runs Ycode's simulators from the command line. The Linux IDE draws its panel slides several times faster.</p>
+      </description>
+    </release>
     <release version="1.0.0-beta.4" date="2026-11-17" type="development">
       <description>
         <p>Fourth beta: quick wins and broken workflows from a full comparison with Xcode 27.1. Both IDEs' menus come from one table with Xcode's shortcuts and option-key alternates; New Project, find, schemes, Activate Console, New Branch and the merge sheet work as in Xcode; the Linux IDE's menus, alerts and sheets behave like the macOS IDE's.</p>

@@ -1,0 +1,332 @@
+{
+ "name": "b5-obs-qh",
+ "title": "B5-OBS 3b: Quick Help popovers for symbols in the upper part of the editor.",
+ "targets": [
+  "xcode"
+ ],
+ "compare_order": [
+  "xcode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.0
+ },
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90,
+  "offset": [
+   1020,
+   300
+  ]
+ },
+ "steps": [
+  {
+   "id": "d-qh-near-top",
+   "note": "option+click 'Foundation' in 'import Foundation' (line 3, the editor's top): Quick Help. AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "import Foundation",
+      "occurrence": 1,
+      "offset": 9
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "qh",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-qh-near-top-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-qh-mid",
+   "note": "option+click 'Mode0' (line 7, upper third): Quick Help.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "enum Mode0",
+      "occurrence": 1,
+      "offset": 6
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-qh-mid-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-appearance-light",
+   "note": "Settings ▸ Appearance: Xcode's own Appearance set to Light; Settings closed.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "AppearanceLight",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "appearance",
+     "depth": 40
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-qh-near-top",
+   "note": "option+click 'Foundation' in 'import Foundation' (line 3, the editor's top): Quick Help. AX tree.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "import Foundation",
+      "occurrence": 1,
+      "offset": 9
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.5
+    },
+    {
+     "tree": "qh",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-qh-near-top-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-qh-mid",
+   "note": "option+click 'Mode0' (line 7, upper third): Quick Help.",
+   "do": [
+    {
+     "textclick": {
+      "needle": "enum Mode0",
+      "occurrence": 1,
+      "offset": 6
+     },
+     "modifiers": "alt"
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.8
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-qh-mid-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "z-appearance-system",
+   "note": "Settings ▸ Appearance: Xcode's own Appearance set to System; Settings closed.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "AppearanceAuto",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "appearance",
+     "depth": 40
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "z-end",
+   "note": "Back to System (dark). AX tree.",
+   "do": [
+    {
+     "tree": "end",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Showcase|Showcase.swift"
+   }
+  },
+  {
+   "wait": 2.5
+  }
+ ]
+}

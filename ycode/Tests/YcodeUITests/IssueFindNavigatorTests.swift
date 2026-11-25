@@ -86,7 +86,8 @@ import YcodeBuild
         nav.chooseIssueFilter(tag: 11)
         #expect(nav.filter.placeholderString == "≠ Deprecation")
         nav.select(0)
-        #expect(nav.filterOptionTitles == ["Show Only Recent Files", "Show Only Files with Source-Control Status"])
+        // The recent filters and Clear Recents (P-037; the toggles are in the field).
+        #expect(nav.filterOptionTitles == ["Clear Recents"])
     }
 
     @Test func findHeaderAndScopeMenu() {
@@ -100,11 +101,12 @@ import YcodeBuild
         nav.containingGroups = { [("Sources", "/p/Sources"), ("Demo", "/p/Sources/Demo")] }
         nav.rebuildScopeMenu()
         let titles = nav.findScope.menu!.items.map { $0.isSeparatorItem ? "-" : $0.title }
-        #expect(titles == ["Package", "Package Dependencies", "Package and Package Dependencies", "-", "Current Find Results",
+        // "Workspace" for every container (P-040).
+        #expect(titles == ["Workspace", "Workspace Dependencies", "Workspace and Workspace Dependencies", "-", "Current Find Results",
                            "-", "Containing Groups", "Sources", "Demo", "-", "Open Files", "Custom Scopes…"])
         #expect(nav.findScope.menu!.item(withTitle: "Current Find Results")?.isEnabled == false)
         #expect(nav.findScope.menu!.item(withTitle: "Custom Scopes…")?.isEnabled == true)
-        #expect(nav.findScope.title == "In Package")
+        #expect(nav.findScope.title == "In Workspace")
     }
 
     @Test func capsuleHidesZeros() {

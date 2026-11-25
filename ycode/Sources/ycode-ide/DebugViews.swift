@@ -93,8 +93,13 @@ struct DebugOutline<Accessory: View>: View {
     @ViewBuilder var accessory: (DebugNavigatorRow) -> Accessory
     @Environment(\.colorScheme) private var scheme
 
+    @Environment(\.navigatorFilterQuery) private var filterQuery
+
     var body: some View {
         let c = ShellColors(scheme)
+        // P-037: the rows through the navigator's filter.
+        let kept = Set(OutlineRows.filtered(self.rows.map(\.outline), query: filterQuery).map(\.id))
+        let rows = self.rows.filter { kept.contains($0.id) }
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(rows) { r in
@@ -116,7 +121,8 @@ struct DebugOutline<Accessory: View>: View {
             .padding(.top, CGFloat(WorkspaceChrome.firstRowGap))
             .padding(.bottom, 8)
         }
-        .scrollIndicators(.hidden)
+        .navigatorKeyboard(rows: rows.filter { $0.kind != .separator && $0.kind != .gauge }.map(\.outline), selection: selection, select: select,
+                           toggle: toggle)   // P-051, NavigatorKeyboard.swift
         .shellTarget(target)
     }
 

@@ -199,9 +199,10 @@ import Testing
         #expect(alert.mergeButton.frame.maxX == 420 - 20.5 && alert.mergeButton.frame.maxY == 132 - 18)
         #expect(alert.mergeButton.frame.minX - alert.cancelButton.frame.maxX == 14.5)
         #expect(alert.iconView.frame == NSRect(x: 28.5, y: 22, width: 55, height: 55))
-        // The veil: black at 19.6 % (white becomes #CDCDCD) over 255 ms.
+        // The veil: black at 19.6 % (white becomes #CDCDCD), darkening with
+        // the alert's drop (P-137, `Motion.mergeAlertSheet`; it was 255 ms).
         let veil = try #require(overlay.veil.animation(forKey: "veil") as? CABasicAnimation)
-        #expect(veil.duration == 0.255 && overlay.veil.opacity == Float(MergeSheetPalette.light.veilOpacity))
+        #expect(abs(veil.duration - Motion.mergeAlertSheet.duration) < 1e-9 && overlay.veil.opacity == Float(MergeSheetPalette.light.veilOpacity))
         // Grey during its first frames, the accent once it is up.
         #expect(!alert.mergeButton.isDefaultLook)
         try await Task.sleep(nanoseconds: 400_000_000)

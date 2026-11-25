@@ -36,7 +36,12 @@ struct SymbolNavigator: View {
                     .padding(.top, CGFloat(WorkspaceChrome.firstRowGap))
                     .padding(.bottom, 8)
                 }
-                .scrollIndicators(.hidden)
+                // P-051: the outline takes the keyboard; its scroller is not hidden.
+                .navigatorKeyboard(rows: rows.map { OutlineRow.plain(id: $0.id, level: $0.level, title: $0.title,
+                                                                     isExpandable: $0.isExpandable, isExpanded: $0.isExpanded) },
+                                   selection: s.selection,
+                                   select: { id in if let r = rows.first(where: { $0.id == id }) { if r.line == nil { s.selection = id } else { model.openSymbolRow(r) } } },
+                                   toggle: { s.setExpanded($0, $1) })
                 .shellTarget("symbol navigator")
             }
         }

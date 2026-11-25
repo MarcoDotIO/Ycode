@@ -95,4 +95,10 @@ extension AppDelegate {
 
     /// Ycode ▸ Behaviors ▸ Edit Behaviors… with no workspace window.
     @objc public func showBehaviorsSettings(_ sender: Any?) { SettingsWindowController.shared.show(pane: "Behaviors") }
+
+    /// File ▸ Open… (⌘O): the document controller's open panel. The
+    /// application delegate answers before the document controller does,
+    /// so Open… is enabled whichever controller became the shared one (an
+    /// unbundled AppKit controller has no document types and disables it).
+    @objc public func openDocument(_ sender: Any?) { NSDocumentController.shared.openDocument(sender) }
 }

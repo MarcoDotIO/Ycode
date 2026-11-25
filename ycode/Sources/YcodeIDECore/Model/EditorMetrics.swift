@@ -146,17 +146,17 @@ public enum EditorMetrics {
     // Round 2 (`editor-area.md` §D.5, key window, Long.swift open): this
     // supersedes the duration and curve above.
 
-    /// From the press to the first motion: hide 75 ms, show 170 ms, so the
-    /// first moving frame is drawn about +85 and +180 ms after the press at
-    /// 100 Hz (council round 10, row 248: the means of the reference's two
-    /// captures, whose start moved by +65 and +89 ms between rounds 9 and
-    /// 10 while the show kept starting 80–110 ms after the hide; rounds 4–9
-    /// had hide 43–60 and show 116–170).
-    public static func inspectorSlideDelay(show: Bool) -> Double { show ? 0.170 : 0.075 }
-    /// The motion (row 248; `editor-area.md` H.2): hide about 200 ms (the
-    /// reference 218 and 188 ms in rounds 9 and 10), show about 230 (229
-    /// and 230 ms). Rounds 8–9 had 150 and 280.
-    public static func inspectorSlideMotion(show: Bool) -> Double { show ? 0.230 : 0.200 }
+    /// From the press to the first motion and the motion's length: beta 5's
+    /// motion catalogue (`Motion.inspector`, P-192: the reference hides over
+    /// +129 → +404 ms and shows over +78 → +320 from the input). Round 10
+    /// (row 248) had hide 75 + 200 and show 170 + 230; rounds 4–9 hide 43–60
+    /// and show 116–170 before 150 and 280 of motion.
+    public static func inspectorSlideDelay(show: Bool, bySelector: Bool = false) -> Double {
+        Motion.inspector(show: show, bySelector: bySelector).delay
+    }
+    public static func inspectorSlideMotion(show: Bool, bySelector: Bool = false) -> Double {
+        Motion.inspector(show: show, bySelector: bySelector).duration
+    }
     /// Ease-in-out (0.42, 0, 0.58, 1): the show's curve (H.2).
     public static let inspectorSlideEaseInOut = (x1: 0.42, y1: 0.0, x2: 0.58, y2: 1.0)
     /// Ease-out (0, 0, 0.58, 1): the hide's curve (H.2: 16 % of the travel
@@ -170,13 +170,15 @@ public enum EditorMetrics {
     }
 
     /// The slide's progress `elapsed` seconds after the press.
-    public static func inspectorSlideProgress(elapsed: Double, show: Bool) -> Double {
-        let t = (elapsed - inspectorSlideDelay(show: show)) / inspectorSlideMotion(show: show)
+    public static func inspectorSlideProgress(elapsed: Double, show: Bool, bySelector: Bool = false) -> Double {
+        let t = (elapsed - inspectorSlideDelay(show: show, bySelector: bySelector)) / inspectorSlideMotion(show: show, bySelector: bySelector)
         let c = inspectorSlideCurve(show: show)
         return cubicBezier(t, x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2)
     }
     /// The whole slide from the press.
-    public static func inspectorSlideTotal(show: Bool) -> Double { inspectorSlideDelay(show: show) + inspectorSlideMotion(show: show) }
+    public static func inspectorSlideTotal(show: Bool, bySelector: Bool = false) -> Double {
+        inspectorSlideDelay(show: show, bySelector: bySelector) + inspectorSlideMotion(show: show, bySelector: bySelector)
+    }
 
     /// The slide's progress at `t` (0–1 of the duration): the measured
     /// table, interpolated (`editor-area.md` §C.7: "implement the table").

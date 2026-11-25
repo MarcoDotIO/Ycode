@@ -1,0 +1,1116 @@
+{
+ "name": "b5-obs-glass",
+ "title": "B5-OBS 3/6: the toolbar scroll edge at several offsets; panels, popovers and sheets over a strongly coloured image.",
+ "targets": [
+  "xcode"
+ ],
+ "compare_order": [
+  "xcode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.0
+ },
+ "project": {
+  "generator": "make-formats-project.py",
+  "path": "formats/Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90,
+  "offset": [
+   1020,
+   300
+  ]
+ },
+ "steps": [
+  {
+   "id": "d-top",
+   "note": "Showcase.swift at the top. AX tree.",
+   "do": [
+    {
+     "tree": "top",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-scroll-6",
+   "note": "Editor scrolled down to 6 pt (phase-less wheel events, exact).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": -6,
+     "steps": 2,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-scroll-12",
+   "note": "Editor scrolled down to 12 pt (phase-less wheel events, exact).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": -6,
+     "steps": 2,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-scroll-24",
+   "note": "Editor scrolled down to 24 pt (phase-less wheel events, exact).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": -12,
+     "steps": 2,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-scroll-48",
+   "note": "Editor scrolled down to 48 pt (phase-less wheel events, exact).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": -24,
+     "steps": 4,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-scroll-96",
+   "note": "Editor scrolled down to 96 pt (phase-less wheel events, exact).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": -48,
+     "steps": 8,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-scroll-192",
+   "note": "Editor scrolled down to 192 pt (phase-less wheel events, exact).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": -96,
+     "steps": 16,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-scroll-392",
+   "note": "Editor scrolled down to 392 pt (phase-less wheel events, exact).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": -200,
+     "steps": 33,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-scroll-video",
+   "note": "Scroll back to the top over 0.6 s (the edge effect fading).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": 392,
+     "steps": 36,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-open-stripes",
+   "note": "Click Stripes.png in the navigator (strong colours).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Stripes|Stripes.png"
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-stripes",
+   "note": "Stripes.png in the editor. AX tree.",
+   "do": [
+    {
+     "tree": "stripes",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-stripes-library",
+   "note": "Library over the stripes.",
+   "do": [
+    {
+     "key": "cmd+shift+l"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-stripes-library-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-stripes-openquickly",
+   "note": "Open Quickly over the stripes.",
+   "do": [
+    {
+     "key": "cmd+shift+o"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-stripes-oq-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-stripes-quickactions",
+   "note": "Quick Actions over the stripes.",
+   "do": [
+    {
+     "key": "cmd+shift+a"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-stripes-qa-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-stripes-scheme",
+   "note": "Scheme popover over the stripes.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-stripes-scheme-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-stripes-sheet",
+   "note": "File from Template sheet over the stripes.",
+   "do": [
+    {
+     "key": "cmd+n"
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-stripes-sheet-close",
+   "note": "Cancel.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-open-assets",
+   "note": "Click Assets.xcassets, then the Stripes image set.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Assets|Assets.xcassets"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-assets",
+   "note": "The asset catalog. AX tree.",
+   "do": [
+    {
+     "tree": "assets",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-back",
+   "note": "Back to Showcase.swift.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Showcase|Showcase.swift"
+     }
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-appearance-light",
+   "note": "Settings ▸ Appearance: Xcode's own Appearance set to Light; Settings closed.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "AppearanceLight",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "appearance",
+     "depth": 40
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-top",
+   "note": "Showcase.swift at the top. AX tree.",
+   "do": [
+    {
+     "tree": "top",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-scroll-6",
+   "note": "Editor scrolled down to 6 pt (phase-less wheel events, exact).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": -6,
+     "steps": 2,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-scroll-12",
+   "note": "Editor scrolled down to 12 pt (phase-less wheel events, exact).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": -6,
+     "steps": 2,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-scroll-24",
+   "note": "Editor scrolled down to 24 pt (phase-less wheel events, exact).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": -12,
+     "steps": 2,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-scroll-48",
+   "note": "Editor scrolled down to 48 pt (phase-less wheel events, exact).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": -24,
+     "steps": 4,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-scroll-96",
+   "note": "Editor scrolled down to 96 pt (phase-less wheel events, exact).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": -48,
+     "steps": 8,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-scroll-192",
+   "note": "Editor scrolled down to 192 pt (phase-less wheel events, exact).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": -96,
+     "steps": 16,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-scroll-392",
+   "note": "Editor scrolled down to 392 pt (phase-less wheel events, exact).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": -200,
+     "steps": 33,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-scroll-video",
+   "note": "Scroll back to the top over 0.6 s (the edge effect fading).",
+   "do": [
+    {
+     "scroll": {
+      "at": [
+       700,
+       450
+      ]
+     },
+     "dy": 392,
+     "steps": 36,
+     "interval": 0.016
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-open-stripes",
+   "note": "Click Stripes.png in the navigator (strong colours).",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Stripes|Stripes.png"
+     }
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-stripes",
+   "note": "Stripes.png in the editor. AX tree.",
+   "do": [
+    {
+     "tree": "stripes",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-stripes-library",
+   "note": "Library over the stripes.",
+   "do": [
+    {
+     "key": "cmd+shift+l"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-stripes-library-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-stripes-openquickly",
+   "note": "Open Quickly over the stripes.",
+   "do": [
+    {
+     "key": "cmd+shift+o"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-stripes-oq-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-stripes-quickactions",
+   "note": "Quick Actions over the stripes.",
+   "do": [
+    {
+     "key": "cmd+shift+a"
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-stripes-qa-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-stripes-scheme",
+   "note": "Scheme popover over the stripes.",
+   "do": [
+    {
+     "click": {
+      "label": "Active Scheme",
+      "role": "AXPopUpButton"
+     }
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-stripes-scheme-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape"
+    },
+    {
+     "wait": 0.8
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-stripes-sheet",
+   "note": "File from Template sheet over the stripes.",
+   "do": [
+    {
+     "key": "cmd+n"
+    },
+    {
+     "wait": 2.0
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-stripes-sheet-close",
+   "note": "Cancel.",
+   "do": [
+    {
+     "press": {
+      "role": "AXButton",
+      "title": "Cancel",
+      "scope": "app"
+     }
+    },
+    {
+     "key": "escape",
+     "fallback": true
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-open-assets",
+   "note": "Click Assets.xcassets, then the Stripes image set.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Assets|Assets.xcassets"
+     }
+    },
+    {
+     "wait": 2.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-assets",
+   "note": "The asset catalog. AX tree.",
+   "do": [
+    {
+     "tree": "assets",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-back",
+   "note": "Back to Showcase.swift.",
+   "do": [
+    {
+     "click": {
+      "role": "AXRow",
+      "text": "Showcase|Showcase.swift"
+     }
+    },
+    {
+     "wait": 1.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "z-appearance-system",
+   "note": "Settings ▸ Appearance: Xcode's own Appearance set to System; Settings closed.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "AppearanceAuto",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "appearance",
+     "depth": 40
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "z-end",
+   "note": "Back to System (dark). AX tree.",
+   "do": [
+    {
+     "tree": "end",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Showcase|Showcase.swift"
+   }
+  },
+  {
+   "wait": 2.5
+  }
+ ]
+}

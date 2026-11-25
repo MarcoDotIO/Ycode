@@ -138,8 +138,10 @@ public enum MenuTitles {
         case "Pause": return ctx.isPaused ? "Continue" : g
         case "Deactivate Breakpoints": return ctx.breakpointsActive ? g : "Activate Breakpoints"
         case "Enable Breakpoints at Current Line": return ctx.caretLineBreakpointsEnabled == true ? "Disable Breakpoints at Current Line" : g
-        // Integrate (§2.11). P-016: Stage / Unstage Selected Files, Mark as
-        // Resolved and Add keep their generic titles.
+        // Integrate (§2.11). P-016: in a workspace Stage reads "Stage
+        // Changes in Selected Files" (council round 11); Unstage Selected
+        // Files, Mark as Resolved and Add keep their generic titles.
+        case "Stage Selected Files": return "Stage Changes in Selected Files"
         case "Continue", "Abort": return ctx.integrationVerb.isEmpty ? g : "\(g) \(ctx.integrationVerb)"
         case "Discard Changes in Selected Files…":
             if ctx.hasNavigatorFileSelection && ctx.selectedFileIsUntracked { return "Move Selected Files to Trash…" }

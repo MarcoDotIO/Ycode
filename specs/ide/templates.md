@@ -265,7 +265,7 @@ macOS:
 | Framework & Library | Library | 10 | A dynamic or static library (Cocoa, C++ STL or plain C) |
 | Framework & Library | XPC Service | 100 | An XPC service bundle |
 | Framework & Library | Bundle | 101 | A loadable bundle with a chosen extension |
-| Framework & Library | Metal Library | — | A standalone `.metallib` |
+| Framework & Library | Metal Library | 11 | A standalone `.metallib` (P-181: shown between Library and XPC Service; 11 is Ycode's key) |
 | Other | Generic Kernel Extension | — | A C kernel extension |
 | Other | IOKit Driver | — | A C++ IOKit kernel extension |
 | Other | Installer Plug-in | — | An Installer pane plug-in |

@@ -51,21 +51,22 @@ public enum TopBounce {
     public static let maximumShare = 0.28
 
     /// The overscroll `t` seconds after crossing the top at `velocity`.
-    public static func overscroll(velocity: Double, at t: Double, edge: EditorFlick.Edge = .top) -> Double {
-        overscroll(from: 0, velocity: velocity, at: t, edge: edge)
+    public static func overscroll(velocity: Double, at t: Double, edge: EditorFlick.Edge = .top, profile: FlickProfile = .round9) -> Double {
+        overscroll(from: 0, velocity: velocity, at: t, edge: edge, profile: profile)
     }
 
     /// The overscroll `t` seconds after the bounce took over at an
     /// overscroll of `start` points (the system's elastic stop may already
     /// have let the text past the top) moving on at `velocity`: the run
     /// `(x₀ + (g v + ω₁ x₀) t) e^(−ω₁ t)` up to its peak, then the return.
-    public static func overscroll(from start: Double, velocity: Double, at t: Double, edge: EditorFlick.Edge = .top) -> Double {
+    public static func overscroll(from start: Double, velocity: Double, at t: Double, edge: EditorFlick.Edge = .top,
+                                  profile: FlickProfile = .round9) -> Double {
         let x0 = max(0, start)
         guard t > 0 else { return x0 }
         let t1 = peakTime(from: x0, velocity: velocity)
         if t <= t1 { return rise(from: x0, velocity: velocity, at: t) }
         let p = rise(from: x0, velocity: velocity, at: t1)
-        let r = t - t1, w = omega(at: edge)
+        let r = t - t1, w = profile.omega(at: edge)
         return p * (1 + w * r) * exp(-w * r)
     }
 
@@ -123,21 +124,30 @@ public enum TopBounce {
         return self.velocity(forPeak: min(stretch(forCrossing: max(0, velocity)), cap))
     }
 
-    /// Whether the bounce is over at `t`: past the peak and within
-    /// `restThreshold` of the top.
-    public static func isAtRest(velocity: Double, at t: Double, edge: EditorFlick.Edge = .top) -> Bool {
-        isAtRest(from: 0, velocity: velocity, at: t, edge: edge)
+    /// The same for a display's profile and an edge (P-078): the peak is
+    /// the profile's stretch at `edge` for that crossing.
+    public static func effectiveVelocity(_ velocity: Double, visibleHeight: Double, edge: EditorFlick.Edge, profile: FlickProfile) -> Double {
+        let cap = visibleHeight > 0 ? visibleHeight * maximumShare : .infinity
+        return self.velocity(forPeak: min(profile.stretch(forCrossing: max(0, velocity), at: edge), cap))
     }
 
-    public static func isAtRest(from start: Double, velocity: Double, at t: Double, edge: EditorFlick.Edge = .top) -> Bool {
-        t >= peakTime(from: start, velocity: velocity) && overscroll(from: start, velocity: velocity, at: t, edge: edge) < restThreshold
+    /// Whether the bounce is over at `t`: past the peak and within
+    /// `restThreshold` of the top.
+    public static func isAtRest(velocity: Double, at t: Double, edge: EditorFlick.Edge = .top, profile: FlickProfile = .round9) -> Bool {
+        isAtRest(from: 0, velocity: velocity, at: t, edge: edge, profile: profile)
+    }
+
+    public static func isAtRest(from start: Double, velocity: Double, at t: Double, edge: EditorFlick.Edge = .top,
+                                profile: FlickProfile = .round9) -> Bool {
+        t >= peakTime(from: start, velocity: velocity)
+            && overscroll(from: start, velocity: velocity, at: t, edge: edge, profile: profile) < restThreshold
     }
 
     /// The time from the crossing until the bounce is at rest.
-    public static func duration(velocity: Double, edge: EditorFlick.Edge = .top) -> Double {
+    public static func duration(velocity: Double, edge: EditorFlick.Edge = .top, profile: FlickProfile = .round9) -> Double {
         guard velocity > 0 else { return 0 }
         var t = peakTime
-        while !isAtRest(velocity: velocity, at: t, edge: edge) { t += 0.001 }
+        while !isAtRest(velocity: velocity, at: t, edge: edge, profile: profile) { t += 0.001 }
         return t
     }
 

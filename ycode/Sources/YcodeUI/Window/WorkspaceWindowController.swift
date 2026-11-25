@@ -38,6 +38,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         var fit = ToolbarFit()
         var fitting = false
         var fitScheduled = false
+        /// A fit inside the window's resize left items in "»" it could not re-measure.
+        var fitNeedsUnstick = false
+        /// A toolbar state update waits for the next turn.
+        var stateScheduled = false
         /// Fits done (tests).
         var fitRuns = 0
         init() {
@@ -148,6 +152,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         window.isRestorable = !Self.isTestProcess
         super.init(window: window)
         build()
+        installNarrowWindowLayout()   // +NarrowWindow.swift (P-024)
         // Breakpoints persist per user with the container (§10.1); test
         // runs attach the file themselves.
         if !Self.isTestProcess { session.attachBreakpointFile() }
@@ -321,7 +326,13 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         mainSplit.addSplitViewItem(inspectorItem)
         window?.contentViewController = mainSplit
 
-        let toolbar = NSToolbar(identifier: "YcodeWorkspaceToolbar")
+        // One identifier per window: AppKit keeps toolbars that share an
+        // identifier in step, so a window that hides its navigator would
+        // take the navigator's section out of every other window's toolbar,
+        // and one that shows it would add a second tracking separator to a
+        // window that has one (`NSInternalInconsistencyException`, P-190).
+        // The configuration is not saved, so nothing else reads it.
+        let toolbar = NSToolbar(identifier: Self.toolbarIdentifierPrefix + UUID().uuidString)
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false
@@ -354,12 +365,14 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         // The empty inspector reads "No Selection" in the Repositories view (F.10).
         navigator.onShownViewChange = { [weak self] in
             guard let self else { return }
-            self.inspector.noFileText = self.navigator.showsRepositoriesView ? "No Selection" : "Not Applicable"
+            // …and while the navigator's filter leaves no row (P-037).
+            self.inspector.noFileText = self.navigator.inspectorPlaceholderIsNoSelection ? "No Selection" : "Not Applicable"
         }
         inspector.onRename = { [weak self] u, n in self?.renameFromInspector(u, to: n) }
         wireInspector()
         _ = bookmarks
         navigator.onOpen = { [weak self] path, line in self?.openFromNavigator(path: path, line: line) }
+        navigator.onOpenProjectIssue = { [weak self] message in self?.openProjectIssue(message) }   // RecommendedSettingsSheet.swift (P-120)
         installFindHooks()   // +Find.swift
         prefsObserver = NotificationCenter.default.addObserver(forName: Preferences.didChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.applyPreferences() }
@@ -392,13 +405,15 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         debugArea.loadChildren = { [weak self] ref in await self?.session.children(of: ref) ?? [] }
         session.observe { [weak self] change in self?.sessionChanged(change) }
         session.discoverTests()
-        session.refreshProjectIssues()
         refreshFileStatus(nil)
         activityView.workspaceName = session.model.displayName
         activityView.isPackage = session.model.kind == .package
         navigator.workspaceName = session.model.displayName
         navigator.isPackage = session.model.kind == .package
         navigator.issueGrouping = { [weak self] in self?.session.issueGrouping ?? IssueGrouping(projectName: "") }   // reference-ui-6.md §5.1
+        // After the grouping: the project checks' warnings are the first issues
+        // the navigator lists, under the project's row (P-120).
+        session.refreshProjectIssues()
         navigator.isWorkspace = session.model.kind == .workspace
         navigator.testPlanName = "\(session.scheme ?? session.model.displayName) (Autocreated)"
         navigator.testTarget = { [weak self] file in
@@ -509,6 +524,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         if !debugItem.isCollapsed {
             centerSplit.splitView.setPosition(centerSplit.splitView.bounds.height - debugAreaOpeningHeight, ofDividerAt: 0)
         }
+        // The areas' widths are the toolbar's room: fit it to them now, not
+        // to the narrow navigator of the first layout (P-024: the navigator
+        // can be ≈ 135 there, too narrow for Navigators and Run | Stop).
+        fitToolbar()
     }
 
     func reloadSchemes() {
@@ -644,7 +663,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     @objc public func newProject(_ sender: Any?) -> NewProjectPickerController {
         let picker = NewProjectPickerController()
         picker.onChoose = { [weak self] i in self?.projectPickerChose(i) }
-        if window?.isVisible == true { contentViewController?.presentAsSheet(picker) }
+        if window?.isVisible == true { showQuickNewProject() }   // P-180: the in-window panel (InWindowPanels.swift)
         return picker
     }
 
@@ -1073,6 +1092,9 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         guard editor.fileURL != nil else { NSSound.beep(); return }
         try? editor.save()
         editor.closeFile()
+        // Beside another pane, the emptied pane says "No Editor" and keeps
+        // its share of the split (P-066); a lone editor shows its empty state.
+        if EditorPanePlaceholder.shows(paneCount: editorArea.tab.editors.count) { editor.showNoEditor() }
         inspector.show(file: nil)
         editorArea.reloadTabBar()
     }
@@ -1348,14 +1370,16 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             return
         case .focusedPane, .sameAsClick: break
         }
+        var ease: (() -> Void)?
         switch EditorTabPolicy.openTarget(path: path, currentPath: editor.fileURL?.path, currentPinned: editorArea.tab.isPinned,
                                           openInTabs: false,
                                           tabPaths: editorArea.tabs.map { $0.editors.compactMap { $0.fileURL?.path } }) {
-        case .current: break
+        case .current: ease = fileSelectionEase(to: path, in: editor)   // +FileSelectionEase.swift (P-199)
         case .select(let i): editorArea.selectTab(i)
         case .newTab: editorArea.newTab()
         }
         open(path: path, line: line)
+        ease?()
     }
 
     /// Pin Editor Tabs ▸ Automatically: editing a document pins its tab.
@@ -1527,6 +1551,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         devices?.closeLinks()
         let c = DevicesController(devices: lists.devices, simulators: lists.simulators)
         configureYcodeRemoteDevice(c)
+        // The Mac's simctl simulators start, shut down and restart from the hub (device-hub.md, 2026-11-17).
+        c.simctlControl = SimctlDeviceControl()
         devices = c
         guard window?.isVisible == true else { _ = c.view; return c }
         let w = c.makeWindow()
@@ -1791,6 +1817,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
 
     // MARK: Toolbar
 
+    /// Each workspace window's toolbar identifier starts with this.
+    static let toolbarIdentifierPrefix = "YcodeWorkspaceToolbar-"
     static let runID = NSToolbarItem.Identifier("run")
     static let stopID = NSToolbarItem.Identifier("stop")
     static let schemeID = NSToolbarItem.Identifier("scheme")
@@ -1831,17 +1859,23 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     public var editorModesControl: NSSegmentedControl { toolbarControls.editorModes }
 
     @objc func leftPaneChosen(_ c: NSSegmentedControl) {
-        setLeftPane(codingAssistant: c.selectedSegment == 1)
+        setLeftPane(codingAssistant: c.selectedSegment == 1, trigger: .click)
     }
 
     /// Shows the navigators or the Coding Assistant pane in the left area; choosing the shown one
-    /// again hides the area (reference-ui-5.md §4.1).
-    public func setLeftPane(codingAssistant: Bool) {
+    /// again hides the area (reference-ui-5.md §4.1). Showing or hiding the
+    /// area slides it (`window-layout.md` §5.2, §6.1: the second ⌘0 and the
+    /// toolbar's halves too); swapping the shown area's content is one frame
+    /// (§6.3: no slide).
+    public func setLeftPane(codingAssistant: Bool, trigger: Motion.NavigatorTrigger? = nil) {
         let wasAssistant = navigator.showsCodingAssistant
+        let trigger = trigger ?? (Self.isPointerEvent ? .menu : .key)
         if !navigatorItem.isCollapsed && wasAssistant == codingAssistant {
-            navigatorItem.isCollapsed = true
+            if !slideNavigator(show: false, trigger: trigger) { navigatorItem.isCollapsed = true }   // +PaneSlide.swift
+        } else if navigatorItem.isCollapsed {
+            navigator.showsCodingAssistant = codingAssistant
+            if !slideNavigator(show: true, trigger: trigger) { navigatorItem.isCollapsed = false }
         } else {
-            navigatorItem.isCollapsed = false
             navigator.showsCodingAssistant = codingAssistant
         }
         updateToolbarState()
@@ -1850,7 +1884,9 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     /// The left area's content as the toolbar shows it: nil when hidden.
     public enum LeftPane: Equatable { case navigators, codingAssistant }
     public var shownLeftPane: LeftPane? {
-        navigatorItem.isCollapsed ? nil : (navigator.showsCodingAssistant ? .codingAssistant : .navigators)
+        // A hiding area has lost its bezel with the toolbar's switch (§6.1).
+        navigatorItem.isCollapsed || (isNavigatorSliding && !navigatorSlide.show) ? nil
+            : (navigator.showsCodingAssistant ? .codingAssistant : .navigators)
     }
 
     /// The editor modes of reference-ui-5.md §4.2; at most one is on.
@@ -1904,6 +1940,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         updateEditorModesPullDown()
         updateAreaToggleTitles()
         updateToolbarAvailability()
+        syncNavigatorToolbarArrangement()   // +NavigatorToolbar.swift (P-190)
+        updateMinimumWindowWidth()   // +NarrowWindow.swift (P-024)
     }
 
     /// The left segments follow every way the left area changes: menu
@@ -1911,13 +1949,18 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     func observeLeftArea() {
         navigator.onContentChange = { [weak self] in self?.updateToolbarState() }
         navigator.onShowCodingAssistant = { [weak self] in _ = self?.codingAssistant }
+        // The split view reports its resizes, and AppKit collapses a
+        // sidebar from a window resize, inside the window's layout pass: the
+        // toolbar's items (selection, menu forms, titles, the navigator's
+        // section) change on the next turn, never inside that pass (a full
+        // run under load crashed in AppKit's layout there).
         let token = NotificationCenter.default.addObserver(forName: NSSplitView.didResizeSubviewsNotification, object: mainSplit.splitView,
                                                            queue: .main) { [weak self] _ in
             // Not on each frame of the inspector's slide: once at its end.
-            MainActor.assumeIsolated { if self?.isInspectorSliding == false { self?.updateToolbarState() } }
+            MainActor.assumeIsolated { if self?.isInspectorSliding == false { self?.scheduleToolbarStateUpdate() } }
         }
         let kvo = navigatorItem.observe(\.isCollapsed, options: [.new]) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.updateToolbarState() }
+            MainActor.assumeIsolated { self?.scheduleToolbarStateUpdate() }
         }
         leftAreaObservation.tokens = [token, kvo]
         observeToolbarRoom()
@@ -1952,7 +1995,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         switch id {
         case Self.runID:
             // Run and Stop as one joined pair.
-            let c = NSSegmentedControl(images: WorkspaceChrome.runStop.images(descriptions: ["Run", "Stop"]),
+            // P-198: a press on disabled Stop moves the window (ControlStateAppKit.swift).
+            let c = ToolbarSegmentedControl(images: WorkspaceChrome.runStop.images(descriptions: ["Run", "Stop"]),
                                        trackingMode: .momentary, target: self, action: #selector(runStopChosen(_:)))
             for (i, t) in Self.runStopToolTips.enumerated() { c.setToolTip(t, forSegment: i); c.setWidth(ToolbarGlass.pairSegment, forSegment: i) }
             let item = NSToolbarItem(itemIdentifier: id)
@@ -1960,7 +2004,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             item.label = "Run"
             return item
         case Self.historyID:
-            let c = NSSegmentedControl(images: WorkspaceChrome.history.images(descriptions: ["Go Back", "Go Forward"]),
+            let c = ToolbarSegmentedControl(images: WorkspaceChrome.history.images(descriptions: ["Go Back", "Go Forward"]),
                                        trackingMode: .momentary, target: self, action: #selector(historyChosen(_:)))
             for (i, t) in Self.historyToolTips.enumerated() { c.setToolTip(t, forSegment: i); c.setWidth(ToolbarGlass.pairSegment, forSegment: i) }
             let item = NSToolbarItem(itemIdentifier: id)
@@ -2028,6 +2072,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             chevron.textColor = .tertiaryLabelColor
             let stack = NSStackView(views: [schemePopUp, chevron, destinationPopUp])
             stack.spacing = 0
+            ToolbarControlStates.installHalfHover([schemePopUp, destinationPopUp])   // P-198
             // The titles keep clear of the glass capsule's rounded ends.
             if #available(macOS 26, *) { stack.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 8) }
             // §2.2.2: the scheme name truncates before the destination does.
@@ -2139,6 +2184,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     // MARK: Area commands
 
     @objc public func toggleNavigator(_ sender: Any?) {
+        if slideNavigator(show: navigatorItem.isCollapsed, trigger: Self.navigatorTrigger(sender)) { return }   // +PaneSlide.swift (P-190)
         if window?.isVisible == true { navigatorItem.animator().isCollapsed.toggle() } else { navigatorItem.isCollapsed.toggle() }
         updateToolbarState()
     }
@@ -2183,6 +2229,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     /// (reference-ui-5.md §8.2).
     public func showDebugArea(_ show: Bool) {
         guard debugItem.isCollapsed == show else { return }
+        if slideDebugArea(show: show) { return }   // +PaneSlide.swift (P-191)
         if !show { rememberDebugAreaHeight() }
         // The split view restores a pane at its view's last size: give it
         // the opening height first.
@@ -2221,6 +2268,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     }
 
     @objc public func showInspector(_ sender: Any?) {
+        if slidesPanes, let item = sender as? NSMenuItem, toggleInspector(bySelector: item.tag) { return }   // +InspectorSlide.swift (P-192)
         inspectorItem.isCollapsed = false
         inspector.select((sender as? NSMenuItem)?.tag ?? 0)
     }
@@ -2351,7 +2399,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     /// issues, wrapping around (reference-ui-5.md §6.1.2).
     func stepIssue(_ delta: Int) {
         let list = navigableIssues
-        guard !list.isEmpty else { return NSSound.beep() }
+        guard !list.isEmpty else { return stepToProjectIssue() ? () : NSSound.beep() }   // RecommendedSettingsSheet.swift (P-120)
         let file = editor.fileURL.map { URL(fileURLWithPath: $0.path).standardizedFileURL.path }
         let line = editor.fileURL == nil ? 0 : editor.currentLine
         let fileIndex = Dictionary(list.enumerated().map { ($0.element.location!.file, $0.offset) }, uniquingKeysWith: { a, _ in a })
@@ -2392,18 +2440,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         }
     }
 
-    @objc public func jumpToLine(_ sender: Any?) {
-        let alert = NSAlert()
-        alert.messageText = "Jump to Line"
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 22))
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Jump")
-        alert.addButton(withTitle: "Cancel")
-        guard let window else { return }
-        alert.beginSheetModal(for: window) { [weak self] r in
-            if r == .alertFirstButtonReturn, let n = Int(field.stringValue) { self?.editor.reveal(line: n) }
-        }
-    }
+    /// Navigate ▸ Jump to Line… (⌘L): the in-window capsule (P-086; InWindowPanels.swift).
+    @objc public func jumpToLine(_ sender: Any?) { showJumpToLinePanel() }
 
     /// Shift-Command-F: shows the Find navigator with the editor's selection as query.
     @objc public func findInWorkspace(_ sender: Any?) {
@@ -2621,23 +2659,12 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     /// screen) and in the Quick Help inspector. Returns the text.
     @discardableResult
     public func showQuickHelp(url: URL, at p: Position, anchor: NSRect) async -> String? {
+        // P-083 §4.1: a module named in an import (+ModuleQuickHelp.swift).
+        if let doc = moduleQuickHelp(at: p) { showModuleQuickHelp(doc, anchor: anchor); return doc.title }
         let text = await session.hover(url, at: p)
         inspector.showQuickHelp(text, file: text == nil ? nil : await session.definition(url, at: p)?.url.path)
-        if let text, window?.isVisible == true {
-            let popover = NSPopover()
-            popover.behavior = .transient
-            let vc = NSViewController()
-            let label = NSTextField(wrappingLabelWithString: QuickHelpFormatter.plain(text))
-            label.font = .systemFont(ofSize: 12)
-            label.preferredMaxLayoutWidth = 420
-            label.frame.size = label.fittingSize
-            let box = NSView(frame: NSRect(x: 0, y: 0, width: label.frame.width + 24, height: label.frame.height + 20))
-            label.frame.origin = NSPoint(x: 12, y: 10)
-            box.addSubview(label)
-            vc.view = box
-            popover.contentViewController = vc
-            popover.show(relativeTo: anchor, of: editor.textView, preferredEdge: .maxY)
-        }
+        // P-083: above the symbol, centred on it (QuickHelpView.swift).
+        if let text, window?.isVisible == true { QuickHelpPopover.show(QuickHelpDocument(hover: text, file: inspector.quickHelpFile), at: anchor, in: editor.textView) }
         return text
     }
 
@@ -2662,6 +2689,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         // Titles in context (reference-ui-5.md §1.3; WorkspaceWindowController+MenuBar.swift).
         if let generic = Self.menuBarGenericTitle(item) { item.title = MenuTitles.title(generic: generic, in: menuContext) }
         if let r = validateMenuParityItem(item) { return r }   // +MenuParity.swift (beta 4)
+        if let r = validateFileCommand(item) { return r }   // +FileCommands.swift (beta 5)
         if let r = validateAvailability(item) { return r }
         if let r = validateMenuBarItem(item) { return r }
         if let r = validateFindMenuItem(item) { return r }   // +Find.swift

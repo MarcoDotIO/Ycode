@@ -60,7 +60,7 @@ plist="$app/Contents/Info.plist"
 # Every tool reports the version from the copied bundle.
 for tool in "$app/Contents/MacOS/Ycode" "$app/Contents/Helpers/ycode" "$app/Contents/Helpers/ycodebuild" \
             "$app/Contents/Helpers/ycode-bsp" "$app/Contents/Helpers/ycode-swb" "$app/Contents/Helpers/ycode-sim-viewer" \
-            "$app/Contents/Helpers/ycode-simhost"; do
+            "$app/Contents/Helpers/ycode-simhost" "$app/Contents/Helpers/ycrun"; do
     [ -x "$tool" ] || fail "missing $tool"
     line=$(bare "$tool" --version) || fail "$tool --version"
     case "$line" in
@@ -116,6 +116,8 @@ say "machine paths: none"
 
 # The helper tools work from here: a project query through the bundled tools.
 bare "$app/Contents/Helpers/ycodebuild" -version >/dev/null || fail "ycodebuild -version"
+# ycrun finds its sibling tools from the copied bundle (docs/YCRUN.md).
+[ "$(bare "$app/Contents/Helpers/ycrun" --find ycode-sim-viewer)" -ef "$app/Contents/Helpers/ycode-sim-viewer" ] || fail "ycrun --find ycode-sim-viewer"
 
 # The app starts and stays up, hidden, from the clean place.
 open -g -j -n -a "$app" --env "PATH=/usr/bin:/bin" || fail "open"

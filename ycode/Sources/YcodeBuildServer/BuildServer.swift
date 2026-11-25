@@ -75,7 +75,13 @@ public final class BuildServer: @unchecked Sendable {
                 reply(id, .null)
             }
         default:
+            let received = Date()
             queue.async { [self] in
+                defer {
+                    // Slow answers make sourcekit-lsp use fallback settings (`--log`).
+                    let ms = Int(Date().timeIntervalSince(received) * 1000)
+                    if ms >= 500 { log("\(method) answered after \(ms) ms") }
+                }
                 do { reply(id, try request(method, params)) } catch let e as RequestError {
                     replyError(id, code: e.code, message: e.message)
                 } catch {
@@ -99,9 +105,17 @@ public final class BuildServer: @unchecked Sendable {
             let graph = model.graph
             return ["items": .array(ids.compactMap { graph.target(id: $0) }.map(sourcesJSON))]
         case "textDocument/sourceKitOptions":
-            guard let uri = params["textDocument"]?["uri"]?.string, let path = Self.path(uri) else { return .null }
+            guard let uri = params["textDocument"]?["uri"]?.string, let path = Self.path(uri) else {
+                log("sourceKitOptions: not a file: \(params["textDocument"]?["uri"]?.string ?? "-")")
+                return .null
+            }
             let language = params["language"]?.string.flatMap(SourceLanguage.init(rawValue:))
-            guard let r = model.arguments(for: path, targetID: params["target"]?["uri"]?.string, language: language) else { return .null }
+            let target = params["target"]?["uri"]?.string
+            guard let r = model.arguments(for: path, targetID: target, language: language) else {
+                // sourcekit-lsp then uses fallback settings: no other file of the module (P-070).
+                log("sourceKitOptions: no arguments for \(path): \(model.missingArgumentsReason(for: path, targetID: target))")
+                return .null
+            }
             return ["compilerArguments": .array(r.arguments.map(JSON.string)), "workingDirectory": .string(r.workingDirectory)]
         case "workspace/waitForBuildSystemUpdates":
             reloadAndNotify()

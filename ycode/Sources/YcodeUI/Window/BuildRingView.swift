@@ -31,8 +31,11 @@ final class BuildRingView: NSView {
         arc.strokeEnd = CGFloat(BuildRingProgress.startFraction)
         setAccessibilityElement(true)
         setAccessibilityRole(.progressIndicator)
-        setAccessibilityLabel("Build progress")
+        setAccessibilityLabel(Self.accessibilityName)
     }
+
+    /// The ring's accessibility label, on both IDEs.
+    static let accessibilityName = "Build progress"
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }

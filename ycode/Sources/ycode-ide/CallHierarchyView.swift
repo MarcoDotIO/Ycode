@@ -51,7 +51,6 @@ struct CallHierarchyOutline: View {
             .padding(.top, CGFloat(WorkspaceChrome.firstRowGap))
             .padding(.bottom, 8)
         }
-        .scrollIndicators(.hidden)
         .shellTarget("call hierarchy")
     }
 }

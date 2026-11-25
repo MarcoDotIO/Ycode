@@ -192,6 +192,15 @@ final class ShellSettingsModel {
         forward = []
     }
 
+    /// P-155 (L-071): Up and Down in the pane list show the pane above or
+    /// below (at its own page), as the macOS IDE's list does; no wrap.
+    func selectAdjacent(_ step: Int) {
+        let all = ShellSettingsPane.allCases
+        guard let i = all.firstIndex(of: pane) else { return }
+        let j = min(max(all.startIndex, i + step), all.index(before: all.endIndex))
+        if j != i { select(all[j]) }
+    }
+
     /// Shows a pane at its own page (recorded for back/forward).
     func select(_ p: ShellSettingsPane) {
         guard p != pane else { return }
@@ -232,6 +241,9 @@ final class ShellSettingsModel {
 struct ShellSettingsView: View {
     @Bindable var model = ShellSettingsModel.shared
     @Environment(\.colorScheme) private var scheme
+    /// P-155 (L-071): the pane list has the keyboard when the window opens
+    /// and after a click in it, so Up and Down move between panes.
+    @FocusState private var sidebarFocused: Bool
 
     /// The window's size (the macOS IDE's).
     static let size = SettingsLayout.windowSize
@@ -243,6 +255,10 @@ struct ShellSettingsView: View {
             // The divider is the sidebar's trailing half point (R3.2, R4.3),
             // drawn over its edge so that it shows at any scale.
             sidebar(p)
+                .focusable()
+                .focused($sidebarFocused)
+                .onKeyPress(.upArrow) { model.selectAdjacent(-1); return .handled }
+                .onKeyPress(.downArrow) { model.selectAdjacent(1); return .handled }
                 .frame(width: SettingsLayout.sidebarWidth + SettingsLayout.dividerWidth)
                 .frame(maxHeight: .infinity, alignment: .top)
                 .background(p.sidebar)
@@ -259,6 +275,7 @@ struct ShellSettingsView: View {
         .frame(minWidth: Self.size.width, idealWidth: Self.size.width, maxWidth: .infinity)
         .frame(minHeight: Self.size.height, idealHeight: Self.size.height, maxHeight: .infinity)
         .task { model.prefetchComponents() }
+        .onAppear { sidebarFocused = true }
         .shellTarget("settings")
     }
 
@@ -269,7 +286,10 @@ struct ShellSettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(ShellSettingsPane.allCases) { pane in
                 let on = pane == model.pane
-                Button { model.select(pane) } label: {
+                Button {
+                    model.select(pane)
+                    sidebarFocused = true
+                } label: {
                     ZStack(alignment: .leading) {
                         if on {
                             // x 10–170 (R4.2).
@@ -292,7 +312,7 @@ struct ShellSettingsView: View {
                     .frame(width: SettingsLayout.sidebarWidth, height: SettingsLayout.sidebarRowHeight, alignment: .leading)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(MouseDownRowStyle())   // P-198: selects on mouse-down
                 .accessibilityLabel(pane.title)
                 .shellTarget("settings pane \(pane.rawValue)")
             }

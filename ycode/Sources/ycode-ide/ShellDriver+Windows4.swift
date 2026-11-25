@@ -35,7 +35,8 @@ extension ShellDriver {
             if !ok() { say("windows4: timed out waiting for \(what)") }
         }
         await shot("welcome")
-        await click("welcome new project")
+        // Welcome's New Project is a pull-down since beta 5 (P-186): its Choose Template… row.
+        app.showNewProject(row: NewProjectPicker.chooseTemplateIndex)
         await waitFor("the New Project sheet on a workspace window") {
             app.newProject != nil && OpenViewsAutomation.windowSceneIDs == [ShellWindowID.workspace]
         }

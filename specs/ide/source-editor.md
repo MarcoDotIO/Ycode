@@ -88,6 +88,16 @@ lexers. Colors come from the theme's role colors, else system colors
 green, number blue, preprocessor orange, attribute brown, type purple)
 so light and dark appearance work.
 
+**Documentation comments (beta 5, P-054).** The text after `///` (and
+inside `/** … */`) is drawn in the proportional system face at the source
+font's size, in the doc-comment colour (the comment grey, #6A7084 light,
+#ABB3CD dark, in the default theme); the `///`, `/**` and `*/` stay in the
+source font, so the text starts in the code's column. A theme's own font
+for documentation comments wins. Lines keep the 18-point pitch. Both IDEs
+(`EditorDocCommentStyle`; the Linux editor measures those characters in
+the proportional face for carets, selection and hit testing). Settings ▸
+Appearance's sample follows.
+
 ## Placeholders
 
 Text of the form `<#text#>` (on one line, not empty) is a placeholder.
@@ -419,6 +429,20 @@ component re-scanned the file's symbols on every keystroke; colors are now
 resolved once per kind per pass, and in files over 3,000 lines the symbol
 component waits for the typing pause, as folds do.
 
+## Text undo belongs to the file
+
+Each open file has its own text undo history.
+
+- Edit ▸ Undo (⌘Z) and Edit ▸ Redo (⇧⌘Z) in the editor act only on the file the editor shows. They never change another file's text.
+- Switching files keeps each file's history. Switching from file A to file B and back to A, by a navigator click, a jump bar item, Open Quickly, a tab, ⌃⌘← / ⌃⌘→ or a navigator drag move that opens the moved file, then ⌘Z undoes A's last edit.
+- In B, ⌘Z undoes only B's own edits. When B has none, Undo is disabled for the editor. Other undo targets of the window keep their own rules: the navigator, and Find's Replace All.
+- The undo menu item's title names the file's own last action.
+- Closing a file's last editor ends its history. Reopening it starts with an empty history.
+- Reloading a file after a change on disk clears its history.
+- Saving does not clear the history.
+- Two editors on the same file (a split or the assistant) share that file's history.
+- The same rules hold on Linux, with Ctrl+Z and Ctrl+Shift+Z.
+
 ## Evidence
 
 - Gutter breakpoint gestures, ⌘\, ⌘Y, ⌘/, ⌘L, minimap and folding
@@ -467,3 +491,8 @@ component waits for the typing pause, as folds do.
   `case` labels are indented inside `switch`), which closers it steps
   over, and its Scope guides pop-up's other values (`reference-ui-5.md`
   §12).
+- Text undo belongs to the file (2026-11-23):
+  - Level 1: the document-based app model in Apple's public AppKit documentation (NSDocument), where each document owns an undo manager.
+  - The rule that ⌘Z never changes another file's text is a safety requirement.
+  - The close, reload and split rules follow the same model.
+  - OPEN QUESTION: whether the reference keeps a closed file's history while it stays in the window's back/forward history.

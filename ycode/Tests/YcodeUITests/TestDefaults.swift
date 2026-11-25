@@ -40,9 +40,12 @@ final class IsolatedPreferences {
         Preferences.shared = Preferences(defaults: t.defaults, themesDirectory: dir.appendingPathComponent("Themes"))
     }
 
+    /// Puts the previous preferences back and tells their observers (the
+    /// menu bar, open editors), as a change made in Settings does.
     func restore() {
         Preferences.shared = old
         t.remove()
         try? FileManager.default.removeItem(at: dir)
+        old.changed()
     }
 }

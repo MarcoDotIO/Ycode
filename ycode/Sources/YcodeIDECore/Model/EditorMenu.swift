@@ -48,6 +48,22 @@ public enum EditorMenu {
     private static func u(_ t: String, _ s: String = "") -> MenuItemSpec { CommandTable.u(t, s) }
     private static let sep = MenuItemSpec.separator
 
+    /// The Editor menu with only Welcome open (P-006, council round 11,
+    /// B02): the first block, Preview unchecked, and Layout ▸ listing where
+    /// the editor goes — Automatic, Editor on Left, Editor on Top — all
+    /// disabled (nothing performs them without a workspace).
+    public static var welcomeItems: [MenuItemSpec] {
+        firstBlock(source: false).map { item in
+            guard case .submenu("Layout", _) = item else { return item }
+            return .submenu("Layout", [
+                c("Automatic", "", "setCanvasLayout:", tag: 0),
+                sep,
+                c("Editor on Left", "", "setCanvasLayout:", tag: 1),
+                c("Editor on Top", "", "setCanvasLayout:", tag: 2),
+            ])
+        }
+    }
+
     /// Show Editor Only … Layout ▸ (§2.7 items 1–4; §2.8's first block,
     /// where the canvas is titled Preview).
     static func firstBlock(source: Bool) -> [MenuItemSpec] {

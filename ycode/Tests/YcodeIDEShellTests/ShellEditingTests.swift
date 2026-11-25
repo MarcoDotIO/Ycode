@@ -102,9 +102,11 @@ import YcodeSyntax
         #expect(m.editor?.buffer.text == "xsecond\n" && m.editor?.diskChange == .modified && m.editedPaths == [p])
         m.reloadFromDisk()
         #expect(m.editor?.buffer.text == "third\n" && m.editor?.diskChange == nil && m.editedPaths.isEmpty)
-        // Reloading can be undone: the edit comes back, as an edit.
+        // Reloading after a change on disk clears the file's undo history
+        // (source-editor.md, "Text undo belongs to the file").
+        #expect(m.editor?.buffer.canUndo == false)
         m.editor?.buffer.undo()
-        #expect(m.editor?.buffer.text == "xsecond\n" && m.editedPaths == [p])
+        #expect(m.editor?.buffer.text == "third\n" && m.editedPaths.isEmpty)
     }
 
     @Test func aDeletedFileShowsAndKeepingSavesItAgain() throws {

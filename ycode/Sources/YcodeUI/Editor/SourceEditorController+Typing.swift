@@ -11,8 +11,10 @@ final class EditorSyntaxState {
     var edits: [(range: NSRange, replacement: String)] = []
     /// Offsets of closers inserted automatically, not yet typed over.
     var pendingClosers: Set<Int> = []
-    /// The parser pass waiting for typing to pause.
-    var refineWork: DispatchWorkItem?
+    /// The parser pass waiting for typing to pause (a run loop timer in
+    /// the common modes: it also fires while the mouse is tracked and in
+    /// a nested run loop, where work queued on the main queue would wait).
+    var refineWork: Timer?
     /// Blocks for the scope guides (updated with the folds).
     var scopeBlocks: [SyntaxBlock] = []
 }
@@ -37,16 +39,30 @@ extension SourceEditorController {
 
     // MARK: Highlighting
 
+    /// After a file opens, the parser pass waits this long (seconds): long
+    /// enough for the window to draw the file in its lexical colours first
+    /// (the timer lets the run loop reach its display pass), then the
+    /// parser's colours follow (P-199).
+    static let openRefineDelay = 0.016
+
     /// Rebuilds the syntax document from the text and recolors it all.
-    func resetSyntax() {
+    /// `deferringParse` (opening a file): the lexer's colours, which cost
+    /// little, cover every line at once and the parser pass follows after
+    /// the first frame (P-199: it was ≈ 325 ms of a 400-line file's
+    /// ≈ 470 ms open), so the file never shows uncoloured.
+    func resetSyntax(deferringParse: Bool = false) {
         syntax.edits = []
         syntax.pendingClosers = []
-        syntax.refineWork?.cancel()
+        syntax.refineWork?.invalidate()
         syntax.refineWork = nil
         let doc = SyntaxDocument(text: textView.string, language: language, deferParse: true)
         syntax.document = doc
         if doc.needsRefinement {
-            if doc.lineCount <= Self.syncParseLines { doc.refine() } else { scheduleRefine(after: 0) }
+            if deferringParse || doc.lineCount > Self.syncParseLines {
+                scheduleRefine(after: deferringParse ? Self.openRefineDelay : 0)
+            } else {
+                doc.refine()
+            }
         }
         if let storage = textView.textStorage { Theme.apply(doc, to: storage) }
         lastHighlightWasIncremental = false
@@ -93,20 +109,26 @@ extension SourceEditorController {
 
     /// Runs the parser pass after `delay` unless the text changes first.
     func scheduleRefine(after delay: TimeInterval) {
-        syntax.refineWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
+        syntax.refineWork?.invalidate()
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.refineHighlighting() }
         }
-        syntax.refineWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        syntax.refineWork = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     /// The parser pass now (Swift), recoloring what it changed.
     public func refineHighlighting() {
+        syntax.refineWork?.invalidate()
         syntax.refineWork = nil
-        guard let doc = syntax.document, let storage = textView.textStorage, doc.units.count == storage.length,
-              let r = doc.refine() else { return }
+        guard let doc = syntax.document, let storage = textView.textStorage, doc.units.count == storage.length else { return }
+        let first = !doc.hasParsed
+        guard let r = doc.refine() else { return }
         Theme.apply(doc, to: storage, range: r)
+        // The parser's styles can change line heights: an open's first pass
+        // (it follows the first frame, P-199) settles the height again, as
+        // the open did for the lexer's.
+        if first { textView.settleAfterFirstFrame() }
     }
 
     /// `r` carried through an edit of `range` to `length` characters.

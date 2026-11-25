@@ -1,0 +1,1992 @@
+{
+ "name": "b5-obs-narrow",
+ "title": "B5-OBS 4/6: the window narrowed from 1400 pt (25-pt steps down to 500) with AX trees at each width; the toolbar overflow menu at the narrowest; widened back.",
+ "targets": [
+  "xcode"
+ ],
+ "compare_order": [
+  "xcode"
+ ],
+ "focus": "foreground",
+ "launch_settle": 3.0,
+ "record": {
+  "fps": 120,
+  "codec": "hevc",
+  "pre": 0.5,
+  "post": 1.0
+ },
+ "project": {
+  "generator": "make-parity-project.py",
+  "path": "Parity/Parity.xcodeproj"
+ },
+ "window": {
+  "size": [
+   1400,
+   880
+  ],
+  "display": "builtin",
+  "title": "{project}",
+  "timeout": 90,
+  "offset": [
+   1020,
+   300
+  ]
+ },
+ "steps": [
+  {
+   "id": "d-1400",
+   "note": "1400 × 880, navigator and inspector shown. AX tree.",
+   "do": [
+    {
+     "tree": "w1400",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1375",
+   "note": "Window set to 1375 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1375,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1350",
+   "note": "Window set to 1350 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1350,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1350",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1325",
+   "note": "Window set to 1325 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1325,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1300",
+   "note": "Window set to 1300 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1300,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1300",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1275",
+   "note": "Window set to 1275 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1275,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1250",
+   "note": "Window set to 1250 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1250,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1250",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1225",
+   "note": "Window set to 1225 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1225,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1200",
+   "note": "Window set to 1200 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1200,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1200",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1175",
+   "note": "Window set to 1175 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1175,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1150",
+   "note": "Window set to 1150 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1150,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1150",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1125",
+   "note": "Window set to 1125 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1125,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1100",
+   "note": "Window set to 1100 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1100,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1100",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1075",
+   "note": "Window set to 1075 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1075,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1050",
+   "note": "Window set to 1050 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1050,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1050",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1025",
+   "note": "Window set to 1025 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1025,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w1000",
+   "note": "Window set to 1000 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1000,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1000",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w975",
+   "note": "Window set to 975 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      975,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w950",
+   "note": "Window set to 950 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      950,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w950",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w925",
+   "note": "Window set to 925 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      925,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w900",
+   "note": "Window set to 900 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      900,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w900",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w875",
+   "note": "Window set to 875 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      875,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w850",
+   "note": "Window set to 850 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      850,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w850",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w825",
+   "note": "Window set to 825 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      825,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w800",
+   "note": "Window set to 800 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      800,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w800",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w775",
+   "note": "Window set to 775 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      775,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w750",
+   "note": "Window set to 750 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      750,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w750",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w725",
+   "note": "Window set to 725 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      725,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w700",
+   "note": "Window set to 700 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      700,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w700",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w675",
+   "note": "Window set to 675 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      675,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w650",
+   "note": "Window set to 650 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      650,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w650",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w625",
+   "note": "Window set to 625 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      625,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w600",
+   "note": "Window set to 600 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      600,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w600",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w575",
+   "note": "Window set to 575 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      575,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w550",
+   "note": "Window set to 550 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      550,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w550",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w525",
+   "note": "Window set to 525 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      525,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-w500",
+   "note": "Window set to 500 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      500,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w500",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "d-overflow",
+   "note": "Click the toolbar's overflow button (the chevron at its right end). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton|AXMenuButton|AXPopUpButton",
+      "description~": "more|More|overflow|Overflow|chevron"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "overflow",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "d-overflow-items",
+   "note": "The overflow menu's items.",
+   "do": [
+    {
+     "submenus": "items",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-overflow-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "d-widen",
+   "note": "Back to 1400 × 880.",
+   "do": [
+    {
+     "resize": [
+      1400,
+      880
+     ]
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-appearance-light",
+   "note": "Settings ▸ Appearance: Xcode's own Appearance set to Light; Settings closed.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "AppearanceLight",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "appearance",
+     "depth": 40
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-1400",
+   "note": "1400 × 880, navigator and inspector shown. AX tree.",
+   "do": [
+    {
+     "tree": "w1400",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1375",
+   "note": "Window set to 1375 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1375,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1350",
+   "note": "Window set to 1350 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1350,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1350",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1325",
+   "note": "Window set to 1325 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1325,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1300",
+   "note": "Window set to 1300 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1300,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1300",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1275",
+   "note": "Window set to 1275 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1275,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1250",
+   "note": "Window set to 1250 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1250,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1250",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1225",
+   "note": "Window set to 1225 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1225,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1200",
+   "note": "Window set to 1200 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1200,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1200",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1175",
+   "note": "Window set to 1175 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1175,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1150",
+   "note": "Window set to 1150 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1150,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1150",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1125",
+   "note": "Window set to 1125 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1125,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1100",
+   "note": "Window set to 1100 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1100,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1100",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1075",
+   "note": "Window set to 1075 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1075,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1050",
+   "note": "Window set to 1050 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1050,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1050",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1025",
+   "note": "Window set to 1025 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1025,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w1000",
+   "note": "Window set to 1000 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      1000,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w1000",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w975",
+   "note": "Window set to 975 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      975,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w950",
+   "note": "Window set to 950 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      950,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w950",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w925",
+   "note": "Window set to 925 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      925,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w900",
+   "note": "Window set to 900 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      900,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w900",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w875",
+   "note": "Window set to 875 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      875,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w850",
+   "note": "Window set to 850 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      850,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w850",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w825",
+   "note": "Window set to 825 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      825,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w800",
+   "note": "Window set to 800 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      800,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w800",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w775",
+   "note": "Window set to 775 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      775,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w750",
+   "note": "Window set to 750 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      750,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w750",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w725",
+   "note": "Window set to 725 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      725,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w700",
+   "note": "Window set to 700 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      700,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w700",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w675",
+   "note": "Window set to 675 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      675,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w650",
+   "note": "Window set to 650 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      650,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w650",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w625",
+   "note": "Window set to 625 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      625,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w600",
+   "note": "Window set to 600 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      600,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w600",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w575",
+   "note": "Window set to 575 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      575,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w550",
+   "note": "Window set to 550 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      550,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w550",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w525",
+   "note": "Window set to 525 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      525,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-w500",
+   "note": "Window set to 500 × 880 through Accessibility (AX tree at every 50 pt).",
+   "do": [
+    {
+     "resize": [
+      500,
+      880
+     ]
+    },
+    {
+     "wait": 0.6
+    },
+    {
+     "tree": "w500",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  },
+  {
+   "id": "l-overflow",
+   "note": "Click the toolbar's overflow button (the chevron at its right end). AX tree.",
+   "do": [
+    {
+     "click": {
+      "role": "AXButton|AXMenuButton|AXPopUpButton",
+      "description~": "more|More|overflow|Overflow|chevron"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "tree": "overflow",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "l-overflow-items",
+   "note": "The overflow menu's items.",
+   "do": [
+    {
+     "submenus": "items",
+     "all_windows": true
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-overflow-close",
+   "note": "Escape.",
+   "do": [
+    {
+     "key": "escape escape escape"
+    },
+    {
+     "wait": 0.5
+    }
+   ],
+   "record": false,
+   "still": "none"
+  },
+  {
+   "id": "l-widen",
+   "note": "Back to 1400 × 880.",
+   "do": [
+    {
+     "resize": [
+      1400,
+      880
+     ]
+    },
+    {
+     "wait": 1.2
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.6
+   },
+   "still": "both"
+  },
+  {
+   "id": "z-appearance-system",
+   "note": "Settings ▸ Appearance: Xcode's own Appearance set to System; Settings closed.",
+   "do": [
+    {
+     "key": "cmd+,"
+    },
+    {
+     "wait": 2.0
+    },
+    {
+     "select": {
+      "role": "AXRow",
+      "text": "Appearance",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.2
+    },
+    {
+     "press": {
+      "role": "AXButton",
+      "description": "AppearanceAuto",
+      "scope": "app"
+     }
+    },
+    {
+     "wait": 1.5
+    },
+    {
+     "tree": "appearance",
+     "depth": 40
+    },
+    {
+     "key": "cmd+w"
+    },
+    {
+     "wait": 1.0
+    }
+   ],
+   "record": {
+    "mode": "app",
+    "margin": 600,
+    "post": 0.5
+   },
+   "still": "both"
+  },
+  {
+   "id": "z-end",
+   "note": "Back to System (dark). AX tree.",
+   "do": [
+    {
+     "tree": "end",
+     "depth": 40
+    }
+   ],
+   "record": {
+    "video": false,
+    "mode": "app",
+    "margin": 600
+   },
+   "still": "after"
+  }
+ ],
+ "setup": [
+  {
+   "select": {
+    "role": "AXRow",
+    "text": "Shapes|Shapes.swift"
+   }
+  },
+  {
+   "wait": 2.0
+  }
+ ]
+}

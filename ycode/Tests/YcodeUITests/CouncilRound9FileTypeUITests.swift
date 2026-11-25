@@ -72,6 +72,8 @@ import YcodeLanguage
         try "# Notes\n\nSome notes about the project.\n".write(to: src.appendingPathComponent("NOTES.md"), atomically: true, encoding: .utf8)
         try "{\n  \"accent\": \"#007AFF\",\n  \"background\": \"#FFFFFF\"\n}\n"
             .write(to: src.appendingPathComponent("palette.json"), atomically: true, encoding: .utf8)
+        // Up to date: the capsule counts only what the files raise (P-120 aside).
+        try RecommendedSettingsFixture.bringUpToDate(dir)
         let wc = try fc.window(dir)
         if let w = wc.window { w.setFrame(NSRect(x: -6000, y: -6000, width: 1400, height: 880), display: false) }
         wc.window?.contentView?.layoutSubtreeIfNeeded()

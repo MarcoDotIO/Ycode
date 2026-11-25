@@ -383,6 +383,16 @@ public final class EditorBuffer {
     /// Ends the open undo step (a pause, a save).
     public func breakUndoGroup() { openKind = nil }
 
+    /// Forgets every undo and redo step: the file's history ends (it was
+    /// reloaded after a change on disk; `source-editor.md`, "Text undo
+    /// belongs to the file"). The text and its saved state stay.
+    public func clearUndoHistory() {
+        undoStack.removeAll()
+        redoStack.removeAll()
+        openKind = nil
+        touch()
+    }
+
     public func undo() {
         guard !isReadOnly else { return }
         clearMarkedText()

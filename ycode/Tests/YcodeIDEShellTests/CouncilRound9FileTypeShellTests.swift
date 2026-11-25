@@ -99,8 +99,11 @@ import YcodeLanguage
             #expect(m.document?.name == name)
             try await Task.sleep(for: .milliseconds(400))
             #expect(m.editorIssues.isEmpty, "\(name): \(m.editorIssues)")
-            #expect(m.issueCounts.errors == 0 && m.issueCounts.warnings == 0, "\(name)")
-            #expect(m.allIssues.isEmpty, "\(name)")
+            // The project's own check (P-120, "Update to recommended settings") is
+            // not the language service's: only it may be listed.
+            let projectChecks = m.allIssues.filter { $0.file == nil && $0.message == "Update to recommended settings" }
+            #expect(m.issueCounts.errors == 0 && m.issueCounts.warnings == projectChecks.count, "\(name)")
+            #expect(m.allIssues.count == projectChecks.count, "\(name)")
         }
         #expect(server.documents.isEmpty, "\(server.documents)")
 

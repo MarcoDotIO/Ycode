@@ -48,6 +48,8 @@ public enum NavigatorBars {
     ]
 
     public static let filterPlaceholder = "Filter"
+    /// The Source Control navigator's empty state (P-039).
+    public static let noRepositories = "No Git Repositories"
 
     /// Per navigator, in selector order.
     public static let specs: [NavigatorBarSpec] = {
@@ -59,10 +61,9 @@ public enum NavigatorBars {
                 T("Files with source-control status", "Show only files with source-control status", "plusminus.circle",
                   menu: "Show Only Files with Source-Control Status"),
             ], emptyState: []),
-            // Source Control: the filter alone across the bar, no "+" or
-            // options button (navigators.md round 3 §2); Ycode keeps its
-            // "No Repository".
-            .init(left: .none, toggles: [], emptyState: ["No Repository"]),
+            // Source Control: the action (…) button, then the filter
+            // (P-040); "No Git Repositories" (P-039).
+            .init(left: .more, toggles: [], emptyState: [noRepositories]),
             // Bookmarks
             .init(left: .more, toggles: [
                 T("Incomplete Items", "Show only incomplete items", "checklist", menu: "Show Only Incomplete Items"),
@@ -76,7 +77,8 @@ public enum NavigatorBars {
                 T("Only errors", "Show only errors", "xmark.octagon", menu: "Show Only Errors"),
             ], emptyState: ["No Issues"]),
             // Tests
-            .init(left: .add("Add a new test target or class"), toggles: [
+            // Tests: the action (…) button holds the add items (P-040).
+            .init(left: .more, toggles: [
                 T("Show Only Included Tests", "Show Only Included Tests", "checkmark.circle", menu: "Show Only Included Tests"),
                 T("Recent Tests", "Show only recent tests and open documents", "clock", menu: "Show Only Recent Tests"),
             ], emptyState: ["No Tests", "Click the \u{2295} button to add test targets"]),
@@ -95,7 +97,8 @@ public enum NavigatorBars {
                 T("Enabled breakpoints", "Show only enabled breakpoints", "checkmark.circle", menu: "Show Only Enabled Breakpoints"),
             ], emptyState: ["No Breakpoints"]),
             // Reports
-            .init(left: .pullDown, toggles: [
+            // Reports: the action (…) button (P-040).
+            .init(left: .more, toggles: [
                 T("Recent reports filter", "Show only recent reports", "clock", menu: "Show Only Recent Reports"),
             ], emptyState: ["No Logs"]),
         ]

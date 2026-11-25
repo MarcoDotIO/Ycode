@@ -87,7 +87,7 @@ File ▸
   —
   Duplicate Editor Tab
   Save | ⌘S
-  Save All | ⌥⌘S
+  Save All | ⌥⌘S | alt
   Duplicate… | ⇧⌘S
   Save As… | ⌥⇧⌘S | alt
   Revert to Saved…

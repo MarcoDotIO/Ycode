@@ -392,15 +392,15 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
 
     @Test func inspectorSlideFollowsTheRound2Timing() {
         #expect(EditorMetrics.inspectorSlideProgress(elapsed: 0.04, show: false) == 0)
-        #expect(EditorMetrics.inspectorSlideProgress(elapsed: 0.11, show: true) == 0)
+        #expect(EditorMetrics.inspectorSlideProgress(elapsed: 0.02, show: true) == 0)
         // Round 2's hide table (an ease-in-out) is superseded by round 6's
         // curves (`editor-area.md` H.2, row 158: hide ease-out over 195 ms,
         // show ease-in-out over 230; `CouncilRound6ChromeTests`). The
         // starts stand: 50 and 145 ms after the press (round 9, row 224:
         // the show's 130).
-        // Round 10 (row 248): 75 + 200 ms and 170 + 230.
-        #expect(abs(EditorMetrics.inspectorSlideTotal(show: false) - 0.275) < 0.001)
-        #expect(abs(EditorMetrics.inspectorSlideTotal(show: true) - 0.400) < 0.001)
+        // Beta 5 (P-192): 72 + 275 ms and 21 + 242 (round 10: 75 + 200 and 170 + 230).
+        #expect(abs(EditorMetrics.inspectorSlideTotal(show: false) - 0.347) < 0.001)
+        #expect(abs(EditorMetrics.inspectorSlideTotal(show: true) - 0.263) < 0.001)
     }
 
     // MARK: Round 2: inspector (rows 41–43) and the status bar for images (row 44)

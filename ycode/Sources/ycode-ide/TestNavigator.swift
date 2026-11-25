@@ -58,7 +58,7 @@ struct TestOutline: View {
     var body: some View {
         let t = model.testing
         let c = ShellColors(scheme)
-        let rows = t.rows
+        let rows = model.filtered(t.rows, navigator: ShellNavigator.tests.selectorIndex)   // P-037
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(rows) { r in
@@ -83,7 +83,8 @@ struct TestOutline: View {
             .padding(.top, CGFloat(WorkspaceChrome.firstRowGap))
             .padding(.bottom, 8)
         }
-        .scrollIndicators(.hidden)
+        .navigatorKeyboard(rows: rows, selection: t.selection, select: { id in if let r = rows.first(where: { $0.id == id }) { select(r) } },
+                           toggle: { t.setExpanded($0, $1) })   // P-051, NavigatorKeyboard.swift
         .shellTarget("test outline")
     }
 
@@ -122,7 +123,7 @@ struct ReportNavigator: View {
     var body: some View {
         let t = model.testing
         let c = ShellColors(scheme)
-        let rows = t.reportRows
+        let rows = model.filtered(t.reportRows, navigator: ShellNavigator.reports.selectorIndex)   // P-037
         if rows.isEmpty {
             EmptyNavigator(lines: NavigatorBars.specs[8].emptyState)
                 .shellTarget("reports empty")
@@ -141,7 +142,8 @@ struct ReportNavigator: View {
                 .padding(.top, CGFloat(WorkspaceChrome.firstRowGap))
                 .padding(.bottom, 8)
             }
-            .scrollIndicators(.hidden)
+            .navigatorKeyboard(rows: rows, selection: t.reportSelection, select: { t.selectReport($0) },
+                               toggle: { t.setReportExpanded($0, $1) })   // P-051, NavigatorKeyboard.swift
             .shellTarget("report navigator")
         }
     }

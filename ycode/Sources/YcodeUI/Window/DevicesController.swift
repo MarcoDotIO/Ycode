@@ -23,8 +23,8 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     public enum InfoTab: Int, CaseIterable { case info, apps, profiles }
 
     public private(set) var devices: [DeviceRow]
-    public private(set) var simulators: [DeviceRow]
-    public private(set) var selected: DeviceRow?
+    public internal(set) var simulators: [DeviceRow]
+    public internal(set) var selected: DeviceRow?
     /// The sidebar's state (filter, search, sort, collapsed sections).
     public private(set) var sidebarModel = HubSidebarModel()
     public private(set) var inspectorTab: InspectorTab = .settings
@@ -71,6 +71,14 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     public let pairing = HubPairing()
     /// A Vision Pro in a headset (DevicesController+Headset.swift).
     public let headset = HubHeadset()
+    /// The Mac's simctl simulators' Start, Shut Down, Restart and Erase
+    /// (DevicesController+Simctl.swift); nil: they are listed only. Set by
+    /// the window (tests: a fake runner).
+    public var simctlControl: SimctlDeviceControl?
+    /// The simctl command in flight (tests await it).
+    public internal(set) var simctlTask: Task<Void, Never>?
+    /// A `simctl list` is being read for the states (the 2-second poll).
+    var simctlPolling = false
 
     // MARK: Rows
 
@@ -90,7 +98,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
                          isSimulator: !physical, model: r.model, isRunning: running, isAvailable: r.isAvailable && reachable)
     }
 
-    private func rebuildModel() {
+    func rebuildModel() {
         var m = sidebarModel
         m.devices = allRows.map(hubDevice)
         sidebarModel = m
@@ -146,7 +154,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         reloadSidebar()
     }
 
-    private func reloadSidebar() {
+    func reloadSidebar() {
         tableRows = currentRows
         let m = sidebarModel
         guard isViewLoaded else { return }
@@ -213,6 +221,12 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     /// The remote rows as they are now (polled while the window is open:
     /// runs and started devices change the rows' state). Set by the window.
     public var currentRemoteRows: (() -> [DeviceRow])?
+    /// The simulator host whose `ycrun` pid files are polled (`DevicesController+Ycrun.swift`). Set by the window.
+    public var ycrunHost: (() -> RemoteSimulatorSettings)?
+    /// Device directories ycrun booted on that host, as last asked.
+    public internal(set) var ycrunBooted: Set<String> = []
+    var ycrunTask: Task<Void, Never>?
+    var ycrunPolledAt: Date?
 
     // MARK: Folding Ycode's remote iPhone Duo (`foldable.md` §8.3 E1–E2)
 
@@ -314,19 +328,26 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     /// The live display of a running device (nil: none). Set by the window.
     public var makeDisplayLink: ((DeviceRow) -> RemoteDisplayLink?)?
     /// Devices being started or shut down (the canvas shows a spinner).
-    public private(set) var busyDevices: Set<String> = []
-    public private(set) var lifecycleTask: Task<Void, Never>?
+    public internal(set) var busyDevices: Set<String> = []
+    public internal(set) var lifecycleTask: Task<Void, Never>?
     /// Each running device's display (shared by the canvas and its compact window).
     public private(set) var links: [String: RemoteDisplayLink] = [:]
     /// The compact windows, by device.
     public private(set) var compactWindows: [String: DeviceWindowController] = [:]
 
-    func canStart(_ r: DeviceRow) -> Bool { r.isYcodeRemote && r.state != "Booted" && startDevice != nil && !busyDevices.contains(r.identifier) }
-    func canShutDown(_ r: DeviceRow) -> Bool { r.isYcodeRemote && r.state == "Booted" && shutDownDevice != nil && !busyDevices.contains(r.identifier) }
+    func canStart(_ r: DeviceRow) -> Bool {
+        if isSimctlOperated(r) { return r.state == "Shutdown" && r.isAvailable && !busyDevices.contains(r.identifier) }
+        return r.isYcodeRemote && r.state != "Booted" && startDevice != nil && !busyDevices.contains(r.identifier)
+    }
+    func canShutDown(_ r: DeviceRow) -> Bool {
+        if isSimctlOperated(r) { return r.state == "Booted" && !busyDevices.contains(r.identifier) }
+        return r.isYcodeRemote && r.state == "Booted" && shutDownDevice != nil && !busyDevices.contains(r.identifier)
+    }
 
     /// Device ▸ Start (the status view's Start).
     @discardableResult
     public func start(_ r: DeviceRow) -> Task<Void, Never>? {
+        if isSimctlOperated(r) { return startSimctl(r) }
         guard canStart(r), let startDevice else { return nil }
         busyDevices.insert(r.identifier)
         refreshCanvas()
@@ -351,6 +372,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     /// Device ▸ Shut Down / Force Shut Down.
     @discardableResult
     public func shutDown(_ r: DeviceRow, force: Bool = false) -> Task<Void, Never>? {
+        if isSimctlOperated(r) { return shutDownSimctl(r) }
         guard canShutDown(r), let shutDownDevice else { return nil }
         busyDevices.insert(r.identifier)
         refreshCanvas()
@@ -438,6 +460,8 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     @discardableResult
     public func openCompactWindowFromToolbar() -> Task<Void, Never>? {
         guard let r = selected, multipleSelection.count <= 1 else { NSSound.beep(); return nil }
+        // A Mac simulator's own window is the simulator viewer's (Start opens it).
+        if isSimctlOperated(r) { return r.state == "Booted" ? showInViewer(r) : start(r) }
         if link(for: r) != nil { openInNewWindow(r); return nil }
         if canStart(r), let started = start(r) {
             let id = r.identifier
@@ -470,6 +494,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     /// for others (Ycode cannot operate them).
     public func contextMenu(forRow row: Int) -> NSMenu {
         let menu = NSMenu()
+        if rows.indices.contains(row), isSimctlOperated(rows[row]) { return simctlContextMenu(rows[row]) }
         guard rows.indices.contains(row), rows[row].isYcodeRemote else { return menu }
         menu.autoenablesItems = false
         let r = rows[row]
@@ -518,6 +543,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
             i.isEnabled = enabled
             return i
         }
+        if isSimctlOperated(r) { return simctlLifecycleItems(r) }
         guard r.isYcodeRemote else { return [] }
         if r.state == "Booted" {
             return [item("Shut Down", #selector(shutDownChosen(_:)), enabled: canShutDown(r)),
@@ -560,13 +586,14 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     /// What the last erase reported ("Erasing…", "Erased", the error).
     public private(set) var eraseStatus: String?
     /// The erase in flight (tests await it).
-    public private(set) var eraseTask: Task<Void, Never>?
+    public internal(set) var eraseTask: Task<Void, Never>?
 
     @objc func eraseChosen(_ item: NSMenuItem) { erase(row: item.tag) }
 
     /// Erases a row's device after the confirmation.
     @discardableResult
     public func erase(row: Int) -> Task<Void, Never>? {
+        if rows.indices.contains(row), isSimctlOperated(rows[row]) { return eraseSimctl(rows[row]) }
         guard eraseTask == nil, rows.indices.contains(row), rows[row].isYcodeRemote, let eraseDevice else { return nil }
         let d = rows[row]
         guard confirmErase(d) else { return nil }
@@ -686,6 +713,8 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
             if foldControlsEnabled, hingeAngles[r.identifier] == nil, foldTask == nil { refreshFold() }
         }
         pollPairs()
+        pollSimctl()
+        pollYcrun()
         guard let now = currentRemoteRows?() else { return }
         for r in now {
             guard let old = simulators.first(where: { $0.isYcodeRemote && $0.identifier == r.identifier }),
@@ -763,7 +792,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         canvas.handlesKeyEquivalents = true
         canvas.showsBezels = defaults.object(forKey: Self.bezelsKey) as? Bool ?? true
         if let z = defaults.string(forKey: Self.zoomKey).flatMap(DeviceZoomMode.init(storedValue:)) { canvas.zoom = z }
-        canvas.onAction = { [weak self] in if let r = self?.selected { self?.start(r) } }
+        canvas.onAction = { [weak self] in self?.canvasActionChosen() }
         canvas.onZoomChange = { [weak self] in
             guard let self else { return }
             // A zoom the hub set for a device's first showing is not the
@@ -786,6 +815,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     /// Commands that work without a live display: the fold and rotation of
     /// a running Ycode simulator go through its control socket (ssh).
     func performWithoutDisplay(_ c: DeviceCommand) -> Bool {
+        if let r = selected, isSimctlOperated(r) { return performSimctl(c, r) }
         switch c {
         case .poseClosed: return fold(to: 0) != nil
         case .posePartiallyOpen: return fold(to: 90) != nil
@@ -884,9 +914,13 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         } else if r.isYcodeRemote, r.state == "Booted", let l = link(for: r) {
             canvas.show(session: l.session)
         } else if r.isYcodeRemote {
+            canvas.availableControls = []
             canvas.unavailableControlsReason = Self.compactWindowUnavailable
             canvas.showStopped(spec: spec, name: r.name, os: d.osTitle, action: r.state == "Booted" ? nil : "Start")
+        } else if isSimctlOperated(r) {
+            showSimctlCanvas(r, spec: spec, os: d.osTitle)
         } else {
+            canvas.availableControls = []
             // Other simulators and devices: listed only (Ycode does not operate them).
             canvas.unavailableControlsReason = DeviceCanvasView.notOperatedReason
             canvas.showStopped(spec: spec, name: r.name, os: d.osTitle, action: nil)

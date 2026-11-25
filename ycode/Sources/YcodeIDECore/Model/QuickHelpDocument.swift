@@ -30,6 +30,12 @@ public struct QuickHelpDocument: Equatable, Sendable {
     /// The Swift Markup behind each plain text above (summary, parameters,
     /// returns, callouts), for `runs(for:)`.
     var markup: [String: String] = [:]
+    /// Quick Help for a module (an `import`'s module name, `popovers.md`
+    /// §4.1): the title, the abstract (`summary`), a hairline, Overview and
+    /// its blocks, the documentation link; no declaration or file link.
+    public var isModule = false
+    /// A module's Overview, as rendered blocks.
+    public var overview: [QuickHelpBlock] = []
 
     /// The inline runs of one of the document's plain texts (italic, bold,
     /// code voice), as the reference renders them ("O(n)" with an italic n).
@@ -39,15 +45,20 @@ public struct QuickHelpDocument: Equatable, Sendable {
 
     /// The defining file's link: not for an SDK symbol, whose file is a
     /// generated `.swiftinterface` (P-083).
-    public var showsFileLink: Bool { file.map { !$0.hasSuffix(".swiftinterface") } ?? false }
+    public var showsFileLink: Bool { !isModule && (file.map { !$0.hasSuffix(".swiftinterface") } ?? false) }
     /// "Open in Developer Documentation": for SDK symbols (an interface
     /// file or none), not for the project's own symbols (P-083).
-    public var showsDocumentationLink: Bool { file.map { $0.hasSuffix(".swiftinterface") } ?? true }
+    public var showsDocumentationLink: Bool { isModule || (file.map { $0.hasSuffix(".swiftinterface") } ?? true) }
 
     /// The section names present, in display order.
     public var sectionOrder: [String] {
         var s = ["Title"]
         if summary != nil { s.append("Summary") }
+        if isModule {
+            if !overview.isEmpty { s.append("Overview") }
+            s.append("Open in Developer Documentation")
+            return s
+        }
         if !declaration.isEmpty { s.append("Declaration") }
         if showsFileLink { s.append("File") }
         if !parameters.isEmpty { s.append("Parameters") }

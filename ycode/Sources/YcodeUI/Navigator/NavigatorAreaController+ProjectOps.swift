@@ -6,8 +6,6 @@ import YcodeIDECore
 /// fills these in (WorkspaceWindowController+ProjectNavigatorOps.swift).
 @MainActor
 public struct ProjectNavigatorHooks {
-    /// The context menu's items for the selected rows.
-    public var rowMenu: (() -> [NSMenuItem])?
     /// Delete (⌘⌫ or ⌫ in the navigator).
     public var delete: (() -> Void)?
     /// An inline rename ended with a new name.
@@ -89,6 +87,9 @@ extension NavigatorAreaController {
     /// Multiple selection, drags and key handling for the Project navigator.
     func configureProjectOperations(_ index: Int) {
         projectOutline.allowsMultipleSelection = index == 0
+        // A blue insertion line with a ring between rows, a blue outline on
+        // a group or folder dropped onto (P-042).
+        projectOutline.draggingDestinationFeedbackStyle = .regular
         if index == 0 {
             projectOutline.registerForDraggedTypes([Self.projectRowType, .fileURL])
             projectOutline.setDraggingSourceOperationMask(.move, forLocal: true)
@@ -111,11 +112,14 @@ extension NavigatorAreaController {
 
     private var projectOutline: NavigatorOutlineView { navigatorOutline }
 
-    /// The selected project rows, in row order (the clicked row when the
-    /// context menu opens on a row outside the selection).
+    /// The selected project rows, in row order; while a context menu is
+    /// open (and its command runs), the rows it acts on: the clicked row
+    /// when it is outside the selection (P-041: a right click does not
+    /// select).
     public var selectedProjectRows: [OutlineItem] {
         guard isViewLoaded, selectedIndex == 0 else { return [] }
-        return projectOutline.selectedRowIndexes.compactMap { projectOutline.item(atRow: $0) as? OutlineItem }
+        if !contextRowState.rows.isEmpty { return contextRowState.rows }
+        return projectOutlineSelection
     }
 
     /// The row's group or folder row, if any.
@@ -187,16 +191,7 @@ extension NavigatorAreaController {
         }
     }
 
-    // MARK: Context menu
-
-    func rebuildProjectRowMenu(_ menu: NSMenu) {
-        // A right click outside the selection acts on the clicked row.
-        let clicked = projectOutline.clickedRow
-        if clicked >= 0, !projectOutline.selectedRowIndexes.contains(clicked) {
-            projectOutline.selectRowIndexes([clicked], byExtendingSelection: false)
-        }
-        for item in projectOps.rowMenu?() ?? [] { menu.addItem(item) }
-    }
+    // The context menu: NavigatorAreaController+RowMenu.swift.
 
     // MARK: Inline rename
 
@@ -223,6 +218,14 @@ extension NavigatorAreaController {
         field.stringValue = name
         field.isEditable = true
         field.isSelectable = true
+        // P-043: a borderless field, its text in the label colour on the
+        // text background inside the band, no focus ring.
+        field.isBordered = false
+        field.isBezeled = false
+        field.focusRingType = .none
+        field.drawsBackground = true
+        field.backgroundColor = .textBackgroundColor
+        field.textColor = .labelColor
         field.delegate = renameDelegate
         view.window?.makeFirstResponder(field)
         // Select the name without its extension, as the Finder does.
@@ -260,11 +263,55 @@ extension NavigatorAreaController {
     public func outlineView(_ o: NSOutlineView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint,
                             forItems draggedItems: [Any]) {
         draggedRows = draggedItems.compactMap { $0 as? OutlineItem }
+        // P-042: a translucent image of the row's icon and name follows the
+        // pointer (not the solid selected row), and the rows being dragged
+        // keep a grey band while the drag lasts.
+        session.enumerateDraggingItems(options: [], for: o, classes: [NSPasteboardItem.self], searchOptions: [:]) { dragging, i, _ in
+            guard i < self.draggedRows.count else { return }
+            let row = self.draggedRows[i]
+            dragging.imageComponentsProvider = { [weak self] in self?.dragImageComponents(for: row) ?? [] }
+        }
+        setDraggedRowsGrey(true)
     }
 
     public func outlineView(_ o: NSOutlineView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint,
                             operation: NSDragOperation) {
+        setDraggedRowsGrey(false)
         draggedRows = []
+    }
+
+    /// The drag image's opacity (P-042: translucent).
+    static let dragImageAlpha: CGFloat = 0.6
+
+    /// A dragged row's image: its icon and name, translucent, at the
+    /// cell's place (the band is not part of it).
+    public func dragImageComponents(for row: OutlineItem) -> [NSDraggingImageComponent] {
+        let r = projectOutline.row(forItem: row)
+        guard r >= 0, let cell = projectOutline.view(atColumn: 0, row: r, makeIfNecessary: true) as? NSTableCellView else { return [] }
+        var out: [NSDraggingImageComponent] = []
+        for (key, v) in [(NSDraggingItem.ImageComponentKey.icon, cell.imageView as NSView?), (.label, cell.textField as NSView?)] {
+            guard let v, v.bounds.width > 0, v.bounds.height > 0, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { continue }
+            v.cacheDisplay(in: v.bounds, to: rep)
+            let image = NSImage(size: v.bounds.size, flipped: false) { rect in
+                rep.draw(in: rect, from: .zero, operation: .sourceOver, fraction: Self.dragImageAlpha, respectFlipped: true, hints: nil)
+                return true
+            }
+            let c = NSDraggingImageComponent(key: key)
+            c.contents = image
+            c.frame = v.convert(v.bounds, to: cell)
+            out.append(c)
+        }
+        return out
+    }
+
+    /// The dragged rows' bands turn grey (not emphasized) during a drag.
+    func setDraggedRowsGrey(_ on: Bool) {
+        for row in draggedRows {
+            let r = projectOutline.row(forItem: row)
+            guard r >= 0, let v = projectOutline.rowView(atRow: r, makeIfNecessary: false) else { continue }
+            v.isEmphasized = on ? false : (view.window?.firstResponder === projectOutline && view.window?.isKeyWindow == true)
+            v.needsDisplay = true
+        }
     }
 
     /// Where a drop lands: a group, folder or project row, and the child

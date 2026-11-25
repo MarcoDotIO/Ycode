@@ -33,11 +33,15 @@ public struct ToolbarFit: Equatable, Sendable {
         self.activityWidth = activityWidth
     }
 
+    /// Items the content section's width puts in "»" (`ToolbarOverflow.
+    /// forcedOut`, council round 12): a step with them there fits.
+    public var forcedOverflow: Set<String> = []
+
     /// The editor-mode group's toolbar identifier.
     public static let editorModesItem = "editorModes"
 
     /// The items this step lets the overflow menu hold.
-    public var overflowAllowance: Set<String> { editorModesInOverflow ? [Self.editorModesItem] : [] }
+    public var overflowAllowance: Set<String> { forcedOverflow.union(editorModesInOverflow ? [Self.editorModesItem] : []) }
 
     /// Whether `overflowed` (the identifiers in the overflow menu) is a
     /// fit for this step.
@@ -50,6 +54,40 @@ public struct ToolbarFit: Equatable, Sendable {
     /// `activityNatural` is the width the activity view's mark and text
     /// need, without its leading pad: a value that does not change with the
     /// toolbar's layout, so a fit and the layouts after it use one list.
+    /// The steps for a content section that puts `forced` in "»" (council
+    /// round 12, `window-layout.md` §2.3): the editor modes stay out of "»"
+    /// until the content section is below its width for them, and the
+    /// subtitle truncates before them, as the reference's does (≈ 1125 pt
+    /// against "»" at ≈ 937 in round 12 (a)); once they are forced the
+    /// steps start there.
+    public static func steps(activityNatural: CGFloat, forced: Set<String>) -> [ToolbarFit] {
+        let rest = forced.subtracting([editorModesItem])
+        func caps(_ base: ToolbarFit) -> [ToolbarFit] {
+            var out: [ToolbarFit] = []
+            var w = activityNatural
+            while w > activityMinimum {
+                w = max(activityMinimum, (w - max(24, activityNatural * 0.15)).rounded(.down))
+                var f = base
+                f.activityWidth = w
+                out.append(f)
+            }
+            return out
+        }
+        if forced.contains(editorModesItem) {
+            var base = ToolbarFit(editorModesInOverflow: true, schemeGlyphsOnly: true)
+            base.forcedOverflow = rest
+            return [base] + caps(base)
+        }
+        var none = ToolbarFit(), glyphs = ToolbarFit(schemeGlyphsOnly: true)
+        none.forcedOverflow = rest
+        glyphs.forcedOverflow = rest
+        // Past the narrowest subtitle the modes go into "»" anyway (the
+        // room is short of the model's widths), and the subtitle widens again.
+        var modes = ToolbarFit(editorModesInOverflow: true, schemeGlyphsOnly: true)
+        modes.forcedOverflow = rest
+        return [none, glyphs] + caps(glyphs) + [modes] + caps(modes)
+    }
+
     public static func steps(activityNatural: CGFloat) -> [ToolbarFit] {
         var out = [ToolbarFit(), ToolbarFit(schemeGlyphsOnly: true), ToolbarFit(editorModesInOverflow: true, schemeGlyphsOnly: true)]
         var w = activityNatural

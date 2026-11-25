@@ -31,8 +31,11 @@ public final class WorkspaceShellModel {
 
     // MARK: Project navigator
 
-    public private(set) var root: NavigatorItem
+    public internal(set) var root: NavigatorItem
     public var expanded: Set<String>
+    /// The navigators' multiple selection, rename, filter and the file
+    /// operations' undo (ShellNavigatorState.swift, B5-NAVIGATOR).
+    public let navigatorState = ShellNavigatorState()
     /// The workspace's user data file (WorkspaceShellModel+UserState.swift).
     @ObservationIgnored let userStateURL: URL?
     /// The selected row's id.
@@ -80,6 +83,8 @@ public final class WorkspaceShellModel {
     public var isJumpToLineShown = false
     /// File ▸ Open Quickly…'s panel (ShellOpenQuicklyModel.swift).
     public let openQuickly = ShellOpenQuicklyModel()
+    /// The choosers, palettes and New Scheme sheet (ShellPopoverModel.swift, beta 5).
+    public let popovers = ShellPopoverModel()
     /// Bumped when the editor should take the keyboard.
     public internal(set) var editorFocusCount = 0
     /// The issues of the open file, by 1-based line.
@@ -124,6 +129,8 @@ public final class WorkspaceShellModel {
     public var issueSelection: String? {
         didSet { if issueSelection != oldValue, let id = issueSelection { openIssue(id) } }
     }
+    /// The "Update to recommended settings" sheet (ShellRecommendedSettings.swift, P-120).
+    public let recommendedSettings = ShellRecommendedSettings()
     public private(set) var activity: WorkspaceSession.Activity = .idle
     public private(set) var activityFinishedAt: Date?
     /// The language service is starting (the activity subtitle, row 141).
@@ -180,6 +187,7 @@ public final class WorkspaceShellModel {
         scheme = session.scheme
         destination = session.destination
         session.observe { [weak self] change in self?.sessionChanged(change) }
+        session.refreshProjectIssues()   // the project checks, before any build (P-120)
         syncIssues()
         debug.workspace = self
         assistant.workspace = self
@@ -195,7 +203,31 @@ public final class WorkspaceShellModel {
         self.init(session: session)
     }
 
+    /// The schemes listed after one was added (ShellPopoverModel.swift).
+    func setSchemeNames(_ names: [String]) { schemes = names }
+
     public var workspaceName: String { session.model.displayName }
+
+    /// Rebuilds the navigator's tree after the project changed on disk
+    /// (New File, P-187): the session's tree from its projects, then the rows.
+    public func reloadProjectTree() {
+        let m = session.model
+        switch m.kind {
+        case .project:
+            if let path = m.projects.keys.sorted().first, let proj = m.projects[path] {
+                session.model.root = NavigatorTree.project(proj, xcodeprojURL: URL(fileURLWithPath: path))
+            }
+        case .workspace:
+            let rows = m.root.children.map { row -> NavigatorNode in
+                guard let p = row.path, let proj = m.projects[p] else { return row }
+                return NavigatorTree.project(proj, xcodeprojURL: URL(fileURLWithPath: p))
+            }
+            session.model.root = NavigatorNode(name: m.root.name, kind: m.root.kind, path: m.root.path, objectID: m.root.objectID, children: rows)
+        default:
+            session.model.root = NavigatorTree.package(at: m.url)
+        }
+        root = NavigatorItem(session.model.root)
+    }
     public var containerKind: WorkspaceModel.ContainerKind { session.model.kind }
 
     /// "<workspace> — <document>" (`workspace-window.md` §Areas), with
@@ -415,7 +447,8 @@ public final class WorkspaceShellModel {
     // MARK: Issues
 
     private func openIssue(_ id: String) {
-        guard let row = allIssues.first(where: { $0.id == id }), let file = row.file else { return }
+        guard let row = allIssues.first(where: { $0.id == id }) else { return }
+        guard let file = row.file else { return openFilelessIssue(row) }   // ShellRecommendedSettings.swift
         open(file, line: row.line)
         if let col = row.column, col > 0, let b = editor?.buffer, let line = row.line {
             let n = min(max(line - 1, 0), b.lineCount - 1)
@@ -449,7 +482,7 @@ public final class WorkspaceShellModel {
         let at = issueSelection.flatMap { id in all.firstIndex { $0.id == id } }
         var next = forward ? 0 : all.count - 1
         if let at { next = (at + (forward ? 1 : -1) + all.count) % all.count }
-        issueSelection = all[next].id
+        stepSelection(to: all[next].id)   // ShellRecommendedSettings.swift
     }
 
     // MARK: Product

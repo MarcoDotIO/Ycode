@@ -40,6 +40,7 @@ extension SourceEditorPainter {
     }
 
     func drawRuns(_ ctx: inout GraphicsContext, _ runs: [EditorRun], at x: CGFloat, y: CGFloat, font f: Font) {
+        if runs.contains(where: \.proportional) { return drawDocCommentRuns(&ctx, runs, at: x, y: y, font: f) }   // +DocComments.swift
         guard runs.contains(where: { EditorCellCharacters.contains($0.text) }) else {
             ctx.draw(styled(text(runs)), at: CGPoint(x: x, y: y), anchor: .topLeading)
             return

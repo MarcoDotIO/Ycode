@@ -82,6 +82,7 @@ import YcodeSyntax
         let (wc, _) = try r6.longWindow("r7-slow")
         defer { wc.window?.orderOut(nil) }
         let scroll = try #require(wc.editor.scrollView as? EditorScrollView)
+        scroll.topBounce.profile = .round9   // round 9's flick (B5: the display picks one, FlickProfile)
         let clip = scroll.contentView
         let top = EditorTopBounce.top(of: scroll)
         clip.scroll(to: NSPoint(x: clip.bounds.minX, y: top + 480))
@@ -112,6 +113,7 @@ import YcodeSyntax
         let (wc, _) = try r6.longWindow("r7-bottom")
         defer { wc.window?.orderOut(nil) }
         let scroll = try #require(wc.editor.scrollView as? EditorScrollView)
+        scroll.topBounce.profile = .round9   // round 9's flick (B5: the display picks one, FlickProfile)
         let clip = scroll.contentView
         let bottom = EditorTopBounce.bottom(of: scroll)
         clip.scroll(to: NSPoint(x: clip.bounds.minX, y: bottom - 280))
@@ -174,6 +176,7 @@ import YcodeSyntax
         #expect(ed.currentLine == lines && tv.caretLine == lines && ed.gutter.caretLine == lines)
         // At the maximum offset.
         let scroll = try #require(ed.scrollView as? EditorScrollView)
+        scroll.topBounce.profile = .round9   // round 9's flick (B5: the display picks one, FlickProfile)
         let clip = scroll.contentView
         let bottom = EditorTopBounce.bottom(of: scroll)
         clip.scroll(to: NSPoint(x: clip.bounds.minX, y: bottom))
@@ -210,6 +213,7 @@ import YcodeSyntax
         let ed = wc.editor
         let tv = ed.textView
         let scroll = try #require(ed.scrollView as? EditorScrollView)
+        scroll.topBounce.profile = .round9   // round 9's flick (B5: the display picks one, FlickProfile)
         let tlm = try #require(tv.textLayoutManager)
         let height0 = tv.frame.height
         let proportion0 = scroll.verticalScroller?.knobProportion ?? 0

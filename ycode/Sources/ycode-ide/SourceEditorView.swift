@@ -50,6 +50,7 @@ struct SourceEditorView: View {
         let highlights = mine ? model.languageFeatures.highlights : []
         // The instances of the symbol at the insertion point (row 227).
         let instances = mine ? model.languageFeatures.symbolInstances : []
+        let coverage = Preferences.shared.showCodeCoverage ? WorkspaceSession.coverageMarks(model.session.coverageLineCounts(file: c.document.path)) : [:]
         let rename = model.languageFeatures.rename
         let renameEdited = mine && model.languageFeatures.renamePreview == nil && rename?.path == c.document.path ? rename?.range.location : nil
         let colors = ShellColors(scheme)
@@ -65,6 +66,7 @@ struct SourceEditorView: View {
                                               matches: matches, currentMatch: currentMatch, issues: issues, debug: debugMarks,
                                               changes: changes, diamonds: diamonds, highlights: highlights)
             painter.instances = instances
+            painter.coverage = coverage
             painter.renameEdited = renameEdited
             painter.draw(&ctx, size: size)
             PaneRestore.frameDrawn(c)   // a restored pane's first line (W7.1)
@@ -91,7 +93,8 @@ struct SourceEditorView: View {
                 model.dismissQuickHelp()
                 return c.scrollEvent(e)
             })
-            .textSurface(c)
+            // A palette, chooser or Open Quickly over the window has the typing (ShellPopoverModel.swift).
+            .textSurface(c, isEnabled: !model.overlayHasKeyboard)
             .focused($focused)
             #else
             .highPriorityGesture(pointerGesture(c))
@@ -153,7 +156,9 @@ struct SourceEditorView: View {
     }
 
     #if os(Linux)
-    func content<C: View>(_ canvas: C) -> some View { canvas }
+    // #58: the text is clipped at the jump bar's divider (a line half under
+    // it is cut there, `glass-materials.md` §3.1), not drawn over the bar.
+    func content<C: View>(_ canvas: C) -> some View { canvas.clipped() }
     #else
     func content<C: View>(_ canvas: C) -> some View {
         let c = controller
@@ -234,6 +239,8 @@ struct SourceEditorPainter {
     /// The instances of the symbol at the insertion point: yellow at 0.3, as
     /// the macOS editor draws them (`SymbolInstances`, row 227).
     var instances: [NSRange] = []
+    /// Editor ▸ Code Coverage's counts by 1-based line (+Guides.swift).
+    var coverage: [Int: Int] = [:]
 
     func font(_ c: SourceEditorController) -> Font { ShellFonts.editor(c.fontSize) }
 
@@ -250,6 +257,7 @@ struct SourceEditorPainter {
         c.characterMeasure = { ch in
             measuring.resolve(Text(verbatim: String(ch)).font(f)).measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width + tracking
         }
+        c.measure.proportional = docCommentMeasure(measuring, c)   // +DocComments.swift (P-054)
         #endif
         let lines = c.visibleLines(height: size.height)
         let lh = c.lineHeight
@@ -311,6 +319,8 @@ struct SourceEditorPainter {
         if !b.selection.isEmpty {
             fillRange(&ctx, b.selection.range, lines: lines, color: palette.selection.color, textX: textX)
         }
+
+        drawEditorGuides(&ctx, lines: lines, textX: textX)   // +Guides.swift (P-065)
 
         // The text.
         let columnWidth = max(c.layout.advance, 1)
@@ -405,6 +415,8 @@ struct SourceEditorPainter {
             }
         }
         drawChangeBars(&ctx, lines: lines)
+        drawCoverage(&ctx, lines: lines)   // +Guides.swift (P-065)
+        drawStickyLines(&ctx, size: size)   // #58 (+Sticky.swift)
 
         drawCompletion(&ctx, size: size)
     }

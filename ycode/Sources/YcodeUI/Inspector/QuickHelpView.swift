@@ -12,7 +12,10 @@ public enum QuickHelpView {
     /// "Open in Developer Documentation" (set by the window).
     public static var onOpenDocumentation: ((String) -> Void)?
 
-    public static func make(_ doc: QuickHelpDocument, width: CGFloat = 230) -> NSStackView {
+    /// - Parameter popover: the popover's look (§4.2): a borderless 385-wide
+    ///   declaration box with modifiers on their own line and the file's
+    ///   own glyph; otherwise the inspector's.
+    public static func make(_ doc: QuickHelpDocument, width: CGFloat = 230, popover: Bool = false) -> NSStackView {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -50,12 +53,22 @@ public enum QuickHelpView {
         title.setAccessibilityIdentifier("quickhelp.title")
         stack.addArrangedSubview(title)
         if let s = doc.summary { stack.addArrangedSubview(label(s)) }
-        if !doc.declaration.isEmpty {
+        if !doc.declaration.isEmpty, popover {
+            let d = QuickHelpDeclarationBox(doc.declaration)
+            d.setAccessibilityIdentifier("quickhelp.declaration")
+            stack.addArrangedSubview(d)
+            stack.setCustomSpacing(CGFloat(QuickHelpPopoverMetrics.titleToDeclaration), after: stack.arrangedSubviews[max(0, stack.arrangedSubviews.count - 2)])
+            stack.setCustomSpacing(CGFloat(QuickHelpPopoverMetrics.declarationToFile), after: d)
+        } else if !doc.declaration.isEmpty {
             let d = box([label(doc.declaration, mono: true)], tint: .tertiaryLabelColor)
             d.setAccessibilityIdentifier("quickhelp.declaration")
             stack.addArrangedSubview(d)
         }
-        if let f = doc.file, doc.showsFileLink {
+        if let f = doc.file, doc.showsFileLink, popover {
+            let link = QuickHelpFileLink(path: f)
+            link.setAccessibilityIdentifier("quickhelp.file")
+            stack.addArrangedSubview(link)
+        } else if let f = doc.file, doc.showsFileLink {
             let link = NSButton(title: (f as NSString).lastPathComponent, target: nil, action: nil)
             link.isBordered = false
             link.contentTintColor = .linkColor
@@ -166,4 +179,218 @@ final class ClosureTarget: NSObject {
     let body: () -> Void
     init(_ body: @escaping () -> Void) { self.body = body }
     @objc func fire() { body() }
+}
+
+/// Quick Help over the editor (`specs/ide/popovers.md` §4, P-083): an
+/// anchored popover always **above** the symbol, its arrow pointing down
+/// with the tip 3 points over the symbol's line, centred on the symbol;
+/// never flipped below and never clipped to the window (the popover is a
+/// window of its own; only the screen limits it). The body is 417 points
+/// wide (§4.2) and as tall as its content: the bold title, the borderless
+/// declaration box (385 wide, modifiers on their own line), the file link
+/// with the file's glyph, then the inspector's sections; for a module
+/// (§4.1) the title, the abstract, a hairline, Overview and the
+/// documentation link at the bottom right.
+@MainActor
+public enum QuickHelpPopover {
+    /// The body's inner padding (sides).
+    public static let padding = CGFloat(QuickHelpPopoverMetrics.sideInset)
+
+    /// The symbol's rectangle in `tv`: the word at `anchor`'s start (the
+    /// caret's or the clicked character's rectangle), else `anchor`.
+    public static func symbolRect(in tv: NSTextView, near anchor: NSRect) -> NSRect {
+        // TextKit 2 (the source editor's view): no layout manager here.
+        guard let sv = tv as? SourceTextView, !tv.string.isEmpty else { return anchor }
+        let i = tv.characterIndexForInsertion(at: NSPoint(x: anchor.minX + 1, y: anchor.midY))
+        let n = (tv.string as NSString).length
+        guard i != NSNotFound, n > 0 else { return anchor }
+        let word = tv.selectionRange(forProposedRange: NSRange(location: min(i, n - 1), length: 0), granularity: .selectByWord)
+        guard word.length > 0, let r = sv.segmentRects(word).first else { return anchor }
+        return r
+    }
+
+    /// The content: the rendered document, `width` wide.
+    public static func content(_ doc: QuickHelpDocument, width: CGFloat = CGFloat(QuickHelpPopoverMetrics.width)) -> NSViewController {
+        let m = QuickHelpPopoverMetrics.self
+        let inner = width - 2 * padding
+        let stack = doc.isModule ? moduleStack(doc, width: inner) : QuickHelpView.make(doc, width: inner, popover: true)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        let root = FlippedView()
+        root.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: root.topAnchor, constant: CGFloat(m.topInset)),
+            stack.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: padding),
+            stack.widthAnchor.constraint(equalToConstant: inner),
+        ])
+        let fit = stack.fittingSize
+        root.frame = NSRect(x: 0, y: 0, width: width, height: fit.height + CGFloat(m.topInset + m.bottomInset))
+        root.setAccessibilityIdentifier("quickhelp.popover")
+        let vc = NSViewController()
+        vc.view = root
+        vc.preferredContentSize = root.frame.size
+        return vc
+    }
+
+    /// A module's Quick Help (§4.1): title, abstract, hairline, Overview
+    /// and its text, then "Open in Developer Documentation" at the bottom
+    /// right. No declaration box, no file link.
+    static func moduleStack(_ doc: QuickHelpDocument, width: CGFloat) -> NSStackView {
+        let m = QuickHelpPopoverMetrics.self
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        func text(_ a: NSAttributedString, id: String) -> NSTextField {
+            let l = NSTextField(wrappingLabelWithString: "")
+            l.attributedStringValue = a
+            l.preferredMaxLayoutWidth = width
+            l.isSelectable = true
+            l.setAccessibilityIdentifier(id)
+            return l
+        }
+        let title = text(NSAttributedString(string: doc.title, attributes: [.font: NSFont.systemFont(ofSize: CGFloat(m.titleFontSize), weight: .bold),
+                                                                           .foregroundColor: NSColor.labelColor]), id: "quickhelp.title")
+        stack.addArrangedSubview(title)
+        if let s = doc.summary {
+            stack.addArrangedSubview(text(QuickHelpView.attributed(doc.runs(for: s), size: CGFloat(m.bodyFontSize)), id: "quickhelp.text"))
+        }
+        if !doc.overview.isEmpty {
+            let rule = QuickHelpHairline()
+            rule.translatesAutoresizingMaskIntoConstraints = false
+            rule.setAccessibilityIdentifier("quickhelp.hairline")
+            NSLayoutConstraint.activate([rule.heightAnchor.constraint(equalToConstant: 1), rule.widthAnchor.constraint(equalToConstant: width)])
+            stack.addArrangedSubview(rule)
+            stack.setCustomSpacing(10, after: rule)
+            let heading = text(NSAttributedString(string: "Overview", attributes: [.font: NSFont.systemFont(ofSize: CGFloat(m.overviewFontSize), weight: .bold),
+                                                                                    .foregroundColor: NSColor.labelColor]), id: "quickhelp.heading")
+            stack.addArrangedSubview(heading)
+            for b in doc.overview { stack.addArrangedSubview(QuickHelpView.block(b, width: width)) }
+        }
+        let open = NSButton(title: "Open in Developer Documentation", target: nil, action: nil)
+        open.isBordered = false
+        open.font = .systemFont(ofSize: CGFloat(m.linkFontSize))
+        open.contentTintColor = .linkColor
+        open.setAccessibilityIdentifier("quickhelp.documentation")
+        let action = ClosureTarget { QuickHelpView.onOpenDocumentation?(doc.title) }
+        open.target = action
+        open.action = #selector(ClosureTarget.fire)
+        objc_setAssociatedObject(open, &ClosureTarget.key, action, .OBJC_ASSOCIATION_RETAIN)
+        // Bottom right.
+        let row = NSStackView(views: [NSView(), open])
+        row.orientation = .horizontal
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.widthAnchor.constraint(equalToConstant: width).isActive = true
+        stack.setCustomSpacing(10, after: stack.arrangedSubviews.last ?? title)
+        stack.addArrangedSubview(row)
+        return stack
+    }
+
+    /// The anchor the popover hangs from: the symbol's rectangle, raised
+    /// by the 3-point gap so the arrow's tip stops short of the line.
+    public static func anchor(symbol r: NSRect, flipped: Bool) -> NSRect {
+        let gap = CGFloat(PopoverMetrics.textAnchorGap)
+        return flipped ? NSRect(x: r.minX, y: r.minY - gap, width: r.width, height: r.height + gap)
+            : NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height + gap)
+    }
+
+    /// Shows Quick Help for `doc` above the symbol at `anchor` in `tv`.
+    /// Returns the content (shown only while `tv` is on screen).
+    @discardableResult
+    public static func show(_ doc: QuickHelpDocument, at anchor: NSRect, in tv: NSTextView) -> NSViewController {
+        let c = content(doc)
+        let r = Self.anchor(symbol: symbolRect(in: tv, near: anchor), flipped: tv.isFlipped)
+        AnchoredPopover.show(c, anchor: r, of: tv, edge: .above)
+        return c
+    }
+}
+
+/// The popover's declaration box (§4.2): 385 × (17.5 per line + 15), no
+/// border, corners 6, #262626 in dark; the declaration in the editor's
+/// monospaced face, syntax-coloured, attributes and modifiers on their own
+/// line.
+@MainActor
+public final class QuickHelpDeclarationBox: NSView {
+    public let lines: [String]
+
+    public init(_ declaration: String) {
+        lines = QuickHelpDeclarationLines.lines(declaration)
+        let m = QuickHelpPopoverMetrics.self
+        super.init(frame: NSRect(x: 0, y: 0, width: m.declarationWidth, height: m.declarationHeight(lines: lines.count)))
+        translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: CGFloat(m.declarationWidth)),
+            heightAnchor.constraint(equalToConstant: CGFloat(m.declarationHeight(lines: lines.count))),
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
+        setAccessibilityValue(lines.joined(separator: "\n"))
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    public override var isFlipped: Bool { true }
+
+    public override func draw(_ dirtyRect: NSRect) {
+        let m = QuickHelpPopoverMetrics.self
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let v = m.declarationFill(dark: dark)
+        NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: CGFloat(m.declarationRadius), yRadius: CGFloat(m.declarationRadius)).fill()
+        let font = NSFont.monospacedSystemFont(ofSize: CGFloat(m.declarationFontSize), weight: .regular)
+        let runs = MergeSheetLayout.highlight(lines, fileName: "Declaration.swift")
+        for (i, line) in runs.enumerated() {
+            let a = NSMutableAttributedString()
+            for r in line {
+                let color = r.role.map { DefaultTheme.color(for: $0, fallback: .labelColor) } ?? .labelColor
+                a.append(NSAttributedString(string: r.text, attributes: [.font: font, .foregroundColor: color]))
+            }
+            let h = a.size().height
+            let center = m.declarationVerticalPadding + (Double(i) + 0.5) * m.declarationLinePitch
+            a.draw(with: NSRect(x: CGFloat(m.declarationHorizontalPadding), y: CGFloat(center) - h / 2,
+                                width: bounds.width - CGFloat(2 * m.declarationHorizontalPadding), height: h),
+                   options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        }
+    }
+}
+
+/// The popover's file link (§4.2): the file's own glyph in its type's tint
+/// (a Swift file's orange), then its name in the accent colour; a click
+/// opens it.
+@MainActor
+public final class QuickHelpFileLink: NSButton {
+    let path: String
+    let action_: ClosureTarget
+
+    public init(path: String) {
+        self.path = path
+        action_ = ClosureTarget { QuickHelpView.onOpenFile?(path) }
+        super.init(frame: .zero)
+        title = (path as NSString).lastPathComponent
+        isBordered = false
+        font = .systemFont(ofSize: 12)
+        contentTintColor = .linkColor
+        let name = title
+        image = NSImage(size: NSSize(width: 14, height: 14), flipped: true) { r in
+            MergeDraw.fileIcon(name, in: r, color: MergeDraw.fileTint(name), pointSize: 11, box: (11.5, 11.5))
+            return true
+        }
+        imagePosition = .imageLeading
+        target = action_
+        action = #selector(ClosureTarget.fire)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+}
+
+/// A module popover's hairline (§4.1).
+@MainActor
+final class QuickHelpHairline: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let v = QuickHelpPopoverMetrics.hairline(dark: dark)
+        NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1).setFill()
+        bounds.fill()
+    }
 }

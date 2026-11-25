@@ -111,6 +111,7 @@ func makeLocalPackageRemote(in dir: URL) throws -> URL {
         try FileManager.default.createDirectory(at: proj, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: ycodeDir.appendingPathComponent("Tests/YcodeProjectTests/Fixtures/Hello.xcodeproj/project.pbxproj"),
                                          to: proj.appendingPathComponent("project.pbxproj"))
+        try RecommendedSettingsFixture.bringUpToDate(proj)   // the resolve errors come first, not P-120's warning
         let remote = try makeLocalPackageRemote(in: dir)
         let wc = WorkspaceWindowController(session: WorkspaceSession(model: try WorkspaceModel(url: proj)), loadDestinations: false, startLanguageService: false)
         wc.packageCheckoutsDirectory = dir.appendingPathComponent("checkouts")

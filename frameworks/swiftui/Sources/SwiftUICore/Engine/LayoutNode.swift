@@ -1,4 +1,6 @@
 import Foundation
+import OVRender
+import Synchronization
 
 // OpenViews layout engine (09-open-design.md §3.3), round R3.
 //
@@ -91,6 +93,21 @@ package final class LayoutContext {
     /// Window and safe rectangles (root coordinates), when laid out as a window.
     package var safeArea: (window: CGRect, safe: CGRect)?
     package private(set) var uncertainCount = 0
+    /// B5 (P-200): the layout pass this context is in (a context is kept
+    /// from pass to pass by incremental layout; nodes prepared or placed in
+    /// a pass record it).
+    package private(set) var pass = 0
+    /// Pass numbers are unique across contexts, so a number recorded with a
+    /// node (`placedPass`) never matches a pass of another context.
+    private static let passCounter = Atomic<Int>(0)
+
+    /// Starts a new pass on this context.
+    package func beginPass() {
+        pass = Self.passCounter.add(1, ordering: .relaxed).newValue
+        uncertainCount = 0
+        unknownAccumulator = []
+        interest = [.horizontal, .vertical]
+    }
     /// Dimensions the current measurement actually uses (see `measuring`).
     private var interest: Axis.Set = [.horizontal, .vertical]
     /// Unknown dimensions reported while the innermost node was measured.
@@ -160,6 +177,13 @@ package final class LayoutNode {
     /// What the node draws below its children, in its own coordinates
     /// (round R5; Render/DisplayListBuilder.swift).
     package var draw: NodeDraw?
+    /// B5 (P-200): `draw` reads state when it runs (a `Canvas`, a text
+    /// field's caret, a scroll view's scrollers), so its items are drawn
+    /// afresh for every frame; other drawings depend only on the lowering.
+    package var drawIsLive = false
+    /// B5 (P-200): the items this node added to its parent's list in the
+    /// last display list, kept while nothing they depend on changed.
+    package var emitCache: EmitCache?
     /// How the node changes the rendering of its children (clips, masks,
     /// blend modes, effects; round R5).
     package var renderEffects: [NodeRenderEffect] = []
@@ -167,6 +191,16 @@ package final class LayoutNode {
     private var sizes: [ProposalKey: (size: CGSize, unknown: Axis.Set)] = [:]
     private var dims: [ProposalKey: ViewDimensions] = [:]
     private var placementMemo: [PlacementKey: [ChildPlacement]] = [:]
+
+    /// B5 (P-200): the pass (of `context`) that last reset this node's
+    /// measurements, and the pass that last placed it.
+    package private(set) var preparedPass = -1
+    package private(set) var placedPass = -1
+    /// The last pass in which this node's subtree changed in its own
+    /// coordinates (a node prepared afresh, or a node of it given a new local
+    /// origin, size or proposal); moving the whole subtree does not count.
+    /// Display items made in its coordinates stay valid while it is the same.
+    package private(set) var contentStamp = -1
 
     // Results of the last placement pass (root coordinates).
     package private(set) var placedFrame: CGRect?
@@ -188,7 +222,12 @@ package final class LayoutNode {
     // MARK: Preparation
 
     /// Attaches the context, resolves stack orientations and clears caches.
+    /// B5 (P-200): a node already prepared with this context (kept from an
+    /// earlier pass: its subtree is unchanged) keeps its measurements and its
+    /// subtree is not walked, unless its stack orientation changed.
     package func prepare(context: LayoutContext, stackOrientation: Axis? = nil) {
+        if self.context === context && self.stackOrientation == stackOrientation && preparedPass >= 0 { return }
+        preparedPass = context.pass
         self.context = context
         self.stackOrientation = stackOrientation
         sizes = [:]
@@ -270,6 +309,14 @@ package final class LayoutNode {
     package func place(at origin: CGPoint, size: CGSize, proposal: ProposedViewSize,
                        parentTransform: AffineTransform2D = .identity) {
         let t = parentTransform.concatenating(.translation(origin.x, origin.y))
+        // B5 (P-200): a node kept from the last pass (not prepared again)
+        // placed where it was, at its size and proposal, keeps its subtree's
+        // placements.
+        let localSame = preparedPass != context.pass && placedLocalOrigin == origin && placedSize == size && placedProposal == proposal
+        if localSame, placedTransform == t {
+            return
+        }
+        placedPass = context.pass
         placedTransform = t
         placedLocalOrigin = origin
         placedSize = size
@@ -280,9 +327,13 @@ package final class LayoutNode {
         if let expanding = behavior as? any SafeAreaExpandingBehavior {
             pls = expanding.expand(pls, node: self, frame: placedFrame!)
         }
+        var stamp = localSame ? contentStamp : context.pass
         for pl in pls {
-            children[pl.index].place(at: pl.origin, size: pl.size, proposal: pl.proposal, parentTransform: childT)
+            let c = children[pl.index]
+            c.place(at: pl.origin, size: pl.size, proposal: pl.proposal, parentTransform: childT)
+            stamp = max(stamp, c.contentStamp)
         }
+        contentStamp = stamp
     }
 
     /// Visits this node and its descendants, depth first.
@@ -290,6 +341,16 @@ package final class LayoutNode {
         body(self)
         for c in children { c.forEachNode(body) }
     }
+}
+
+/// B5 (P-200): a node's display items from an earlier frame and what they
+/// were made from (Render/DisplayListBuilder.swift).
+package struct EmitCache {
+    package var parentID: DisplayItemID
+    package var childIndex: Int
+    package var local: CGRect
+    package var contentStamp: Int
+    package var items: [DisplayItem]
 }
 
 /// A render-time effect on a node's children whose value may be animating:

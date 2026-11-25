@@ -203,7 +203,9 @@ public enum ShellCommand: String, CaseIterable, Sendable {
     /// checks there is one for every case).
     public var menuCommand: MenuCommand? {
         let (selector, tag) = action
+        // An alternate (Save All under Save, P-001) when it has no row of its own.
         return Self.table.first { $0.action == selector && $0.tag == tag && !$0.isAlternate }
+            ?? Self.table.first { $0.action == selector && $0.tag == tag }
     }
 
     /// The title in context: the generic title with the dynamic titles

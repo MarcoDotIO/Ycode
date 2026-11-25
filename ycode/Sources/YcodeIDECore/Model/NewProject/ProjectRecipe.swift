@@ -198,6 +198,8 @@ struct ProjectRecipe {
     /// `CreatedOnToolsVersion`): the reference release Ycode matches.
     static let toolsVersion = "27.1"
     static var toolsVersionDigits: String { toolsVersion.replacingOccurrences(of: ".", with: "").padding(toLength: 4, withPad: "0", startingAt: 0) }
+    // `RecommendedSettings.ideVersionDigits` is the same value (the check
+    // reads it; `TemplateRecommendedSettingsTests` keeps them equal).
 
     /// § "Project-level settings in every template".
     static func common() -> [(String, PlistValue)] {

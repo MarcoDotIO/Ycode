@@ -60,10 +60,7 @@ extension WorkspaceShellModel {
             let opened = EditorDocument.open(path: path, typingOptions: Preferences.shared.typingOptions)
             if let d = opened.document {
                 openDocuments[path] = d
-                d.buffer.onTextChange = { [weak self, weak d] _, _ in
-                    guard let self, let d else { return }
-                    self.documentChanged(d)
-                }
+                followChanges(of: d)
                 editor = d
                 document = SourceDocument(path: path, language: d.buffer.language, lines: [])
                 restoreRecoveredText(d)
@@ -78,6 +75,14 @@ extension WorkspaceShellModel {
         syncEditorIssues()
         sourceControl.noteText(of: path)
         previewCanvasFocusChanged()   // WorkspaceShellModel+Previews.swift
+    }
+
+    /// The document's edits reach the model (marks, recovery, the server).
+    func followChanges(of d: EditorDocument) {
+        d.buffer.onTextChange = { [weak self, weak d] _, _ in
+            guard let self, let d else { return }
+            self.documentChanged(d)
+        }
     }
 
     func documentChanged(_ d: EditorDocument) {
@@ -289,16 +294,18 @@ extension WorkspaceShellModel {
     public func checkOpenFilesOnDisk() {
         for d in openDocuments.values {
             if d.checkDisk() == .modified, !d.isDirty {
-                _ = d.reloadFromDisk()
+                if d.reloadFromDisk() { d.buffer.clearUndoHistory() }   // a reload ends the file's undo history
                 syncEdited(d)
             }
         }
     }
 
-    /// The banner's Reload: the disk's version replaces the buffer (undoable).
+    /// The banner's Reload: the disk's version replaces the buffer, and the
+    /// file's undo history is cleared (`source-editor.md`, "Text undo
+    /// belongs to the file").
     public func reloadFromDisk() {
         guard let d = editor else { return }
-        _ = d.reloadFromDisk()
+        if d.reloadFromDisk() { d.buffer.clearUndoHistory() }
         syncEdited(d)
     }
 
