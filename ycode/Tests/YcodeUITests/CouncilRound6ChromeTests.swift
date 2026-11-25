@@ -182,19 +182,30 @@ extension CouncilRound6ChromeTests {
         #expect(EditorMetrics.inspectorSlideMotion(show: false) == Motion.inspector(show: false).duration)
     }
 
+    /// This window's full layout and display on the owner's Mac (a debug
+    /// build, 2026-11-24): the reference for `UIMachineFactor`.
+    static let slideWindowRedrawReference = 9.0
+
     /// Each frame of the slide (the divider moved, the window laid out and
     /// drawn) takes well under the 27 ms the reference held at most, and
     /// the editor's scrollers stay quiet from the start until after the
-    /// end (no repaint after the motion, H.2).
+    /// end (no repaint after the motion, H.2). The 27 ms hold on a machine
+    /// as fast as the owner's Mac and grow with `UIMachineFactor` on a
+    /// slower one (the 3-core CI runner, B5-FIX-CI). The navigator's header
+    /// rows are held for the slide (they rebuilt their constraints every
+    /// frame, NavigatorAreaController+HeaderHold.swift).
     @Test func inspectorSlideFramesAreCheapAndEndQuietly() throws {
         MergeSheetR5UITests.Offscreen.on()
         defer { MergeSheetR5UITests.Offscreen.off() }
         let (wc, _) = try longWindow("slide")
         defer { wc.window?.orderOut(nil) }
         let w = try #require(wc.window)
+        let machine = UIMachineFactor.factor(w, referenceMilliseconds: Self.slideWindowRedrawReference)
+        let limit = 27 * machine.factor
         for hide in [true, false] {
             wc.toggleInspector(nil)
             #expect(wc.isInspectorSliding && EditorScrollView.scrollersAreQuiet)
+            if hide { #expect(wc.navigator.heldHeaderCounts != nil) }
             let state = wc.inspectorSlide
             var times: [Double] = []
             for i in 1...12 where wc.isInspectorSliding {
@@ -212,8 +223,11 @@ extension CouncilRound6ChromeTests {
             #expect(EditorScrollView.quietScrollersUntil < CACurrentMediaTime() + EditorScrollView.quietAfterSlide + 0.01)
             let sorted = times.sorted()
             let median = sorted[sorted.count / 2]
-            print("R6CHROME inspector \(hide ? "hide" : "show") frame ms: median \(String(format: "%.1f", median)), max \(String(format: "%.1f", sorted.last ?? 0)), \(times.map { Int($0) })")
-            #expect(median < 27, "\(times)")
+            print("R6CHROME inspector \(hide ? "hide" : "show") frame ms: median \(String(format: "%.1f", median)), max \(String(format: "%.1f", sorted.last ?? 0)), "
+                  + "\(times.map { Int($0) }); limit \(String(format: "%.1f", limit)) (full redraw \(String(format: "%.1f", machine.redraw)) ms, "
+                  + "factor \(String(format: "%.2f", machine.factor)))")
+            #expect(median < limit, "\(times), full redraw \(machine.redraw) ms")
+            #expect(wc.navigator.heldHeaderCounts == nil)
         }
     }
 }

@@ -76,17 +76,32 @@ import Testing
     /// Selecting another file cross-fades the text area on the catalogue's
     /// curve: ≈ 95 ms, starting ≈ 36 ms after the press (+93 less Ycode's
     /// input latency), or at once when the open took longer than that.
+    /// With Reduce Motion there is none. The test sets Reduce Motion itself:
+    /// GitHub's macOS runner images turn it on (`configure-system.sh`), so
+    /// the host's setting gave no ease there.
     @Test func selectingAnotherFileEasesTheEditor() throws {
         let s = try Ops.Sample()
         defer { s.remove() }
+        defer { WorkspaceWindowController.fileSelectionEaseReducesMotion = nil }
         let wc = try s.window()
         wc.openFromNavigator(path: s.path("Nav/main.swift"), line: nil, modifiers: [])
         pump(0.1)
         let layer = try #require(wc.editor.scrollView.layer)
         layer.removeAllAnimations()
-        #expect(wc.fileSelectionEase(to: s.path("Nav/Model.swift"), in: wc.editor) != nil)
+        // What decides the ease, printed with a failure.
+        func state() -> String {
+            "editor file \(wc.editor.fileURL?.path ?? "none"), host Reduce Motion "
+                + "\(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion), override "
+                + "\(String(describing: WorkspaceWindowController.fileSelectionEaseReducesMotion)), "
+                + "skip: \(wc.fileSelectionEaseSkipReason(to: s.path("Nav/Model.swift"), in: wc.editor) ?? "none")"
+        }
+        // Reduce Motion: no ease, whatever the host's setting.
+        WorkspaceWindowController.fileSelectionEaseReducesMotion = true
+        #expect(wc.fileSelectionEase(to: s.path("Nav/Model.swift"), in: wc.editor) == nil, "\(state())")
+        WorkspaceWindowController.fileSelectionEaseReducesMotion = false
+        #expect(wc.fileSelectionEase(to: s.path("Nav/Model.swift"), in: wc.editor) != nil, "\(state())")
         wc.openFromNavigator(path: s.path("Nav/Model.swift"), line: nil, modifiers: [])
-        let fade = try #require(layer.animation(forKey: WorkspaceWindowController.fileSelectionEaseKey) as? CATransition)
+        let fade = try #require(layer.animation(forKey: WorkspaceWindowController.fileSelectionEaseKey) as? CATransition, "\(state())")
         #expect(fade.type == .fade && abs(fade.duration - 0.095) < 0.001)
         #expect(abs(Motion.fileSelectionEase.start - 0.093) < 0.001 && abs(Motion.fileSelectionEase.duration - 0.095) < 0.001)
         // The same file again: nothing to ease.

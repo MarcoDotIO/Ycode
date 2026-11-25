@@ -312,10 +312,17 @@ import Testing
         nav.onOpen = original
     }
 
+    /// This window's full layout and display on the owner's Mac (a debug
+    /// build, 2026-11-24): the reference for `UIMachineFactor`.
+    static let openWindowRedrawReference = 9.0
+
     /// The work a file selection does before the editor shows it (P-199:
     /// a file shows in ≈ 0.2 s). A short file opens well inside a frame
     /// budget; a 400-line one is printed with the syntax pass's share (the
     /// editor's synchronous parser pass, see docs/beta5/b5-navigator.md).
+    /// The 100 ms hold on a machine as fast as the owner's Mac (about 40
+    /// there) and grow with `UIMachineFactor` on a slower one (the 3-core
+    /// CI runner measured 114–146, B5-FIX-CI).
     @Test func openingASelectedFileIsQuick() throws {
         let s = try Ops.Sample()
         defer { s.remove() }
@@ -338,8 +345,12 @@ import Testing
         wc.editor.textView.string = long
         wc.editor.resetSyntax()
         let syntax = (ProcessInfo.processInfo.systemUptime - t0) * 1000
-        print("P-199 open+layout+display ms: small \(small.map { Int($0) }), 400 lines \(Int(large)) (syntax pass \(Int(syntax)))")
-        #expect(small.min()! < 100)
+        let w = try #require(wc.window)
+        let machine = UIMachineFactor.factor(w, referenceMilliseconds: Self.openWindowRedrawReference)
+        let limit = 100 * machine.factor
+        print("P-199 open+layout+display ms: small \(small.map { Int($0) }), 400 lines \(Int(large)) (syntax pass \(Int(syntax))); "
+              + "limit \(Int(limit)) (full redraw \(String(format: "%.1f", machine.redraw)) ms, factor \(String(format: "%.2f", machine.factor)))")
+        #expect(small.min()! < limit, "\(small), full redraw \(machine.redraw) ms")
     }
 
     // MARK: P-043 — inline rename and new groups

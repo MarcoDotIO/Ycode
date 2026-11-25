@@ -99,6 +99,9 @@ extension WorkspaceWindowController {
         // at the end (row 106).
         EditorBlurMotion.begin()
         EditorScrollView.quietScrollersUntil = .infinity
+        // The navigator keeps its width: its header stacks stop checking for
+        // clipping every frame (+HeaderHold.swift).
+        navigator.holdHeaderClipping(true)
         let link = split.displayLink(target: state, selector: #selector(InspectorSlideState.step(_:)))
         state.onFrame = { [weak self] progress in self?.inspectorSlideFrame(progress) }
         link.add(to: .main, forMode: .common)
@@ -148,6 +151,7 @@ extension WorkspaceWindowController {
         guard state.running else { return }
         state.ending = false
         state.running = false
+        navigator.holdHeaderClipping(false)
         EditorBlurMotion.end()
         EditorScrollView.quietScrollersUntil = CACurrentMediaTime() + EditorScrollView.quietAfterSlide
         updateToolbarState()

@@ -17,16 +17,30 @@ extension WorkspaceWindowController {
     /// For an open that replaces `editor`'s file with `path`: what adds the
     /// cross-fade once the open has changed the text (in the same
     /// transaction, so the fade runs from the frame last shown to the new
-    /// one). Nil when the editor shows that file or none. `press`: the
+    /// one). Nil when the editor shows that file or none, or with Reduce
+    /// Motion (`fileSelectionEaseSkipReason`). `press`: the
     /// click's time on the system uptime clock (the current event's by
     /// default).
     func fileSelectionEase(to path: String, in editor: SourceEditorController,
                            press: TimeInterval? = NSApp.currentEvent?.timestamp) -> (() -> Void)? {
-        guard let old = editor.fileURL?.path, old != path, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return nil }
+        guard fileSelectionEaseSkipReason(to: path, in: editor) == nil else { return nil }
         return { [weak editor] in
             guard let layer = editor?.scrollView.layer else { return }
             layer.add(Self.fileSelectionFade(for: layer, press: press), forKey: Self.fileSelectionEaseKey)
         }
+    }
+
+    /// Reduce Motion for the ease: the system's Accessibility setting,
+    /// unless set (tests: CI's macOS runner images turn Reduce Motion on).
+    static var fileSelectionEaseReducesMotion: Bool?
+
+    /// Why an open to `path` has no ease, nil when it has one: the editor
+    /// shows no file, shows that file already, or Reduce Motion is on.
+    func fileSelectionEaseSkipReason(to path: String, in editor: SourceEditorController) -> String? {
+        guard let old = editor.fileURL?.path else { return "the editor shows no file" }
+        if old == path { return "the editor shows \(path) already" }
+        if Self.fileSelectionEaseReducesMotion ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { return "Reduce Motion is on" }
+        return nil
     }
 
     /// The fade on the motion catalogue's curve, starting `Motion

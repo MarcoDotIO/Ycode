@@ -285,6 +285,8 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     let rowMenu = NSMenu(title: "Row")
     /// The filter's recents and pending refilter (+Filter.swift, P-037).
     let filterState = NavigatorFilterState()
+    /// The header stacks held during another area's slide (+HeaderHold.swift).
+    let headerHold = NavigatorHeaderHold()
     let filterDelegate = NavigatorFilterDelegate()
     /// The rows an open context menu acts on (+RowMenu.swift, P-041).
     let contextRowState = NavigatorContextRows()

@@ -199,6 +199,14 @@ share the machine. What made tests pass alone and fail in full runs:
   names the child and its arguments).
 - Suites that keep a language server on the sample package use their own
   copy (`samplePackage(directory:)`); others rewrite and build the shared one.
+- **The CI runner is set up differently.** GitHub's macOS images turn
+  Reduce Motion and Reduce Transparency on, so a test of an animation sets
+  Reduce Motion itself (`fileSelectionEaseReducesMotion`,
+  `bezelReduceMotionOverride`). The 3-core runner also lays out and draws
+  a window two to four times slower than the owner's Mac: a UI time limit
+  measured on the Mac is multiplied by `UIMachineFactor` (the test window's
+  full redraw against the Mac's, never below 1), so the Mac keeps the tight
+  limit. A test that is slow alone does not go on the flaky list.
 
 Known flaky tests (rerun alone before reporting one; CI reads the same list from
 `../.github/ci/known-flaky.txt` and retries nothing else):
